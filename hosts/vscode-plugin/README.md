@@ -1,0 +1,1 @@
+# OpenCode VSCode Extension

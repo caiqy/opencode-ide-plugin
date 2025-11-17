@@ -1,0 +1,63 @@
+import type { Config, Provider } from "@opencode-ai/sdk/client"
+
+interface ModelsTabProps {
+  formData: Partial<Config>
+  setFormData: (data: Partial<Config>) => void
+  providers: Provider[]
+}
+
+export function ModelsTab({ formData, setFormData, providers }: ModelsTabProps) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Default Model</label>
+        <input
+          type="text"
+          value={formData.model || ""}
+          onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+          placeholder="e.g., anthropic/claude-sonnet-4-5"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+        />
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Format: provider/model (e.g., anthropic/claude-sonnet-4-5)
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Small Model</label>
+        <input
+          type="text"
+          value={formData.small_model || ""}
+          onChange={(e) => setFormData({ ...formData, small_model: e.target.value })}
+          placeholder="e.g., anthropic/claude-haiku-3-5"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+        />
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Used for tasks like title generation</p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Disabled Providers</label>
+        <div className="space-y-2">
+          {providers.map((provider) => (
+            <label key={provider.id} className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={formData.disabled_providers?.includes(provider.id) ?? false}
+                onChange={(e) => {
+                  const current = formData.disabled_providers || []
+                  if (e.target.checked) {
+                    setFormData({ ...formData, disabled_providers: [...current, provider.id] })
+                  } else {
+                    setFormData({ ...formData, disabled_providers: current.filter((id) => id !== provider.id) })
+                  }
+                }}
+                className="rounded border-gray-300 dark:border-gray-700"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">{provider.name}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}

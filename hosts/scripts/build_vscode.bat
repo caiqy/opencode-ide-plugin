@@ -1,0 +1,180 @@
+@echo off
+REM Opencode VSCode Extension Build Script for Windows
+REM Handles the complete build process for the Opencode VSCode extension
+
+setlocal enabledelayedexpansion
+
+REM Resolve key directories
+set "SCRIPT_DIR=%~dp0"
+set "ROOT_DIR=%SCRIPT_DIR%..\.."
+for %%I in ("%ROOT_DIR%") do set "ROOT_DIR=%%~fI"
+set "PLUGIN_DIR=%ROOT_DIR%\hosts\vscode-plugin"
+
+if not exist "%PLUGIN_DIR%\package.json" (
+    echo [ERROR] package.json not found. Please run this script from the repository root.
+    exit /b 1
+)
+
+echo Opencode VSCode Extension Build Script
+echo Plugin directory: %PLUGIN_DIR%
+echo Root directory: %ROOT_DIR%
+
+set "BUILD_TYPE=development"
+set "SKIP_BINARIES=false"
+set "SKIP_TESTS=false"
+set "PACKAGE_ONLY=false"
+
+:parse_args
+if "%~1"=="" goto args_done
+if "%~1"=="--production" (
+    set "BUILD_TYPE=production"
+    shift
+    goto parse_args
+)
+if "%~1"=="--skip-binaries" (
+    set "SKIP_BINARIES=true"
+    shift
+    goto parse_args
+)
+if "%~1"=="--skip-tests" (
+    set "SKIP_TESTS=true"
+    shift
+    goto parse_args
+)
+if "%~1"=="--package-only" (
+    set "PACKAGE_ONLY=true"
+    shift
+    goto parse_args
+)
+if "%~1"=="--help" (
+    echo Usage: %0 [OPTIONS]
+    echo   --production      Build for production (default: development)
+    echo   --skip-binaries   Skip building backend binaries
+    echo   --skip-tests      Skip running tests
+    echo   --package-only    Only create the .vsix package (skip compilation)
+    echo   --help            Show this help message
+    exit /b 0
+)
+echo [ERROR] Unknown option: %~1
+exit /b 1
+
+:args_done
+
+echo [INFO] Building VSCode extension in %BUILD_TYPE% mode
+
+cd /d "%PLUGIN_DIR%"
+
+if "%PACKAGE_ONLY%"=="false" (
+    echo [INFO] Cleaning previous build artifacts...
+    call pnpm run clean 2>nul
+    if errorlevel 1 echo [WARN] Clean command failed, continuing...
+)
+
+if "%PACKAGE_ONLY%"=="false" (
+    echo [INFO] Installing dependencies...
+    where pnpm >nul 2>&1
+    if not errorlevel 1 (
+        call pnpm install
+    ) else (
+        where npm >nul 2>&1
+        if errorlevel 1 (
+            echo [ERROR] Neither pnpm nor npm found. Please install a package manager.
+            exit /b 1
+        )
+        call npm install
+    )
+)
+
+if "%SKIP_BINARIES%"=="false" (
+    if "%PACKAGE_ONLY%"=="false" (
+        echo [INFO] Building backend binaries...
+        cd /d "%ROOT_DIR%"
+        if exist "hosts\scripts\build_opencode.bat" (
+            call hosts\scripts\build_opencode.bat
+        ) else (
+            echo [ERROR] Backend build script not found at hosts\scripts\build_opencode.bat
+            exit /b 1
+        )
+        cd /d "%PLUGIN_DIR%"
+    )
+)
+
+if "%PACKAGE_ONLY%"=="false" (
+    echo [INFO] Compiling TypeScript...
+    if "%BUILD_TYPE%"=="production" (
+        call pnpm run compile:production
+    ) else (
+        call pnpm run compile
+    )
+)
+
+if "%PACKAGE_ONLY%"=="false" (
+    echo [INFO] Running linter...
+    call pnpm run lint
+    if errorlevel 1 echo [WARN] Linting failed, continuing with build...
+)
+
+if "%SKIP_TESTS%"=="false" (
+    if "%PACKAGE_ONLY%"=="false" (
+        echo [INFO] Running tests...
+        call pnpm run test
+        if errorlevel 1 echo [WARN] Tests failed, continuing with build...
+    )
+)
+
+echo [INFO] Checking for required binaries...
+set "MISSING_BINARIES=false"
+if not exist "resources\bin\windows\amd64\opencode.exe" (
+    echo [WARN] Missing binary: resources\bin\windows\amd64\opencode.exe
+    set "MISSING_BINARIES=true"
+)
+if not exist "resources\bin\macos\amd64\opencode" (
+    echo [WARN] Missing binary: resources\bin\macos\amd64\opencode
+    set "MISSING_BINARIES=true"
+)
+if not exist "resources\bin\macos\arm64\opencode" (
+    echo [WARN] Missing binary: resources\bin\macos\arm64\opencode
+    set "MISSING_BINARIES=true"
+)
+if not exist "resources\bin\linux\amd64\opencode" (
+    echo [WARN] Missing binary: resources\bin\linux\amd64\opencode
+    set "MISSING_BINARIES=true"
+)
+if not exist "resources\bin\linux\arm64\opencode" (
+    echo [WARN] Missing binary: resources\bin\linux\arm64\opencode
+    set "MISSING_BINARIES=true"
+)
+if "%MISSING_BINARIES%"=="true" (
+    echo [WARN] Some binaries are missing. The extension may not work on all platforms.
+    echo [WARN] Run 'hosts\scripts\build_opencode.bat' from the repository root to build all binaries.
+)
+
+echo [INFO] Creating VSCode extension package
+where vsce >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] Installing vsce (VSCode Extension Manager)
+    call pnpm run install:vsce
+)
+set "YEAR=%DATE:~10,4%"
+set "MONTH=%DATE:~4,2%"
+set "DAY=%DATE:~7,2%"
+set "HOUR=%TIME:~0,2%"
+if "%HOUR:~0,1%"==" " set "HOUR=0%HOUR:~1,1%"
+set "MINUTE=%TIME:~3,2%"
+set "SECOND=%TIME:~6,2%"
+set "STAMP=%YEAR%%MONTH%%DAY%-%HOUR%%MINUTE%%SECOND%"
+set "VSIX_NAME=opencode-vscode-dev-%STAMP%.vsix"
+if "%BUILD_TYPE%"=="production" set "VSIX_NAME=opencode-vscode-%STAMP%.vsix"
+
+if "%BUILD_TYPE%"=="production" goto package_production
+
+call vsce package --pre-release --no-dependencies --out "%VSIX_NAME%"
+goto package_complete
+
+:package_production
+call vsce package --no-dependencies --out "%VSIX_NAME%"
+
+:package_complete
+
+echo [INFO] Build completed successfully!
+endlocal

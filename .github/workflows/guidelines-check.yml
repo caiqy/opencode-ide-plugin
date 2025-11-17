@@ -4,6 +4,7 @@ on:
   # Disabled - uncomment to re-enable
   # pull_request_target:
   #   types: [opened, synchronize]
+  workflow_dispatch:
 
 jobs:
   check-guidelines:

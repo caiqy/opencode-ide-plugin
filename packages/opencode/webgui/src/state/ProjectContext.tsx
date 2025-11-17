@@ -1,0 +1,78 @@
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { sdk } from "../lib/api/sdkClient"
+
+interface ProjectInfo {
+  id: string
+  worktree: string
+  vcs?: "git"
+  time: {
+    created: number
+    initialized?: number
+  }
+}
+
+interface ProjectContextState {
+  project: ProjectInfo | null
+  worktree: string | null
+  isLoading: boolean
+  error: Error | null
+}
+
+const ProjectContext = createContext<ProjectContextState | null>(null)
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useProject() {
+  const context = useContext(ProjectContext)
+  if (!context) {
+    throw new Error("useProject must be used within a ProjectProvider")
+  }
+  return context
+}
+
+interface ProjectProviderProps {
+  children: ReactNode
+}
+
+export function ProjectProvider({ children }: ProjectProviderProps) {
+  const [project, setProject] = useState<ProjectInfo | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+
+  useEffect(() => {
+    const fetchProject = async () => {
+      try {
+        setIsLoading(true)
+        const response = await sdk.project.current()
+
+        if (response.error) {
+          throw new Error(
+            typeof response.error === "object" && response.error && "message" in response.error
+              ? String(response.error.message)
+              : "Failed to fetch project",
+          )
+        }
+
+        if (response.data) {
+          setProject(response.data as ProjectInfo)
+          setError(null)
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error("Failed to fetch project"))
+        console.error("Failed to fetch project:", err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchProject()
+  }, [])
+
+  const value: ProjectContextState = {
+    project,
+    worktree: project?.worktree ?? null,
+    isLoading,
+    error,
+  }
+
+  return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>
+}

@@ -1,0 +1,50 @@
+<idea-plugin>
+  <vendor email="dev@example.com" url="https://github.com/opencode/opencode">OpenCode</vendor>
+  <id>paviko.opencode</id>
+  <name>OpenCode</name>
+  <description>Runs local OpenCode backend and displays the chat UI.</description>
+
+  <depends>com.intellij.modules.platform</depends>
+  <depends>org.jetbrains.plugins.terminal</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <toolWindow id="OpenCode" factoryClass="paviko.opencode.ui.ChatToolWindowFactory" anchor="right" canCloseContent="true" icon="/icons/opencodeToolWindow.svg"/>
+    <applicationConfigurable parentId="tools" instance="paviko.opencode.settings.OpenCodeConfigurable"
+                           id="paviko.opencode.settings.OpenCodeConfigurable"
+                           displayName="OpenCode Plug"/>
+    <applicationService serviceImplementation="paviko.opencode.settings.OpenCodeSettings"/>
+  </extensions>
+
+  <actions>
+    <action id="paviko.opencode.actions.ProjectAddToContextAction"
+            class="paviko.opencode.actions.ProjectAddToContextAction"
+            text="OpenCode: Add to context">
+      <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+    </action>
+
+    <action id="paviko.opencode.actions.ProjectPastePathAction"
+            class="paviko.opencode.actions.ProjectPastePathAction"
+            text="OpenCode: paste path">
+      <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+    </action>
+
+    <action id="paviko.opencode.actions.EditorAddToContextAction"
+            class="paviko.opencode.actions.EditorAddToContextAction"
+            text="OpenCode: Add to context">
+      <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+      <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+      <keyboard-shortcut keymap="$default" first-keystroke="ctrl COMMA"/>
+      <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta BACK_SLASH"/>
+      <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta BACK_SLASH"/>
+    </action>
+
+    <action id="paviko.opencode.actions.EditorAddLinesToContextAction"
+            class="paviko.opencode.actions.EditorAddLinesToContextAction"
+            text="OpenCode: Add lines to context">
+      <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+      <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift COMMA"/>
+      <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift BACK_SLASH"/>
+      <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift BACK_SLASH"/>
+    </action>
+  </actions>
+</idea-plugin>

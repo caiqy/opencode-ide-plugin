@@ -34,6 +34,7 @@ export const rpc = {
     if (server) await server.stop(true)
     try {
       server = Server.listen(input)
+      console.log(`opencode server listening on ${server.url}`)
       return {
         url: server.url.toString(),
       }
