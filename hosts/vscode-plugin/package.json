@@ -1,11 +1,11 @@
 {
-  "name": "opencode",
+  "name": "opencode-ide-plugin",
   "displayName": "OpenCode (unofficial)",
   "description": "Unofficial OpenCode VSCode extension",
   "version": "25.11.20",
   "publisher": "paviko",
   "author": {
-    "name": "Paviko"
+    "name": "paviko"
   },
   "license": "MIT",
   "homepage": "https://github.com/paviko/opencode-ide-plugin",
