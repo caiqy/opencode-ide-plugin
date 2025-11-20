@@ -1,4 +1,4 @@
-# OpenCode JetBrains Plugin
+# OpenCode JetBrains Plugin (unofficial)
 
 Unofficial OpenCode JetBrain
 
@@ -7,3 +7,5 @@ Unofficial OpenCode JetBrain
 - Add current opened file to context via command/shortcut
 - Add selected line ranges to context via command/shortcut
 - Easier prompt editing in a dedicated text area
+
+This plugin bundles the OpenCode backend executable for supported platforms and runs it locally. The binaries are stored under `src/main/resources/bin` inside the plugin and are used to provide the chat and analysis features.

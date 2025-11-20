@@ -75,13 +75,30 @@ intellijPlatform {
             sinceBuild.set("243")
         }
         // Provide metadata without setting an upper build bound (no untilBuild)
-        description = providers.provider { "Runs local OpenCode backend and displays the chat UI." }
-        changeNotes = providers.provider {
-            val f = file("CHANGELOG.md")
-            if (f.isFile) {
-                f.readText()
+        description = providers.provider {
+            val f = file("description.html")
+            if (!f.isFile) {
+                return@provider "Runs local OpenCode backend and displays the chat UI."
+            }
+
+            val text = f.readText().trim()
+            if (text.isEmpty()) {
+                "Runs local OpenCode backend and displays the chat UI."
             } else {
+                text
+            }
+        }
+        changeNotes = providers.provider {
+            val f = file("changelog.html")
+            if (!f.isFile) {
+                return@provider "See CHANGELOG.md for details."
+            }
+
+            val text = f.readText().trim()
+            if (text.isEmpty()) {
                 "See CHANGELOG.md for details."
+            } else {
+                text
             }
         }
     }
@@ -90,8 +107,8 @@ intellijPlatform {
 tasks {
     // Ensure no upper build bound is set in plugin.xml so the plugin stays compatible with newer IDEs
     patchPluginXml {
-        // keep sinceBuild from pluginConfiguration
-        untilBuild.set("")
+        // keep sinceBuild from pluginConfiguration, but expand upper bound to newer IDE builds
+        untilBuild.set("261.*")
     }
 
     prepareSandbox {
