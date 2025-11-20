@@ -5,11 +5,12 @@ All notable changes to the OpenCode VSCode extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [25.11.xx] - 2025-11-xx
+## [25.11.20] - 2025-11-20
 
 - Providers can be configured from Settings panel - can be added/removed, also OAuth
 - Fixed context size bug when session what aborted
 - Fix session error toasts and display session state messages
+- Updated OpenCode to v1.0.80
 
 ## [25.11.19] - 2025-11-19
 
