@@ -128,9 +128,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [agentModelMap, setAgentModelMap] = useState<Record<string, { provider_id: string; model_id: string }>>({})
 
   const isReasoning = currentSession?.id ? Boolean(reasoningMap[currentSession.id]) : false
-  const currentStatus: SessionStatusInfo = currentSession?.id && statusMap[currentSession.id]
-    ? statusMap[currentSession.id]
-    : { type: "idle", attempt: 0, message: "", next: Date.now() }
+  const currentStatus: SessionStatusInfo =
+    currentSession?.id && statusMap[currentSession.id]
+      ? statusMap[currentSession.id]
+      : { type: "idle", attempt: 0, message: "", next: Date.now() }
 
   const setReasoning = useCallback((sessionId: string, active: boolean) => {
     if (!sessionId) return

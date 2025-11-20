@@ -210,10 +210,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
-                    ? "border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-500"
-                    : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-                    }`}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === tab.id
+                      ? "border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-500"
+                      : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                  }`}
                 >
                   <span className="mr-1.5">{tab.icon}</span>
                   {tab.label}

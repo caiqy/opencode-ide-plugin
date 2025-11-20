@@ -290,9 +290,7 @@ export function ApiKeysTab({
             </div>
             <div className="overflow-y-auto flex-1">
               {filteredAvailableProviders.length === 0 ? (
-                <div className="p-3 text-sm text-gray-500 dark:text-gray-400 text-center">
-                  No providers found
-                </div>
+                <div className="p-3 text-sm text-gray-500 dark:text-gray-400 text-center">No providers found</div>
               ) : (
                 filteredAvailableProviders.map((p) => (
                   <button
