@@ -57,6 +57,8 @@ function sumUsage(
     const uCacheRead = Number(usage.cache?.read || 0)
     const uCacheWrite = Number(usage.cache?.write || 0)
 
+    if (uInput + uOutput + uReasoning + uCacheRead + uCacheWrite <= 0) continue
+
     // contextUsed is the latest input value
     contextUsed = uInput + uCacheRead + uCacheWrite + uOutput
 

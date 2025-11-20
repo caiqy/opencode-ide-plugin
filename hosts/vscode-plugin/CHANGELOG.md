@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [25.11.xx] - 2025-11-xx
 
 - Providers can be configured from Settings panel - can be added/removed, also OAuth
+- Fixed context size bug when session what aborted
 
 ## [25.11.19] - 2025-11-19
 
