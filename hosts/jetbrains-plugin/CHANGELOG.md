@@ -4,6 +4,7 @@
 
 - Providers can be configured from Settings panel - can be added/removed, also OAuth
 - Fixed context size bug when session what aborted
+- Fix session error toasts and display session state messages
 
 ## 25.11.19
 

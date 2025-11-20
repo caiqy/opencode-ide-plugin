@@ -6,6 +6,13 @@ import { eventEmitter } from "../lib/api/events"
 /**
  * Session context state
  */
+type SessionStatusInfo = {
+  type: string
+  attempt: number
+  message: string
+  next: number
+}
+
 interface SessionContextState {
   // Current active session
   currentSession: Session | null
@@ -27,6 +34,9 @@ interface SessionContextState {
   // Reasoning state per session
   isReasoning: boolean
   setReasoning: (sessionId: string, active: boolean) => void
+
+  // Session status for current session
+  currentStatus: SessionStatusInfo
 
   // Model and Agent selection
   selectedProviderId: string | undefined
@@ -109,6 +119,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [error, setError] = useState<Error | null>(null)
   const [isIdle, setIsIdle] = useState(true)
   const [reasoningMap, setReasoningMap] = useState<Record<string, boolean>>({})
+  const [statusMap, setStatusMap] = useState<Record<string, SessionStatusInfo>>({})
 
   // Model and Agent selection state (synced with server state + localStorage fallback)
   const [selectedProviderId, setSelectedProviderId] = useState<string | undefined>()
@@ -117,6 +128,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [agentModelMap, setAgentModelMap] = useState<Record<string, { provider_id: string; model_id: string }>>({})
 
   const isReasoning = currentSession?.id ? Boolean(reasoningMap[currentSession.id]) : false
+  const currentStatus: SessionStatusInfo = currentSession?.id && statusMap[currentSession.id]
+    ? statusMap[currentSession.id]
+    : { type: "idle", attempt: 0, message: "", next: Date.now() }
 
   const setReasoning = useCallback((sessionId: string, active: boolean) => {
     if (!sessionId) return
@@ -797,14 +811,32 @@ export function SessionProvider({ children }: SessionProviderProps) {
       }
     }
 
+    const handleSessionStatus = (event: any) => {
+      if (event.type !== "session.status" || !event.properties) return
+      const { sessionID, status } = event.properties as {
+        sessionID: string
+        status: SessionStatusInfo
+      }
+      setStatusMap((prev) => {
+        if (status.type === "idle") {
+          const next = { ...prev }
+          delete next[sessionID]
+          return next
+        }
+        return { ...prev, [sessionID]: status }
+      })
+    }
+
     const unsubscribeCreated = eventEmitter.on("session.created", handleSessionCreated)
     const unsubscribeUpdated = eventEmitter.on("session.updated", handleSessionUpdated)
     const unsubscribeDeleted = eventEmitter.on("session.deleted", handleSessionDeleted)
+    const unsubscribeStatus = eventEmitter.on("session.status", handleSessionStatus)
 
     return () => {
       unsubscribeCreated()
       unsubscribeUpdated()
       unsubscribeDeleted()
+      unsubscribeStatus()
     }
   }, [currentSession?.id, setReasoning, newVirtual])
 
@@ -820,6 +852,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setIsIdle,
     isReasoning,
     setReasoning,
+    currentStatus,
     selectedProviderId,
     selectedModelId,
     selectedAgent,

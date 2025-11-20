@@ -7,6 +7,18 @@ export type ServerEvent =
   | { type: "session.updated"; properties: { sessionID: string; session: any } }
   | { type: "session.deleted"; properties: { sessionID: string } }
   | { type: "session.error"; properties: { sessionID: string; error: any } }
+  | {
+      type: "session.status"
+      properties: {
+        sessionID: string
+        status: {
+          type: string
+          attempt: number
+          message: string
+          next: number
+        }
+      }
+    }
   | { type: "session.idle"; properties: { sessionID: string } }
   | { type: "session.compacted"; properties: { sessionID: string } }
   | { type: "message.updated"; properties: { info: any } }
