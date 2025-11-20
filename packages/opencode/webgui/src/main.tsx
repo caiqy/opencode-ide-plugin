@@ -8,6 +8,7 @@ import { ToastProvider } from "./state/ToastContext.tsx"
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx"
 import { ProjectProvider } from "./state/ProjectContext.tsx"
 import { IdeBridgeProvider } from "./state/IdeBridgeContext"
+import { ProvidersProvider } from "./state/ProvidersContext"
 import { initGlobalDnD } from "./lib/dnd"
 
 ideBridge.init()
@@ -20,7 +21,9 @@ createRoot(document.getElementById("root")!).render(
         <SessionProvider>
           <ToastProvider>
             <IdeBridgeProvider>
-              <App />
+              <ProvidersProvider>
+                <App />
+              </ProvidersProvider>
             </IdeBridgeProvider>
           </ToastProvider>
         </SessionProvider>

@@ -316,6 +316,28 @@ export class CommunicationBridge implements PluginCommunicator {
   }
 
   /**
+   * Handle url open request from web UI
+   * @param url URL to open
+   */
+  async handleOpenUrl(url: string): Promise<void> {
+    try {
+      if (!url || url.trim().length === 0) {
+        logger.appendLine("No url provided to open")
+        return
+      }
+
+      await vscode.env.openExternal(vscode.Uri.parse(url))
+      logger.appendLine(`Opened url: ${url}`)
+    } catch (error) {
+      logger.appendLine(`Error opening url: ${error}`)
+      await errorHandler.handleCommunicationError(error instanceof Error ? error : new Error(String(error)), {
+        operation: "openUrl",
+        messageType: "openUrl",
+      })
+    }
+  }
+
+  /**
    * Handle state change from web UI
    * @param key Setting key
    * @param value Setting value
@@ -397,6 +419,11 @@ export class CommunicationBridge implements PluginCommunicator {
                 if (m.id) {
                   this.webview?.postMessage({ replyTo: m.id, ok: true })
                 }
+              } else if (m && m.type === "openUrl") {
+                await this.handleOpenUrl(m.payload?.url ?? m.url)
+                if (m.id) {
+                  this.webview?.postMessage({ replyTo: m.id, ok: true })
+                }
               } else {
                 // Generic ack for unknown types
                 if (m && m.id) this.webview?.postMessage({ replyTo: m.id, ok: true })
@@ -419,6 +446,10 @@ export class CommunicationBridge implements PluginCommunicator {
           switch (message.type) {
             case "openFile":
               await this.handleOpenFile(message.path)
+              break
+
+            case "openUrl":
+              await this.handleOpenUrl(message.url)
               break
 
             case "settingsChanged":

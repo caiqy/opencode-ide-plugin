@@ -1,6 +1,7 @@
 package paviko.opencode.ui
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.LogicalPosition
@@ -84,6 +85,16 @@ object IdeBridge {
 
                 openFile(project, cleanedPath, startLine0Based, endLine0Based)
                 replyOk(id)
+            }
+            "openUrl" -> {
+                val payload = obj.get("payload")
+                val url = payload?.get("url")?.asText() ?: return replyError(id, "missing url")
+                try {
+                    BrowserUtil.browse(url)
+                    replyOk(id)
+                } catch (t: Throwable) {
+                    replyError(id, t.message ?: "Failed to open url")
+                }
             }
             else -> replyOk(id)
         }

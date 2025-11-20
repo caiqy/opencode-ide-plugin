@@ -147,6 +147,7 @@ await ideBridge.request("openFile", { path: "/p/file.ts", line: 10 })
 ### Web UI → JetBrains host (handled)
 
 - **openFile** — payload: `{ path: string, line?: number }` → opens file in IDE, responds with `{ replyTo, ok }` or `{ replyTo, ok: false, error }`
+- **openUrl** — payload: `{ url: string }` → opens URL in default browser, responds with `{ replyTo, ok }`
 
 ### Protocol notes
 

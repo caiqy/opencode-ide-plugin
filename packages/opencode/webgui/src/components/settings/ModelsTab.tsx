@@ -4,9 +4,12 @@ interface ModelsTabProps {
   formData: Partial<Config>
   setFormData: (data: Partial<Config>) => void
   providers: Provider[]
+  configuredProviders: string[]
 }
 
-export function ModelsTab({ formData, setFormData, providers }: ModelsTabProps) {
+export function ModelsTab({ formData, setFormData, providers, configuredProviders }: ModelsTabProps) {
+  const displayedProviders = providers.filter((p) => configuredProviders.includes(p.id))
+
   return (
     <div className="space-y-4">
       <div>
@@ -38,7 +41,7 @@ export function ModelsTab({ formData, setFormData, providers }: ModelsTabProps) 
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Disabled Providers</label>
         <div className="space-y-2">
-          {providers.map((provider) => (
+          {displayedProviders.map((provider) => (
             <label key={provider.id} className="flex items-center space-x-2">
               <input
                 type="checkbox"
@@ -56,6 +59,9 @@ export function ModelsTab({ formData, setFormData, providers }: ModelsTabProps) 
               <span className="text-sm text-gray-700 dark:text-gray-300">{provider.name}</span>
             </label>
           ))}
+          {displayedProviders.length === 0 && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No configured providers found.</p>
+          )}
         </div>
       </div>
     </div>

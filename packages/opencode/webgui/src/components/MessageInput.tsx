@@ -38,6 +38,7 @@ import {
 import { toProjectRelative } from "../lib/path"
 import { extractPathsFromDrop } from "../lib/dnd"
 import { ConfirmModal } from "./ConfirmModal"
+import { useProviders } from "../state/ProvidersContext"
 
 interface MessageInputProps {
   sessionID: string | null
@@ -151,6 +152,7 @@ const MessageInputInner = forwardRef<
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null)
   const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
   const [isCompacting, setIsCompacting] = useState(false)
+  const [modelSelectorKey, setModelSelectorKey] = useState(0)
   const contentEditableRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -167,6 +169,7 @@ const MessageInputInner = forwardRef<
     isVirtualSession,
     materializeSession,
   } = useSession()
+  const { providersDirty, clearProvidersDirty } = useProviders()
 
   const handleEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
@@ -992,6 +995,12 @@ const MessageInputInner = forwardRef<
     }
   }, [])
 
+  useEffect(() => {
+    if (!providersDirty) return
+    setModelSelectorKey((value) => value + 1)
+    clearProvidersDirty()
+  }, [providersDirty, clearProvidersDirty])
+
   return (
     <>
       <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex-shrink-0">
@@ -1049,6 +1058,7 @@ const MessageInputInner = forwardRef<
 
             {/* Model selector */}
             <ModelSelector
+              key={modelSelectorKey}
               selectedProviderId={selectedProviderId}
               selectedModelId={selectedModelId}
               onSelect={setSelectedModel}

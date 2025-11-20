@@ -6,6 +6,7 @@ import { GeneralTab } from "./settings/GeneralTab"
 import { ApiKeysTab } from "./settings/ApiKeysTab"
 import { ModelsTab } from "./settings/ModelsTab"
 import { AdvancedTab } from "./settings/AdvancedTab"
+import { useProviders } from "../state/ProvidersContext.tsx"
 
 interface SettingsPanelProps {
   isOpen: boolean
@@ -22,11 +23,13 @@ interface ProviderWithAuth extends Provider {
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("general")
   const [providers, setProviders] = useState<ProviderWithAuth[]>([])
+  const [configuredProviders, setConfiguredProviders] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const { markProvidersDirty } = useProviders()
 
   // Form state
   const [formData, setFormData] = useState<Partial<Config>>({})
@@ -60,13 +63,17 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         }
 
         // Fetch providers
-        const providersResponse = await sdk.config.providers()
-        if (providersResponse.error) {
+        const providersRes = await sdk.config.allProviders()
+        if (providersRes.error) {
           throw new Error("Failed to load providers")
         }
-        if (providersResponse.data) {
-          setProviders(providersResponse.data.providers)
+        if (providersRes.data) {
+          setProviders(providersRes.data.providers.sort((a, b) => a.name.localeCompare(b.name)))
         }
+
+        // Fetch configured providers
+        const authList = await sdk.auth.list()
+        setConfiguredProviders(Object.keys(authList))
 
         // Reset API keys to empty (they should be entered fresh)
         setApiKeys({})
@@ -147,23 +154,17 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       const apiKeyEntries = Object.entries(apiKeys).filter(([_, key]) => key && key.trim())
 
       for (const [providerID, key] of apiKeyEntries) {
-        const authResponse = await sdk.auth.set({
-          path: { id: providerID },
-          body: {
-            type: "api",
-            key: key.trim(),
-          },
+        await sdk.auth.set(providerID, {
+          type: "api",
+          key: key.trim(),
         })
-
-        if (authResponse.error) {
-          throw new Error(`Failed to save API key for ${providerID}`)
-        }
       }
 
       // Clear API keys after successful save
       setApiKeys({})
 
       setSuccessMessage("Settings saved successfully")
+      markProvidersDirty()
       setTimeout(() => {
         setSuccessMessage(null)
         onClose()
@@ -209,11 +210,10 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === tab.id
-                      ? "border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-500"
-                      : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-                  }`}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
+                    ? "border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-500"
+                    : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                    }`}
                 >
                   <span className="mr-1.5">{tab.icon}</span>
                   {tab.label}
@@ -239,6 +239,8 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 {activeTab === "api-keys" && (
                   <ApiKeysTab
                     providers={providers}
+                    configuredProviders={configuredProviders}
+                    setConfiguredProviders={setConfiguredProviders}
                     apiKeys={apiKeys}
                     setApiKeys={setApiKeys}
                     showApiKeys={showApiKeys}
@@ -247,7 +249,12 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 )}
 
                 {activeTab === "models" && (
-                  <ModelsTab formData={formData} setFormData={setFormData} providers={providers} />
+                  <ModelsTab
+                    formData={formData}
+                    setFormData={setFormData}
+                    providers={providers}
+                    configuredProviders={configuredProviders}
+                  />
                 )}
 
                 {activeTab === "advanced" && <AdvancedTab formData={formData} setFormData={setFormData} />}

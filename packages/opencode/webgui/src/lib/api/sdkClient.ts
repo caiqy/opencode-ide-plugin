@@ -3,7 +3,7 @@
  * Configured to connect to the OpenCode server at the default location
  */
 
-import { createOpencodeClient } from "@opencode-ai/sdk/client"
+import { createOpencodeClient, type Provider } from "@opencode-ai/sdk/client"
 
 // Create a single SDK client instance with relative baseUrl
 // The server runs on the same origin, so we use '/' for relative requests
@@ -31,12 +31,95 @@ interface StateResponse {
   show_thinking_blocks?: boolean
 }
 
+interface ProvidersResponse {
+  providers: Provider[]
+  default: Record<string, string>
+}
+
 /**
  * Extended SDK client with state management methods
  * TODO: Remove once SDK is regenerated with Stainless
  */
 export const sdk = {
   ...baseClient,
+  config: {
+    get: baseClient.config.get.bind(baseClient.config),
+    update: baseClient.config.update.bind(baseClient.config),
+    providers: baseClient.config.providers.bind(baseClient.config),
+    allProviders: async () => {
+      try {
+        const response = await fetch("/app/api/config/providers", {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        })
+
+        if (!response.ok) {
+          return { error: { message: "Failed to load providers" }, data: null as ProvidersResponse | null }
+        }
+
+        const data = (await response.json()) as ProvidersResponse
+        return { data, error: null as { message: string } | null }
+      } catch (error) {
+        return {
+          error: { message: error instanceof Error ? error.message : "Unknown error" },
+          data: null as ProvidersResponse | null,
+        }
+      }
+    },
+  },
+  auth: {
+    set: async (provider: string, value: any) => {
+      const res = await fetch("/app/api/auth/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, value }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+    },
+    list: async () => {
+      const res = await fetch("/app/api/auth/list")
+      return res.json() as Promise<Record<string, any>>
+    },
+    remove: async (provider: string) => {
+      await fetch("/app/api/auth/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      })
+    },
+    methods: async (provider: string) => {
+      const res = await fetch(`/app/api/auth/methods?provider=${provider}`)
+      return res.json() as Promise<
+        Array<{
+          label: string
+          type: "oauth" | "api"
+          prompts?: any[]
+        }>
+      >
+    },
+    start: async (provider: string, methodIndex: number, inputs: any) => {
+      const res = await fetch("/app/api/auth/login/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, methodIndex, inputs }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      return res.json() as Promise<{ id: string; url?: string; method: "auto" | "code" }>
+    },
+    submit: async (id: string, code: string) => {
+      const res = await fetch("/app/api/auth/login/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, code }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      return res.json() as Promise<boolean>
+    },
+    status: async (id: string) => {
+      const res = await fetch(`/app/api/auth/login/status/${id}`)
+      return res.json() as Promise<{ status: "pending" | "success" | "failed"; result?: any }>
+    },
+  },
   permissions: {
     respond: async (options: {
       path: { id: string; permissionID: string }
