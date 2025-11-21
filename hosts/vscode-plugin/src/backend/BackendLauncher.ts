@@ -180,7 +180,7 @@ export class BackendLauncher {
     }
 
     // Get extension path
-    const extension = vscode.extensions.getExtension("paviko.opencode-ide-plugin")
+    const extension = vscode.extensions.getExtension("paviko.opencode-ux-plus")
     if (!extension) {
       throw new Error("Extension not found")
     }

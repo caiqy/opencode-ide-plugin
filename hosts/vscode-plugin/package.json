@@ -1,6 +1,6 @@
 {
-  "name": "opencode-ide-plugin",
-  "displayName": "OpenCode (unofficial)",
+  "name": "opencode-ux-plus",
+  "displayName": "OpenCode UX+ (unofficial)",
   "description": "Unofficial OpenCode VSCode extension",
   "version": "25.11.20",
   "publisher": "paviko",
@@ -21,9 +21,7 @@
     "vscode": "^1.74.0"
   },
   "categories": [
-    "Other",
-    "Developer Tools",
-    "Terminal"
+    "Other"
   ],
   "icon": "resources/icon.png",
   "galleryBanner": {

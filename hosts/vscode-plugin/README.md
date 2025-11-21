@@ -1,4 +1,4 @@
-# OpenCode VSCode Extension
+# OpenCode UX+
 
 Unofficial OpenCode VSCode plugin
 
