@@ -166,18 +166,19 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                         <button
                           key={`${item.provider_id}:${item.model_id}:${item.last_used}`}
                           onClick={() => handleSelect(item.provider_id, item.model_id)}
-                          className={`w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between ${
-                            isSelected
+                          className={`w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between ${isSelected
                               ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
                               : "text-gray-900 dark:text-gray-100"
-                          }`}
+                            }`}
                         >
-                          <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
                             <span className="font-medium truncate">{item.model_id}</span>
-                            <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
-                              <span className="truncate max-w-[10rem]">{item.provider_id}</span>
-                              <span>{new Date(item.last_used).toLocaleDateString()}</span>
-                            </div>
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
+                              {new Date(item.last_used).toLocaleDateString()}
+                            </span>
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate max-w-[6rem]">
+                              {item.provider_id}
+                            </span>
                           </div>
                           {isSelected && (
                             <svg className="w-4 h-4 ml-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -212,23 +213,22 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                           <button
                             key={modelId}
                             onClick={() => handleSelect(provider.id, modelId)}
-                            className={`w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between ${
-                              isSelected
+                            className={`w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between ${isSelected
                                 ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
                                 : "text-gray-900 dark:text-gray-100"
-                            }`}
+                              }`}
                           >
-                            <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
                               <span className="font-medium truncate">{model.name}</span>
-                              <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                              <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
                                 <span>{new Date(model.release_date).toLocaleDateString()}</span>
                                 {model.reasoning && (
-                                  <span className="px-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded">
+                                  <span className="px-1 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-[9px] leading-none">
                                     reasoning
                                   </span>
                                 )}
                                 {isDefault && (
-                                  <span className="px-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
+                                  <span className="px-1 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-[9px] leading-none">
                                     default
                                   </span>
                                 )}

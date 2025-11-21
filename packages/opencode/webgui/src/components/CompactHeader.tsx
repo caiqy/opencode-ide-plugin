@@ -249,14 +249,13 @@ const CompactHeader = forwardRef<
 
   return (
     <>
-      <header className="h-10 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex items-center justify-between px-3 flex-shrink-0 relative">
+      <header className="h-9 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex items-center justify-between px-2 flex-shrink-0 relative">
         {/* Left: Session dropdown */}
-        <div className="flex items-center gap-2" ref={dropdownRef}>
+        <div className="flex items-center gap-1.5" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className={`flex items-center gap-1 text-sm hover:text-gray-900 dark:hover:text-gray-100 ${
-              currentHasDefaultTitle ? "text-gray-500 dark:text-gray-500 italic" : "text-gray-700 dark:text-gray-300"
-            }`}
+            className={`flex items-center gap-1 text-sm hover:text-gray-900 dark:hover:text-gray-100 ${currentHasDefaultTitle ? "text-gray-500 dark:text-gray-500 italic" : "text-gray-700 dark:text-gray-300"
+              }`}
             title={currentTitle}
           >
             <span>{currentSession ? truncatedTitle : "No Session"}</span>
@@ -266,7 +265,7 @@ const CompactHeader = forwardRef<
           </button>
 
           {/* Usage summary in header */}
-          <div className="relative flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 select-none min-w-0">
+          <div className="relative flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300 select-none min-w-0">
             {(() => {
               const pct = Math.min(100, Math.max(0, usage.percentage))
               const color =
@@ -274,10 +273,10 @@ const CompactHeader = forwardRef<
               return (
                 <button
                   onClick={() => setShowUsageDetails((v) => !v)}
-                  className="flex items-center gap-2 group whitespace-nowrap overflow-hidden"
+                  className="flex items-center gap-1.5 group whitespace-nowrap overflow-hidden"
                   title="Show usage details"
                 >
-                  <div className="w-[100px] h-3 bg-gray-100 dark:bg-gray-800 rounded overflow-hidden relative">
+                  <div className="w-[80px] h-2.5 bg-gray-100 dark:bg-gray-800 rounded overflow-hidden relative">
                     <div className={`${color} h-3`} style={{ width: `${pct}%` }} />
                     <span className="absolute inset-0 flex items-center justify-center text-[10px] text-gray-900 dark:text-white drop-shadow-sm">
                       {Math.round(pct)}%
@@ -293,32 +292,34 @@ const CompactHeader = forwardRef<
             })()}
 
             {showUsageDetails && (
-              <div className="absolute top-full left-0 mt-1 p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded shadow-lg z-50 min-w-[240px]">
-                <div className="flex items-center justify-between py-0.5">
-                  <span>Context used</span>
-                  <span className="tabular-nums">
-                    {formatK(usage.contextUsed)}/{formatK(usage.contextLimit)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between py-0.5">
-                  <span>Input tokens</span>
-                  <span className="tabular-nums">{formatK(usage.breakdown.input)}</span>
-                </div>
-                <div className="flex items-center justify-between py-0.5">
-                  <span>Cache write</span>
-                  <span className="tabular-nums">{formatK(usage.breakdown.cacheWrite)}</span>
-                </div>
-                <div className="flex items-center justify-between py-0.5">
-                  <span>Cache read</span>
-                  <span className="tabular-nums">{formatK(usage.breakdown.cacheRead)}</span>
-                </div>
-                <div className="flex items-center justify-between py-0.5">
-                  <span>Output tokens</span>
-                  <span className="tabular-nums">{formatK(usage.breakdown.output)}</span>
-                </div>
-                <div className="flex items-center justify-between py-0.5">
-                  <span>Reasoning tokens</span>
-                  <span className="tabular-nums">{formatK(usage.breakdown.reasoning)}</span>
+              <div className="modern-card absolute top-full left-0 mt-1 w-64 z-50 overflow-hidden ring-1 ring-black/5 p-2">
+                <div className="max-h-[calc(100vh-200px)] overflow-y-auto py-1">
+                  <div className="flex items-center justify-between py-0.5">
+                    <span>Context used</span>
+                    <span className="tabular-nums">
+                      {formatK(usage.contextUsed)}/{formatK(usage.contextLimit)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <span>Input tokens</span>
+                    <span className="tabular-nums">{formatK(usage.breakdown.input)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <span>Cache write</span>
+                    <span className="tabular-nums">{formatK(usage.breakdown.cacheWrite)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <span>Cache read</span>
+                    <span className="tabular-nums">{formatK(usage.breakdown.cacheRead)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <span>Output tokens</span>
+                    <span className="tabular-nums">{formatK(usage.breakdown.output)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <span>Reasoning tokens</span>
+                    <span className="tabular-nums">{formatK(usage.breakdown.reasoning)}</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -347,11 +348,10 @@ const CompactHeader = forwardRef<
                   />
                   <button
                     onClick={() => setIsSelectMode(!isSelectMode)}
-                    className={`px-2 h-[30px] flex items-center justify-center rounded border ${
-                      isSelectMode
-                        ? "bg-blue-500 text-white border-blue-500"
-                        : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600"
-                    }`}
+                    className={`px-2 h-[30px] flex items-center justify-center rounded border ${isSelectMode
+                      ? "bg-blue-500 text-white border-blue-500"
+                      : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600"
+                      }`}
                     title={isSelectMode ? "Cancel selection" : "Select multiple sessions"}
                   >
                     {isSelectMode ? (
@@ -390,13 +390,12 @@ const CompactHeader = forwardRef<
                         key={session.id}
                         ref={index === selectedSessionIndex ? selectedSessionRef : null}
                         tabIndex={-1}
-                        className={`group px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center justify-between outline-none ${
-                          index === selectedSessionIndex && !isSelectMode
+                        className={`group px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center justify-between outline-none ${index === selectedSessionIndex && !isSelectMode
+                          ? "bg-blue-50 dark:bg-blue-950"
+                          : isActive
                             ? "bg-blue-50 dark:bg-blue-950"
-                            : isActive
-                              ? "bg-blue-50 dark:bg-blue-950"
-                              : ""
-                        }`}
+                            : ""
+                          }`}
                         onClick={() => !isEditing && !isSelectMode && handleSessionSelect(session.id)}
                         onKeyDown={handleKeyDown}
                       >
@@ -445,13 +444,12 @@ const CompactHeader = forwardRef<
                                 </svg>
                               )}
                               <span
-                                className={`truncate ${
-                                  hasDefaultTitle
-                                    ? "text-gray-500 dark:text-gray-500 italic"
-                                    : isActive && !isSelectMode
-                                      ? "text-blue-900 dark:text-blue-100 font-medium"
-                                      : "text-gray-700 dark:text-gray-300"
-                                }`}
+                                className={`truncate ${hasDefaultTitle
+                                  ? "text-gray-500 dark:text-gray-500 italic"
+                                  : isActive && !isSelectMode
+                                    ? "text-blue-900 dark:text-blue-100 font-medium"
+                                    : "text-gray-700 dark:text-gray-300"
+                                  }`}
                               >
                                 {displayTitle}
                               </span>
@@ -524,19 +522,18 @@ const CompactHeader = forwardRef<
         </div>
 
         {/* Right: Connection status, theme toggle, and new session button */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {/* Connection status dot */}
           <div
-            className={`w-2 h-2 rounded-full ${CONNECTION_COLORS[connectionState]} ${
-              connectionState === "connecting" || connectionState === "error" ? "animate-pulse" : ""
-            }`}
+            className={`w-2 h-2 rounded-full ${CONNECTION_COLORS[connectionState]} ${connectionState === "connecting" || connectionState === "error" ? "animate-pulse" : ""
+              }`}
             title={CONNECTION_TOOLTIPS[connectionState]}
           />
 
           {/* Theme toggle */}
           <button
             onClick={toggleTheme}
-            className="w-6 h-6 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+            className="modern-icon-button w-7 h-7 flex items-center justify-center"
             title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
           >
             {theme === "light" ? (
@@ -563,7 +560,7 @@ const CompactHeader = forwardRef<
           {/* Command Palette button */}
           <button
             onClick={onOpenCommandPalette}
-            className="w-6 h-6 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+            className="modern-icon-button w-7 h-7 flex items-center justify-center"
             title="Command Palette (Cmd/Ctrl+K)"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -579,7 +576,7 @@ const CompactHeader = forwardRef<
           {/* Settings button */}
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="w-6 h-6 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+            className="modern-icon-button w-7 h-7 flex items-center justify-center"
             title="Settings (Cmd/Ctrl+,)"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -597,7 +594,7 @@ const CompactHeader = forwardRef<
           <button
             onClick={onNewSession}
             disabled={isCreatingSession}
-            className="w-6 h-6 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-5 h-5 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
             title="New Session (Cmd/Ctrl+N)"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

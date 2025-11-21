@@ -19,7 +19,7 @@ export function ModelsTab({ formData, setFormData, providers, configuredProvider
           value={formData.model || ""}
           onChange={(e) => setFormData({ ...formData, model: e.target.value })}
           placeholder="e.g., anthropic/claude-sonnet-4-5"
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+          className="modern-input w-full font-mono text-sm"
         />
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
           Format: provider/model (e.g., anthropic/claude-sonnet-4-5)
@@ -33,7 +33,7 @@ export function ModelsTab({ formData, setFormData, providers, configuredProvider
           value={formData.small_model || ""}
           onChange={(e) => setFormData({ ...formData, small_model: e.target.value })}
           placeholder="e.g., anthropic/claude-haiku-3-5"
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+          className="modern-input w-full font-mono text-sm"
         />
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Used for tasks like title generation</p>
       </div>

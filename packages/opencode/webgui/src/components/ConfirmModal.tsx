@@ -41,15 +41,15 @@ export function ConfirmModal({
 
   const variantStyles = {
     danger: {
-      button: "bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800",
+      button: "modern-button-danger",
       text: "text-red-900 dark:text-red-100",
     },
     warning: {
-      button: "bg-yellow-600 hover:bg-yellow-700 dark:bg-yellow-700 dark:hover:bg-yellow-800",
-      text: "text-yellow-900 dark:text-yellow-100",
+      button: "bg-amber-500 hover:bg-amber-600 text-white border-transparent",
+      text: "text-amber-900 dark:text-amber-100",
     },
     info: {
-      button: "bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800",
+      button: "modern-button-primary",
       text: "text-blue-900 dark:text-blue-100",
     },
   }
@@ -57,9 +57,9 @@ export function ConfirmModal({
   const styles = variantStyles[variant]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-all" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-lg shadow-lg max-w-md w-full mx-4 border border-gray-200 dark:border-gray-800"
+        className="modern-card max-w-md w-full mx-4 overflow-hidden transform transition-all scale-100"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -73,18 +73,18 @@ export function ConfirmModal({
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 bg-gray-50 dark:bg-gray-950 rounded-b-lg flex justify-end gap-2">
+        <div className="px-4 py-3 bg-gray-50 dark:bg-gray-950/50 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-2">
           <button
             onClick={onClose}
             disabled={isLoading}
-            className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="modern-button modern-button-secondary"
           >
             {cancelText}
           </button>
           <button
             onClick={onConfirm}
             disabled={isLoading}
-            className={`px-3 py-1.5 text-sm font-medium text-white ${styles.button} rounded disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`modern-button ${styles.button}`}
           >
             {isLoading ? "Processing..." : confirmText}
           </button>

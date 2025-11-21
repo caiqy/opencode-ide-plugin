@@ -99,16 +99,16 @@ type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> &
 
 const markdownComponents: Partial<Components> = {
   // Headings with proper hierarchy
-  h1: ({ children }) => <h1 className={`text-2xl font-bold mb-3 mt-4 ${styles.text}`}>{children}</h1>,
-  h2: ({ children }) => <h2 className={`text-xl font-bold mb-2 mt-3 ${styles.text}`}>{children}</h2>,
-  h3: ({ children }) => <h3 className={`text-lg font-bold mb-2 mt-3 ${styles.text}`}>{children}</h3>,
-  h4: ({ children }) => <h4 className={`text-base font-bold mb-2 mt-2 ${styles.text}`}>{children}</h4>,
-  h5: ({ children }) => <h5 className={`text-sm font-bold mb-1 mt-2 ${styles.text}`}>{children}</h5>,
-  h6: ({ children }) => <h6 className={`text-xs font-bold mb-1 mt-2 ${styles.text}`}>{children}</h6>,
+  h1: ({ children }) => <h1 className={`text-2xl font-bold mb-2 mt-3 ${styles.text}`}>{children}</h1>,
+  h2: ({ children }) => <h2 className={`text-xl font-bold mb-1.5 mt-2.5 ${styles.text}`}>{children}</h2>,
+  h3: ({ children }) => <h3 className={`text-lg font-bold mb-1.5 mt-2 ${styles.text}`}>{children}</h3>,
+  h4: ({ children }) => <h4 className={`text-base font-bold mb-1 mt-1.5 ${styles.text}`}>{children}</h4>,
+  h5: ({ children }) => <h5 className={`text-sm font-bold mb-1 mt-1.5 ${styles.text}`}>{children}</h5>,
+  h6: ({ children }) => <h6 className={`text-xs font-bold mb-1 mt-1.5 ${styles.text}`}>{children}</h6>,
 
   // Lists with proper indentation
-  ul: ({ children }) => <ul className={`list-disc list-inside mb-2 space-y-1 ${styles.text}`}>{children}</ul>,
-  ol: ({ children }) => <ol className={`list-decimal list-inside mb-2 space-y-1 ${styles.text}`}>{children}</ol>,
+  ul: ({ children }) => <ul className={`list-disc list-inside mb-1.5 space-y-0.5 ${styles.text}`}>{children}</ul>,
+  ol: ({ children }) => <ol className={`list-decimal list-inside mb-1.5 space-y-0.5 ${styles.text}`}>{children}</ol>,
   li: ({ children }) => <li className={`ml-4 ${styles.text}`}>{children}</li>,
 
   // Blockquotes with left border
@@ -140,13 +140,13 @@ const markdownComponents: Partial<Components> = {
   p: (props) => {
     const nodeHasBlock = remarkNodeHasBlockChild(props.node)
     if (nodeHasBlock) {
-      return <div className={`mb-2 ${styles.text} leading-relaxed`}>{props.children}</div>
+      return <div className={`mb-1.5 ${styles.text} leading-relaxed`}>{props.children}</div>
     }
     const childHasBlock = hasBlockChild(props.children)
     if (childHasBlock) {
-      return <div className={`mb-2 ${styles.text} leading-relaxed`}>{props.children}</div>
+      return <div className={`mb-1.5 ${styles.text} leading-relaxed`}>{props.children}</div>
     }
-    return <p className={`mb-2 ${styles.text} leading-relaxed`}>{props.children}</p>
+    return <p className={`mb-1.5 ${styles.text} leading-relaxed`}>{props.children}</p>
   },
 
   // Links that open in new tab

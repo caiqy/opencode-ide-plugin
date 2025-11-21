@@ -82,7 +82,7 @@ function renderTextPart(part: Part, isUser: boolean, attachedParts?: Part[]) {
     return (
       <div
         key={part.id}
-        className="inline-block bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2 shadow-sm text-sm text-gray-900 dark:text-gray-100"
+        className="inline-block modern-card px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800/50 border-transparent dark:border-gray-800"
       >
         <div className="whitespace-pre-wrap" onCopy={handleCopy}>
           {mentions.length > 0 ? renderTextWithMentions(text, mentions) : text}
@@ -365,7 +365,7 @@ function MessageRow({ message, onFork, onRevert, revertBusy, sessionID }: Messag
         <div className="absolute left-1/2 -translate-x-1/2 top-0 flex gap-2">
           <button
             onClick={() => onFork(message.info.id)}
-            className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+            className="modern-icon-button"
             title="Fork session at this message"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -379,7 +379,7 @@ function MessageRow({ message, onFork, onRevert, revertBusy, sessionID }: Messag
           </button>
           <button
             onClick={() => onRevert(message.info.id)}
-            className="p-1 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="modern-icon-button hover:text-red-600 dark:hover:text-red-400"
             title="Undo from this message (revert)"
             disabled={revertBusy}
           >
@@ -610,7 +610,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
         rows.push(
           <div
             key="revert-summary"
-            className="text-xs px-3 py-2 rounded-md bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
+            className="text-xs px-2 py-1.5 rounded-md bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
           >
             <div className="flex items-center justify-between">
               <span className="truncate mr-2">Messages and changes after this point are hidden (reverted).</span>
@@ -691,7 +691,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
         <div className="space-y-2">
           {/* Revert banner (pinned to top of scroll area) */}
           {currentSession?.revert?.messageID && (
-            <div className="sticky top-0 z-10 flex items-center justify-between text-xs px-3 py-2 rounded-md bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 border border-amber-200 dark:border-amber-800">
+            <div className="sticky top-0 z-10 flex items-center justify-between text-xs px-2 py-1.5 rounded-md bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 border border-amber-200 dark:border-amber-800">
               <div className="truncate mr-2">Changes after a previous message were undone.</div>
               <div className="flex gap-2">
                 <button

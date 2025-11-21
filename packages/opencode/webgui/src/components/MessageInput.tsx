@@ -89,16 +89,16 @@ function insertPlainWithMentionsImpl(
       const md: any = isDir
         ? { type: "directory" as const, display: token, path: token.endsWith("/") ? token : token + "/" }
         : (() => {
-            const relBase = parsed.path
-            const display = parsed.range ? `${relBase}:${parsed.range.start}-${parsed.range.end}` : relBase
-            const base: any = { type: "file" as const, display, path: relBase }
-            if (parsed.range)
-              base.range = {
-                start: { line: parsed.range.start, character: 0 },
-                end: { line: parsed.range.end, character: 0 },
-              }
-            return base
-          })()
+          const relBase = parsed.path
+          const display = parsed.range ? `${relBase}:${parsed.range.start}-${parsed.range.end}` : relBase
+          const base: any = { type: "file" as const, display, path: relBase }
+          if (parsed.range)
+            base.range = {
+              start: { line: parsed.range.start, character: 0 },
+              end: { line: parsed.range.end, character: 0 },
+            }
+          return base
+        })()
       nodes.push($createMentionNode(md))
       last = end
     }
@@ -465,26 +465,26 @@ const MessageInputInner = forwardRef<
             source:
               mention.type === "symbol"
                 ? {
-                    type: "symbol",
-                    text: {
-                      value: mention.display,
-                      start: mention.start,
-                      end: mention.end,
-                    },
-                    path: absolutePath,
-                    name: mention.metadata.name,
-                    range: mention.metadata.range,
-                    kind: mention.metadata.kind,
-                  }
-                : {
-                    type: "file",
-                    text: {
-                      value: mention.display,
-                      start: mention.start,
-                      end: mention.end,
-                    },
-                    path: absolutePath,
+                  type: "symbol",
+                  text: {
+                    value: mention.display,
+                    start: mention.start,
+                    end: mention.end,
                   },
+                  path: absolutePath,
+                  name: mention.metadata.name,
+                  range: mention.metadata.range,
+                  kind: mention.metadata.kind,
+                }
+                : {
+                  type: "file",
+                  text: {
+                    value: mention.display,
+                    start: mention.start,
+                    end: mention.end,
+                  },
+                  path: absolutePath,
+                },
           })
         } else if (mention.type === "agent") {
           parts.push({
@@ -591,9 +591,9 @@ const MessageInputInner = forwardRef<
       if (response.error) {
         const errorMsg =
           "data" in response.error &&
-          response.error.data &&
-          typeof response.error.data === "object" &&
-          "message" in response.error.data
+            response.error.data &&
+            typeof response.error.data === "object" &&
+            "message" in response.error.data
             ? String(response.error.data.message)
             : "Failed to send message"
         throw new Error(errorMsg)
@@ -1005,21 +1005,21 @@ const MessageInputInner = forwardRef<
     <>
       <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex-shrink-0">
         {/* Input area */}
-        <div className="px-3 pt-2 pb-1">
+        <div className="px-2 pt-1.5 pb-1">
           <div
             ref={containerRef}
-            className="relative border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 rounded"
+            className="relative modern-input bg-white dark:bg-gray-900"
           >
             <RichTextPlugin
               contentEditable={
                 // @ts-expect-error React 19 type compatibility
                 <ContentEditable
                   ref={contentEditableRef}
-                  className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none min-h-[32px] max-h-[400px] overflow-y-auto"
+                  className="px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none min-h-[32px] max-h-[400px] overflow-y-auto"
                   style={{ caretColor: "auto" }}
                   aria-placeholder="Ask anything (Cmd/Ctrl+Enter to send)"
                   placeholder={
-                    <div className="absolute top-2 left-3 text-sm text-gray-400 dark:text-gray-500 pointer-events-none">
+                    <div className="absolute top-1.5 left-2 text-sm text-gray-400 dark:text-gray-500 pointer-events-none">
                       Ask anything (Cmd/Ctrl+Enter to send)
                     </div>
                   }
@@ -1035,7 +1035,7 @@ const MessageInputInner = forwardRef<
         </div>
 
         {/* Toolbar */}
-        <div className="h-8 px-3 flex items-center justify-between border-t border-gray-100 dark:border-gray-800">
+        <div className="h-8 px-2 flex items-center justify-between border-t border-gray-100 dark:border-gray-800">
           <div className="flex items-center gap-1">
             {/* Retry button (visible when there's a failed message) */}
             {lastFailedMessage && (
@@ -1071,7 +1071,7 @@ const MessageInputInner = forwardRef<
             {/* Add file button */}
             <button
               onClick={handleFileSelect}
-              className="h-6 w-6 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              className="modern-icon-button w-6 h-6 flex items-center justify-center"
               disabled={isDisabled}
               title="Add file"
             >
@@ -1099,7 +1099,7 @@ const MessageInputInner = forwardRef<
             <button
               onClick={() => setIsCompactConfirmOpen(true)}
               disabled={isCompactDisabled}
-              className="h-6 px-2 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded border border-gray-300 dark:border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="modern-button modern-button-ghost h-6 px-2 text-xs"
               title="Compact session history"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -187,14 +187,14 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-        <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg w-full max-w-3xl mx-4 border border-gray-200 dark:border-gray-800 max-h-[90vh] flex flex-col">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div className="modern-card w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col shadow-2xl">
           {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Settings</h2>
+          <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Settings</h2>
             <button
               onClick={handleClose}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="modern-icon-button"
               title="Close"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -210,11 +210,10 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === tab.id
-                      ? "border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-500"
-                      : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-                  }`}
+                  className={`px-3 py-1.5 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
+                    ? "border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-500"
+                    : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                    }`}
                 >
                   <span className="mr-1.5">{tab.icon}</span>
                   {tab.label}
@@ -224,7 +223,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="flex-1 overflow-y-auto px-3 py-3">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="text-gray-500 dark:text-gray-400">Loading settings...</div>
@@ -264,7 +263,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           </div>
 
           {/* Footer */}
-          <div className="px-4 py-3 bg-gray-50 dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between">
+          <div className="px-3 py-2 bg-gray-50 dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between">
             <div>
               {successMessage && <span className="text-sm text-green-600 dark:text-green-400">{successMessage}</span>}
             </div>
@@ -272,14 +271,14 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               <button
                 onClick={handleClose}
                 disabled={isSaving}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="modern-button modern-button-secondary"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
                 disabled={isSaving || isLoading || !hasUnsavedChanges()}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                className="modern-button modern-button-primary"
               >
                 {isSaving ? "Saving..." : "Save Changes"}
               </button>
