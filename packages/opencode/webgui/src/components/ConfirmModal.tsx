@@ -57,7 +57,10 @@ export function ConfirmModal({
   const styles = variantStyles[variant]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-all" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-all"
+      onClick={onClose}
+    >
       <div
         className="modern-card max-w-md w-full mx-4 overflow-hidden transform transition-all scale-100"
         onClick={(e) => e.stopPropagation()}
@@ -74,18 +77,10 @@ export function ConfirmModal({
 
         {/* Footer */}
         <div className="px-4 py-3 bg-gray-50 dark:bg-gray-950/50 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            disabled={isLoading}
-            className="modern-button modern-button-secondary"
-          >
+          <button onClick={onClose} disabled={isLoading} className="modern-button modern-button-secondary">
             {cancelText}
           </button>
-          <button
-            onClick={onConfirm}
-            disabled={isLoading}
-            className={`modern-button ${styles.button}`}
-          >
+          <button onClick={onConfirm} disabled={isLoading} className={`modern-button ${styles.button}`}>
             {isLoading ? "Processing..." : confirmText}
           </button>
         </div>

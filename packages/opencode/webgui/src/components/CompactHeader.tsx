@@ -254,8 +254,9 @@ const CompactHeader = forwardRef<
         <div className="flex items-center gap-1.5" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className={`flex items-center gap-1 text-sm hover:text-gray-900 dark:hover:text-gray-100 ${currentHasDefaultTitle ? "text-gray-500 dark:text-gray-500 italic" : "text-gray-700 dark:text-gray-300"
-              }`}
+            className={`flex items-center gap-1 text-sm hover:text-gray-900 dark:hover:text-gray-100 ${
+              currentHasDefaultTitle ? "text-gray-500 dark:text-gray-500 italic" : "text-gray-700 dark:text-gray-300"
+            }`}
             title={currentTitle}
           >
             <span>{currentSession ? truncatedTitle : "No Session"}</span>
@@ -348,10 +349,11 @@ const CompactHeader = forwardRef<
                   />
                   <button
                     onClick={() => setIsSelectMode(!isSelectMode)}
-                    className={`px-2 h-[30px] flex items-center justify-center rounded border ${isSelectMode
-                      ? "bg-blue-500 text-white border-blue-500"
-                      : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600"
-                      }`}
+                    className={`px-2 h-[30px] flex items-center justify-center rounded border ${
+                      isSelectMode
+                        ? "bg-blue-500 text-white border-blue-500"
+                        : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600"
+                    }`}
                     title={isSelectMode ? "Cancel selection" : "Select multiple sessions"}
                   >
                     {isSelectMode ? (
@@ -390,12 +392,13 @@ const CompactHeader = forwardRef<
                         key={session.id}
                         ref={index === selectedSessionIndex ? selectedSessionRef : null}
                         tabIndex={-1}
-                        className={`group px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center justify-between outline-none ${index === selectedSessionIndex && !isSelectMode
-                          ? "bg-blue-50 dark:bg-blue-950"
-                          : isActive
+                        className={`group px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center justify-between outline-none ${
+                          index === selectedSessionIndex && !isSelectMode
                             ? "bg-blue-50 dark:bg-blue-950"
-                            : ""
-                          }`}
+                            : isActive
+                              ? "bg-blue-50 dark:bg-blue-950"
+                              : ""
+                        }`}
                         onClick={() => !isEditing && !isSelectMode && handleSessionSelect(session.id)}
                         onKeyDown={handleKeyDown}
                       >
@@ -444,12 +447,13 @@ const CompactHeader = forwardRef<
                                 </svg>
                               )}
                               <span
-                                className={`truncate ${hasDefaultTitle
-                                  ? "text-gray-500 dark:text-gray-500 italic"
-                                  : isActive && !isSelectMode
-                                    ? "text-blue-900 dark:text-blue-100 font-medium"
-                                    : "text-gray-700 dark:text-gray-300"
-                                  }`}
+                                className={`truncate ${
+                                  hasDefaultTitle
+                                    ? "text-gray-500 dark:text-gray-500 italic"
+                                    : isActive && !isSelectMode
+                                      ? "text-blue-900 dark:text-blue-100 font-medium"
+                                      : "text-gray-700 dark:text-gray-300"
+                                }`}
                               >
                                 {displayTitle}
                               </span>
@@ -525,8 +529,9 @@ const CompactHeader = forwardRef<
         <div className="flex items-center gap-1">
           {/* Connection status dot */}
           <div
-            className={`w-2 h-2 rounded-full ${CONNECTION_COLORS[connectionState]} ${connectionState === "connecting" || connectionState === "error" ? "animate-pulse" : ""
-              }`}
+            className={`w-2 h-2 rounded-full ${CONNECTION_COLORS[connectionState]} ${
+              connectionState === "connecting" || connectionState === "error" ? "animate-pulse" : ""
+            }`}
             title={CONNECTION_TOOLTIPS[connectionState]}
           />
 

@@ -192,11 +192,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           {/* Header */}
           <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
             <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Settings</h2>
-            <button
-              onClick={handleClose}
-              className="modern-icon-button"
-              title="Close"
-            >
+            <button onClick={handleClose} className="modern-icon-button" title="Close">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -210,10 +206,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-1.5 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
-                    ? "border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-500"
-                    : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-                    }`}
+                  className={`px-3 py-1.5 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === tab.id
+                      ? "border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-500"
+                      : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                  }`}
                 >
                   <span className="mr-1.5">{tab.icon}</span>
                   {tab.label}
@@ -268,11 +265,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               {successMessage && <span className="text-sm text-green-600 dark:text-green-400">{successMessage}</span>}
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={handleClose}
-                disabled={isSaving}
-                className="modern-button modern-button-secondary"
-              >
+              <button onClick={handleClose} disabled={isSaving} className="modern-button modern-button-secondary">
                 Cancel
               </button>
               <button

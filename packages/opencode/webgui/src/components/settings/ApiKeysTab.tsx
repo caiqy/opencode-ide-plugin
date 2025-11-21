@@ -328,17 +328,20 @@ export function ApiKeysTab({
             return (
               <div
                 key={provider.id}
-                className={`border transition-all duration-200 rounded-lg overflow-hidden ${isExpanded
+                className={`border transition-all duration-200 rounded-lg overflow-hidden ${
+                  isExpanded
                     ? "border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10 ring-1 ring-blue-500/20"
                     : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-700"
-                  }`}
+                }`}
               >
                 <div
                   className="flex items-center justify-between px-3 py-2.5 cursor-pointer select-none"
                   onClick={() => setExpandedProvider(isExpanded ? null : provider.id)}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`} />
+                    <div
+                      className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`}
+                    />
                     <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{provider.name}</span>
                     {isTemporary && (
                       <span className="text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 px-1.5 py-0.5 rounded-full">
@@ -460,7 +463,9 @@ export function ApiKeysTab({
                                 className="w-full pl-3 pr-8 py-1.5 border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-xs shadow-sm"
                               />
                               <button
-                                onClick={() => setShowApiKeys({ ...showApiKeys, [provider.id]: !showApiKeys[provider.id] })}
+                                onClick={() =>
+                                  setShowApiKeys({ ...showApiKeys, [provider.id]: !showApiKeys[provider.id] })
+                                }
                                 className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
                                 title={showApiKeys[provider.id] ? "Hide" : "Show"}
                               >

@@ -89,16 +89,16 @@ function insertPlainWithMentionsImpl(
       const md: any = isDir
         ? { type: "directory" as const, display: token, path: token.endsWith("/") ? token : token + "/" }
         : (() => {
-          const relBase = parsed.path
-          const display = parsed.range ? `${relBase}:${parsed.range.start}-${parsed.range.end}` : relBase
-          const base: any = { type: "file" as const, display, path: relBase }
-          if (parsed.range)
-            base.range = {
-              start: { line: parsed.range.start, character: 0 },
-              end: { line: parsed.range.end, character: 0 },
-            }
-          return base
-        })()
+            const relBase = parsed.path
+            const display = parsed.range ? `${relBase}:${parsed.range.start}-${parsed.range.end}` : relBase
+            const base: any = { type: "file" as const, display, path: relBase }
+            if (parsed.range)
+              base.range = {
+                start: { line: parsed.range.start, character: 0 },
+                end: { line: parsed.range.end, character: 0 },
+              }
+            return base
+          })()
       nodes.push($createMentionNode(md))
       last = end
     }
@@ -465,26 +465,26 @@ const MessageInputInner = forwardRef<
             source:
               mention.type === "symbol"
                 ? {
-                  type: "symbol",
-                  text: {
-                    value: mention.display,
-                    start: mention.start,
-                    end: mention.end,
-                  },
-                  path: absolutePath,
-                  name: mention.metadata.name,
-                  range: mention.metadata.range,
-                  kind: mention.metadata.kind,
-                }
+                    type: "symbol",
+                    text: {
+                      value: mention.display,
+                      start: mention.start,
+                      end: mention.end,
+                    },
+                    path: absolutePath,
+                    name: mention.metadata.name,
+                    range: mention.metadata.range,
+                    kind: mention.metadata.kind,
+                  }
                 : {
-                  type: "file",
-                  text: {
-                    value: mention.display,
-                    start: mention.start,
-                    end: mention.end,
+                    type: "file",
+                    text: {
+                      value: mention.display,
+                      start: mention.start,
+                      end: mention.end,
+                    },
+                    path: absolutePath,
                   },
-                  path: absolutePath,
-                },
           })
         } else if (mention.type === "agent") {
           parts.push({
@@ -591,9 +591,9 @@ const MessageInputInner = forwardRef<
       if (response.error) {
         const errorMsg =
           "data" in response.error &&
-            response.error.data &&
-            typeof response.error.data === "object" &&
-            "message" in response.error.data
+          response.error.data &&
+          typeof response.error.data === "object" &&
+          "message" in response.error.data
             ? String(response.error.data.message)
             : "Failed to send message"
         throw new Error(errorMsg)
@@ -1006,10 +1006,7 @@ const MessageInputInner = forwardRef<
       <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex-shrink-0">
         {/* Input area */}
         <div className="px-2 pt-1.5 pb-1">
-          <div
-            ref={containerRef}
-            className="relative modern-input bg-white dark:bg-gray-900"
-          >
+          <div ref={containerRef} className="relative modern-input bg-white dark:bg-gray-900">
             <RichTextPlugin
               contentEditable={
                 // @ts-expect-error React 19 type compatibility

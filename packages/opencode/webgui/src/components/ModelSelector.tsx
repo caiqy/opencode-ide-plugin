@@ -166,10 +166,11 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                         <button
                           key={`${item.provider_id}:${item.model_id}:${item.last_used}`}
                           onClick={() => handleSelect(item.provider_id, item.model_id)}
-                          className={`w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between ${isSelected
+                          className={`w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between ${
+                            isSelected
                               ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
                               : "text-gray-900 dark:text-gray-100"
-                            }`}
+                          }`}
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <span className="font-medium truncate">{item.model_id}</span>
@@ -213,10 +214,11 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                           <button
                             key={modelId}
                             onClick={() => handleSelect(provider.id, modelId)}
-                            className={`w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between ${isSelected
+                            className={`w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between ${
+                              isSelected
                                 ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
                                 : "text-gray-900 dark:text-gray-100"
-                              }`}
+                            }`}
                           >
                             <div className="flex items-center gap-2 flex-1 min-w-0">
                               <span className="font-medium truncate">{model.name}</span>
