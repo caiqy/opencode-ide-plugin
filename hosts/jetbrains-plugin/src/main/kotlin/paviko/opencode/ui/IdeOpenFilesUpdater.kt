@@ -22,7 +22,7 @@ class IdeOpenFilesUpdater(private val project: Project, private val browser: JBC
             try {
                 val opened = fem.openFiles.mapNotNull { vf -> vfPath(vf) }
                 val current = fem.selectedEditor?.file?.let { vf -> vfPath(vf) }
-                IdeBridge.send("updateOpenedFiles", mapOf("openedFiles" to opened, "currentFile" to current))
+                IdeBridge.send(project, "updateOpenedFiles", mapOf("openedFiles" to opened, "currentFile" to current))
             } catch (e: Exception) {
                 e.printStackTrace()
             }

@@ -11,7 +11,7 @@ import java.awt.dnd.DropTargetDropEvent
 
 object DragAndDropInstaller {
     private val mapper = jacksonObjectMapper()
-    fun install(browser: JBCefBrowser, logger: Logger) {
+    fun install(project: com.intellij.openapi.project.Project, browser: JBCefBrowser, logger: Logger) {
         val comp = browser.component
         val dt = DropTarget(comp, object : DropTargetAdapter() {
             override fun drop(dtde: DropTargetDropEvent) {
@@ -25,13 +25,13 @@ object DragAndDropInstaller {
                         // Only send regular files to insertPaths to avoid chips/segments for directories
                         val filePaths = files.filter { it.isFile }.map { it.absolutePath }
                         if (filePaths.isNotEmpty()) {
-                            IdeBridge.send("insertPaths", mapOf("paths" to filePaths))
+                            IdeBridge.send(project, "insertPaths", mapOf("paths" to filePaths))
                         }
                         // Additionally, send directories via pastePath (no chips/segments)
                         val dirPaths = files.filter { it.isDirectory }.map { it.absolutePath }
                         if (dirPaths.isNotEmpty()) {
                             for (dp in dirPaths) {
-                                IdeBridge.send("pastePath", mapOf("path" to dp))
+                                IdeBridge.send(project, "pastePath", mapOf("path" to dp))
                             }
                         }
                         // Proactively restore focus to the embedded browser after injecting paths

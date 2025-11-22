@@ -21,9 +21,10 @@ class ProjectPastePathAction : AnAction("OpenCode: paste path") {
         val files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return
         val dirs = files.filter { it.isDirectory }
         if (dirs.isEmpty()) return
+        val project = e.project ?: return
         for (vf in dirs) {
             val p = asAbsolutePath(vf)
-            if (!p.isNullOrEmpty()) PathInserter.pastePath(p)
+            if (!p.isNullOrEmpty()) PathInserter.pastePath(project, p)
         }
     }
 

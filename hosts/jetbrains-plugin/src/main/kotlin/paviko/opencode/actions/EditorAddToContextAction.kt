@@ -17,8 +17,9 @@ class EditorAddToContextAction : AnAction("OpenCode: Add to context") {
         val path = try {
             if (file.isInLocalFileSystem) VfsUtilCore.virtualToIoFile(file).absolutePath else file.path
         } catch (_: Throwable) { null }
+        val project = e.project ?: return
         if (!path.isNullOrEmpty()) {
-            PathInserter.insertPaths(listOf(path))
+            PathInserter.insertPaths(project, listOf(path))
         }
     }
 }

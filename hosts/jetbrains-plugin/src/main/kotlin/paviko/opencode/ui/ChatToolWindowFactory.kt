@@ -111,7 +111,8 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                         val browser = JBCefBrowser(appUrl)
 
                                         // Store browser reference for path insertion (context actions)
-                                        PathInserter.setBrowser(browser)
+                                        // PathInserter.setBrowser(browser) - Removed, now stateless
+
 
                                         IdeBridge.install(browser, project)
 
@@ -156,7 +157,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
 
                                         // Enable dropping files from the IDE onto the web UI via helper
                                         try {
-                                            DragAndDropInstaller.install(browser, logger)
+                                            DragAndDropInstaller.install(project, browser, logger)
                                         } catch (e: Exception) {
                                             logger.warn("Failed to set up drag and drop", e)
                                         }
@@ -228,7 +229,8 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
             } catch (_: Throwable) {
             }
             // Clear browser references
-            PathInserter.clearBrowser()
+            IdeBridge.remove(project)
+
         }
     }
 

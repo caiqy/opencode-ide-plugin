@@ -17,15 +17,22 @@ import javax.swing.SwingUtilities
 object IdeBridge {
     private val logger = Logger.getInstance(IdeBridge::class.java)
     private val mapper = jacksonObjectMapper()
-    @Volatile private var browser: JBCefBrowser? = null
-    @Volatile private var query: JBCefJSQuery? = null
-    @Volatile private var ready = false
-    private val outbox: MutableList<Map<String, Any?>> = mutableListOf()
+    
+    private class ProjectState(
+        val browser: JBCefBrowser,
+        val query: JBCefJSQuery?,
+        val outbox: MutableList<Map<String, Any?>> = mutableListOf()
+    ) {
+        @Volatile var ready = false
+    }
+
+    private val states = java.util.concurrent.ConcurrentHashMap<Project, ProjectState>()
 
     fun install(browser: JBCefBrowser, project: Project) {
-        this.browser = browser
         val q = try { JBCefJSQuery.create(browser) } catch (_: Throwable) { null }
-        query = q
+        val state = ProjectState(browser, q)
+        states[project] = state
+        
         if (q != null) {
             try {
                 q.addHandler { payload ->
@@ -52,10 +59,14 @@ object IdeBridge {
                 "})();"
             )
             browser.cefBrowser.executeJavaScript(js, browser.cefBrowser.url, 0)
-            SwingUtilities.invokeLater { flushOutbox() }
+            SwingUtilities.invokeLater { flushOutbox(project) }
         } catch (t: Throwable) {
             logger.warn("Failed to inject ideBridge", t)
         }
+    }
+
+    fun remove(project: Project) {
+        states.remove(project)
     }
 
     private fun handleInbound(json: String, project: Project) {
@@ -65,7 +76,7 @@ object IdeBridge {
         when (type) {
             "openFile" -> {
                 val payload = obj.get("payload")
-                val rawPath = payload?.get("path")?.asText() ?: return replyError(id, "missing path")
+                val rawPath = payload?.get("path")?.asText() ?: return replyError(project, id, "missing path")
                 val lineFromPayload1Based = payload.get("line")?.asInt() ?: -1
                 val rangeRegex = Regex(":(\\d+)(?:-(\\d+))?$")
                 val match = rangeRegex.find(rawPath)
@@ -84,19 +95,19 @@ object IdeBridge {
                 val endLine0Based = if (endLine1Based > 0) endLine1Based - 1 else -1
 
                 openFile(project, cleanedPath, startLine0Based, endLine0Based)
-                replyOk(id)
+                replyOk(project, id)
             }
             "openUrl" -> {
                 val payload = obj.get("payload")
-                val url = payload?.get("url")?.asText() ?: return replyError(id, "missing url")
+                val url = payload?.get("url")?.asText() ?: return replyError(project, id, "missing url")
                 try {
                     BrowserUtil.browse(url)
-                    replyOk(id)
+                    replyOk(project, id)
                 } catch (t: Throwable) {
-                    replyError(id, t.message ?: "Failed to open url")
+                    replyError(project, id, t.message ?: "Failed to open url")
                 }
             }
-            else -> replyOk(id)
+            else -> replyOk(project, id)
         }
     }
 
@@ -145,36 +156,35 @@ object IdeBridge {
         }
     }
 
-    private fun replyOk(replyTo: String?) { sendRaw(mapOf("replyTo" to replyTo, "ok" to true)) }
-    private fun replyError(replyTo: String?, error: String) { sendRaw(mapOf("replyTo" to replyTo, "ok" to false, "error" to error)) }
+    private fun replyOk(project: Project, replyTo: String?) { sendRaw(project, mapOf("replyTo" to replyTo, "ok" to true)) }
+    private fun replyError(project: Project, replyTo: String?, error: String) { sendRaw(project, mapOf("replyTo" to replyTo, "ok" to false, "error" to error)) }
 
-    fun send(type: String, payload: Map<String, Any?> = emptyMap()) {
+    fun send(project: Project, type: String, payload: Map<String, Any?> = emptyMap()) {
         val message = mutableMapOf<String, Any?>("type" to type, "timestamp" to System.currentTimeMillis())
         if (payload.isNotEmpty()) message["payload"] = payload
-        sendRaw(message)
+        sendRaw(project, message)
     }
 
-    private fun sendRaw(message: Map<String, Any?>) {
-        val b = browser
-        if (b == null) {
-            outbox.add(message)
-            return
-        }
+    private fun sendRaw(project: Project, message: Map<String, Any?>) {
+        val state = states[project] ?: return
+        val b = state.browser
+        
         val json = try { mapper.writeValueAsString(message) } catch (_: Throwable) { return }
         val script = "(function(){ try { if(window.__ideBridgeDeliver){ window.__ideBridgeDeliver(" + mapper.writeValueAsString(json) + "); } else { window.postMessage(" + json + ", '*'); } } catch(e){} })();"
         try {
             b.cefBrowser.executeJavaScript(script, b.cefBrowser.url, 0)
-            ready = true
+            state.ready = true
         } catch (t: Throwable) {
-            outbox.add(message)
+            state.outbox.add(message)
         }
     }
 
-    private fun flushOutbox() {
-        if (ready) {
-            val pending = ArrayList(outbox)
-            outbox.clear()
-            for (m in pending) sendRaw(m)
+    private fun flushOutbox(project: Project) {
+        val state = states[project] ?: return
+        if (state.ready) {
+            val pending = ArrayList(state.outbox)
+            state.outbox.clear()
+            for (m in pending) sendRaw(project, m)
         }
     }
 }

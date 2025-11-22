@@ -21,8 +21,9 @@ class ProjectAddToContextAction : AnAction("OpenCode: Add to context") {
         for (vf in files) {
             collectFilePaths(vf, paths)
         }
+        val project = e.project ?: return
         if (paths.isNotEmpty()) {
-            PathInserter.insertPaths(paths)
+            PathInserter.insertPaths(project, paths)
         }
     }
 

@@ -32,6 +32,7 @@ class EditorAddLinesToContextAction : AnAction("OpenCode: Add lines to context")
         } catch (_: Throwable) { null } ?: return
 
         val pathWithRange = "$basePath:$startLine-$endLine"
-        PathInserter.insertPaths(listOf(pathWithRange))
+        val project = e.project ?: return
+        PathInserter.insertPaths(project, listOf(pathWithRange))
     }
 }
