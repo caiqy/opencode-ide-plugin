@@ -24,6 +24,8 @@ import org.jetbrains.plugins.terminal.ShellTerminalWidget
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import paviko.opencode.settings.OpenCodeSettings
 import java.io.PipedOutputStream
+import javax.swing.JComponent
+import javax.swing.SwingUtilities
 
 object BackendLauncher {
     private val logger = Logger.getInstance(BackendLauncher::class.java)
@@ -171,7 +173,7 @@ object BackendLauncher {
         val existing = try {
             terminalManager.getTerminalWidgets().firstOrNull { w ->
                 try {
-                    val displayName = terminalManager.getContainer(w)?.content?.displayName
+                    val displayName = getContentForWidget(project, w)?.displayName
                     displayName == terminalName
                 } catch (e: Exception) {
                     false
@@ -185,7 +187,7 @@ object BackendLauncher {
             logger.info("Reusing existing terminal '$terminalName'")
 
             // Workaround for JetBrains behavior: existing terminal tab may not run commands unless focused
-            focusTerminal(isVisible, terminalToolWindow, terminalManager, existing, minimized, terminalName)
+            focusTerminal(project, isVisible, terminalToolWindow, terminalManager, existing, minimized, terminalName)
 
             existing
         } else {
@@ -202,8 +204,7 @@ object BackendLauncher {
 
         // Determine current content (tab) associated with this terminal widget
         try {
-            val cont = terminalManager.getContainer(terminalWidget)
-            currentContent = cont.content
+            currentContent = getContentForWidget(project, terminalWidget)
         } catch (_: Exception) {}
         
         // Hide the tool window immediately only for newly created terminals when minimized and initially not visible.
@@ -222,6 +223,7 @@ object BackendLauncher {
     }
 
     private fun focusTerminal(
+        project: Project,
         isVisible: Boolean,
         terminalToolWindow: ToolWindow?,
         terminalManager: TerminalToolWindowManager,
@@ -243,8 +245,7 @@ object BackendLauncher {
             // Focus/select the existing tab to ensure it receives input/execution
             try {
                 if (existing != null) {
-                    val container = terminalManager.getContainer(existing)
-                    val content = container?.content
+                    val content = getContentForWidget(project, existing)
                     if (content != null) {
                         ApplicationManager.getApplication().invokeAndWait {
                             terminalToolWindow?.contentManager?.setSelectedContent(content, true)
@@ -503,6 +504,50 @@ object BackendLauncher {
         } ?: return null
         val resourcePath = "bin/$osDir/$archDir/$name"
         return paviko.opencode.util.ResourceExtractor.extractToTemp(resourcePath, name)
+    }
+
+    /**
+     * Helper to find the ToolWindow Content associated with a terminal widget.
+     * Replaces TerminalToolWindowManager.getContainer(...) which was removed in 2025.3.
+     */
+    private fun getContentForWidget(project: Project, widget: Any): com.intellij.ui.content.Content? {
+        // First try the old API if it exists (via reflection to avoid compilation/runtime errors if missing)
+        try {
+            val manager = TerminalToolWindowManager.getInstance(project)
+            val method = manager.javaClass.getMethod("getContainer", widget.javaClass)
+            val container = method.invoke(manager, widget)
+            if (container != null) {
+                val contentMethod = container.javaClass.getMethod("getContent")
+                return contentMethod.invoke(container) as? com.intellij.ui.content.Content
+            }
+        } catch (e: Exception) {
+            // Method missing or failed, proceed to fallback
+        }
+
+        // Fallback: Check component hierarchy
+        val component = when (widget) {
+            is JComponent -> widget
+            is TerminalWidget -> widget.component
+            else -> {
+                // Try to find a component via reflection (e.g. for wrapped widgets)
+                try {
+                    widget.javaClass.getMethod("getComponent").invoke(widget) as? JComponent
+                } catch (e: Exception) {
+                    null
+                }
+            }
+        } ?: return null
+
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Terminal") ?: return null
+        val contentManager = toolWindow.contentManager
+
+        for (content in contentManager.contents) {
+            if (SwingUtilities.isDescendingFrom(component, content.component)) {
+                return content
+            }
+        }
+
+        return null
     }
 
 }
