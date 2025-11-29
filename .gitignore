@@ -17,6 +17,7 @@ dist
 refs
 Session.vim
 opencode.json
+a.out
 
 *.bak
 /hosts/jetbrains-plugin/bin/
