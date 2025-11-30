@@ -17,6 +17,10 @@ class IdeBridge {
   private pending = new Map<string, { resolve: (m: Message) => void; reject: (e: any) => void }>()
   private flushTimer: number | null = null
 
+  isInstalled(): boolean {
+    return typeof (window as any).__ideBridgeSend === "function" || (window.parent && window.parent !== window)
+  }
+
   init() {
     const onMessage = (ev: MessageEvent) => {
       const msg = ev.data as Message

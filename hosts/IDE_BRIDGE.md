@@ -67,6 +67,7 @@ Converted usages:
 - File: `src/lib/ideBridge.ts`
   - Exposes:
     - `ideBridge.init()` – binds dispatching to `window.postMessage` and host shims
+    - `ideBridge.isInstalled()` – returns `true` when running inside an IDE host (JCEF/VSCode iframe); use to avoid `window.open()` which hangs JCEF
     - `ideBridge.send(msg)` – UI→host fire-and-forget
     - `ideBridge.request(type, payload)` – returns Promise; resolves on `{ replyTo }`
     - `ideBridge.on(handler)` – subscribe to host→UI messages
@@ -91,6 +92,13 @@ ideBridge.on((msg) => {
 
 // Request/response example
 await ideBridge.request("openFile", { path: "/p/file.ts", line: 10 })
+
+// Opening URLs safely (avoids window.open() which hangs JCEF)
+if (ideBridge.isInstalled()) {
+  ideBridge.send({ type: "openUrl", payload: { url } })
+} else {
+  window.open(url, "_blank")
+}
 ```
 
 ---

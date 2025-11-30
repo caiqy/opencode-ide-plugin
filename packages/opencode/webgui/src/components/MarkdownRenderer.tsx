@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import type { Components, ExtraProps } from "react-markdown"
 import { CodeBlock } from "./CodeBlock"
+import { ideBridge } from "../lib/ideBridge"
 
 interface MarkdownRendererProps {
   children: string
@@ -149,17 +150,26 @@ const markdownComponents: Partial<Components> = {
     return <p className={`mb-1.5 ${styles.text} leading-relaxed`}>{props.children}</p>
   },
 
-  // Links that open in new tab
-  a: ({ href, children }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-blue-600 dark:text-blue-400 hover:underline"
-    >
-      {children}
-    </a>
-  ),
+  // Links that open in new tab (via IDE bridge when in JCEF to avoid hangs)
+  a: ({ href, children }) => {
+    const handleClick = (e: React.MouseEvent) => {
+      if (href && ideBridge.isInstalled()) {
+        e.preventDefault()
+        ideBridge.send({ type: "openUrl", payload: { url: href } })
+      }
+    }
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-600 dark:text-blue-400 hover:underline"
+        onClick={handleClick}
+      >
+        {children}
+      </a>
+    )
+  },
 
   // Tables with borders and striped rows
   table: ({ children }) => (

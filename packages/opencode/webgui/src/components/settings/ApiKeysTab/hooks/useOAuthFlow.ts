@@ -33,8 +33,11 @@ export function useOAuthFlow({
       const { id, url, method } = await sdk.auth.start(providerId, methodIndex, {})
 
       if (url) {
-        window.open(url, "_blank")
-        ideBridge.send({ type: "openUrl", payload: { url } })
+        if (ideBridge.isInstalled()) {
+          ideBridge.send({ type: "openUrl", payload: { url } })
+        } else {
+          window.open(url, "_blank")
+        }
       }
 
       if (method === "code") {
