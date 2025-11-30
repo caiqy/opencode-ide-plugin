@@ -8,7 +8,6 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
-import com.intellij.ui.jcef.JBCefJSQuery
 import com.intellij.util.ui.JBUI
 import paviko.opencode.backendprocess.BackendLauncher
 import paviko.opencode.settings.OpenCodeSettings
@@ -113,9 +112,23 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                         // Store browser reference for path insertion (context actions)
                                         // PathInserter.setBrowser(browser) - Removed, now stateless
 
+                                        // Enable dropping files from the IDE onto the web UI via helper
+                                        try {
+                                            DragAndDropInstaller.install(project, browser, logger)
+                                        } catch (e: Exception) {
+                                            logger.warn("Failed to set up drag and drop", e)
+                                        }
+                                        
+                                        // Add browser to component hierarchy - required for JBCefJSQuery in IDEA 2024.3
+                                        mainPanel.removeAll()
+                                        mainPanel.add(browser.component, BorderLayout.CENTER)
+                                        // keep logs section at the bottom
+                                        mainPanel.add(hideableLogs, BorderLayout.SOUTH)
+                                        mainPanel.revalidate()
+                                        mainPanel.repaint()
 
+                                        // Install IdeBridge - uses CefLoadHandler internally to wait for browser ready
                                         IdeBridge.install(browser, project)
-
 
                                         // Push opened files and current file from IDE into the webview (@ overlay)
                                         try {
@@ -126,47 +139,31 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                             logger.warn("Failed to install IdeOpenFilesUpdater", e)
                                         }
 
-                                        
                                         // Immediate attempt to enable tooltip polyfill (redundant with load handler)
-                                        SwingUtilities.invokeLater {
-                                            try {
-                                                val polyfillScriptEarly = """
-                                                    (function(){
-                                                        try { 
-                                                            document.documentElement.classList.add('tip-polyfill'); 
-                                                        } catch(e){}
-                                                        try { 
-                                                            if (window.__setTooltipPolyfill) {
-                                                                window.__setTooltipPolyfill(true);
-                                                            }
-                                                        } catch(e){}
-                                                    })();
-                                                """.trimIndent()
-                                                browser.cefBrowser.executeJavaScript(
-                                                    polyfillScriptEarly,
-                                                    browser.cefBrowser.url,
-                                                    0
-                                                )
-                                            } catch (e: Exception) {
-                                                logger.debug(
-                                                    "Early tooltip polyfill injection failed (will retry on load)",
-                                                    e
-                                                )
-                                            }
-                                        }
-
-                                        // Enable dropping files from the IDE onto the web UI via helper
                                         try {
-                                            DragAndDropInstaller.install(project, browser, logger)
+                                            val polyfillScriptEarly = """
+                                                (function(){
+                                                    try { 
+                                                        document.documentElement.classList.add('tip-polyfill'); 
+                                                    } catch(e){}
+                                                    try { 
+                                                        if (window.__setTooltipPolyfill) {
+                                                            window.__setTooltipPolyfill(true);
+                                                        }
+                                                    } catch(e){}
+                                                })();
+                                            """.trimIndent()
+                                            browser.cefBrowser.executeJavaScript(
+                                                polyfillScriptEarly,
+                                                browser.cefBrowser.url,
+                                                0
+                                            )
                                         } catch (e: Exception) {
-                                            logger.warn("Failed to set up drag and drop", e)
+                                            logger.debug(
+                                                "Early tooltip polyfill injection failed (will retry on load)",
+                                                e
+                                            )
                                         }
-                                        mainPanel.removeAll()
-                                        mainPanel.add(browser.component, BorderLayout.CENTER)
-                                        // keep logs section at the bottom
-                                        mainPanel.add(hideableLogs, BorderLayout.SOUTH)
-                                        mainPanel.revalidate()
-                                        mainPanel.repaint()
                                     } catch (e: Exception) {
                                         logger.error("Failed to create browser component", e)
                                         mainPanel.removeAll()
