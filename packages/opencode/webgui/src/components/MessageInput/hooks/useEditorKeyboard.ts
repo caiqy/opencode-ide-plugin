@@ -1,0 +1,48 @@
+import { useEffect } from "react"
+import { KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH, type LexicalEditor } from "lexical"
+import { insertPlainWithMentionsImpl } from "../utils"
+
+interface UseEditorKeyboardOptions {
+  editor: LexicalEditor
+  contentEditableRef: React.RefObject<HTMLDivElement | null>
+  parseWithRange: (val: string) => { display: string; path: string; range?: { start: number; end: number } }
+  onSubmit: () => void
+}
+
+export function useEditorKeyboard({ editor, contentEditableRef, parseWithRange, onSubmit }: UseEditorKeyboardOptions) {
+  // Register Cmd/Ctrl+Enter command
+  useEffect(() => {
+    return editor.registerCommand(
+      KEY_ENTER_COMMAND,
+      (event) => {
+        if ((event?.metaKey || event?.ctrlKey) && event.key === "Enter") {
+          event?.preventDefault()
+          onSubmit()
+          return true
+        }
+        return false
+      },
+      COMMAND_PRIORITY_HIGH,
+    )
+  }, [editor, onSubmit])
+
+  // Handle paste with mentions parsing
+  useEffect(() => {
+    const el = contentEditableRef.current
+    if (!el) return
+
+    const onPaste = (e: ClipboardEvent) => {
+      if (!e.clipboardData) return
+      const plain = e.clipboardData.getData("text/plain")
+      if (!plain) return
+      e.preventDefault()
+      e.stopPropagation()
+      insertPlainWithMentionsImpl(editor, parseWithRange, plain)
+    }
+
+    el.addEventListener("paste", onPaste as any, true)
+    return () => {
+      el.removeEventListener("paste", onPaste as any, true)
+    }
+  }, [contentEditableRef.current, editor, parseWithRange])
+}

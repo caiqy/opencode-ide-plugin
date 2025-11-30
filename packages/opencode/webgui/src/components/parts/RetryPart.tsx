@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { cn } from "../../utils/classNames"
 
 interface RetryPartProps {
   part: {
@@ -44,7 +45,10 @@ export function RetryPart({ part }: RetryPartProps) {
         </span>
         <svg
           viewBox="0 0 24 24"
-          className={`w-3 h-3 text-orange-600 dark:text-orange-400 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}
+          className={cn(
+            "w-3 h-3 text-orange-600 dark:text-orange-400 transition-transform duration-150",
+            isExpanded && "rotate-90",
+          )}
           fill="none"
           stroke="currentColor"
           strokeWidth={2}

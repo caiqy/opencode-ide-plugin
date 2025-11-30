@@ -3,6 +3,7 @@ import { sdk } from "../lib/api/sdkClient"
 import fuzzysort from "fuzzysort"
 import type { MentionMetadata } from "../components/mention/MentionNode"
 import { useIdeBridgeState } from "../state/IdeBridgeContext"
+import { useDebouncedCallback } from "./useDebounce"
 
 export interface MentionResult {
   id: string
@@ -26,7 +27,6 @@ export function useMentionSearch(query: string): UseMentionSearchResult {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const debounceTimerRef = useRef<number | null>(null)
   const { openedFiles, currentFile } = useIdeBridgeState()
 
   const search = useCallback(
@@ -169,16 +169,18 @@ export function useMentionSearch(query: string): UseMentionSearchResult {
     [openedFiles, currentFile],
   )
 
+  // Debounced search function
+  const debouncedSearch = useDebouncedCallback((searchQuery: string) => {
+    search(searchQuery)
+  }, DEBOUNCE_MS)
+
+  // Trigger search when query changes
   useEffect(() => {
-    if (debounceTimerRef.current !== null) window.clearTimeout(debounceTimerRef.current)
-    debounceTimerRef.current = window.setTimeout(() => {
-      search(query)
-    }, DEBOUNCE_MS)
+    debouncedSearch(query)
     return () => {
-      if (debounceTimerRef.current !== null) window.clearTimeout(debounceTimerRef.current)
       if (abortControllerRef.current) abortControllerRef.current.abort()
     }
-  }, [query, search])
+  }, [query, debouncedSearch])
 
   return { results, isLoading, error }
 }

@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { Modal, ModalHeader, ModalBody, ModalFooter, Button } from "./common"
 
 interface ConfirmModalProps {
   isOpen: boolean
@@ -23,33 +23,20 @@ export function ConfirmModal({
   variant = "danger",
   isLoading = false,
 }: ConfirmModalProps) {
-  // Close on Escape key
-  useEffect(() => {
-    if (!isOpen) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isLoading) {
-        onClose()
-      }
-    }
-
-    document.addEventListener("keydown", handleKeyDown)
-    return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, isLoading, onClose])
-
-  if (!isOpen) return null
-
   const variantStyles = {
     danger: {
-      button: "modern-button-danger",
+      buttonVariant: "danger" as const,
+      buttonClass: undefined,
       text: "text-red-900 dark:text-red-100",
     },
     warning: {
-      button: "bg-amber-500 hover:bg-amber-600 text-white border-transparent",
+      buttonVariant: "primary" as const,
+      buttonClass: "bg-amber-500 hover:bg-amber-600 text-white border-transparent",
       text: "text-amber-900 dark:text-amber-100",
     },
     info: {
-      button: "modern-button-primary",
+      buttonVariant: "primary" as const,
+      buttonClass: undefined,
       text: "text-blue-900 dark:text-blue-100",
     },
   }
@@ -57,34 +44,23 @@ export function ConfirmModal({
   const styles = variantStyles[variant]
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-all"
-      onClick={onClose}
-    >
-      <div
-        className="modern-card max-w-md w-full mx-4 overflow-hidden transform transition-all scale-100"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
-          <h3 className={`text-lg font-semibold ${styles.text}`}>{title}</h3>
-        </div>
+    <Modal isOpen={isOpen} onClose={onClose} size="md" closeOnEscape={!isLoading}>
+      <ModalHeader>
+        <h3 className={`text-lg font-semibold ${styles.text}`}>{title}</h3>
+      </ModalHeader>
 
-        {/* Body */}
-        <div className="px-4 py-4">
-          <p className="text-sm text-gray-700 dark:text-gray-300">{message}</p>
-        </div>
+      <ModalBody>
+        <p className="text-sm text-gray-700 dark:text-gray-300">{message}</p>
+      </ModalBody>
 
-        {/* Footer */}
-        <div className="px-4 py-3 bg-gray-50 dark:bg-gray-950/50 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-2">
-          <button onClick={onClose} disabled={isLoading} className="modern-button modern-button-secondary">
-            {cancelText}
-          </button>
-          <button onClick={onConfirm} disabled={isLoading} className={`modern-button ${styles.button}`}>
-            {isLoading ? "Processing..." : confirmText}
-          </button>
-        </div>
-      </div>
-    </div>
+      <ModalFooter>
+        <Button variant="secondary" onClick={onClose} disabled={isLoading}>
+          {cancelText}
+        </Button>
+        <Button variant={styles.buttonVariant} onClick={onConfirm} loading={isLoading} className={styles.buttonClass}>
+          {confirmText}
+        </Button>
+      </ModalFooter>
+    </Modal>
   )
 }

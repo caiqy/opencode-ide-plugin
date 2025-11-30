@@ -3,6 +3,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism"
 import { vs } from "react-syntax-highlighter/dist/esm/styles/prism"
 import { useTheme } from "../state/ThemeContext"
+import { cn } from "../utils/classNames"
 
 interface CodeBlockProps {
   language: string
@@ -104,7 +105,7 @@ export function CodeBlock({ language, value, inline = false }: CodeBlockProps) {
         >
           <svg
             viewBox="0 0 24 24"
-            className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}
+            className={cn("w-3 h-3 transition-transform duration-150", isExpanded && "rotate-90")}
             fill="none"
             stroke="currentColor"
             strokeWidth={2}

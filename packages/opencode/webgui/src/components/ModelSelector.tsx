@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { sdk } from "../lib/api/sdkClient"
 import type { Provider } from "@opencode-ai/sdk/client"
 import { useDropdown } from "../hooks/useDropdown"
+import { formatDate } from "../utils/formatting"
 
 interface ModelSelectorProps {
   selectedProviderId?: string
@@ -175,7 +176,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <span className="font-medium truncate">{item.model_id}</span>
                             <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
-                              {new Date(item.last_used).toLocaleDateString()}
+                              {formatDate(item.last_used)}
                             </span>
                             <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate max-w-[6rem]">
                               {item.provider_id}
@@ -223,7 +224,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                             <div className="flex items-center gap-2 flex-1 min-w-0">
                               <span className="font-medium truncate">{model.name}</span>
                               <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
-                                <span>{new Date(model.release_date).toLocaleDateString()}</span>
+                                <span>{formatDate(model.release_date)}</span>
                                 {model.reasoning && (
                                   <span className="px-1 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-[9px] leading-none">
                                     reasoning

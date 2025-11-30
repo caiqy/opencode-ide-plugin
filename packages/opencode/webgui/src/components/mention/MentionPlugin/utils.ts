@@ -1,0 +1,85 @@
+import { $getSelection, $isRangeSelection, $isTextNode } from "lexical"
+
+export const TRIGGER_CHAR = "@"
+
+export function extractMentionQuery(setMentionStartOffset: (offset: number | null) => void): string | null {
+  const selection = $getSelection()
+  if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+    return null
+  }
+
+  const anchor = selection.anchor
+  const node = anchor.getNode()
+  if (!$isTextNode(node)) {
+    return null
+  }
+
+  const textContent = node.getTextContent()
+  const offset = anchor.offset
+
+  // Find the last '@' before cursor
+  const beforeCursor = textContent.slice(0, offset)
+  const lastAtIndex = beforeCursor.lastIndexOf(TRIGGER_CHAR)
+
+  if (lastAtIndex === -1) {
+    return null
+  }
+
+  // Check if there's whitespace between @ and cursor
+  const textBetween = beforeCursor.slice(lastAtIndex + 1)
+  if (/\s/.test(textBetween)) {
+    return null
+  }
+
+  // Store the start offset for later deletion
+  setMentionStartOffset(lastAtIndex)
+
+  return textBetween
+}
+
+export function updatePopoverPosition(
+  editor: { getRootElement: () => HTMLElement | null },
+  leftRef: React.MutableRefObject<number | null>,
+  setPosition: (pos: { top: number; left: number }) => void,
+) {
+  const root = editor.getRootElement()
+  if (!root) return
+
+  const selection = root.ownerDocument.getSelection()
+  if (!selection) return
+
+  if (selection.rangeCount === 0) return
+
+  const range = selection.getRangeAt(0)
+  if (!root.contains(range.startContainer)) return
+
+  const rect = range.getBoundingClientRect()
+  const rootRect = root.getBoundingClientRect()
+  const gap = 8
+
+  const viewportWidth = window.innerWidth
+  const estimatedWidth = 500
+  const minLeft = window.scrollX + gap
+  const maxLeft = window.scrollX + viewportWidth - estimatedWidth - gap
+
+  let left = leftRef.current
+  if (left === null) {
+    left = rect.left + window.scrollX
+  }
+  if (maxLeft <= minLeft) {
+    left = minLeft
+  }
+  if (left < minLeft) {
+    left = minLeft
+  }
+  if (left > maxLeft) {
+    left = maxLeft
+  }
+
+  leftRef.current = left
+
+  setPosition({
+    top: rootRect.top + window.scrollY - gap,
+    left,
+  })
+}

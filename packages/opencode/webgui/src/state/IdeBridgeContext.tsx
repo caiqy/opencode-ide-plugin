@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 import { ideBridge } from "../lib/ideBridge"
 import { useProject } from "./ProjectContext"
-import { toProjectRelative } from "../lib/path"
+import { toProjectRelative } from "../utils/path"
 
 interface IdeBridgeState {
   openedFiles: string[]

@@ -1,0 +1,88 @@
+import type { Session } from "@opencode-ai/sdk/client"
+import { SessionItem } from "./SessionItem"
+
+interface SessionListProps {
+  sessions: Session[]
+  currentSessionId: string | undefined
+  filteredSessions: Session[]
+  isSelectMode: boolean
+  selectedSessions: Set<string>
+  selectedSessionIndex: number
+  editingSessionId: string | null
+  editingTitle: string
+  editInputRef: React.RefObject<HTMLInputElement | null>
+  selectedSessionRef: React.RefObject<HTMLDivElement | null>
+  sessionListRef: React.RefObject<HTMLDivElement | null>
+  onSessionSelect: (sessionId: string) => void
+  onEditStart: (sessionId: string, currentTitle: string, e: React.MouseEvent) => void
+  onEditSave: (sessionId: string) => void
+  onEditCancel: () => void
+  onEditChange: (value: string) => void
+  onDeleteStart: (sessionId: string, e: React.MouseEvent) => void
+  onCheckboxChange: (sessionId: string, checked: boolean) => void
+  onKeyDown: (e: React.KeyboardEvent) => void
+}
+
+export function SessionList({
+  sessions,
+  currentSessionId,
+  filteredSessions,
+  isSelectMode,
+  selectedSessions,
+  selectedSessionIndex,
+  editingSessionId,
+  editingTitle,
+  editInputRef,
+  selectedSessionRef,
+  sessionListRef,
+  onSessionSelect,
+  onEditStart,
+  onEditSave,
+  onEditCancel,
+  onEditChange,
+  onDeleteStart,
+  onCheckboxChange,
+  onKeyDown,
+}: SessionListProps) {
+  if (filteredSessions.length === 0) {
+    return (
+      <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-center">
+        {sessions.length === 0 ? "No sessions yet" : "No matching sessions"}
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-y-auto flex-1" ref={sessionListRef}>
+      {filteredSessions.map((session, index) => {
+        const isActive = session.id === currentSessionId
+        const isEditing = editingSessionId === session.id
+        const displayTitle = session.title || "Untitled"
+
+        return (
+          <SessionItem
+            key={session.id}
+            session={session}
+            isActive={isActive}
+            isEditing={isEditing}
+            isSelectMode={isSelectMode}
+            isSelected={selectedSessions.has(session.id)}
+            selectedSessionIndex={selectedSessionIndex}
+            currentIndex={index}
+            editingTitle={editingTitle}
+            editInputRef={editInputRef}
+            selectedSessionRef={selectedSessionRef}
+            onSelect={() => onSessionSelect(session.id)}
+            onEditStart={(e) => onEditStart(session.id, displayTitle, e)}
+            onEditSave={() => onEditSave(session.id)}
+            onEditCancel={onEditCancel}
+            onEditChange={onEditChange}
+            onDeleteStart={(e) => onDeleteStart(session.id, e)}
+            onCheckboxChange={(checked) => onCheckboxChange(session.id, checked)}
+            onKeyDown={onKeyDown}
+          />
+        )
+      })}
+    </div>
+  )
+}

@@ -24,7 +24,7 @@ export function GeneralTab({ formData, setFormData }: GeneralTabProps) {
         <label className="flex items-center space-x-2">
           <input
             type="checkbox"
-            checked={formData.autoupdate ?? false}
+            checked={formData.autoupdate === true}
             onChange={(e) => setFormData({ ...formData, autoupdate: e.target.checked })}
             className="rounded border-gray-300 dark:border-gray-700"
           />

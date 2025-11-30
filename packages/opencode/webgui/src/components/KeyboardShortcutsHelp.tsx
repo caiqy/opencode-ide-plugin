@@ -1,4 +1,5 @@
 import { KEYBOARD_SHORTCUTS } from "../config/shortcuts"
+import { Modal, ModalHeader, ModalBody } from "./common"
 
 interface KeyboardShortcutsHelpProps {
   isOpen: boolean
@@ -6,34 +7,17 @@ interface KeyboardShortcutsHelpProps {
 }
 
 export function KeyboardShortcutsHelp({ isOpen, onClose }: KeyboardShortcutsHelpProps) {
-  if (!isOpen) return null
-
   const categories = Array.from(new Set(KEYBOARD_SHORTCUTS.map((s) => s.category)))
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="shortcuts-help-title"
-    >
-      <div
-        className="modern-card max-h-[80vh] w-full max-w-2xl overflow-y-auto p-4 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="mb-2 flex items-center justify-between">
-          <h2 id="shortcuts-help-title" className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-            Keyboard Shortcuts
-          </h2>
-          <button onClick={onClose} className="modern-icon-button" aria-label="Close">
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+    <Modal isOpen={isOpen} onClose={onClose} size="xl">
+      <ModalHeader onClose={onClose}>
+        <h2 id="shortcuts-help-title" className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+          Keyboard Shortcuts
+        </h2>
+      </ModalHeader>
 
+      <ModalBody className="max-h-[60vh] overflow-y-auto">
         {/* Shortcuts by category */}
         <div className="space-y-4">
           {categories.map((category) => {
@@ -78,7 +62,7 @@ export function KeyboardShortcutsHelp({ isOpen, onClose }: KeyboardShortcutsHelp
             to quickly access this help dialog anytime.
           </p>
         </div>
-      </div>
-    </div>
+      </ModalBody>
+    </Modal>
   )
 }

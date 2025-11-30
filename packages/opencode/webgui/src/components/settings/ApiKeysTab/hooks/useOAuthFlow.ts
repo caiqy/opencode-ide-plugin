@@ -1,0 +1,156 @@
+import { useState, useRef } from "react"
+import { sdk } from "../../../../lib/api/sdkClient"
+import { ideBridge } from "../../../../lib/ideBridge"
+
+interface ManualCodeState {
+  providerId: string
+  id: string
+}
+
+interface UseOAuthFlowProps {
+  configuredProviders: string[]
+  setConfiguredProviders: (providers: string[]) => void
+  selectedProviderToAdd: string
+  setSelectedProviderToAdd: (provider: string) => void
+  markProvidersDirty: () => void
+}
+
+export function useOAuthFlow({
+  configuredProviders,
+  setConfiguredProviders,
+  selectedProviderToAdd,
+  setSelectedProviderToAdd,
+  markProvidersDirty,
+}: UseOAuthFlowProps) {
+  const [authStatus, setAuthStatus] = useState<Record<string, string>>({})
+  const [manualCodeState, setManualCodeState] = useState<ManualCodeState | null>(null)
+  const [manualCodeInput, setManualCodeInput] = useState("")
+  const pollIntervals = useRef<Record<string, ReturnType<typeof setInterval>>>({})
+
+  const handleOAuthLogin = async (providerId: string, methodIndex: number) => {
+    try {
+      setAuthStatus((prev) => ({ ...prev, [providerId]: "Initializing..." }))
+      const { id, url, method } = await sdk.auth.start(providerId, methodIndex, {})
+
+      if (url) {
+        window.open(url, "_blank")
+        ideBridge.send({ type: "openUrl", payload: { url } })
+      }
+
+      if (method === "code") {
+        setAuthStatus((prev) => ({ ...prev, [providerId]: "Waiting for code..." }))
+        setManualCodeState({ providerId, id })
+        setManualCodeInput("")
+        return
+      }
+
+      setAuthStatus((prev) => ({ ...prev, [providerId]: "Waiting for browser..." }))
+
+      // Poll
+      const poll = setInterval(async () => {
+        try {
+          const status = await sdk.auth.status(id)
+          if (status.status === "success") {
+            clearInterval(poll)
+            delete pollIntervals.current[providerId]
+            setAuthStatus((prev) => ({ ...prev, [providerId]: "Connected!" }))
+            // Add to configured providers list if not already there
+            if (!configuredProviders.includes(providerId)) {
+              setConfiguredProviders([...configuredProviders, providerId])
+            }
+            // Clear temporary selection if it was this provider
+            if (selectedProviderToAdd === providerId) {
+              setSelectedProviderToAdd("")
+            }
+            setTimeout(() => setAuthStatus((prev) => ({ ...prev, [providerId]: "" })), 3000)
+            markProvidersDirty()
+          } else if (status.status === "failed") {
+            clearInterval(poll)
+            delete pollIntervals.current[providerId]
+            setAuthStatus((prev) => ({
+              ...prev,
+              [providerId]: "Failed: " + (status.result?.message || "Unknown error"),
+            }))
+          }
+        } catch (e) {
+          clearInterval(poll)
+          delete pollIntervals.current[providerId]
+          console.error("Error polling OAuth status:", e)
+          setAuthStatus((prev) => ({ ...prev, [providerId]: "Error polling status" }))
+        }
+      }, 1000)
+      pollIntervals.current[providerId] = poll
+
+      // Timeout after 2 mins
+      setTimeout(() => {
+        if (pollIntervals.current[providerId] === poll) {
+          clearInterval(poll)
+          delete pollIntervals.current[providerId]
+          setAuthStatus((prev) => {
+            if (prev[providerId]?.startsWith("Waiting")) return { ...prev, [providerId]: "Timed out" }
+            return prev
+          })
+        }
+      }, 120000)
+    } catch (e) {
+      setAuthStatus((prev) => ({ ...prev, [providerId]: "Error starting login" }))
+      console.error(e)
+    }
+  }
+
+  const handleCancel = (providerId: string) => {
+    if (pollIntervals.current[providerId]) {
+      clearInterval(pollIntervals.current[providerId])
+      delete pollIntervals.current[providerId]
+    }
+    setAuthStatus((prev) => ({ ...prev, [providerId]: "" }))
+    if (manualCodeState?.providerId === providerId) {
+      setManualCodeState(null)
+      setManualCodeInput("")
+    }
+  }
+
+  const handleManualCodeSubmit = async () => {
+    if (!manualCodeState || !manualCodeInput) return
+
+    const { providerId, id } = manualCodeState
+    try {
+      setAuthStatus((prev) => ({ ...prev, [providerId]: "Verifying code..." }))
+      await sdk.auth.submit(id, manualCodeInput)
+
+      // Check status immediately
+      const status = await sdk.auth.status(id)
+      if (status.status === "success") {
+        setAuthStatus((prev) => ({ ...prev, [providerId]: "Connected!" }))
+        if (!configuredProviders.includes(providerId)) {
+          setConfiguredProviders([...configuredProviders, providerId])
+        }
+        if (selectedProviderToAdd === providerId) {
+          setSelectedProviderToAdd("")
+        }
+        setManualCodeState(null)
+        setManualCodeInput("")
+        setTimeout(() => setAuthStatus((prev) => ({ ...prev, [providerId]: "" })), 3000)
+        markProvidersDirty()
+      } else {
+        setAuthStatus((prev) => ({
+          ...prev,
+          [providerId]: "Failed: " + (status.result?.message || "Invalid code"),
+        }))
+      }
+    } catch (e) {
+      console.error("Error submitting code:", e)
+      setAuthStatus((prev) => ({ ...prev, [providerId]: "Error submitting code" }))
+    }
+  }
+
+  return {
+    authStatus,
+    manualCodeState,
+    manualCodeInput,
+    setManualCodeInput,
+    handleOAuthLogin,
+    handleCancel,
+    handleManualCodeSubmit,
+  }
+}

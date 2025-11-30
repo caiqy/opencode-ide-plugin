@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useRef, useCallback } from "react"
+import { useClickOutsideWithEscape } from "./useClickOutside"
 
 export function useDropdown() {
   const [isOpen, setIsOpen] = useState(false)
@@ -11,28 +12,7 @@ export function useDropdown() {
   }, [])
 
   // Close dropdown when clicking outside or pressing Escape
-  useEffect(() => {
-    if (!isOpen) return
-
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        close()
-      }
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        close()
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside)
-    document.addEventListener("keydown", handleKeyDown)
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-      document.removeEventListener("keydown", handleKeyDown)
-    }
-  }, [isOpen, close])
+  useClickOutsideWithEscape(dropdownRef, close, { enabled: isOpen })
 
   const toggle = () => setIsOpen((v) => !v)
 
