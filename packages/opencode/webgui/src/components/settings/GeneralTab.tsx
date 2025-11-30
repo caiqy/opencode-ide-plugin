@@ -1,4 +1,5 @@
 import type { Config } from "@opencode-ai/sdk/client"
+import { useProject } from "../../state/ProjectContext"
 
 interface GeneralTabProps {
   formData: Partial<Config>
@@ -6,6 +7,7 @@ interface GeneralTabProps {
 }
 
 export function GeneralTab({ formData, setFormData }: GeneralTabProps) {
+  const { worktree } = useProject()
   return (
     <div className="space-y-4">
       <div>
@@ -60,6 +62,16 @@ export function GeneralTab({ formData, setFormData }: GeneralTabProps) {
           <option value="disabled">Disabled</option>
         </select>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Control session sharing behavior</p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Working directory</label>
+        <div className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-xs font-mono text-gray-900 dark:text-gray-100 truncate">
+          {worktree ?? "Unknown"}
+        </div>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Directory where the OpenCode server was started.
+        </p>
       </div>
     </div>
   )

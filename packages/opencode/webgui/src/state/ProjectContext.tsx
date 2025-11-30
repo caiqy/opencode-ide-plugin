@@ -35,6 +35,7 @@ interface ProjectProviderProps {
 
 export function ProjectProvider({ children }: ProjectProviderProps) {
   const [project, setProject] = useState<ProjectInfo | null>(null)
+  const [directory, setDirectory] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
@@ -43,7 +44,6 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
       try {
         setIsLoading(true)
         const response = await sdk.project.current()
-
         if (response.error) {
           throw new Error(
             typeof response.error === "object" && response.error && "message" in response.error
@@ -55,6 +55,11 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
         if (response.data) {
           setProject(response.data as ProjectInfo)
           setError(null)
+        }
+
+        const pathResult = await sdk.path.get()
+        if (!pathResult.error && pathResult.data) {
+          setDirectory(pathResult.data.directory)
         }
       } catch (err) {
         setError(err instanceof Error ? err : new Error("Failed to fetch project"))
@@ -69,7 +74,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
 
   const value: ProjectContextState = {
     project,
-    worktree: project?.worktree ?? null,
+    worktree: directory ?? project?.worktree ?? null,
     isLoading,
     error,
   }

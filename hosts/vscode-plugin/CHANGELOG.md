@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [25.11.xx] - 2025-11-xx
 
 - Updated OpenCode to v1.0.121
+- Fixed working directory as server start directory, not git root
 
 ## [25.11.24] - 2025-11-24
 

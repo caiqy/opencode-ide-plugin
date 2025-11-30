@@ -36,6 +36,13 @@ interface ProvidersResponse {
   default: Record<string, string>
 }
 
+interface PathResponse {
+  state: string
+  config: string
+  worktree: string
+  directory: string
+}
+
 /**
  * Extended SDK client with state management methods
  * TODO: Remove once SDK is regenerated with Stainless
@@ -63,6 +70,31 @@ export const sdk = {
         return {
           error: { message: error instanceof Error ? error.message : "Unknown error" },
           data: null as ProvidersResponse | null,
+        }
+      }
+    },
+  },
+  path: {
+    get: async () => {
+      try {
+        const response = await fetch("/path", {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        })
+
+        if (!response.ok) {
+          return {
+            error: { message: "Failed to fetch path" },
+            data: null as PathResponse | null,
+          }
+        }
+
+        const data = (await response.json()) as PathResponse
+        return { data, error: null as { message: string } | null }
+      } catch (error) {
+        return {
+          error: { message: error instanceof Error ? error.message : "Unknown error" },
+          data: null as PathResponse | null,
         }
       }
     },
