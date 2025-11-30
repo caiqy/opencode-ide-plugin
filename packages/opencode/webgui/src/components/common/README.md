@@ -46,7 +46,6 @@ A button designed specifically for icons with consistent sizing.
 
 ```tsx
 import { IconButton } from "@/components/common"
-
 ;<IconButton size="md" icon={<svg>...</svg>} aria-label="Close dialog" onClick={handleClose} />
 ```
 
@@ -72,7 +71,6 @@ A container component with optional header, body, and footer sections.
 
 ```tsx
 import { Card, CardHeader, CardBody, CardFooter } from "@/components/common"
-
 ;<Card hoverable padding="md">
   <CardHeader>
     <h3>Title</h3>
@@ -110,7 +108,6 @@ A modal dialog with backdrop and keyboard support.
 
 ```tsx
 import { Modal, ModalHeader, ModalBody, ModalFooter, Button } from "@/components/common"
-
 ;<Modal isOpen={isOpen} onClose={handleClose} size="md">
   <ModalHeader onClose={handleClose}>
     <h3>Confirm Action</h3>
@@ -149,7 +146,6 @@ A text input component with label, error, and icon support.
 
 ```tsx
 import { Input } from "@/components/common"
-
 ;<Input
   label="Email"
   type="email"
