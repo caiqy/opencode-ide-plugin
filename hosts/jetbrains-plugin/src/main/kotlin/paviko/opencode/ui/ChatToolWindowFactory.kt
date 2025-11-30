@@ -8,6 +8,7 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
+import com.intellij.ui.jcef.JBCefClient
 import com.intellij.util.ui.JBUI
 import paviko.opencode.backendprocess.BackendLauncher
 import paviko.opencode.settings.OpenCodeSettings
@@ -107,7 +108,16 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
 
                                 SwingUtilities.invokeLater {
                                     try {
-                                        val browser = JBCefBrowser(appUrl)
+                                        // Create client with JS_QUERY_POOL_SIZE for Windows IDEA 2024.3 compatibility
+                                        // This allows JBCefJSQuery.create() to work after browser creation
+                                        val client = JBCefApp.getInstance().createClient()
+                                        try {
+                                            client.setProperty(JBCefClient.Properties.JS_QUERY_POOL_SIZE, 1)
+                                        } catch (_: Throwable) {}
+                                        val browser = JBCefBrowser.createBuilder()
+                                            .setClient(client)
+                                            .setUrl(appUrl)
+                                            .build()
 
                                         // Store browser reference for path insertion (context actions)
                                         // PathInserter.setBrowser(browser) - Removed, now stateless
