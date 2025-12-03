@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [25.12.xx] - 2025-12-xx
 
 - Auto refresh files in IDE on edit/write
+- New panel with all modified files in session
+- Fixed placement of Model/Agent selector
 
 ## [25.11.30] - 2025-11-30
 

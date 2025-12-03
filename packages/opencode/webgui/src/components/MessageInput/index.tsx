@@ -11,7 +11,7 @@ import { ConfirmModal } from "../ConfirmModal"
 import { createEditorConfig } from "./EditorConfig"
 import { EditorContent } from "./EditorContent"
 import { EditorToolbar } from "./EditorToolbar"
-import { MessageActions } from "./MessageActions"
+import { ModifiedFilesPanel } from "./ModifiedFilesPanel"
 import { useMessageInput } from "./hooks/useMessageInput"
 import { useFileAttachment } from "./hooks/useFileAttachment"
 import { useDragDrop } from "./hooks/useDragDrop"
@@ -250,6 +250,7 @@ const MessageInputInner = forwardRef<
   return (
     <>
       <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex-shrink-0">
+        <ModifiedFilesPanel sessionID={sessionID} />
         <EditorContent
           contentEditableRef={contentEditableRef}
           containerRef={containerRef}
@@ -268,17 +269,13 @@ const MessageInputInner = forwardRef<
           onRetry={handleRetry}
           fileInputRef={fileInputRef}
           onFileChange={handleFileChange}
+          isIdle={isIdle}
+          isButtonDisabled={isButtonDisabled}
+          isCompactDisabled={isCompactDisabled}
+          onSubmit={handleSubmit}
+          onAbort={handleAbort}
+          onCompactClick={() => setIsCompactConfirmOpen(true)}
         />
-        <div className="h-8 px-2 flex items-center justify-end border-t border-gray-100 dark:border-gray-800">
-          <MessageActions
-            isIdle={isIdle}
-            isButtonDisabled={isButtonDisabled}
-            isCompactDisabled={isCompactDisabled}
-            onSubmit={handleSubmit}
-            onAbort={handleAbort}
-            onCompactClick={() => setIsCompactConfirmOpen(true)}
-          />
-        </div>
       </footer>
 
       <ConfirmModal

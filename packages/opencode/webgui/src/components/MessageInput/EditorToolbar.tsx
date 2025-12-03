@@ -1,6 +1,7 @@
 import { ModelSelector } from "../ModelSelector"
 import { AgentSelector } from "../AgentSelector"
 import { IconButton } from "../common"
+import { MessageActions } from "./MessageActions"
 
 interface EditorToolbarProps {
   selectedProviderId: string | undefined
@@ -15,6 +16,12 @@ interface EditorToolbarProps {
   onRetry: () => void
   fileInputRef: React.RefObject<HTMLInputElement | null>
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+  isIdle: boolean
+  isButtonDisabled: boolean
+  isCompactDisabled: boolean
+  onSubmit: () => void
+  onAbort: () => void
+  onCompactClick: () => void
 }
 
 export function EditorToolbar({
@@ -30,11 +37,16 @@ export function EditorToolbar({
   onRetry,
   fileInputRef,
   onFileChange,
+  isIdle,
+  isButtonDisabled,
+  isCompactDisabled,
+  onSubmit,
+  onAbort,
+  onCompactClick,
 }: EditorToolbarProps) {
   return (
     <div className="h-8 px-2 flex items-center justify-between border-t border-gray-100 dark:border-gray-800">
       <div className="flex items-center gap-1">
-        {/* Retry button (visible when there's a failed message) */}
         {lastFailedMessage && (
           <button
             onClick={onRetry}
@@ -52,8 +64,6 @@ export function EditorToolbar({
             Retry
           </button>
         )}
-
-        {/* Model selector */}
         <ModelSelector
           key={modelSelectorKey}
           selectedProviderId={selectedProviderId}
@@ -61,11 +71,7 @@ export function EditorToolbar({
           onSelect={onModelSelect}
           disabled={isDisabled}
         />
-
-        {/* Agent selector */}
         <AgentSelector selectedAgent={selectedAgent} onSelect={onAgentSelect} disabled={isDisabled} />
-
-        {/* Add file button */}
         <IconButton
           onClick={onFileSelect}
           size="sm"
@@ -92,6 +98,14 @@ export function EditorToolbar({
           className="hidden"
         />
       </div>
+      <MessageActions
+        isIdle={isIdle}
+        isButtonDisabled={isButtonDisabled}
+        isCompactDisabled={isCompactDisabled}
+        onSubmit={onSubmit}
+        onAbort={onAbort}
+        onCompactClick={onCompactClick}
+      />
     </div>
   )
 }
