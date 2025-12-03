@@ -156,6 +156,7 @@ if (ideBridge.isInstalled()) {
 
 - **openFile** — payload: `{ path: string, line?: number }` → opens file in IDE, responds with `{ replyTo, ok }` or `{ replyTo, ok: false, error }`
 - **openUrl** — payload: `{ url: string }` → opens URL in default browser, responds with `{ replyTo, ok }`
+- **reloadPath** — payload: `{ path: string, operation: "write" | "edit" }` → reloads file from disk after AI agent modifies it, responds with `{ replyTo, ok }`
 
 ### Protocol notes
 

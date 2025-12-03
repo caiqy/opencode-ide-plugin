@@ -338,6 +338,48 @@ export class CommunicationBridge implements PluginCommunicator {
   }
 
   /**
+   * Handle reload path request from web UI - refreshes file from disk after AI agent modifies it
+   * @param filePath File path to reload
+   */
+  async handleReloadPath(filePath: string): Promise<void> {
+    try {
+      if (!filePath || filePath.trim().length === 0) {
+        logger.appendLine("No path provided to reload")
+        return
+      }
+
+      const normalizedPath = this.normalizePath(filePath)
+      if (!normalizedPath) {
+        logger.appendLine(`Invalid path to reload: ${filePath}`)
+        return
+      }
+
+      const fileUri = vscode.Uri.file(normalizedPath)
+
+      // Check if file exists and refresh it
+      try {
+        await vscode.workspace.fs.stat(fileUri)
+        // File exists - find open editors and refresh them
+        for (const editor of vscode.window.visibleTextEditors) {
+          if (editor.document.uri.fsPath === fileUri.fsPath) {
+            // Revert the document to reload from disk
+            await vscode.commands.executeCommand("workbench.action.files.revert", editor.document.uri)
+            logger.appendLine(`Reloaded file: ${normalizedPath}`)
+            return
+          }
+        }
+        // File not open in editor, no action needed
+        logger.appendLine(`File not open in editor, skipping reload: ${normalizedPath}`)
+      } catch {
+        // File doesn't exist yet (new file), refresh workspace
+        logger.appendLine(`File not found, refreshing workspace: ${normalizedPath}`)
+      }
+    } catch (error) {
+      logger.appendLine(`Error reloading path: ${error}`)
+    }
+  }
+
+  /**
    * Handle state change from web UI
    * @param key Setting key
    * @param value Setting value
@@ -421,6 +463,11 @@ export class CommunicationBridge implements PluginCommunicator {
                 }
               } else if (m && m.type === "openUrl") {
                 await this.handleOpenUrl(m.payload?.url ?? m.url)
+                if (m.id) {
+                  this.webview?.postMessage({ replyTo: m.id, ok: true })
+                }
+              } else if (m && m.type === "reloadPath") {
+                await this.handleReloadPath(m.payload?.path)
                 if (m.id) {
                   this.webview?.postMessage({ replyTo: m.id, ok: true })
                 }

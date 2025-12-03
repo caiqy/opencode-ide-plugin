@@ -119,3 +119,8 @@ class IdeBridge {
 }
 
 export const ideBridge = new IdeBridge()
+
+export function reloadPath(path: string, operation: "write" | "edit") {
+  if (!ideBridge.isInstalled()) return
+  ideBridge.send({ type: "reloadPath", payload: { path, operation } })
+}

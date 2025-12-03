@@ -138,6 +138,12 @@ object IdeBridge {
                     replyError(project, id, t.message ?: "Failed to open url")
                 }
             }
+            "reloadPath" -> {
+                val payload = obj.get("payload")
+                val path = payload?.get("path")?.asText() ?: return replyError(project, id, "missing path")
+                reloadFile(project, path)
+                replyOk(project, id)
+            }
             else -> replyOk(project, id)
         }
     }
@@ -189,6 +195,25 @@ object IdeBridge {
 
     private fun replyOk(project: Project, replyTo: String?) { sendRaw(project, mapOf("replyTo" to replyTo, "ok" to true)) }
     private fun replyError(project: Project, replyTo: String?, error: String) { sendRaw(project, mapOf("replyTo" to replyTo, "ok" to false, "error" to error)) }
+
+    private fun reloadFile(project: Project, path: String) {
+        try {
+            val lfs = LocalFileSystem.getInstance()
+            val vf = lfs.findFileByPath(path) ?: lfs.refreshAndFindFileByPath(path)
+            if (vf != null) {
+                ApplicationManager.getApplication().invokeLater {
+                    vf.refresh(false, false)
+                }
+            } else {
+                // File doesn't exist yet (new file), refresh parent directory
+                val parentPath = path.substringBeforeLast("/")
+                val parentVf = lfs.findFileByPath(parentPath) ?: lfs.refreshAndFindFileByPath(parentPath)
+                parentVf?.refresh(false, true)
+            }
+        } catch (t: Throwable) {
+            logger.warn("reloadFile failed", t)
+        }
+    }
 
     fun send(project: Project, type: String, payload: Map<String, Any?> = emptyMap()) {
         val message = mutableMapOf<String, Any?>("type" to type, "timestamp" to System.currentTimeMillis())

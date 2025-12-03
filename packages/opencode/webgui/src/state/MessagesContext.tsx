@@ -5,6 +5,7 @@ import type { Permission } from "@opencode-ai/sdk/client"
 import * as Store from "../lib/messagesStore"
 import { sdk } from "../lib/api/sdkClient"
 import { useSession } from "./SessionContext"
+import { reloadPath } from "../lib/ideBridge"
 
 // Re-export types for convenience
 export type { Message, Part, SDKMessage } from "../types/messages"
@@ -113,6 +114,18 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         } else {
           // No delta, just upsert the part normally
           addPart(part.messageID, part)
+        }
+
+        // Reload file in IDE when write/edit tool completes
+        if (part.type === "tool") {
+          const toolPart = part as { tool?: string; state?: { status?: string; input?: { filePath?: string } } }
+          if (
+            (toolPart.tool === "write" || toolPart.tool === "edit") &&
+            toolPart.state?.status === "completed" &&
+            toolPart.state?.input?.filePath
+          ) {
+            reloadPath(toolPart.state.input.filePath, toolPart.tool)
+          }
         }
 
         if (part.type === "reasoning") {
