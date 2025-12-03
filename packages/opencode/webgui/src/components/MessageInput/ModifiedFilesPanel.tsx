@@ -66,7 +66,9 @@ export function ModifiedFilesPanel({ sessionID }: ModifiedFilesPanelProps) {
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
-          <span>{modifiedFiles.length} file{modifiedFiles.length !== 1 ? "s" : ""} changed</span>
+          <span>
+            {modifiedFiles.length} file{modifiedFiles.length !== 1 ? "s" : ""} changed
+          </span>
         </button>
       </div>
       {expanded && (
