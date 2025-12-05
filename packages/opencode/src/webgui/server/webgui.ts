@@ -379,7 +379,7 @@ export const WebGuiRoute = new Hono()
     async (c) => {
       // Get providers directly from updated cache after refresh
       const database = await ModelsDev.get()
-      const activeProviders = await Provider.list().then((x) => mapValues(x, (item) => item.info))
+      const activeProviders = await Provider.list()
 
       // Merge active providers into the full list from database
       // This ensures we have all available providers, but with updated info for active ones

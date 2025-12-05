@@ -60,6 +60,7 @@ async function generateEmbeddedWebGui() {
 await generateEmbeddedWebGui()
 
 const singleFlag = process.argv.includes("--single")
+const skipInstall = process.argv.includes("--skip-install")
 
 const allTargets: {
   os: string
@@ -96,8 +97,10 @@ const targets = singleFlag
 await fs.rm("dist", { recursive: true, force: true })
 
 const binaries: Record<string, string> = {}
-await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]}`
-await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
+if (!skipInstall) {
+  await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]}`
+  await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
+}
 for (const item of targets) {
   const name = [
     pkg.name,
@@ -116,6 +119,10 @@ for (const item of targets) {
   const parserWorker = nodefs.realpathSync(path.join(path.dirname(opentuiCoreEntry), "parser.worker.js"))
   const workerPath = "./src/cli/cmd/tui/worker.ts"
 
+  // Use platform-specific bunfs root path based on target OS
+  const bunfsRoot = item.os === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"
+  const workerRelativePath = path.relative(dir, parserWorker).replaceAll("\\", "/")
+
   await Bun.build({
     conditions: ["browser"],
     tsconfig: "./tsconfig.json",
@@ -132,7 +139,7 @@ for (const item of targets) {
     entrypoints: ["./src/index.ts", parserWorker, workerPath],
     define: {
       OPENCODE_VERSION: `'${Script.version}'`,
-      OTUI_TREE_SITTER_WORKER_PATH: "/$bunfs/root/" + path.relative(dir, parserWorker).replaceAll("\\", "/"),
+      OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
       OPENCODE_WORKER_PATH: workerPath,
       OPENCODE_CHANNEL: `'${Script.channel}'`,
     },

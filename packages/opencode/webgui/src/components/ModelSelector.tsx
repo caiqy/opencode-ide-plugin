@@ -224,8 +224,8 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                             <div className="flex items-center gap-2 flex-1 min-w-0">
                               <span className="font-medium truncate">{model.name}</span>
                               <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
-                                <span>{formatDate(model.release_date)}</span>
-                                {model.reasoning && (
+                                {/*<span>{formatDate(model.release_date)}</span>*/}
+                                {model.capabilities.reasoning && (
                                   <span className="px-1 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-[9px] leading-none">
                                     reasoning
                                   </span>
