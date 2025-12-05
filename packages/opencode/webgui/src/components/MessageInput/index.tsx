@@ -11,7 +11,7 @@ import { ConfirmModal } from "../ConfirmModal"
 import { createEditorConfig } from "./EditorConfig"
 import { EditorContent } from "./EditorContent"
 import { EditorToolbar } from "./EditorToolbar"
-import { ModifiedFilesPanel } from "./ModifiedFilesPanel"
+import { FooterPanels } from "./FooterPanels"
 import { useMessageInput } from "./hooks/useMessageInput"
 import { useFileAttachment } from "./hooks/useFileAttachment"
 import { useDragDrop } from "./hooks/useDragDrop"
@@ -250,7 +250,7 @@ const MessageInputInner = forwardRef<
   return (
     <>
       <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex-shrink-0">
-        <ModifiedFilesPanel sessionID={sessionID} />
+        <FooterPanels sessionID={sessionID} />
         <EditorContent
           contentEditableRef={contentEditableRef}
           containerRef={containerRef}
