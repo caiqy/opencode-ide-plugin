@@ -211,7 +211,15 @@ export function useMessageInput({
         return
       }
 
+      closeModal()
+
       try {
+        showToast("Session compaction started. You will see a notification when it completes.", {
+          title: "Compacting session",
+          variant: "info",
+          duration: 5000,
+        })
+
         const response = await sdk.session.summarize({
           path: { id: sessionID },
           body: {
@@ -234,12 +242,6 @@ export function useMessageInput({
             variant: "error",
             duration: 8000,
           })
-        } else {
-          showToast("Session compaction started. You will see a notification when it completes.", {
-            title: "Compacting session",
-            variant: "info",
-            duration: 5000,
-          })
         }
       } catch (err) {
         const error = err instanceof Error ? err : new Error("Failed to compact session")
@@ -249,8 +251,6 @@ export function useMessageInput({
           variant: "error",
           duration: 8000,
         })
-      } finally {
-        closeModal()
       }
     },
     [sessionID, selectedProviderId, selectedModelId, showToast],
