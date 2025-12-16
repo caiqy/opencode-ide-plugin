@@ -25,7 +25,7 @@ import {
   type ScrollAcceleration,
 } from "@opentui/core"
 import { Prompt, type PromptRef } from "@tui/component/prompt"
-import type { AssistantMessage, Part, ToolPart, UserMessage, TextPart, ReasoningPart } from "@opencode-ai/sdk"
+import type { AssistantMessage, Part, ToolPart, UserMessage, TextPart, ReasoningPart } from "@opencode-ai/sdk/v2"
 import { useLocal } from "@tui/context/local"
 import { Locale } from "@/util/locale"
 import type { Tool } from "@/tool/tool"
@@ -64,6 +64,7 @@ import { Editor } from "../../util/editor"
 import stripAnsi from "strip-ansi"
 import { Footer } from "./footer.tsx"
 import { usePromptRef } from "../../context/prompt"
+import { Filesystem } from "@/util/filesystem"
 
 addDefaultParsers(parsers.parsers)
 
@@ -120,6 +121,7 @@ export function Session() {
   const [showTimestamps, setShowTimestamps] = createSignal(kv.get("timestamps", "hide") === "show")
   const [usernameVisible, setUsernameVisible] = createSignal(kv.get("username_visible", true))
   const [showDetails, setShowDetails] = createSignal(kv.get("tool_details_visibility", true))
+  const [showScrollbar, setShowScrollbar] = createSignal(kv.get("scrollbar_visible", false))
   const [diffWrapMode, setDiffWrapMode] = createSignal<"word" | "none">("word")
 
   const wide = createMemo(() => dimensions().width > 120)
@@ -149,7 +151,8 @@ export function Session() {
       .then(() => {
         if (scroll) scroll.scrollBy(100_000)
       })
-      .catch(() => {
+      .catch((e) => {
+        console.error(e)
         toast.show({
           message: `Session not found: ${route.sessionID}`,
           variant: "error",
@@ -201,14 +204,10 @@ export function Session() {
         return
       })
       if (response) {
-        sdk.client.postSessionIdPermissionsPermissionId({
-          path: {
-            permissionID: first.id,
-            id: route.sessionID,
-          },
-          body: {
-            response: response,
-          },
+        sdk.client.permission.respond({
+          permissionID: first.id,
+          sessionID: route.sessionID,
+          response: response,
         })
       }
     }
@@ -241,6 +240,32 @@ export function Session() {
 
   const command = useCommandDialog()
   command.register(() => [
+    ...(sync.data.config.share !== "disabled"
+      ? [
+          {
+            title: "Share session",
+            value: "session.share",
+            suggested: route.type === "session",
+            keybind: "session_share" as const,
+            disabled: !!session()?.share?.url,
+            category: "Session",
+            onSelect: async (dialog: any) => {
+              await sdk.client.session
+                .share({
+                  sessionID: route.sessionID,
+                })
+                .then((res) =>
+                  Clipboard.copy(res.data!.share!.url).catch(() =>
+                    toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }),
+                  ),
+                )
+                .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
+                .catch(() => toast.show({ message: "Failed to share session", variant: "error" }))
+              dialog.clear()
+            },
+          },
+        ]
+      : []),
     {
       title: "Rename session",
       value: "session.rename",
@@ -265,6 +290,7 @@ export function Session() {
               if (child) scroll.scrollBy(child.y - scroll.y - 1)
             }}
             sessionID={route.sessionID}
+            setPrompt={(promptInfo) => prompt.set(promptInfo)}
           />
         ))
       },
@@ -285,56 +311,26 @@ export function Session() {
           return
         }
         sdk.client.session.summarize({
-          path: {
-            id: route.sessionID,
-          },
-          body: {
-            modelID: selectedModel.modelID,
-            providerID: selectedModel.providerID,
-          },
+          sessionID: route.sessionID,
+          modelID: selectedModel.modelID,
+          providerID: selectedModel.providerID,
         })
         dialog.clear()
       },
     },
-    ...(sync.data.config.share !== "disabled"
-      ? [
-          {
-            title: "Share session",
-            value: "session.share",
-            keybind: "session_share" as const,
-            disabled: !!session()?.share?.url,
-            category: "Session",
-            onSelect: async (dialog: any) => {
-              await sdk.client.session
-                .share({
-                  path: {
-                    id: route.sessionID,
-                  },
-                })
-                .then((res) =>
-                  Clipboard.copy(res.data!.share!.url).catch(() =>
-                    toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }),
-                  ),
-                )
-                .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
-                .catch(() => toast.show({ message: "Failed to share session", variant: "error" }))
-              dialog.clear()
-            },
-          },
-        ]
-      : []),
     {
       title: "Unshare session",
       value: "session.unshare",
       keybind: "session_unshare",
       disabled: !session()?.share?.url,
       category: "Session",
-      onSelect: (dialog) => {
-        sdk.client.session.unshare({
-          path: {
-            id: route.sessionID,
-          },
-        })
+      onSelect: async (dialog) => {
+        await sdk.client.session
+          .unshare({
+            sessionID: route.sessionID,
+          })
+          .then(() => toast.show({ message: "Session unshared successfully", variant: "success" }))
+          .catch(() => toast.show({ message: "Failed to unshare session", variant: "error" }))
         dialog.clear()
       },
     },
@@ -345,18 +341,14 @@ export function Session() {
       category: "Session",
       onSelect: async (dialog) => {
         const status = sync.data.session_status[route.sessionID]
-        if (status?.type !== "idle") await sdk.client.session.abort({ path: { id: route.sessionID } }).catch(() => {})
+        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
         const revert = session().revert?.messageID
         const message = messages().findLast((x) => (!revert || x.id < revert) && x.role === "user")
         if (!message) return
         sdk.client.session
           .revert({
-            path: {
-              id: route.sessionID,
-            },
-            body: {
-              messageID: message.id,
-            },
+            sessionID: route.sessionID,
+            messageID: message.id,
           })
           .then(() => {
             toBottom()
@@ -390,20 +382,14 @@ export function Session() {
         const message = messages().find((x) => x.role === "user" && x.id > messageID)
         if (!message) {
           sdk.client.session.unrevert({
-            path: {
-              id: route.sessionID,
-            },
+            sessionID: route.sessionID,
           })
           prompt.set({ input: "", parts: [] })
           return
         }
         sdk.client.session.revert({
-          path: {
-            id: route.sessionID,
-          },
-          body: {
-            messageID: message.id,
-          },
+          sessionID: route.sessionID,
+          messageID: message.id,
         })
       },
     },
@@ -448,7 +434,7 @@ export function Session() {
       },
     },
     {
-      title: "Toggle timestamps",
+      title: showTimestamps() ? "Hide timestamps" : "Show timestamps",
       value: "session.toggle.timestamps",
       category: "Session",
       onSelect: (dialog) => {
@@ -491,6 +477,20 @@ export function Session() {
         const newValue = !showDetails()
         setShowDetails(newValue)
         kv.set("tool_details_visibility", newValue)
+        dialog.clear()
+      },
+    },
+    {
+      title: "Toggle session scrollbar",
+      value: "session.toggle.scrollbar",
+      keybind: "scrollbar_toggle",
+      category: "Session",
+      onSelect: (dialog) => {
+        setShowScrollbar((prev) => {
+          const next = !prev
+          kv.set("scrollbar_visible", next)
+          return next
+        })
         dialog.clear()
       },
     },
@@ -840,9 +840,9 @@ export function Session() {
             </Show>
             <scrollbox
               ref={(r) => (scroll = r)}
-              scrollbarOptions={{
-                paddingLeft: 2,
-                visible: false,
+              verticalScrollbarOptions={{
+                paddingLeft: 1,
+                visible: showScrollbar(),
                 trackOptions: {
                   backgroundColor: theme.backgroundElement,
                   foregroundColor: theme.border,
@@ -899,7 +899,7 @@ export function Session() {
                                 <box marginTop={1}>
                                   <For each={revert()!.diffFiles}>
                                     {(file) => (
-                                      <text>
+                                      <text fg={theme.text}>
                                         {file.filename}
                                         <Show when={file.additions > 0}>
                                           <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
@@ -1050,17 +1050,19 @@ function UserMessage(props: {
               </box>
             </Show>
             <text fg={theme.textMuted}>
-              {ctx.usernameVisible() ? `${sync.data.config.username ?? "You"} ` : "You"}{" "}
+              {ctx.usernameVisible() ? `${sync.data.config.username ?? "You "}` : "You "}
               <Show
                 when={queued()}
                 fallback={
-                  <span style={{ fg: theme.textMuted }}>
-                    {ctx.showTimestamps()
-                      ? Locale.todayTimeOrDateTime(props.message.time.created)
-                      : Locale.time(props.message.time.created)}
-                  </span>
+                  <Show when={ctx.showTimestamps()}>
+                    <span style={{ fg: theme.textMuted }}>
+                      {ctx.usernameVisible() ? " · " : " "}
+                      {Locale.todayTimeOrDateTime(props.message.time.created)}
+                    </span>
+                  </Show>
                 }
               >
+                <span> </span>
                 <span style={{ bg: theme.accent, fg: theme.backgroundPanel, bold: true }}> QUEUED </span>
               </Show>
             </text>
@@ -1413,7 +1415,10 @@ ToolRegistry.register<typeof WriteTool>({
       return props.input.content
     })
 
-    const diagnostics = createMemo(() => props.metadata.diagnostics?.[props.input.filePath ?? ""] ?? [])
+    const diagnostics = createMemo(() => {
+      const filePath = Filesystem.normalizePath(props.input.filePath ?? "")
+      return props.metadata.diagnostics?.[filePath] ?? []
+    })
 
     return (
       <>
@@ -1506,11 +1511,15 @@ ToolRegistry.register<typeof TaskTool>({
         <Show when={props.metadata.summary?.length}>
           <box>
             <For each={props.metadata.summary ?? []}>
-              {(task) => (
-                <text style={{ fg: theme.textMuted }}>
-                  ∟ {Locale.titlecase(task.tool)} {task.state.status === "completed" ? task.state.title : ""}
-                </text>
-              )}
+              {(task, index) => {
+                const summary = props.metadata.summary ?? []
+                return (
+                  <text style={{ fg: task.state.status === "error" ? theme.error : theme.textMuted }}>
+                    {index() === summary.length - 1 ? "└" : "├"} {Locale.titlecase(task.tool)}{" "}
+                    {task.state.status === "completed" ? task.state.title : ""}
+                  </text>
+                )
+              }}
             </For>
           </box>
         </Show>
@@ -1582,7 +1591,8 @@ ToolRegistry.register<typeof EditTool>({
     const diffContent = createMemo(() => props.metadata.diff ?? props.permission["diff"])
 
     const diagnostics = createMemo(() => {
-      const arr = props.metadata.diagnostics?.[props.input.filePath ?? ""] ?? []
+      const filePath = Filesystem.normalizePath(props.input.filePath ?? "")
+      const arr = props.metadata.diagnostics?.[filePath] ?? []
       return arr.filter((x) => x.severity === 1).slice(0, 3)
     })
 
@@ -1604,6 +1614,7 @@ ToolRegistry.register<typeof EditTool>({
               showLineNumbers={true}
               width="100%"
               wrapMode={ctx.diffWrapMode()}
+              fg={theme.text}
               addedBg={theme.diffAddedBg}
               removedBg={theme.diffRemovedBg}
               contextBg={theme.diffContextBg}
