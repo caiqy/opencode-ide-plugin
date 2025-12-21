@@ -68,3 +68,4 @@ backend/rovo-*
 *.out
 coverage/
 coverage.*
+.scripts
