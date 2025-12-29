@@ -30,6 +30,7 @@ import type {
   FormatterStatusResponses,
   GlobalDisposeResponses,
   GlobalEventResponses,
+  GlobalHealthResponses,
   InstanceDisposeResponses,
   LspStatusResponses,
   McpAddErrors,
@@ -53,6 +54,7 @@ import type {
   PartUpdateErrors,
   PartUpdateResponses,
   PathGetResponses,
+  PermissionListResponses,
   PermissionRespondErrors,
   PermissionRespondResponses,
   ProjectCurrentResponses,
@@ -188,6 +190,18 @@ class HeyApiRegistry<T> {
 }
 
 export class Global extends HeyApiClient {
+  /**
+   * Get health
+   *
+   * Get health information about the OpenCode server.
+   */
+  public health<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalHealthResponses, unknown, ThrowOnError>({
+      url: "/global/health",
+      ...options,
+    })
+  }
+
   /**
    * Get global events
    *
@@ -1132,6 +1146,7 @@ export class Session extends HeyApiClient {
       directory?: string
       providerID?: string
       modelID?: string
+      auto?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1144,6 +1159,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "body", key: "providerID" },
             { in: "body", key: "modelID" },
+            { in: "body", key: "auto" },
           ],
         },
       ],
@@ -1601,6 +1617,25 @@ export class Permission extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * List pending permissions
+   *
+   * Get all pending permission requests across all sessions.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<PermissionListResponses, unknown, ThrowOnError>({
+      url: "/permission",
+      ...options,
+      ...params,
     })
   }
 }

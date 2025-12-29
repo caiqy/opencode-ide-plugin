@@ -47,6 +47,7 @@ import { Snapshot } from "@/snapshot"
 import { SessionSummary } from "@/session/summary"
 import { SessionStatus } from "@/session/status"
 import { upgradeWebSocket, websocket } from "hono/bun"
+import type { BunWebSocketData } from "hono/bun"
 import { errors } from "./error"
 import { Pty } from "@/pty"
 import * as State from "@/webgui/state/state"
@@ -55,6 +56,8 @@ import * as fs from "fs"
 import { fileURLToPath } from "url"
 import { embeddedWebGui } from "../webgui/embed.generated"
 import { Buffer } from "node:buffer"
+import { Installation } from "@/installation"
+import { MDNS } from "./mdns"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -199,6 +202,27 @@ export namespace Server {
         }
       })
       .use(cors())
+      .get(
+        "/global/health",
+        describeRoute({
+          summary: "Get health",
+          description: "Get health information about the OpenCode server.",
+          operationId: "global.health",
+          responses: {
+            200: {
+              description: "Health information",
+              content: {
+                "application/json": {
+                  schema: resolver(z.object({ healthy: z.literal(true), version: z.string() })),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json({ healthy: true, version: Installation.VERSION })
+        },
+      )
       .get(
         "/global/event",
         describeRoute({
@@ -1165,11 +1189,14 @@ export namespace Server {
           z.object({
             providerID: z.string(),
             modelID: z.string(),
+            auto: z.boolean().optional().default(false),
           }),
         ),
         async (c) => {
           const sessionID = c.req.valid("param").sessionID
           const body = c.req.valid("json")
+          const session = await Session.get(sessionID)
+          await SessionRevert.cleanup(session)
           const msgs = await Session.messages({ sessionID })
           let currentAgent = await Agent.defaultAgent()
           for (let i = msgs.length - 1; i >= 0; i--) {
@@ -1186,7 +1213,7 @@ export namespace Server {
               providerID: body.providerID,
               modelID: body.modelID,
             },
-            auto: false,
+            auto: body.auto,
           })
           await SessionPrompt.loop(sessionID)
           return c.json(true)
@@ -1614,6 +1641,28 @@ export namespace Server {
             response: c.req.valid("json").response,
           })
           return c.json(true)
+        },
+      )
+      .get(
+        "/permission",
+        describeRoute({
+          summary: "List pending permissions",
+          description: "Get all pending permission requests across all sessions.",
+          operationId: "permission.list",
+          responses: {
+            200: {
+              description: "List of pending permissions",
+              content: {
+                "application/json": {
+                  schema: resolver(Permission.Info.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const permissions = Permission.list()
+          return c.json(permissions)
         },
       )
       .get(
@@ -2693,10 +2742,10 @@ export namespace Server {
       .get("/app", handleWebGui)
       .get("/app/*", handleWebGui)
       .all("/*", async (c) => {
-        return proxy(`https://desktop.opencode.ai${c.req.path}`, {
+        return proxy(`https://app.opencode.ai${c.req.path}`, {
           ...c.req,
           headers: {
-            host: "desktop.opencode.ai",
+            host: "app.opencode.ai",
           },
         })
       }),
@@ -2716,20 +2765,41 @@ export namespace Server {
     return result
   }
 
-  export function listen(opts: { port: number; hostname: string }) {
+  export function listen(opts: { port: number; hostname: string; mdns?: boolean }) {
     const args = {
       hostname: opts.hostname,
       idleTimeout: 0,
       fetch: App().fetch,
       websocket: websocket,
     } as const
-    if (opts.port === 0) {
+    const tryServe = (port: number) => {
       try {
-        return Bun.serve({ ...args, port: 4096 })
+        return Bun.serve({ ...args, port })
       } catch {
-        // port 4096 not available, fall through to use port 0
+        return undefined
       }
     }
-    return Bun.serve({ ...args, port: opts.port })
+    const server = opts.port === 0 ? (tryServe(4096) ?? tryServe(0)) : tryServe(opts.port)
+    if (!server) throw new Error(`Failed to start server on port ${opts.port}`)
+
+    const shouldPublishMDNS =
+      opts.mdns &&
+      server.port &&
+      opts.hostname !== "127.0.0.1" &&
+      opts.hostname !== "localhost" &&
+      opts.hostname !== "::1"
+    if (shouldPublishMDNS) {
+      MDNS.publish(server.port!)
+    } else if (opts.mdns) {
+      log.warn("mDNS enabled but hostname is loopback; skipping mDNS publish")
+    }
+
+    const originalStop = server.stop.bind(server)
+    server.stop = async (closeActiveConnections?: boolean) => {
+      if (shouldPublishMDNS) MDNS.unpublish()
+      return originalStop(closeActiveConnections)
+    }
+
+    return server
   }
 }
