@@ -69,3 +69,7 @@ backend/rovo-*
 coverage/
 coverage.*
 .scripts
+
+# Local dev files
+opencode-dev
+logs/

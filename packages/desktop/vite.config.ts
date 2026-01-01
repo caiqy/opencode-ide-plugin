@@ -10,8 +10,9 @@ export default defineConfig({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
-  build: {
-    sourcemap: true,
+  esbuild: {
+    // Improves production stack traces
+    keepNames: true,
   },
   worker: {
     format: "es",
