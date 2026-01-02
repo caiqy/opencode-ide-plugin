@@ -1,5 +1,6 @@
 import { useState } from "react"
 import type { Message } from "../../state/MessagesContext"
+import { isAssistantMessage, type AssistantMessage } from "../../types/messages"
 import { MessagePart } from "./MessagePart"
 import { ActionButtons } from "./ActionButtons"
 import { getPartStart, getPartEnd } from "./utils"
@@ -16,7 +17,15 @@ interface MessageRowProps {
 export function MessageRow({ message, onFork, onRevert, revertBusy, sessionID }: MessageRowProps) {
   const [isHovered, setIsHovered] = useState(false)
   const isUser = message.info.role === "user"
+  const isAssistant = isAssistantMessage(message.info)
   const skipPartIds = new Set<string>()
+
+  const assistantInfo = isAssistant ? (message.info as AssistantMessage) : null
+  const tokens = assistantInfo?.tokens
+  const cost = assistantInfo?.cost
+
+  const hasTokens =
+    tokens && (tokens.input > 0 || tokens.output > 0 || tokens.reasoning > 0 || tokens.cache.read > 0 || tokens.cache.write > 0)
 
   // Calculate durations for reasoning parts using timestamps when available
   const partsWithDurations = message.parts.map((part) => {
@@ -43,12 +52,15 @@ export function MessageRow({ message, onFork, onRevert, revertBusy, sessionID }:
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Fork / Undo buttons (visible on hover) */}
-      {isUser && isHovered && (
+      {/* Action buttons (visible on hover) */}
+      {isHovered && (isUser || hasTokens) && (
         <ActionButtons
           onFork={() => onFork(message.info.id)}
           onRevert={() => onRevert(message.info.id)}
           revertBusy={revertBusy}
+          tokens={tokens}
+          cost={cost}
+          isUser={isUser}
         />
       )}
 

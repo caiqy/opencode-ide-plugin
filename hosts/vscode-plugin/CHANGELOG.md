@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### [26.1.2] - 2026-01-02
 
 - OAuth Instructions: Support for provider-specific instructions during OAuth flow
+- Token Usage Stats: Display token usage breakdown and cost in a popover for assistant messages
+- Updated OpenCode to v1.0.223
 
 ## [25.11.30] - 2025-11-30
 
