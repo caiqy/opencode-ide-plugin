@@ -104,6 +104,11 @@ function webGuiContentType(relativePath: string) {
   return "application/octet-stream"
 }
 
+function webGuiCacheControl(relativePath: string) {
+  if (relativePath.endsWith(".html") || relativePath.endsWith(".js")) return "no-store"
+  return "public, max-age=3600"
+}
+
 function serveWebGuiFromFs(relativePath: string) {
   const fullPath = path.join(webGuiRoot, relativePath)
   if (!fs.existsSync(fullPath)) return
@@ -111,7 +116,7 @@ function serveWebGuiFromFs(relativePath: string) {
   return new Response(file, {
     headers: {
       "Content-Type": webGuiContentType(relativePath),
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": webGuiCacheControl(relativePath),
     },
   })
 }
@@ -124,7 +129,7 @@ function serveWebGuiFromEmbed(relativePath: string) {
   return new Response(body, {
     headers: {
       "Content-Type": webGuiContentType(relativePath),
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": webGuiCacheControl(relativePath),
     },
   })
 }

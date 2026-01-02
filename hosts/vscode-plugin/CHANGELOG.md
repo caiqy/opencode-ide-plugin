@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed placement of Model/Agent selector
 - Updated OpenCode to v1.0.133
 
+### [26.1.2] - 2026-01-02
+
+- OAuth Instructions: Support for provider-specific instructions during OAuth flow
+
 ## [25.11.30] - 2025-11-30
 
 - Updated OpenCode to v1.0.121

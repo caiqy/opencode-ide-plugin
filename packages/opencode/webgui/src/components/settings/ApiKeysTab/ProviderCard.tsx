@@ -15,7 +15,8 @@ interface ProviderCardProps {
   isLoading: boolean
   methods: AuthMethod[]
   authStatus: string
-  manualCodeState: { providerId: string; id: string } | null
+  authInstructions?: string
+  manualCodeState: { providerId: string; id: string; instructions?: string } | null
   manualCodeInput: string
   apiKey: string
   showApiKey: boolean
@@ -38,6 +39,7 @@ export function ProviderCard({
   isLoading,
   methods,
   authStatus,
+  authInstructions,
   manualCodeState,
   manualCodeInput,
   apiKey,
@@ -113,6 +115,7 @@ export function ProviderCard({
                 methods={methods}
                 oauthMethodIndex={oauthMethodIndex}
                 authStatus={authStatus}
+                authInstructions={authInstructions}
                 manualCodeState={manualCodeState}
                 manualCodeInput={manualCodeInput}
                 onOAuthLogin={onOAuthLogin}

@@ -11,7 +11,8 @@ interface OAuthSectionProps {
   methods: AuthMethod[]
   oauthMethodIndex: number
   authStatus: string
-  manualCodeState: { providerId: string; id: string } | null
+  authInstructions?: string
+  manualCodeState: { providerId: string; id: string; instructions?: string } | null
   manualCodeInput: string
   onOAuthLogin: (providerId: string, methodIndex: number) => void
   onCancel: (providerId: string) => void
@@ -26,6 +27,7 @@ export function OAuthSection({
   methods,
   oauthMethodIndex,
   authStatus,
+  authInstructions,
   manualCodeState,
   manualCodeInput,
   onOAuthLogin,
@@ -37,6 +39,9 @@ export function OAuthSection({
   const isWaiting = authStatus && (authStatus.startsWith("Waiting") || authStatus === "Initializing...")
   const showManualCodeInput = manualCodeState?.providerId === providerId
 
+  // Get instructions from either props or manualCodeState
+  const instructions = authInstructions || manualCodeState?.instructions
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -47,7 +52,7 @@ export function OAuthSection({
         >
           {methods[oauthMethodIndex].label || `Login with ${providerName}`}
         </button>
-        {authStatus && (
+        {authStatus && !instructions && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-blue-600 dark:text-blue-400 animate-pulse">{authStatus}</span>
             {isWaiting && !showManualCodeInput && (
@@ -61,6 +66,23 @@ export function OAuthSection({
           </div>
         )}
       </div>
+
+      {instructions && isWaiting && (
+        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md space-y-2">
+          <div className="text-xs text-blue-800 dark:text-blue-200 whitespace-pre-wrap font-mono">
+            {instructions}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-blue-600 dark:text-blue-400 animate-pulse">{authStatus}</span>
+            <button
+              onClick={() => onCancel(providerId)}
+              className="px-2 py-1 text-xs border border-blue-200 dark:border-blue-700 rounded hover:bg-blue-100 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-400"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {showManualCodeInput && (
         <ManualCodeInput

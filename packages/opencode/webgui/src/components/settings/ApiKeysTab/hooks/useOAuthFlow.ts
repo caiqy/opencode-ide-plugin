@@ -5,6 +5,7 @@ import { ideBridge } from "../../../../lib/ideBridge"
 interface ManualCodeState {
   providerId: string
   id: string
+  instructions?: string
 }
 
 interface UseOAuthFlowProps {
@@ -24,13 +25,18 @@ export function useOAuthFlow({
 }: UseOAuthFlowProps) {
   const [authStatus, setAuthStatus] = useState<Record<string, string>>({})
   const [manualCodeState, setManualCodeState] = useState<ManualCodeState | null>(null)
+  const [authInstructions, setAuthInstructions] = useState<Record<string, string>>({})
   const [manualCodeInput, setManualCodeInput] = useState("")
   const pollIntervals = useRef<Record<string, ReturnType<typeof setInterval>>>({})
 
   const handleOAuthLogin = async (providerId: string, methodIndex: number) => {
     try {
       setAuthStatus((prev) => ({ ...prev, [providerId]: "Initializing..." }))
-      const { id, url, method } = await sdk.auth.start(providerId, methodIndex, {})
+      const { id, url, method, instructions } = await sdk.auth.start(providerId, methodIndex, {})
+
+      if (instructions) {
+        setAuthInstructions((prev) => ({ ...prev, [providerId]: instructions }))
+      }
 
       if (url) {
         if (ideBridge.isInstalled()) {
@@ -42,7 +48,7 @@ export function useOAuthFlow({
 
       if (method === "code") {
         setAuthStatus((prev) => ({ ...prev, [providerId]: "Waiting for code..." }))
-        setManualCodeState({ providerId, id })
+        setManualCodeState({ providerId, id, instructions })
         setManualCodeInput("")
         return
       }
@@ -107,6 +113,11 @@ export function useOAuthFlow({
       delete pollIntervals.current[providerId]
     }
     setAuthStatus((prev) => ({ ...prev, [providerId]: "" }))
+    setAuthInstructions((prev) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [providerId]: _removed, ...rest } = prev
+      return rest
+    })
     if (manualCodeState?.providerId === providerId) {
       setManualCodeState(null)
       setManualCodeInput("")
@@ -149,6 +160,7 @@ export function useOAuthFlow({
 
   return {
     authStatus,
+    authInstructions,
     manualCodeState,
     manualCodeInput,
     setManualCodeInput,

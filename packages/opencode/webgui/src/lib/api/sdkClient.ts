@@ -136,7 +136,7 @@ export const sdk = {
         body: JSON.stringify({ provider, methodIndex, inputs }),
       })
       if (!res.ok) throw new Error(await res.text())
-      return res.json() as Promise<{ id: string; url?: string; method: "auto" | "code" }>
+      return res.json() as Promise<{ id: string; url?: string; method: "auto" | "code"; instructions?: string }>
     },
     submit: async (id: string, code: string) => {
       const res = await fetch("/app/api/auth/login/submit", {

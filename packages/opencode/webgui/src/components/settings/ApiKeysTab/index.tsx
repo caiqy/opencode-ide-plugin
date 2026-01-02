@@ -110,6 +110,7 @@ export function ApiKeysTab({
                 isLoading={isLoading}
                 methods={providerMethods}
                 authStatus={oAuthFlow.authStatus[provider.id] || ""}
+                authInstructions={oAuthFlow.authInstructions[provider.id]}
                 manualCodeState={oAuthFlow.manualCodeState}
                 manualCodeInput={oAuthFlow.manualCodeInput}
                 apiKey={apiKeys[provider.id] || ""}

@@ -179,6 +179,7 @@ export const WebGuiRoute = new Hono()
                   id: z.string(),
                   url: z.string().optional(),
                   method: z.enum(["auto", "code"]),
+                  instructions: z.string().optional(),
                 }),
               ),
             },
@@ -243,7 +244,7 @@ export const WebGuiRoute = new Hono()
               pendingAuths.set(id, { status: "failed", result: err })
             })
 
-          return c.json({ id, url: authorize.url, method: "auto" as const })
+          return c.json({ id, url: authorize.url, method: "auto" as const, instructions: authorize.instructions })
         }
 
         if ((authorize as any).method === "code") {
@@ -251,7 +252,7 @@ export const WebGuiRoute = new Hono()
             status: "pending",
             callback: authorize.callback,
           })
-          return c.json({ id, url: authorize.url, method: "code" as const })
+          return c.json({ id, url: authorize.url, method: "code" as const, instructions: authorize.instructions })
         }
 
         throw new Error("Unsupported oauth method: " + authorize.method)
