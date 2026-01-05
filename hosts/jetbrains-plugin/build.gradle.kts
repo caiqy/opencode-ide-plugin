@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "paviko.opencode"
-version = "26.1.2"
+version = "26.1.5"
 
 repositories {
     mavenCentral()

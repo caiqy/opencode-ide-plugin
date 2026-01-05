@@ -5,6 +5,16 @@ All notable changes to the OpenCode VSCode extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### [26.1.5] - 2026-01-05
+
+- Updated OpenCode to v1.1.2
+
+### [26.1.2] - 2026-01-02
+
+- OAuth Instructions: Support for provider-specific instructions during OAuth flow
+- Token Usage Stats: Display token usage breakdown and cost in a popover for assistant messages
+- Updated OpenCode to v1.0.223
+
 ## [25.12.29] - 2025-12-29
 
 - Updated OpenCode to v1.0.207
@@ -24,12 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New panel with all TODOs in session
 - Fixed placement of Model/Agent selector
 - Updated OpenCode to v1.0.133
-
-### [26.1.2] - 2026-01-02
-
-- OAuth Instructions: Support for provider-specific instructions during OAuth flow
-- Token Usage Stats: Display token usage breakdown and cost in a popover for assistant messages
-- Updated OpenCode to v1.0.223
 
 ## [25.11.30] - 2025-11-30
 
