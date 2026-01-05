@@ -71,10 +71,10 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const showDiff = part.tool === "edit" && part.state.status === "completed" && Boolean(part.state.metadata?.diff)
   const showError = part.state.status === "error" && Boolean(part.state.error)
 
-  const onRespond = async (response: "once" | "always" | "reject") => {
-    if (!permission || !sessionID) return
-    setIsResponding(response)
-    await respondPermission(sessionID, permission.id, response)
+  const onRespond = async (reply: "once" | "always" | "reject") => {
+    if (!permission) return
+    setIsResponding(reply)
+    await respondPermission(permission.id, reply)
     setIsResponding(null)
     setIsExpanded(false)
   }

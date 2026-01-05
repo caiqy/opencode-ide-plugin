@@ -1,18 +1,19 @@
 interface PermissionBannerProps {
   permission: {
     id: string
-    type: string
-    title?: string
+    permission: string
+    metadata?: Record<string, unknown>
   }
   isResponding: "once" | "always" | "reject" | null
   onRespond: (response: "once" | "always" | "reject") => void
 }
 
 export function PermissionBanner({ permission, isResponding, onRespond }: PermissionBannerProps) {
+  const title = permission.metadata?.title as string | undefined
   return (
     <div className="px-3 py-2 border-b border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20">
       <div className="text-xs text-amber-800 dark:text-amber-200 font-medium mb-1">
-        {permission.type === "doom-loop" ? permission.title : "Permission required to run this tool"}
+        {permission.permission === "doom_loop" ? title : "Permission required to run this tool"}
       </div>
       <div className="flex gap-1.5">
         <button

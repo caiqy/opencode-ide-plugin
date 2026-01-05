@@ -154,10 +154,19 @@ export const sdk = {
   },
   permissions: {
     respond: async (options: {
-      path: { id: string; permissionID: string }
-      body: { response: "once" | "always" | "reject" }
+      path: { requestID: string }
+      body: { reply: "once" | "always" | "reject"; message?: string }
     }) => {
-      return baseClient.postSessionIdPermissionsPermissionId(options as any)
+      const response = await fetch(`/permission/${options.path.requestID}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options.body),
+      })
+      if (!response.ok) {
+        return { error: { message: "Failed to respond to permission" }, data: null }
+      }
+      const data = await response.json()
+      return { data, error: null }
     },
   },
   state: {

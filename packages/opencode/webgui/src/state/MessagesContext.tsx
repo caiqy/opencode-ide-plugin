@@ -1,7 +1,19 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
 import { useEventHandler, type EventEmitter, type ServerEvent } from "../lib/api/events"
 import type { Message, Part, SDKMessage } from "../types/messages"
-import type { Permission } from "@opencode-ai/sdk/client"
+// PermissionRequest type based on new permission system (permission.asked event)
+interface PermissionRequest {
+  id: string
+  sessionID: string
+  permission: string
+  patterns: string[]
+  metadata: Record<string, unknown>
+  always: string[]
+  tool?: {
+    messageID: string
+    callID: string
+  }
+}
 import * as Store from "../lib/messagesStore"
 import { sdk } from "../lib/api/sdkClient"
 import { useSession } from "./SessionContext"
@@ -23,12 +35,11 @@ interface MessagesContextValue {
   loadSessionMessages: (sessionID: string) => Promise<void>
   setMessages: (messages: Message[]) => void
   // permissions
-  permissions: Permission[]
-  getPermissionForCall: (sessionID: string, callID?: string | null) => Permission | undefined
+  permissions: PermissionRequest[]
+  getPermissionForCall: (sessionID: string, callID?: string | null) => PermissionRequest | undefined
   respondPermission: (
-    sessionID: string,
-    permissionID: string,
-    response: "once" | "always" | "reject",
+    requestID: string,
+    reply: "once" | "always" | "reject",
   ) => Promise<boolean>
 }
 
@@ -41,7 +52,7 @@ interface MessagesProviderProps {
 
 export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const [messages, setMessages] = useState<Message[]>([])
-  const [permissions, setPermissions] = useState<Permission[]>([])
+  const [permissions, setPermissions] = useState<PermissionRequest[]>([])
   const session = useSession()
   const setReasoning = session.setReasoning
 
@@ -221,9 +232,9 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   }, [])
 
   // Permission events
-  const handlePermissionUpdated = useCallback((event: ServerEvent) => {
-    if (event.type !== "permission.updated") return
-    const perm = event.properties as Permission
+  const handlePermissionAsked = useCallback((event: ServerEvent) => {
+    if (event.type !== "permission.asked") return
+    const perm = event.properties as PermissionRequest
     setPermissions((prev) => {
       const exists = prev.some((p) => p.id === perm.id)
       if (exists) return prev.map((p) => (p.id === perm.id ? perm : p))
@@ -233,28 +244,28 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
 
   const handlePermissionReplied = useCallback((event: ServerEvent) => {
     if (event.type !== "permission.replied") return
-    const { permissionID } = event.properties as { sessionID: string; permissionID: string; response: string }
-    setPermissions((prev) => prev.filter((p) => p.id !== permissionID))
+    const { requestID } = event.properties as { sessionID: string; requestID: string; reply: string }
+    setPermissions((prev) => prev.filter((p) => p.id !== requestID))
   }, [])
 
   const getPermissionForCall = useCallback(
     (sessionID: string, callID?: string | null) => {
       if (!sessionID || !callID) return undefined
-      // Match by session + callID
-      return permissions.find((p) => p.sessionID === sessionID && p.callID === callID)
+      // Match by session + tool.callID (new structure)
+      return permissions.find((p) => p.sessionID === sessionID && p.tool?.callID === callID)
     },
     [permissions],
   )
 
   const respondPermission = useCallback(
-    async (sessionID: string, permissionID: string, response: "once" | "always" | "reject") => {
+    async (requestID: string, reply: "once" | "always" | "reject") => {
       try {
         const result = await sdk.permissions.respond({
-          path: { id: sessionID, permissionID },
-          body: { response },
+          path: { requestID },
+          body: { reply },
         })
-        const ok = Boolean(result && "data" in result && (result as any).data === true)
-        if (ok) setPermissions((prev) => prev.filter((p) => p.id !== permissionID))
+        const ok = Boolean(result && "data" in result && result.data === true)
+        if (ok) setPermissions((prev) => prev.filter((p) => p.id !== requestID))
         return ok
       } catch (e) {
         return false
@@ -268,7 +279,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   useEventHandler(emitter ?? null, "message.part.updated", handlePartUpdated)
   useEventHandler(emitter ?? null, "message.removed", handleMessageRemoved)
   useEventHandler(emitter ?? null, "message.part.removed", handlePartRemoved)
-  useEventHandler(emitter ?? null, "permission.updated", handlePermissionUpdated)
+  useEventHandler(emitter ?? null, "permission.asked", handlePermissionAsked)
   useEventHandler(emitter ?? null, "permission.replied", handlePermissionReplied)
 
   const value: MessagesContextValue = {

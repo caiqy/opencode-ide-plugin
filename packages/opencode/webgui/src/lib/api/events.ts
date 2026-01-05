@@ -25,7 +25,7 @@ export type ServerEvent =
   | { type: "message.removed"; properties: { sessionID: string; messageID: string } }
   | { type: "message.part.updated"; properties: { part: any; delta?: string } }
   | { type: "message.part.removed"; properties: { sessionID: string; messageID: string; partID: string } }
-  | { type: "permission.updated"; properties: any }
+  | { type: "permission.asked"; properties: any }
   | { type: "permission.replied"; properties: any }
   | { type: "file.edited"; properties: any }
   | { type: "file.updated"; properties: any }
