@@ -38,11 +38,21 @@ export type {
   SDKMessage,
 }
 
+export interface SessionErrorPart {
+  type: "session-error"
+  id: string
+  sessionID: string
+  messageID: string
+  message: string
+}
+
+export type WebguiPart = Part | SessionErrorPart
+
 // SDK's Message is the discriminated union (UserMessage | AssistantMessage)
 // Webgui structure wraps this with parts array
 export interface Message {
   info: SDKMessage
-  parts: Part[]
+  parts: WebguiPart[]
 }
 
 // Type guard helpers

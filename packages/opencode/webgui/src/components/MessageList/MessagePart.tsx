@@ -1,15 +1,16 @@
-import type { Part } from "../../state/MessagesContext"
+import type { Part, WebguiPart } from "../../state/MessagesContext"
 import { TextPart } from "./TextPart"
 import { ReasoningPart } from "./ReasoningPart"
 import { ToolPart } from "../parts/ToolPart"
 import { PatchPart } from "../parts/PatchPart"
 import { SnapshotPart } from "../parts/SnapshotPart"
 import { RetryPart } from "../parts/RetryPart"
+import { SessionErrorPart } from "./SessionErrorPart"
 
 interface MessagePartProps {
-  part: Part
+  part: WebguiPart
   isUser: boolean
-  allParts: Part[]
+  allParts: WebguiPart[]
   durationMs?: number
   sessionID?: string
   messageID?: string
@@ -151,6 +152,11 @@ export function MessagePart({
   // Retry attempts
   if (part.type === "retry") {
     return <RetryPart key={part.id} part={part as any} />
+  }
+
+  // Session errors
+  if (part.type === "session-error") {
+    return <SessionErrorPart key={part.id} part={part} />
   }
 
   return null

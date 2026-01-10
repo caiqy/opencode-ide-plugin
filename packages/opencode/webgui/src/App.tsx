@@ -268,31 +268,7 @@ function AppContent() {
         }
       }
 
-      // Handle session errors
-      if (event.type === "session.error") {
-        const { sessionID, error } = event.properties as { sessionID: string; error: unknown }
-        if (currentSession?.id === sessionID) {
-          const message = (() => {
-            if (!error) return "An error occurred in the session"
-            if (typeof error === "string") return error
-            if (typeof error === "object") {
-              const data = (error as { data?: { message?: unknown }; message?: unknown }).data
-              const dataMessage = data && typeof data.message === "string" ? data.message : undefined
-              if (dataMessage) return dataMessage
-              const topMessage = (error as { message?: unknown }).message
-              if (typeof topMessage === "string" && topMessage.length > 0) return topMessage
-            }
-            return "An error occurred in the session"
-          })()
-
-          console.error("[App] Session error:", message)
-          showToast(message, {
-            title: "Session Error",
-            variant: "error",
-            duration: 8000,
-          })
-        }
-      }
+      // session.error is handled in MessagesContext.tsx to show a persistent message
 
       // Handle session compaction
       if (event.type === "session.compacted") {

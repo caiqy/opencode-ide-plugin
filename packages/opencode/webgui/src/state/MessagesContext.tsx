@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
 import { useEventHandler, type EventEmitter, type ServerEvent } from "../lib/api/events"
-import type { Message, Part, SDKMessage } from "../types/messages"
+import type { Message, Part, WebguiPart, SDKMessage } from "../types/messages"
 // PermissionRequest type based on new permission system (permission.asked event)
 interface PermissionRequest {
   id: string
@@ -20,15 +20,16 @@ import { useSession } from "./SessionContext"
 import { reloadPath } from "../lib/ideBridge"
 
 // Re-export types for convenience
-export type { Message, Part, SDKMessage } from "../types/messages"
+export type { Message, Part, WebguiPart, SDKMessage } from "../types/messages"
 
 interface MessagesContextValue {
   messages: Message[]
   addMessage: (message: Message) => void
+  addSessionError: (sessionID: string, error: unknown) => void
   updateMessage: (messageID: string, update: Partial<Message>) => void
   removeMessage: (messageID: string) => void
-  addPart: (messageID: string, part: Part) => void
-  updatePart: (messageID: string, partID: string, update: Partial<Part>) => void
+  addPart: (messageID: string, part: WebguiPart) => void
+  updatePart: (messageID: string, partID: string, update: Partial<WebguiPart>) => void
   removePart: (messageID: string, partID: string) => void
   clearMessages: () => void
   getMessagesBySession: (sessionID: string) => Message[]
@@ -61,6 +62,46 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     setMessages((prev) => Store.upsertMessage(prev, message))
   }, [])
 
+  // Add an error message for a session
+  const addSessionError = useCallback((sessionID: string, error: unknown) => {
+    const text = (() => {
+      if (!error) return "An error occurred in the session"
+      if (typeof error === "string") return error
+      if (typeof error === "object") {
+        const data = (error as { data?: { message?: unknown }; message?: unknown }).data
+        const dataMessage = data && typeof data.message === "string" ? data.message : undefined
+        if (dataMessage) return dataMessage
+        const topMessage = (error as { message?: unknown }).message
+        if (typeof topMessage === "string" && topMessage.length > 0) return topMessage
+      }
+      return "An error occurred in the session"
+    })()
+
+    const errorID = `error-${Date.now()}`
+    const errorMessage: Message = {
+      info: ({
+        id: errorID,
+        sessionID,
+        role: "assistant",
+        time: {
+          created: Date.now(),
+          updated: Date.now(),
+        },
+      } as unknown) as SDKMessage,
+      parts: [
+        {
+          id: `part-${errorID}`,
+          type: "session-error",
+          sessionID,
+          messageID: errorID,
+          message: text,
+        } as WebguiPart,
+      ],
+    }
+
+    setMessages((prev) => Store.upsertMessage(prev, errorMessage))
+  }, [])
+
   // Update a message
   const updateMessage = useCallback((messageID: string, update: Partial<Message>) => {
     setMessages((prev) => Store.updateMessage(prev, messageID, update))
@@ -72,12 +113,12 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   }, [])
 
   // Add a part to a message
-  const addPart = useCallback((messageID: string, part: Part) => {
+  const addPart = useCallback((messageID: string, part: WebguiPart) => {
     setMessages((prev) => Store.upsertPart(prev, messageID, part))
   }, [])
 
   // Update a specific part in a message
-  const updatePart = useCallback((messageID: string, partID: string, update: Partial<Part>) => {
+  const updatePart = useCallback((messageID: string, partID: string, update: Partial<WebguiPart>) => {
     setMessages((prev) => Store.updatePart(prev, messageID, partID, update))
   }, [])
 
@@ -149,6 +190,18 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       }
     },
     [addPart, setReasoning],
+  )
+
+  // Listen to session.error events
+  const handleSessionError = useCallback(
+    (event: ServerEvent) => {
+      if (event.type === "session.error") {
+        const { sessionID, error } = event.properties as { sessionID: string; error: unknown }
+        console.error("[MessagesContext] Session error:", sessionID, error)
+        addSessionError(sessionID, error)
+      }
+    },
+    [addSessionError],
   )
 
   // Listen to message.removed events
@@ -277,6 +330,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   // Subscribe to events if emitter is provided
   useEventHandler(emitter ?? null, "message.updated", handleMessageUpdated)
   useEventHandler(emitter ?? null, "message.part.updated", handlePartUpdated)
+  useEventHandler(emitter ?? null, "session.error", handleSessionError)
   useEventHandler(emitter ?? null, "message.removed", handleMessageRemoved)
   useEventHandler(emitter ?? null, "message.part.removed", handlePartRemoved)
   useEventHandler(emitter ?? null, "permission.asked", handlePermissionAsked)
@@ -285,6 +339,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const value: MessagesContextValue = {
     messages,
     addMessage,
+    addSessionError,
     updateMessage,
     removeMessage,
     addPart,

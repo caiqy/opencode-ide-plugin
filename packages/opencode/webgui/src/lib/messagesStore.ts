@@ -3,7 +3,7 @@
  * Eliminates duplicate array cloning logic and type casting from MessagesProvider
  */
 
-import type { Message, Part, SDKMessage, TextPart } from "../types/messages"
+import type { Message, WebguiPart, SDKMessage, TextPart } from "../types/messages"
 
 /**
  * Upsert a message (add new or update existing)
@@ -59,7 +59,7 @@ export function removeMessage(messages: Message[], messageID: string): Message[]
 /**
  * Upsert a part in a message (add new or update existing)
  */
-export function upsertPart(messages: Message[], messageID: string, part: Part): Message[] {
+export function upsertPart(messages: Message[], messageID: string, part: WebguiPart): Message[] {
   const messageIndex = messages.findIndex((m) => m.info.id === messageID)
 
   if (messageIndex < 0) return messages
@@ -84,7 +84,7 @@ export function upsertPart(messages: Message[], messageID: string, part: Part): 
 /**
  * Apply a text delta to a part (for streaming)
  */
-export function applyPartDelta(messages: Message[], messageID: string, part: Part, delta: string): Message[] {
+export function applyPartDelta(messages: Message[], messageID: string, part: WebguiPart, delta: string): Message[] {
   if (part.type !== "text") {
     // For non-text parts, just upsert normally
     return upsertPart(messages, messageID, part)
@@ -121,7 +121,7 @@ export function applyPartDelta(messages: Message[], messageID: string, part: Par
 /**
  * Update a specific part in a message
  */
-export function updatePart(messages: Message[], messageID: string, partID: string, update: Partial<Part>): Message[] {
+export function updatePart(messages: Message[], messageID: string, partID: string, update: Partial<WebguiPart>): Message[] {
   const messageIndex = messages.findIndex((m) => m.info.id === messageID)
 
   if (messageIndex < 0) return messages
@@ -133,7 +133,7 @@ export function updatePart(messages: Message[], messageID: string, partID: strin
   if (partIndex < 0) return messages
 
   const updatedParts = [...message.parts]
-  updatedParts[partIndex] = { ...updatedParts[partIndex], ...update } as Part
+  updatedParts[partIndex] = { ...updatedParts[partIndex], ...update } as WebguiPart
   updated[messageIndex] = { ...message, parts: updatedParts }
 
   return updated
