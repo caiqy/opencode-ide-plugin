@@ -60,6 +60,7 @@ interface SessionContextState {
   revertToMessage: (sessionId: string, messageId: string, partId?: string) => Promise<Session | null>
   unrevertSession: (sessionId: string) => Promise<Session | null>
   redoNext: (sessionId: string) => Promise<Session | null>
+  retrySession: (sessionId: string) => Promise<void>
   clearError: () => void
 }
 
@@ -753,6 +754,22 @@ export function SessionProvider({ children }: SessionProviderProps) {
   )
 
   /**
+   * Retry a session's execution
+   */
+  const retrySession = useCallback(async (sessionId: string) => {
+    console.log("[SessionContext] Retrying session:", sessionId)
+    setIsIdle(false)
+    try {
+      await sdk.session.retry({ path: { sessionID: sessionId } })
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Failed to retry session"
+      console.error("[SessionContext] Failed to retry session:", errorMsg)
+      setError(new Error(errorMsg))
+      setIsIdle(true)
+    }
+  }, [])
+
+  /**
    * Clear the current error
    */
   const clearError = useCallback(() => {
@@ -871,6 +888,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     revertToMessage,
     unrevertSession,
     redoNext,
+    retrySession,
     clearError,
   }
 

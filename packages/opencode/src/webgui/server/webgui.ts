@@ -1,6 +1,7 @@
 import { Storage } from "@/storage/storage.ts"
 import { Hono } from "hono"
 import { validator, describeRoute, resolver } from "hono-openapi"
+import { stream } from "hono/streaming"
 import { z } from "zod"
 import * as State from "@/webgui/state/state.ts"
 import { StateSchema } from "@/webgui/state/state.ts"
@@ -9,6 +10,8 @@ import { Auth } from "../../auth"
 import { Instance } from "../../project/instance"
 import { mapValues } from "remeda"
 import { Provider } from "@/provider/provider.ts"
+import { SessionPrompt } from "../../session/prompt"
+import { MessageV2 } from "../../session/message-v2"
 
 const StatePatchSchema = StateSchema.partial()
 
@@ -510,5 +513,50 @@ export const WebGuiRoute = new Hono()
       await State.write(partial)
       const updated = await State.read()
       return c.json(updated)
+    },
+  )
+  .post(
+    "/session/:sessionID/retry",
+    describeRoute({
+      summary: "Retry session",
+      description: "Retry the assistant loop for a session without sending a new message.",
+      operationId: "session.retry",
+      responses: {
+        200: {
+          description: "Assistant response",
+          content: {
+            "application/json": {
+              schema: resolver(MessageV2.WithParts),
+            },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: z.string().meta({ description: "Session ID" }),
+      }),
+    ),
+    async (c) => {
+      const { sessionID } = c.req.valid("param")
+      try {
+        c.status(200)
+        c.header("Content-Type", "application/json")
+        return stream(c, async (stream) => {
+          try {
+            const msg = await SessionPrompt.loop(sessionID)
+            stream.write(JSON.stringify(msg))
+          } catch (e) {
+            console.error(`[WebGui] Error in retry loop for session ${sessionID}:`, e)
+            // Error during stream - though we didn't write anything yet
+            stream.write(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }))
+          }
+        })
+      } catch (e) {
+        console.error(`[WebGui] Failed to initiate retry stream for session ${sessionID}:`, e)
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 500)
+      }
     },
   )

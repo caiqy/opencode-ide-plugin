@@ -49,6 +49,30 @@ interface PathResponse {
  */
 export const sdk = {
   ...baseClient,
+  session: Object.assign(baseClient.session, {
+    retry: async (options: { path: { sessionID: string } }) => {
+      try {
+        const response = await fetch(`/app/api/session/${options.path.sessionID}/retry`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        })
+
+        if (!response.ok) {
+          return { error: { message: "Failed to retry session" }, data: null }
+        }
+
+        const data = await response.json()
+        return { data, error: null }
+      } catch (error) {
+        return {
+          error: { message: error instanceof Error ? error.message : "Unknown error" },
+          data: null,
+        }
+      }
+    },
+  }) as (typeof baseClient.session) & {
+    retry: (options: { path: { sessionID: string } }) => Promise<any>
+  },
   config: {
     get: baseClient.config.get.bind(baseClient.config),
     update: baseClient.config.update.bind(baseClient.config),
