@@ -5,6 +5,12 @@ All notable changes to the OpenCode VSCode extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### [26.1.11] - 2026-01-11
+
+- Session errors now display in the chat instead of toast
+- Session Retry: Added retry functionality for failed sessions
+- Updated OpenCode to v1.1.11
+
 ### [26.1.5] - 2026-01-05
 
 - Updated OpenCode to v1.1.2
