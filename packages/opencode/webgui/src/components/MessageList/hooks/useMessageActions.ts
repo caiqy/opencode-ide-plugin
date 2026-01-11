@@ -5,7 +5,7 @@ import { getUserMessagePlainText } from "../utils"
 
 export function useMessageActions(sessionID: string | null | undefined, onUndoToInput?: (value: string) => void) {
   const { currentSession, forkSession, revertToMessage, unrevertSession, redoNext } = useSession()
-  const { getMessagesBySession } = useMessages()
+  const { getMessagesBySession, removeSessionErrors } = useMessages()
 
   const [forkConfirm, setForkConfirm] = useState<string | null>(null)
   const [isForking, setIsForking] = useState(false)
@@ -44,15 +44,16 @@ export function useMessageActions(sessionID: string | null | undefined, onUndoTo
     if (!revertAction) return
     setIsRevertBusy(true)
     if (revertAction.type === "undo" && revertAction.messageId) {
-      if (onUndoToInput) {
-        const sid = sessionID ?? currentSession.id
-        if (sid) {
-          const msgs = getMessagesBySession(sid)
-          const msg = msgs.find((m) => m.info.id === revertAction.messageId)
-          if (msg) {
+      const sid = sessionID ?? currentSession.id
+      if (sid) {
+        const msgs = getMessagesBySession(sid)
+        const msg = msgs.find((m) => m.info.id === revertAction.messageId)
+        if (msg) {
+          if (onUndoToInput) {
             const plain = getUserMessagePlainText(msg)
             if (plain) onUndoToInput(plain)
           }
+          removeSessionErrors(sid, msg.info.time.created)
         }
       }
       await revertToMessage(currentSession.id, revertAction.messageId)
@@ -70,6 +71,7 @@ export function useMessageActions(sessionID: string | null | undefined, onUndoTo
     revertAction,
     sessionID,
     getMessagesBySession,
+    removeSessionErrors,
     onUndoToInput,
     revertToMessage,
     redoNext,

@@ -35,6 +35,7 @@ interface MessagesContextValue {
   getMessagesBySession: (sessionID: string) => Message[]
   loadSessionMessages: (sessionID: string) => Promise<void>
   setMessages: (messages: Message[]) => void
+  removeSessionErrors: (sessionID: string, afterTimestamp?: number) => void
   // permissions
   permissions: PermissionRequest[]
   getPermissionForCall: (sessionID: string, callID?: string | null) => PermissionRequest | undefined
@@ -100,6 +101,20 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     }
 
     setMessages((prev) => Store.upsertMessage(prev, errorMessage))
+  }, [])
+
+  // Remove session errors for a specific session, optionally after a certain timestamp
+  const removeSessionErrors = useCallback((sessionID: string, afterTimestamp?: number) => {
+    setMessages((prev) =>
+      prev.filter(
+        (m) =>
+          !(
+            m.info.sessionID === sessionID &&
+            (m.info.id.startsWith("error-") || m.parts.some((p) => p.type === "session-error")) &&
+            (!afterTimestamp || m.info.time.created > afterTimestamp)
+          ),
+      ),
+    )
   }, [])
 
   // Update a message
@@ -349,6 +364,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     getMessagesBySession,
     loadSessionMessages,
     setMessages,
+    removeSessionErrors,
     permissions,
     getPermissionForCall,
     respondPermission,
