@@ -73,3 +73,4 @@ coverage.*
 # Local dev files
 opencode-dev
 logs/
+*.bun-build
