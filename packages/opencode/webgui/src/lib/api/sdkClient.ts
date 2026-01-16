@@ -18,6 +18,7 @@ interface StateResponse {
   provider?: string
   model?: string
   agent?: string
+  variant?: Record<string, string>
   recently_used_models?: Array<{
     provider_id: string
     model_id: string

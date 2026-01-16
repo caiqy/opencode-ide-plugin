@@ -45,6 +45,10 @@ interface SessionContextState {
   setSelectedModel: (providerId: string | undefined, modelId: string | undefined) => Promise<void>
   setSelectedAgent: (agent: string) => Promise<void>
 
+  // Variant selection (per provider/model combo)
+  selectedVariant: string | undefined
+  setSelectedVariant: (variant: string | undefined) => Promise<void>
+
   // Virtual session tracking
   isVirtualSession: boolean
 
@@ -128,6 +132,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [selectedAgent, setSelectedAgentState] = useState<string>("build")
   const [agentModelMap, setAgentModelMap] = useState<Record<string, { provider_id: string; model_id: string }>>({})
 
+  // Variant selection state (per provider/model combo, key = "providerId/modelId")
+  const [selectedVariant, setSelectedVariantState] = useState<string | undefined>()
+  const [variantMap, setVariantMap] = useState<Record<string, string>>({})
+
   const isReasoning = currentSession?.id ? Boolean(reasoningMap[currentSession.id]) : false
   const currentStatus: SessionStatusInfo =
     currentSession?.id && statusMap[currentSession.id]
@@ -166,6 +174,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
             setAgentModelMap(state.agent_model)
           }
 
+          // Load variant map from server state
+          if (state.variant) {
+            setVariantMap(state.variant)
+          }
+
           // Set agent (default to 'build' if not set)
           const agent = state.agent || "build"
           setSelectedAgentState(agent)
@@ -201,6 +214,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
             setSelectedModelId(modelId)
             localStorage.setItem("opencode_selected_provider", providerId)
             localStorage.setItem("opencode_selected_model", modelId)
+
+            // Compute initial variant for the selected model
+            if (state.variant) {
+              const modelKey = `${providerId}/${modelId}`
+              setSelectedVariantState(state.variant[modelKey])
+            }
           }
         }
       } catch (err) {
@@ -227,6 +246,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
     async (providerId: string | undefined, modelId: string | undefined) => {
       setSelectedProviderId(providerId)
       setSelectedModelId(modelId)
+
+      // Restore variant for the new model
+      if (providerId && modelId) {
+        const modelKey = `${providerId}/${modelId}`
+        setSelectedVariantState(variantMap[modelKey])
+      } else {
+        setSelectedVariantState(undefined)
+      }
 
       // Persist to localStorage as fallback
       if (providerId) {
@@ -279,7 +306,43 @@ export function SessionProvider({ children }: SessionProviderProps) {
         }
       }
     },
-    [selectedAgent, agentModelMap],
+    [selectedAgent, agentModelMap, variantMap],
+  )
+
+  /**
+   * Set selected variant and persist to server
+   * Updates per-model variant preference
+   */
+  const setSelectedVariant = useCallback(
+    async (variant: string | undefined) => {
+      setSelectedVariantState(variant)
+
+      // Get current model key
+      if (selectedProviderId && selectedModelId) {
+        const modelKey = `${selectedProviderId}/${selectedModelId}`
+
+        // Update variant map
+        let updatedVariantMap = { ...variantMap }
+        if (variant) {
+          updatedVariantMap[modelKey] = variant
+        } else {
+          delete updatedVariantMap[modelKey]
+        }
+        setVariantMap(updatedVariantMap)
+
+        // Persist to server
+        try {
+          await sdk.state.update({
+            body: {
+              variant: updatedVariantMap,
+            },
+          })
+        } catch (err) {
+          console.error("[SessionContext] Failed to save variant preference:", err)
+        }
+      }
+    },
+    [selectedProviderId, selectedModelId, variantMap],
   )
 
   /**
@@ -876,6 +939,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
     selectedAgent,
     setSelectedModel,
     setSelectedAgent,
+    selectedVariant,
+    setSelectedVariant,
     isVirtualSession,
     newVirtual,
     createSession,

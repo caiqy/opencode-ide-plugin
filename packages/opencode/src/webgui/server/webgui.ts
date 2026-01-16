@@ -421,6 +421,7 @@ export const WebGuiRoute = new Hono()
                     provider: z.string().optional(),
                     model: z.string().optional(),
                     agent: z.string().optional(),
+                    variant: z.record(z.string(), z.string()).optional(),
                     recently_used_models: z
                       .array(
                         z.object({
@@ -479,6 +480,7 @@ export const WebGuiRoute = new Hono()
                     provider: z.string().optional(),
                     model: z.string().optional(),
                     agent: z.string().optional(),
+                    variant: z.record(z.string(), z.string()).optional(),
                     recently_used_models: z
                       .array(
                         z.object({

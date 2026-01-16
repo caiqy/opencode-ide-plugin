@@ -30,6 +30,7 @@ export const StateSchema = z.object({
   provider: z.string().optional(),
   model: z.string().optional(),
   agent: z.string().optional(),
+  variant: z.record(z.string(), z.string()).optional(),
   recently_used_models: z.array(ModelUsageSchema).optional(),
   recently_used_agents: z.array(AgentUsageSchema).optional(),
   show_tool_details: z.boolean().optional(),
@@ -142,6 +143,11 @@ export async function write(partial: Partial<State>): Promise<void> {
     if (partial.agent_model) {
       const existingAgentModel = ((raw as any).agent_model as Record<string, AgentModel> | undefined) || {}
       ;(raw as any).agent_model = { ...existingAgentModel, ...partial.agent_model }
+    }
+
+    if (partial.variant) {
+      const existingVariant = ((raw as any).variant as Record<string, string> | undefined) || {}
+      ;(raw as any).variant = { ...existingVariant, ...partial.variant }
     }
 
     const toml = TOML.stringify(raw as any)

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from "react"
+import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle, useMemo } from "react"
 import { LexicalComposer } from "@lexical/react/LexicalComposer"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import { $getRoot, $getSelection, $isRangeSelection, $createTextNode, type EditorState } from "lexical"
@@ -6,6 +6,8 @@ import { $createMentionNode } from "../mention/MentionNode"
 import { useSession } from "../../state/SessionContext"
 import { useProject } from "../../state/ProjectContext"
 import { useProviders } from "../../state/ProvidersContext"
+import { sdk } from "../../lib/api/sdkClient"
+import type { Provider } from "@opencode-ai/sdk/client"
 import { toProjectRelative } from "../../utils/path"
 import { ConfirmModal } from "../ConfirmModal"
 import { createEditorConfig } from "./EditorConfig"
@@ -62,9 +64,20 @@ const MessageInputInner = forwardRef<
   const contentEditableRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const { worktree } = useProject()
-  const { isIdle, selectedProviderId, selectedModelId, selectedAgent, setSelectedModel, setSelectedAgent } =
-    useSession()
+  const {
+    isIdle,
+    selectedProviderId,
+    selectedModelId,
+    selectedAgent,
+    setSelectedModel,
+    setSelectedAgent,
+    selectedVariant,
+    setSelectedVariant,
+  } = useSession()
   const { providersDirty, clearProvidersDirty } = useProviders()
+
+  // Providers state for variants computation
+  const [providers, setProviders] = useState<Provider[]>([])
 
   const handleEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
@@ -119,6 +132,7 @@ const MessageInputInner = forwardRef<
     isEmpty,
     selectedProviderId,
     selectedModelId,
+    selectedVariant,
     selectedAgent,
     extractMessageParts,
     onMessageSent,
@@ -222,12 +236,65 @@ const MessageInputInner = forwardRef<
     editor.setEditable(!isSending)
   }, [editor, isSending])
 
+  // Load providers for variant computation
+  useEffect(() => {
+    let active = true
+    async function loadProviders() {
+      try {
+        const response = await sdk.config.providers()
+        if (!active) return
+        if (response.data) {
+          setProviders(response.data.providers)
+        }
+      } catch (err) {
+        console.error("[MessageInput] Failed to load providers:", err)
+      }
+    }
+    loadProviders()
+    return () => {
+      active = false
+    }
+  }, [])
+
   // Update model selector when providers change
   useEffect(() => {
     if (!providersDirty) return
     setModelSelectorKey((value) => value + 1)
+    // Reload providers when dirty
+    sdk.config.providers().then((response) => {
+      if (response.data) {
+        setProviders(response.data.providers)
+      }
+    })
     clearProvidersDirty()
   }, [providersDirty, clearProvidersDirty])
+
+  const currentModelInfo = useMemo(() => {
+    if (!selectedProviderId || !selectedModelId) {
+      return {
+        variants: undefined as string[] | undefined,
+        isReasoning: false,
+      }
+    }
+    const provider = providers.find((p) => p.id === selectedProviderId)
+    if (!provider) {
+      return {
+        variants: undefined,
+        isReasoning: false,
+      }
+    }
+    const model = provider.models?.[selectedModelId] as
+      | ((typeof provider.models)[string] & {
+          variants?: Record<string, unknown>
+          capabilities?: { reasoning?: boolean }
+        })
+      | undefined
+
+    return {
+      variants: model?.variants ? Object.keys(model.variants) : undefined,
+      isReasoning: !!model?.capabilities?.reasoning,
+    }
+  }, [providers, selectedProviderId, selectedModelId])
 
   const isDisabled = isSending
   const isButtonDisabled = isDisabled || isEmpty
@@ -275,6 +342,10 @@ const MessageInputInner = forwardRef<
           onSubmit={handleSubmit}
           onAbort={handleAbort}
           onCompactClick={() => setIsCompactConfirmOpen(true)}
+          variants={currentModelInfo.variants}
+          selectedVariant={selectedVariant}
+          onVariantSelect={(variant) => setSelectedVariant(variant)}
+          isReasoningModel={currentModelInfo.isReasoning}
         />
       </footer>
 

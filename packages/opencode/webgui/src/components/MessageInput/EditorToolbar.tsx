@@ -1,5 +1,6 @@
 import { ModelSelector } from "../ModelSelector"
 import { AgentSelector } from "../AgentSelector"
+import { VariantSelector } from "../VariantSelector"
 import { IconButton } from "../common"
 import { MessageActions } from "./MessageActions"
 
@@ -22,6 +23,10 @@ interface EditorToolbarProps {
   onSubmit: () => void
   onAbort: () => void
   onCompactClick: () => void
+  variants?: string[]
+  selectedVariant?: string
+  onVariantSelect: (variant: string | undefined) => void
+  isReasoningModel?: boolean
 }
 
 export function EditorToolbar({
@@ -43,6 +48,10 @@ export function EditorToolbar({
   onSubmit,
   onAbort,
   onCompactClick,
+  variants,
+  selectedVariant,
+  onVariantSelect,
+  isReasoningModel,
 }: EditorToolbarProps) {
   return (
     <div className="h-8 px-2 flex items-center justify-between border-t border-gray-100 dark:border-gray-800">
@@ -70,6 +79,13 @@ export function EditorToolbar({
           selectedModelId={selectedModelId}
           onSelect={onModelSelect}
           disabled={isDisabled}
+        />
+        <VariantSelector
+          variants={variants}
+          selectedVariant={selectedVariant}
+          onSelect={onVariantSelect}
+          disabled={isDisabled}
+          isReasoningModel={isReasoningModel}
         />
         <AgentSelector selectedAgent={selectedAgent} onSelect={onAgentSelect} disabled={isDisabled} />
         <IconButton

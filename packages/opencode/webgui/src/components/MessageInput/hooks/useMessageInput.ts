@@ -11,6 +11,7 @@ interface UseMessageInputOptions {
   selectedProviderId: string | undefined
   selectedModelId: string | undefined
   selectedAgent: string
+  selectedVariant: string | undefined
   extractMessageParts: () => any[]
   onMessageSent?: () => void
   onError?: (error: Error) => void
@@ -23,6 +24,7 @@ export function useMessageInput({
   selectedProviderId,
   selectedModelId,
   selectedAgent,
+  selectedVariant,
   extractMessageParts,
   onMessageSent,
   onError,
@@ -86,6 +88,11 @@ export function useMessageInput({
       // Always include agent (defaults to 'build')
       requestBody.agent = selectedAgent
 
+      // Add variant if selected
+      if (selectedVariant) {
+        requestBody.variant = selectedVariant
+      }
+
       // Clear editor immediately (optimistic UI)
       editor.update(() => {
         const root = $getRoot()
@@ -141,6 +148,7 @@ export function useMessageInput({
     selectedProviderId,
     selectedModelId,
     selectedAgent,
+    selectedVariant,
     onMessageSent,
     onError,
     setIsIdle,
