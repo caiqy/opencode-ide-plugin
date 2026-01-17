@@ -18,7 +18,8 @@ import type {
   StepStartPart,
   StepFinishPart,
   RetryPart,
-} from "@opencode-ai/sdk/client"
+  QuestionRequest,
+} from "@opencode-ai/sdk/v2/client"
 
 // Re-export SDK message types
 export type {
@@ -36,6 +37,7 @@ export type {
   StepFinishPart,
   RetryPart,
   SDKMessage,
+  QuestionRequest,
 }
 
 export interface SessionErrorPart {
@@ -46,7 +48,15 @@ export interface SessionErrorPart {
   message: string
 }
 
-export type WebguiPart = Part | SessionErrorPart
+export interface QuestionRequestPart {
+  type: "question"
+  id: string
+  sessionID: string
+  messageID: string
+  request: QuestionRequest
+}
+
+export type WebguiPart = Part | SessionErrorPart | QuestionRequestPart
 
 // SDK's Message is the discriminated union (UserMessage | AssistantMessage)
 // Webgui structure wraps this with parts array

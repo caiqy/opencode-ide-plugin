@@ -7,6 +7,7 @@ import { EmptyState } from "./EmptyState"
 import { MessageRow } from "./MessageRow"
 import { RevertBanner } from "./RevertBanner"
 import { RevertSummary } from "./RevertSummary"
+import { QuestionPart } from "./Parts/QuestionPart"
 import { useMessageScroll } from "./hooks/useMessageScroll"
 import { useMessageActions } from "./hooks/useMessageActions"
 
@@ -16,8 +17,11 @@ interface MessageListProps {
 }
 
 export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
-  const { getMessagesBySession, messages } = useMessages()
+  const { getMessagesBySession, messages, getQuestionsBySession } = useMessages()
   const { isIdle, isReasoning, currentSession } = useSession()
+
+  // Get pending questions for current session
+  const pendingQuestions = sessionID ? getQuestionsBySession(sessionID) : []
 
   // Debug logging for isIdle state
   useEffect(() => {
@@ -136,6 +140,14 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
           )}
 
           {rows}
+
+          {/* Pending questions from server */}
+          {pendingQuestions.map((question) => (
+            <div key={question.id} className="px-4">
+              <QuestionPart request={question} />
+            </div>
+          ))}
+
           {/* Typing indicator - hide while reasoning parts are streaming */}
           <TypingIndicator visible={!isIdle && !isReasoning} />
           {/* Scroll anchor */}

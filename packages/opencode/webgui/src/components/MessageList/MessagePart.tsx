@@ -1,4 +1,4 @@
-import type { Part, WebguiPart } from "../../state/MessagesContext"
+import type { Part, WebguiPart, QuestionRequestPart as QuestionRequestPartType } from "../../state/MessagesContext"
 import { TextPart } from "./TextPart"
 import { ReasoningPart } from "./ReasoningPart"
 import { ToolPart } from "../parts/ToolPart"
@@ -6,6 +6,7 @@ import { PatchPart } from "../parts/PatchPart"
 import { SnapshotPart } from "../parts/SnapshotPart"
 import { RetryPart } from "../parts/RetryPart"
 import { SessionErrorPart } from "./SessionErrorPart"
+import { QuestionPart } from "./Parts/QuestionPart"
 
 interface MessagePartProps {
   part: WebguiPart
@@ -157,6 +158,12 @@ export function MessagePart({
   // Session errors
   if (part.type === "session-error") {
     return <SessionErrorPart key={part.id} part={part} />
+  }
+
+  // Question requests
+  if (part.type === "question") {
+    const questionPart = part as QuestionRequestPartType
+    return <QuestionPart key={part.id} request={questionPart.request} />
   }
 
   return null

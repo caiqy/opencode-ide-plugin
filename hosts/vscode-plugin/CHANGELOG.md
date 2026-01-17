@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec2.0.0.h
 
 ### [26.1.xx] - 2026-01-xx
 
+- Added support for "Question" tool
 - Added model "variants" - reasoning effort
 - Fixed some models name on Recent list
 - Updated OpenCode to v1.1.24

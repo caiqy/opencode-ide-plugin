@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
 import { useEventHandler, type EventEmitter, type ServerEvent } from "../lib/api/events"
-import type { Message, Part, WebguiPart, SDKMessage } from "../types/messages"
+import type { Message, Part, WebguiPart, SDKMessage, QuestionRequest } from "../types/messages"
+import type { QuestionAnswer } from "@opencode-ai/sdk/v2/client"
 // PermissionRequest type based on new permission system (permission.asked event)
 interface PermissionRequest {
   id: string
@@ -20,7 +21,7 @@ import { useSession } from "./SessionContext"
 import { reloadPath } from "../lib/ideBridge"
 
 // Re-export types for convenience
-export type { Message, Part, WebguiPart, SDKMessage } from "../types/messages"
+export type { Message, Part, WebguiPart, SDKMessage, QuestionRequest, QuestionRequestPart } from "../types/messages"
 
 interface MessagesContextValue {
   messages: Message[]
@@ -43,6 +44,12 @@ interface MessagesContextValue {
     requestID: string,
     reply: "once" | "always" | "reject",
   ) => Promise<boolean>
+  // questions
+  questions: Map<string, QuestionRequest[]>
+  getQuestionsBySession: (sessionID: string) => QuestionRequest[]
+  getQuestionForCall: (sessionID: string, callID?: string | null) => QuestionRequest | undefined
+  replyQuestion: (requestID: string, answers: QuestionAnswer[]) => Promise<boolean>
+  rejectQuestion: (requestID: string) => Promise<boolean>
 }
 
 const MessagesContext = createContext<MessagesContextValue | undefined>(undefined)
@@ -55,6 +62,7 @@ interface MessagesProviderProps {
 export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [permissions, setPermissions] = useState<PermissionRequest[]>([])
+  const [questions, setQuestions] = useState<Map<string, QuestionRequest[]>>(new Map())
   const session = useSession()
   const setReasoning = session.setReasoning
 
@@ -270,7 +278,8 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       if (response.data) {
         console.log("[MessagesContext] Messages loaded:", response.data.length)
         // SDK response is already in the correct format: Array<{ info: Message, parts: Array<Part> }>
-        const loadedMessages: Message[] = response.data
+        // Cast needed because sdk.session.messages returns non-v2 types, but they're structurally identical
+        const loadedMessages = response.data as unknown as Message[]
 
         console.log("[MessagesContext] Loaded messages sample:", loadedMessages[0])
 
@@ -342,6 +351,129 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     [],
   )
 
+  // Question events
+  const handleQuestionAsked = useCallback((event: ServerEvent) => {
+    if (event.type !== "question.asked") return
+    const request = event.properties as QuestionRequest
+    console.log("[MessagesContext] Question asked:", request.id, request.sessionID)
+    setQuestions((prev) => {
+      const newMap = new Map(prev)
+      const sessionQuestions = newMap.get(request.sessionID) ?? []
+      const exists = sessionQuestions.some((q) => q.id === request.id)
+      if (exists) {
+        // Update existing question
+        newMap.set(
+          request.sessionID,
+          sessionQuestions.map((q) => (q.id === request.id ? request : q)),
+        )
+      } else {
+        // Add new question
+        newMap.set(request.sessionID, [...sessionQuestions, request])
+      }
+      return newMap
+    })
+  }, [])
+
+  const handleQuestionReplied = useCallback((event: ServerEvent) => {
+    if (event.type !== "question.replied") return
+    const { sessionID, requestID } = event.properties as { sessionID: string; requestID: string }
+    console.log("[MessagesContext] Question replied:", requestID, sessionID)
+    setQuestions((prev) => {
+      const newMap = new Map(prev)
+      const sessionQuestions = newMap.get(sessionID)
+      if (sessionQuestions) {
+        newMap.set(
+          sessionID,
+          sessionQuestions.filter((q) => q.id !== requestID),
+        )
+      }
+      return newMap
+    })
+  }, [])
+
+  const handleQuestionRejected = useCallback((event: ServerEvent) => {
+    if (event.type !== "question.rejected") return
+    const { sessionID, requestID } = event.properties as { sessionID: string; requestID: string }
+    console.log("[MessagesContext] Question rejected:", requestID, sessionID)
+    setQuestions((prev) => {
+      const newMap = new Map(prev)
+      const sessionQuestions = newMap.get(sessionID)
+      if (sessionQuestions) {
+        newMap.set(
+          sessionID,
+          sessionQuestions.filter((q) => q.id !== requestID),
+        )
+      }
+      return newMap
+    })
+  }, [])
+
+  const getQuestionsBySession = useCallback(
+    (sessionID: string): QuestionRequest[] => {
+      return questions.get(sessionID) ?? []
+    },
+    [questions],
+  )
+
+  const getQuestionForCall = useCallback(
+    (sessionID: string, callID?: string | null): QuestionRequest | undefined => {
+      if (!sessionID || !callID) return undefined
+      const sessionQuestions = questions.get(sessionID)
+      if (!sessionQuestions) return undefined
+      return sessionQuestions.find((q) => q.tool?.callID === callID)
+    },
+    [questions],
+  )
+
+  const replyQuestion = useCallback(async (requestID: string, answers: QuestionAnswer[]): Promise<boolean> => {
+    try {
+      await sdk.question.reply({
+        requestID,
+        answers,
+      })
+      // Remove from local state (event will also do this, but be proactive)
+      setQuestions((prev) => {
+        const newMap = new Map(prev)
+        for (const [sessionID, sessionQuestions] of newMap) {
+          const filtered = sessionQuestions.filter((q) => q.id !== requestID)
+          if (filtered.length !== sessionQuestions.length) {
+            newMap.set(sessionID, filtered)
+            break
+          }
+        }
+        return newMap
+      })
+      return true
+    } catch (e) {
+      console.error("[MessagesContext] Failed to reply to question:", e)
+      return false
+    }
+  }, [])
+
+  const rejectQuestion = useCallback(async (requestID: string): Promise<boolean> => {
+    try {
+      await sdk.question.reject({
+        requestID,
+      })
+      // Remove from local state (event will also do this, but be proactive)
+      setQuestions((prev) => {
+        const newMap = new Map(prev)
+        for (const [sessionID, sessionQuestions] of newMap) {
+          const filtered = sessionQuestions.filter((q) => q.id !== requestID)
+          if (filtered.length !== sessionQuestions.length) {
+            newMap.set(sessionID, filtered)
+            break
+          }
+        }
+        return newMap
+      })
+      return true
+    } catch (e) {
+      console.error("[MessagesContext] Failed to reject question:", e)
+      return false
+    }
+  }, [])
+
   // Subscribe to events if emitter is provided
   useEventHandler(emitter ?? null, "message.updated", handleMessageUpdated)
   useEventHandler(emitter ?? null, "message.part.updated", handlePartUpdated)
@@ -350,6 +482,9 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   useEventHandler(emitter ?? null, "message.part.removed", handlePartRemoved)
   useEventHandler(emitter ?? null, "permission.asked", handlePermissionAsked)
   useEventHandler(emitter ?? null, "permission.replied", handlePermissionReplied)
+  useEventHandler(emitter ?? null, "question.asked", handleQuestionAsked)
+  useEventHandler(emitter ?? null, "question.replied", handleQuestionReplied)
+  useEventHandler(emitter ?? null, "question.rejected", handleQuestionRejected)
 
   const value: MessagesContextValue = {
     messages,
@@ -368,6 +503,11 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     permissions,
     getPermissionForCall,
     respondPermission,
+    questions,
+    getQuestionsBySession,
+    getQuestionForCall,
+    replyQuestion,
+    rejectQuestion,
   }
 
   return <MessagesContext.Provider value={value}>{children}</MessagesContext.Provider>

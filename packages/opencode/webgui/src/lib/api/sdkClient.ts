@@ -194,6 +194,31 @@ export const sdk = {
       return { data, error: null }
     },
   },
+  question: {
+    reply: async (options: { requestID: string; answers: Array<Array<string>> }) => {
+      const response = await fetch(`/question/${options.requestID}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers: options.answers }),
+      })
+      if (!response.ok) {
+        return { error: { message: "Failed to reply to question" }, data: null }
+      }
+      const data = await response.json()
+      return { data, error: null }
+    },
+    reject: async (options: { requestID: string }) => {
+      const response = await fetch(`/question/${options.requestID}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+      if (!response.ok) {
+        return { error: { message: "Failed to reject question" }, data: null }
+      }
+      const data = await response.json()
+      return { data, error: null }
+    },
+  },
   state: {
     get: async () => {
       try {
