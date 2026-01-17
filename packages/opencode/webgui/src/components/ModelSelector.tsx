@@ -163,6 +163,11 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                     </div>
                     {filterRecent().map((item) => {
                       const isSelected = selectedProviderId === item.provider_id && selectedModelId === item.model_id
+                      
+                      // Find model name from providers list
+                      const provider = providers.find((p) => p.id === item.provider_id)
+                      const modelName = provider?.models[item.model_id]?.name || item.model_id
+
                       return (
                         <button
                           key={`${item.provider_id}:${item.model_id}:${item.last_used}`}
@@ -174,7 +179,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                           }`}
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span className="font-medium truncate">{item.model_id}</span>
+                            <span className="font-medium truncate">{modelName}</span>
                             <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
                               {formatDate(item.last_used)}
                             </span>
