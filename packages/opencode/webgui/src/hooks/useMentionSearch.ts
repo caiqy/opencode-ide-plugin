@@ -63,11 +63,14 @@ export function useMentionSearch(query: string): UseMentionSearchResult {
         if (agentsResponse.status === "fulfilled" && agentsResponse.value.data) {
           const agents = agentsResponse.value.data
           for (const agent of agents) {
-            agentResults.push({
-              id: `agent:${agent.name}`,
-              metadata: { type: "agent", display: agent.name, name: agent.name },
-              score: 0,
-            })
+            // Filter agents: hide hidden agents and exclude 'primary' mode agents from mentions
+            if (!(agent as any).hidden && agent.mode !== "primary") {
+              agentResults.push({
+                id: `agent:${agent.name}`,
+                metadata: { type: "agent", display: agent.name, name: agent.name },
+                score: 0,
+              })
+            }
           }
         }
 

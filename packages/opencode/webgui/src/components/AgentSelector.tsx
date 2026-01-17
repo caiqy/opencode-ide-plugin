@@ -32,8 +32,10 @@ export function AgentSelector({ selectedAgent, onSelect, disabled }: AgentSelect
         }
 
         if (response.data) {
-          // Filter agents to only show 'primary' and 'all' modes (not 'subagent')
-          const filteredAgents = response.data.filter((agent) => agent.mode === "primary" || agent.mode === "all")
+          // Filter agents to only show 'primary' and 'all' modes (not 'subagent') and hide 'hidden' agents
+          const filteredAgents = response.data.filter(
+            (agent: any) => agent.mode !== "subagent" && !agent.hidden,
+          )
           setAgents(filteredAgents)
         }
       } catch (err) {
