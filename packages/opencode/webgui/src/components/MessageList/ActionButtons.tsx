@@ -25,7 +25,7 @@ export function ActionButtons({ onFork, onRevert, revertBusy, tokens, cost, isUs
     tokens && (tokens.input > 0 || tokens.output > 0 || tokens.reasoning > 0 || tokens.cache.read > 0 || tokens.cache.write > 0)
 
   return (
-    <div className="absolute left-1/2 -translate-x-1/2 top-0 flex gap-2">
+    <div className="absolute left-1/2 -translate-x-1/2 top-0 flex gap-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-px z-50">
       {isUser && onFork && (
         <IconButton
           onClick={onFork}
