@@ -1,4 +1,4 @@
-import { useState, forwardRef, useImperativeHandle } from "react"
+import { useState, forwardRef, useImperativeHandle, useCallback } from "react"
 import type { ConnectionState } from "../../lib/api/events"
 import { useTheme } from "../../state/ThemeContext"
 import { useSession, isDefaultTitle } from "../../state/SessionContext"
@@ -11,6 +11,8 @@ import { StatusIndicator } from "./StatusIndicator"
 import { ActionButtons } from "./ActionButtons"
 import { UsageDisplay } from "./UsageDisplay"
 import { SessionDropdown } from "./SessionDropdown"
+import { sdk } from "../../lib/api/sdkClient"
+import { useToast } from "../../state/ToastContext"
 
 interface CompactHeaderProps {
   connectionState: ConnectionState
@@ -26,10 +28,85 @@ const CompactHeader = forwardRef<
   CompactHeaderProps
 >(({ connectionState, onNewSession, isCreatingSession, onOpenCommandPalette }, ref) => {
   const { theme, toggleTheme } = useTheme()
-  const { currentSession, sessions, switchSession, updateSessionTitle, deleteSession } = useSession()
+  const { currentSession, setCurrentSession, sessions, setSessions, switchSession, updateSessionTitle, deleteSession } =
+    useSession()
   const usage = useSessionUsage()
+  const toast = useToast()
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  const [sharingSessionId, setSharingSessionId] = useState<string | null>(null)
+
+  const isShared = !!currentSession?.share?.url
+
+  const handleToggleShare = useCallback(async () => {
+    if (!currentSession || currentSession.id.startsWith("virtual-")) return
+
+    setIsSharing(true)
+    if (isShared) {
+      const res = await sdk.session.unshare({ path: { id: currentSession.id } })
+      if (res.data) {
+        setCurrentSession(res.data)
+        toast.showToast("Session unshared", { variant: "success" })
+      } else {
+        toast.showToast("Failed to unshare session", { variant: "error" })
+      }
+    } else {
+      const res = await sdk.session.share({ path: { id: currentSession.id } })
+      if (res.data) {
+        setCurrentSession(res.data)
+        if (res.data.share?.url) {
+          await navigator.clipboard.writeText(res.data.share.url)
+          toast.showToast("Share URL copied to clipboard", { variant: "success" })
+        }
+      } else {
+        toast.showToast("Failed to share session", { variant: "error" })
+      }
+    }
+    setIsSharing(false)
+  }, [currentSession, isShared, setCurrentSession, toast])
+
+  const handleToggleShareSession = useCallback(
+    async (sessionId: string, e: React.MouseEvent) => {
+      e.stopPropagation()
+      const session = sessions.find((s) => s.id === sessionId)
+      if (!session) return
+
+      setSharingSessionId(sessionId)
+      const sessionIsShared = !!session.share?.url
+
+      if (sessionIsShared) {
+        const res = await sdk.session.unshare({ path: { id: sessionId } })
+        if (res.data) {
+          // Update session in the list for immediate UI feedback
+          setSessions(sessions.map((s) => (s.id === sessionId ? res.data! : s)))
+          if (currentSession?.id === sessionId) {
+            setCurrentSession(res.data)
+          }
+          toast.showToast("Session unshared", { variant: "success" })
+        } else {
+          toast.showToast("Failed to unshare session", { variant: "error" })
+        }
+      } else {
+        const res = await sdk.session.share({ path: { id: sessionId } })
+        if (res.data) {
+          // Update session in the list for immediate UI feedback
+          setSessions(sessions.map((s) => (s.id === sessionId ? res.data! : s)))
+          if (currentSession?.id === sessionId) {
+            setCurrentSession(res.data)
+          }
+          if (res.data.share?.url) {
+            await navigator.clipboard.writeText(res.data.share.url)
+            toast.showToast("Share URL copied to clipboard", { variant: "success" })
+          }
+        } else {
+          toast.showToast("Failed to share session", { variant: "error" })
+        }
+      }
+      setSharingSessionId(null)
+    },
+    [sessions, currentSession, setCurrentSession, setSessions, toast],
+  )
 
   // Session dropdown management
   const dropdown = useSessionDropdown(sessions)
@@ -112,6 +189,7 @@ const CompactHeader = forwardRef<
             editInputRef={actions.editInputRef}
             selectedSessionRef={dropdown.selectedSessionRef}
             sessionListRef={dropdown.sessionListRef}
+            sharingSessionId={sharingSessionId}
             onSearchChange={dropdown.setSearchQuery}
             onSearchKeyDown={dropdown.handleSearchKeyDown}
             onToggleSelectMode={dropdown.toggleSelectMode}
@@ -124,6 +202,7 @@ const CompactHeader = forwardRef<
             onBulkDeleteStart={handleBulkDeleteStart}
             onCheckboxChange={dropdown.handleSessionCheckboxChange}
             onKeyDown={(e) => dropdown.handleKeyDown(e, handleSessionSelect)}
+            onToggleShare={handleToggleShareSession}
           />
         </div>
 
@@ -137,6 +216,9 @@ const CompactHeader = forwardRef<
             onOpenSettings={() => setIsSettingsOpen(true)}
             onNewSession={onNewSession}
             isCreatingSession={isCreatingSession}
+            isShared={isShared}
+            isSharing={isSharing}
+            onToggleShare={handleToggleShare}
           />
         </div>
       </header>

@@ -16,6 +16,7 @@ interface SessionDropdownProps {
   editInputRef: React.RefObject<HTMLInputElement | null>
   selectedSessionRef: React.RefObject<HTMLDivElement | null>
   sessionListRef: React.RefObject<HTMLDivElement | null>
+  sharingSessionId: string | null
   onSearchChange: (value: string) => void
   onSearchKeyDown: (e: React.KeyboardEvent) => void
   onToggleSelectMode: () => void
@@ -28,6 +29,7 @@ interface SessionDropdownProps {
   onBulkDeleteStart: () => void
   onCheckboxChange: (sessionId: string, checked: boolean) => void
   onKeyDown: (e: React.KeyboardEvent) => void
+  onToggleShare: (sessionId: string, e: React.MouseEvent) => void
 }
 
 export function SessionDropdown({
@@ -45,6 +47,7 @@ export function SessionDropdown({
   editInputRef,
   selectedSessionRef,
   sessionListRef,
+  sharingSessionId,
   onSearchChange,
   onSearchKeyDown,
   onToggleSelectMode,
@@ -57,6 +60,7 @@ export function SessionDropdown({
   onBulkDeleteStart,
   onCheckboxChange,
   onKeyDown,
+  onToggleShare,
 }: SessionDropdownProps) {
   if (!isDropdownOpen) return null
 
@@ -114,6 +118,7 @@ export function SessionDropdown({
         editInputRef={editInputRef}
         selectedSessionRef={selectedSessionRef}
         sessionListRef={sessionListRef}
+        sharingSessionId={sharingSessionId}
         onSessionSelect={onSessionSelect}
         onEditStart={onEditStart}
         onEditSave={onEditSave}
@@ -122,6 +127,7 @@ export function SessionDropdown({
         onDeleteStart={onDeleteStart}
         onCheckboxChange={onCheckboxChange}
         onKeyDown={onKeyDown}
+        onToggleShare={onToggleShare}
       />
 
       {/* Bulk delete button (shown in select mode when sessions are selected) */}

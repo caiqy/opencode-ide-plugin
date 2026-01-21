@@ -1,10 +1,14 @@
 import { isDefaultTitle } from "../../state/SessionContext"
 import { formatTimestamp } from "./utils"
+import { ideBridge } from "../../lib/ideBridge"
 
 interface SessionItemProps {
   session: {
     id: string
     title: string | null
+    share?: {
+      url: string
+    }
     time: {
       created: number
     }
@@ -18,6 +22,7 @@ interface SessionItemProps {
   editingTitle: string
   editInputRef: React.RefObject<HTMLInputElement | null>
   selectedSessionRef: React.RefObject<HTMLDivElement | null>
+  isSharing: boolean
   onSelect: () => void
   onEditStart: (e: React.MouseEvent) => void
   onEditSave: () => void
@@ -26,6 +31,7 @@ interface SessionItemProps {
   onDeleteStart: (e: React.MouseEvent) => void
   onCheckboxChange: (checked: boolean) => void
   onKeyDown: (e: React.KeyboardEvent) => void
+  onToggleShare: (e: React.MouseEvent) => void
 }
 
 export function SessionItem({
@@ -39,6 +45,7 @@ export function SessionItem({
   editingTitle,
   editInputRef,
   selectedSessionRef,
+  isSharing,
   onSelect,
   onEditStart,
   onEditSave,
@@ -47,9 +54,22 @@ export function SessionItem({
   onDeleteStart,
   onCheckboxChange,
   onKeyDown,
+  onToggleShare,
 }: SessionItemProps) {
   const displayTitle = session.title || "Untitled"
   const hasDefaultTitle = isDefaultTitle(displayTitle)
+  const isShared = !!session.share?.url
+
+  const handleLinkClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (session.share?.url) {
+      if (ideBridge.isInstalled()) {
+        ideBridge.send({ type: "openUrl", payload: { url: session.share.url } })
+      } else {
+        window.open(session.share.url, "_blank", "noopener,noreferrer")
+      }
+    }
+  }
 
   return (
     <div
@@ -132,8 +152,53 @@ export function SessionItem({
                 {formatTimestamp(session.time.created)}
               </span>
 
-              {/* Edit and Delete buttons (visible on hover or when active) */}
+              {/* Action buttons (visible on hover or when active) */}
               <div className={`${isActive ? "flex" : "hidden group-hover:flex"} items-center gap-1`}>
+                {/* Link button (only shown if shared) */}
+                {isShared && (
+                  <button
+                    onClick={handleLinkClick}
+                    className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+                    title="Open share link"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
+                    </svg>
+                  </button>
+                )}
+                {/* Share/Unshare button */}
+                <button
+                  onClick={onToggleShare}
+                  disabled={isSharing}
+                  className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-50"
+                  title={isShared ? "Unshare session" : "Share session"}
+                >
+                  {isShared ? (
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                      />
+                    </svg>
+                  ) : (
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                      />
+                    </svg>
+                  )}
+                </button>
+                {/* Edit button */}
                 <button
                   onClick={onEditStart}
                   className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
@@ -148,6 +213,7 @@ export function SessionItem({
                     />
                   </svg>
                 </button>
+                {/* Delete button */}
                 <button
                   onClick={onDeleteStart}
                   className="p-1 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400"
