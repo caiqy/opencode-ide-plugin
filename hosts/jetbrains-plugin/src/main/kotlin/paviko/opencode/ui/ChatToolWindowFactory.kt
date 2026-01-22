@@ -1,6 +1,10 @@
 package paviko.opencode.ui
 
+
+import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.ide.plugins.PluginUtil
 import com.intellij.openapi.diagnostic.Logger
+
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
@@ -17,12 +21,27 @@ import java.awt.Font
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.URI
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import javax.swing.*
 
 class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
     private var connectionInfo: ConnInfo? = null
     private val logger = Logger.getInstance(ChatToolWindowFactory::class.java)
+
+    private fun pluginVersion(): String {
+        // Use pluginDescriptor.version without hardcoding plugin id.
+        // PluginUtil ties a classloader back to the hosting plugin.
+        val pluginId = PluginUtil.getPluginId(javaClass.classLoader) ?: return "dev"
+        val descriptor = PluginManagerCore.getPlugin(pluginId) ?: return "dev"
+        return descriptor.version
+    }
+
+    private fun withCacheBuster(url: String, version: String): String {
+        val encodedVersion = URLEncoder.encode(version, StandardCharsets.UTF_8)
+        val sep = if (url.contains("?")) "&" else "?"
+        return if (url.contains("v=")) url else "${url}${sep}v=${encodedVersion}"
+    }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         // vertical=true => top/bottom split; top takes 100% initially (logs collapsed)
@@ -116,7 +135,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                         } catch (_: Throwable) {}
                                         val browser = JBCefBrowser.createBuilder()
                                             .setClient(client)
-                                            .setUrl(appUrl)
+                                            .setUrl(withCacheBuster(appUrl, pluginVersion()))
                                             .build()
 
                                         // Store browser reference for path insertion (context actions)

@@ -4,6 +4,15 @@ import { SettingsManager } from "../settings/SettingsManager"
 import { errorHandler } from "../utils/ErrorHandler"
 import { WebviewController } from "./WebviewController"
 
+function withCacheBuster(url: string, version: string): string {
+  if (url.includes("v=")) {
+    return url
+  }
+
+  const sep = url.includes("?") ? "&" : "?"
+  return `${url}${sep}v=${encodeURIComponent(version)}`
+}
+
 /**
  * Webview view provider for the OpenCode activity bar view.
  */
@@ -55,6 +64,9 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
           progress.report({ increment: 0, message: "Launching backend..." })
           const connection = await this.backendLauncher.launchBackend()
           this.connection = connection
+
+          // Cache busting: force web UI reload after extension updates
+          connection.uiBase = withCacheBuster(connection.uiBase, this.context.extension.packageJSON.version)
 
           progress.report({ increment: 50, message: "Loading web UI..." })
           this.controller = new WebviewController({

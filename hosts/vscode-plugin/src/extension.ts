@@ -6,6 +6,15 @@ import { ActivityBarProvider } from "./ui/ActivityBarProvider"
 import { ErrorCategory, errorHandler, ErrorSeverity } from "./utils/ErrorHandler"
 import { logger } from "./globals"
 
+function withCacheBuster(url: string, version: string): string {
+  if (url.includes("v=")) {
+    return url
+  }
+
+  const sep = url.includes("?") ? "&" : "?"
+  return `${url}${sep}v=${encodeURIComponent(version)}`
+}
+
 /**
  * Main extension entry point - equivalent to ChatToolWindowFactory.kt
  * Handles extension activation, deactivation, and component coordination
@@ -169,8 +178,10 @@ class OpenCodeExtension {
 
       logger.appendLine("Opening OpenCode panel...")
 
+      const context = this.context
+
       // Create webview panel with settings manager
-      this.webviewManager.createWebviewPanel(this.context, this.settingsManager)
+      this.webviewManager.createWebviewPanel(context, this.settingsManager)
 
       // Show loading progress
       await vscode.window.withProgress(
@@ -185,6 +196,9 @@ class OpenCodeExtension {
 
             // Launch backend process with error handling
             const connection = await this.backendLauncher!.launchBackend(undefined, { forceNew: opts?.forceNewBackend })
+
+            // Cache busting: force web UI reload after extension updates
+            connection.uiBase = withCacheBuster(connection.uiBase, context.extension.packageJSON.version)
 
             progress.report({ increment: 50, message: "Loading web UI..." })
 
