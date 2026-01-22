@@ -2,6 +2,7 @@ import { useState } from "react"
 import type { Message } from "../../state/MessagesContext"
 import { isAssistantMessage, type AssistantMessage } from "../../types/messages"
 import { MessagePart } from "./MessagePart"
+import { SessionErrorPart } from "./SessionErrorPart"
 import { ActionButtons } from "./ActionButtons"
 import { getPartStart, getPartEnd } from "./utils"
 import { cn } from "../../utils/classNames"
@@ -12,20 +13,48 @@ interface MessageRowProps {
   onRevert: (messageId: string) => void
   revertBusy: boolean
   sessionID?: string
+  isLast?: boolean
 }
 
-export function MessageRow({ message, onFork, onRevert, revertBusy, sessionID }: MessageRowProps) {
+export function MessageRow({ message, onFork, onRevert, revertBusy, sessionID, isLast }: MessageRowProps) {
   const [isHovered, setIsHovered] = useState(false)
   const isUser = message.info.role === "user"
   const isAssistant = isAssistantMessage(message.info)
   const skipPartIds = new Set<string>()
+
+  const copyText = message.parts
+    .flatMap((p) => {
+      if (p.type !== "text") return []
+      const synthetic = (p as { synthetic?: boolean }).synthetic
+      if (synthetic) return []
+      const text = p.text || ""
+      return text.length > 0 ? [text] : []
+    })
+    .join("")
+
+  const canCopy = copyText.length > 0
 
   const assistantInfo = isAssistant ? (message.info as AssistantMessage) : null
   const tokens = assistantInfo?.tokens
   const cost = assistantInfo?.cost
 
   const hasTokens =
-    tokens && (tokens.input > 0 || tokens.output > 0 || tokens.reasoning > 0 || tokens.cache.read > 0 || tokens.cache.write > 0)
+    tokens &&
+    (tokens.input > 0 || tokens.output > 0 || tokens.reasoning > 0 || tokens.cache.read > 0 || tokens.cache.write > 0)
+
+  const error = (message.info as any)?.error as
+    | { name?: string; data?: { message?: string }; message?: string }
+    | undefined
+  const errorMessage =
+    typeof error?.data?.message === "string"
+      ? error.data.message
+      : typeof error?.message === "string"
+        ? error.message
+        : undefined
+
+  const showMessageLevelError = Boolean(
+    isLast && !isUser && error?.name && errorMessage && !message.parts.some((p) => p.type === "session-error"),
+  )
 
   // Calculate durations for reasoning parts using timestamps when available
   const partsWithDurations = message.parts.map((part) => {
@@ -53,7 +82,7 @@ export function MessageRow({ message, onFork, onRevert, revertBusy, sessionID }:
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Action buttons (visible on hover) */}
-      {isHovered && (isUser || hasTokens) && (
+      {isHovered && (isUser || hasTokens || canCopy) && (
         <ActionButtons
           onFork={() => onFork(message.info.id)}
           onRevert={() => onRevert(message.info.id)}
@@ -61,6 +90,7 @@ export function MessageRow({ message, onFork, onRevert, revertBusy, sessionID }:
           tokens={tokens}
           cost={cost}
           isUser={isUser}
+          copyText={copyText}
         />
       )}
 
@@ -78,6 +108,19 @@ export function MessageRow({ message, onFork, onRevert, revertBusy, sessionID }:
             skipPartIds={skipPartIds}
           />
         ))}
+
+        {/* Message-level errors (e.g. MessageAbortedError) */}
+        {showMessageLevelError && (
+          <SessionErrorPart
+            part={{
+              id: `message-error-${message.info.id}`,
+              type: "session-error",
+              sessionID: message.info.sessionID,
+              messageID: message.info.id,
+              message: errorMessage!,
+            }}
+          />
+        )}
 
         {/* Show placeholder if no parts yet (streaming start) */}
         {message.parts.length === 0 && !isUser && (

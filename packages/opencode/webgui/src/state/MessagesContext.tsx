@@ -40,10 +40,7 @@ interface MessagesContextValue {
   // permissions
   permissions: PermissionRequest[]
   getPermissionForCall: (sessionID: string, callID?: string | null) => PermissionRequest | undefined
-  respondPermission: (
-    requestID: string,
-    reply: "once" | "always" | "reject",
-  ) => Promise<boolean>
+  respondPermission: (requestID: string, reply: "once" | "always" | "reject") => Promise<boolean>
   // questions
   questions: Map<string, QuestionRequest[]>
   getQuestionsBySession: (sessionID: string) => QuestionRequest[]
@@ -59,6 +56,46 @@ interface MessagesProviderProps {
   emitter?: EventEmitter | null | undefined
 }
 
+function sessionErrorText(error: unknown): string {
+  if (!error) return "An error occurred in the session"
+  if (typeof error === "string") return error
+  if (typeof error !== "object") return "An error occurred in the session"
+
+  const data = (error as { data?: { message?: unknown }; message?: unknown }).data
+  const dataMessage = data && typeof data.message === "string" ? data.message : undefined
+  if (dataMessage) return dataMessage
+
+  const msg = (error as { message?: unknown }).message
+  if (typeof msg === "string" && msg.length > 0) return msg
+
+  return "An error occurred in the session"
+}
+
+function sessionErrorKey(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined
+
+  const name = (error as { name?: unknown }).name
+  const safeName = typeof name === "string" && name.length > 0 ? name : ""
+
+  // Prefer data.message when present (MessageAbortedError etc.)
+  const dataMessage = (error as { data?: { message?: unknown } })?.data?.message
+  if (typeof dataMessage === "string" && dataMessage.length > 0) {
+    return safeName ? `${safeName}:${dataMessage}` : `:${dataMessage}`
+  }
+
+  const msg = (error as { message?: unknown }).message
+  if (typeof msg === "string" && msg.length > 0) {
+    return safeName ? `${safeName}:${msg}` : `:${msg}`
+  }
+
+  return safeName.length > 0 ? `${safeName}:` : undefined
+}
+
+function infoSessionErrorKey(info: unknown): string | undefined {
+  const error = (info as { error?: unknown })?.error
+  return sessionErrorKey(error)
+}
+
 export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [permissions, setPermissions] = useState<PermissionRequest[]>([])
@@ -71,24 +108,14 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     setMessages((prev) => Store.upsertMessage(prev, message))
   }, [])
 
-  // Add an error message for a session
+  // Add an error message for a session (synthetic message)
   const addSessionError = useCallback((sessionID: string, error: unknown) => {
-    const text = (() => {
-      if (!error) return "An error occurred in the session"
-      if (typeof error === "string") return error
-      if (typeof error === "object") {
-        const data = (error as { data?: { message?: unknown }; message?: unknown }).data
-        const dataMessage = data && typeof data.message === "string" ? data.message : undefined
-        if (dataMessage) return dataMessage
-        const topMessage = (error as { message?: unknown }).message
-        if (typeof topMessage === "string" && topMessage.length > 0) return topMessage
-      }
-      return "An error occurred in the session"
-    })()
+    const text = sessionErrorText(error)
+    const key = sessionErrorKey(error)
 
     const errorID = `error-${Date.now()}`
     const errorMessage: Message = {
-      info: ({
+      info: {
         id: errorID,
         sessionID,
         role: "assistant",
@@ -96,7 +123,8 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
           created: Date.now(),
           updated: Date.now(),
         },
-      } as unknown) as SDKMessage,
+        syntheticErrorKey: key,
+      } as unknown as SDKMessage,
       parts: [
         {
           id: `part-${errorID}`,
@@ -108,7 +136,29 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       ],
     }
 
-    setMessages((prev) => Store.upsertMessage(prev, errorMessage))
+    setMessages((prev) => {
+      const alreadyShownOnMessage =
+        key &&
+        prev.some((m) => {
+          if (m.info.sessionID !== sessionID) return false
+          if (m.info.role !== "assistant") return false
+          return infoSessionErrorKey(m.info) === key
+        })
+
+      if (alreadyShownOnMessage) return prev
+
+      const existingSynthetic =
+        key &&
+        prev.some((m) => {
+          if (m.info.sessionID !== sessionID) return false
+          if (!m.info.id.startsWith("error-")) return false
+          return (m.info as any)?.syntheticErrorKey === key
+        })
+
+      if (existingSynthetic) return prev
+
+      return Store.upsertMessage(prev, errorMessage)
+    })
   }, [])
 
   // Remove session errors for a specific session, optionally after a certain timestamp
@@ -166,8 +216,21 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     if (event.type === "message.updated") {
       const { info } = event.properties as { info: SDKMessage }
       console.log("[MessagesContext] Message updated:", info.id, info.role)
+
+      const key = infoSessionErrorKey(info)
+
       // updateMessageInfo creates the message if it doesn't exist
-      setMessages((prev) => Store.updateMessageInfo(prev, info.id, info))
+      setMessages((prev) => {
+        const next = Store.updateMessageInfo(prev, info.id, info)
+        if (!key) return next
+
+        // If we later receive a message-level error, remove any synthetic session error we created for it.
+        return next.filter((m) => {
+          if (m.info.sessionID !== info.sessionID) return true
+          if (!m.info.id.startsWith("error-")) return true
+          return (m.info as any)?.syntheticErrorKey !== key
+        })
+      })
     }
   }, [])
 
@@ -334,22 +397,19 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     [permissions],
   )
 
-  const respondPermission = useCallback(
-    async (requestID: string, reply: "once" | "always" | "reject") => {
-      try {
-        const result = await sdk.permissions.respond({
-          path: { requestID },
-          body: { reply },
-        })
-        const ok = Boolean(result && "data" in result && result.data === true)
-        if (ok) setPermissions((prev) => prev.filter((p) => p.id !== requestID))
-        return ok
-      } catch (e) {
-        return false
-      }
-    },
-    [],
-  )
+  const respondPermission = useCallback(async (requestID: string, reply: "once" | "always" | "reject") => {
+    try {
+      const result = await sdk.permissions.respond({
+        path: { requestID },
+        body: { reply },
+      })
+      const ok = Boolean(result && "data" in result && result.data === true)
+      if (ok) setPermissions((prev) => prev.filter((p) => p.id !== requestID))
+      return ok
+    } catch (e) {
+      return false
+    }
+  }, [])
 
   // Question events
   const handleQuestionAsked = useCallback((event: ServerEvent) => {

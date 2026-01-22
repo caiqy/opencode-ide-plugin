@@ -71,6 +71,15 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
   // Inline revert handling: if session has a revert boundary, hide messages at/after it
   const revertBoundaryID = currentSession?.revert?.messageID
 
+  const visibleMessages = (() => {
+    if (!revertBoundaryID) return sortedMessages
+    const index = sortedMessages.findIndex((m) => m.info.id === revertBoundaryID)
+    if (index === -1) return sortedMessages
+    return sortedMessages.slice(0, index)
+  })()
+
+  const lastMessageID = visibleMessages.at(-1)?.info.id
+
   // Build rows with optional inline reverted summary block
   const rows: React.ReactNode[] = []
   let insertedRevertSummary = false
@@ -97,6 +106,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
           onRevert={handleRevert}
           revertBusy={isRevertBusy}
           sessionID={sessionID || undefined}
+          isLast={message.info.id === lastMessageID}
         />,
       )
     }
@@ -125,6 +135,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
           onRevert={handleRevert}
           revertBusy={isRevertBusy}
           sessionID={sessionID || undefined}
+          isLast={message.info.id === lastMessageID}
         />,
       )
     }

@@ -62,18 +62,20 @@ export function MessageStats({ tokens, cost }: MessageStatsProps) {
       <button
         ref={buttonRef}
         onClick={() => setShowDetails((v) => !v)}
-        className="flex items-center justify-center w-7 h-7 rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+        className="modern-icon-button w-6 h-6 p-0.5 flex items-center justify-center"
         aria-label="Show token usage"
         title="Show token usage"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-          />
-        </svg>
+        <div className="w-3 h-3">
+          <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+            />
+          </svg>
+        </div>
       </button>
 
       {showDetails && (
@@ -81,7 +83,7 @@ export function MessageStats({ tokens, cost }: MessageStatsProps) {
           ref={popoverRef}
           className={cn(
             "modern-card absolute left-1/2 -translate-x-1/2 w-48 z-50 overflow-hidden ring-1 ring-black/5 p-2 text-xs",
-            position === "above" ? "bottom-full mb-2" : "top-full mt-2"
+            position === "above" ? "bottom-full mb-2" : "top-full mt-2",
           )}
         >
           <div className="space-y-1">
