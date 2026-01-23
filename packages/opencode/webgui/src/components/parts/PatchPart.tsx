@@ -1,5 +1,8 @@
-import { useState } from "react"
+import { useState, useCallback, useMemo } from "react"
 import { DiffModal } from "../DiffModal"
+import { useOpenFile } from "../../hooks/useOpenFile"
+import { useProject } from "../../state/ProjectContext"
+import { toDisplayPath } from "../../utils/path"
 
 interface PatchPartProps {
   part: {
@@ -15,6 +18,34 @@ interface PatchPartProps {
 export function PatchPart({ part, sessionID, messageID }: PatchPartProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [showDiffModal, setShowDiffModal] = useState(false)
+  const openFile = useOpenFile()
+  const { worktree } = useProject()
+
+  const files = useMemo(() => {
+    return part.files.map((file) => {
+      const display = toDisplayPath(file, worktree) || file
+      return { file, display }
+    })
+  }, [part.files, worktree])
+
+  const single = files.length === 1 ? files[0]! : null
+
+  const open = useCallback(
+    (entry: { file: string; display: string }) => {
+      openFile({ path: entry.file, display: entry.display })
+    },
+    [openFile],
+  )
+
+  const handleOpenSingle = useCallback(
+    (e: React.MouseEvent | React.KeyboardEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (!single) return
+      open(single)
+    },
+    [open, single],
+  )
 
   return (
     <>
@@ -38,7 +69,23 @@ export function PatchPart({ part, sessionID, messageID }: PatchPartProps) {
             />
           </svg>
           <span className="text-xs font-medium text-amber-700 dark:text-amber-300 flex-1">
-            {part.files.length === 1 ? `Edited ${part.files[0]}` : `Edited ${part.files.length} files`}
+            {single ? (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={handleOpenSingle}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" && e.key !== " ") return
+                  handleOpenSingle(e)
+                }}
+                className="underline decoration-dotted cursor-pointer hover:opacity-80"
+                title={single.display}
+              >
+                {`Edited ${single.display}`}
+              </span>
+            ) : (
+              `Edited ${files.length} files`
+            )}
           </span>
           <svg
             viewBox="0 0 24 24"
@@ -62,8 +109,8 @@ export function PatchPart({ part, sessionID, messageID }: PatchPartProps) {
                 Modified Files
               </div>
               <div className="space-y-1">
-                {part.files.map((file) => (
-                  <div key={file} className="flex items-center gap-2 text-xs">
+                {files.map((entry) => (
+                  <div key={entry.file} className="flex items-center gap-2 text-xs">
                     <svg
                       className="w-3 h-3 text-amber-600 dark:text-amber-400 flex-shrink-0"
                       fill="none"
@@ -77,7 +124,19 @@ export function PatchPart({ part, sessionID, messageID }: PatchPartProps) {
                         d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                       />
                     </svg>
-                    <span className="font-mono text-gray-700 dark:text-gray-300">{file}</span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => open(entry)}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter" && e.key !== " ") return
+                        open(entry)
+                      }}
+                      className="font-mono text-gray-700 dark:text-gray-300 underline decoration-dotted cursor-pointer hover:opacity-80"
+                      title={entry.display}
+                    >
+                      {entry.display}
+                    </span>
                   </div>
                 ))}
               </div>
