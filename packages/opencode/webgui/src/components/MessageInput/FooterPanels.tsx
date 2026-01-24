@@ -1,37 +1,39 @@
 import { useState, useMemo } from "react"
 import { useMessages } from "../../state/MessagesContext"
-import { ModifiedFilesList } from "./ModifiedFilesPanel"
+import { useSession } from "../../state/SessionContext"
 import { TodosList } from "./TodosPanel"
+import { FileChangesPanel } from "../FileChangesPanel"
 
 interface FooterPanelsProps {
   sessionID: string | null
 }
 
 export function FooterPanels({ sessionID }: FooterPanelsProps) {
-  const [filesExpanded, setFilesExpanded] = useState(false)
   const [todosExpanded, setTodosExpanded] = useState(false)
+  const [filesExpanded, setFilesExpanded] = useState(false)
   const { getMessagesBySession } = useMessages()
+  const { sessionDiff } = useSession()
 
-  const { modifiedFiles, todos } = useMemo(() => {
-    if (!sessionID) return { modifiedFiles: [] as string[], todos: null }
+  const { todos, modifiedFiles } = useMemo(() => {
+    if (!sessionID) return { todos: null, modifiedFiles: [] as string[] }
     const messages = getMessagesBySession(sessionID)
+    let todoOutput: string | null = null
     const files: string[] = []
     const seen = new Set<string>()
-    let todoOutput: string | null = null
 
     for (const msg of messages) {
       for (const part of msg.parts) {
         if (part.type !== "tool") continue
         const toolPart = part as { tool?: string; state?: { input?: { filePath?: string }; output?: string } }
+        if (toolPart.tool === "todowrite" && toolPart.state?.output) {
+          todoOutput = toolPart.state.output
+        }
         if ((toolPart.tool === "write" || toolPart.tool === "edit") && toolPart.state?.input?.filePath) {
           const path = toolPart.state.input.filePath
           if (!seen.has(path)) {
             seen.add(path)
             files.push(path)
           }
-        }
-        if (toolPart.tool === "todowrite" && toolPart.state?.output) {
-          todoOutput = toolPart.state.output
         }
       }
     }
@@ -44,21 +46,27 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
       } catch {}
     }
 
-    return { modifiedFiles: files, todos }
+    return { todos, modifiedFiles: files }
   }, [sessionID, getMessagesBySession])
 
-  const hasFiles = modifiedFiles.length > 0
+  const diffs = sessionID ? sessionDiff[sessionID] : undefined
   const hasTodos = todos && todos.length > 0
+  const hasFiles = (diffs && diffs.length > 0) || modifiedFiles.length > 0
 
-  if (!hasFiles && !hasTodos) return null
+  if (!hasTodos && !hasFiles) return null
 
   const completedTodos = todos?.filter((t: any) => t.status === "completed").length ?? 0
+  const fileCount = diffs?.length ?? modifiedFiles.length
 
   return (
     <div className="px-2 py-1 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex flex-col gap-1">
-      {/* Expanded content - TODOs above files */}
+      {/* Expanded content - Files */}
+      {filesExpanded && hasFiles && (
+        <FileChangesPanel diffs={diffs} fallbackFiles={modifiedFiles} />
+      )}
+
+      {/* Expanded content - TODOs */}
       {todosExpanded && hasTodos && <TodosList todos={todos} />}
-      {filesExpanded && hasFiles && <ModifiedFilesList files={modifiedFiles} />}
 
       {/* Labels row */}
       <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
@@ -70,7 +78,7 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
             <svg className={`w-3 h-3 transition-transform ${filesExpanded ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            <span>{modifiedFiles.length} file{modifiedFiles.length !== 1 ? "s" : ""} changed</span>
+            <span>{fileCount} file{fileCount !== 1 ? "s" : ""} changed</span>
           </button>
         )}
         {hasTodos && (

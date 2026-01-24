@@ -9,7 +9,6 @@ import { MessageList } from "./components/MessageList"
 import { MessagesProvider } from "./state/MessagesContext"
 import { ThemeProvider } from "./state/ThemeContext"
 import { CompactHeader } from "./components/CompactHeader"
-import { FileChangesPanel } from "./components/FileChangesPanel"
 import { OfflineBanner } from "./components/OfflineBanner"
 import { CommandPalette } from "./components/CommandPalette"
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp"
@@ -201,9 +200,6 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
           onUndoToInput={(value) => messageInputRef.current?.insertPlainWithMentions(value)}
         />
       </main>
-
-      {/* File Changes Panel (placeholder for now) */}
-      <FileChangesPanel />
 
       {/* Input Area */}
       <MessageInput

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react"
+import type { FileDiff } from "@opencode-ai/sdk/client"
 
 // Event type definitions based on server Bus events
 export type ServerEvent =
@@ -21,6 +22,7 @@ export type ServerEvent =
     }
   | { type: "session.idle"; properties: { sessionID: string } }
   | { type: "session.compacted"; properties: { sessionID: string } }
+  | { type: "session.diff"; properties: { sessionID: string; diff: FileDiff[] } }
   | { type: "message.updated"; properties: { info: any } }
   | { type: "message.removed"; properties: { sessionID: string; messageID: string } }
   | { type: "message.part.updated"; properties: { part: any; delta?: string } }

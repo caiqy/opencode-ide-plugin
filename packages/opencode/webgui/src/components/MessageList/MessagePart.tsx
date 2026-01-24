@@ -2,7 +2,6 @@ import type { Part, WebguiPart, QuestionRequestPart as QuestionRequestPartType }
 import { TextPart } from "./TextPart"
 import { ReasoningPart } from "./ReasoningPart"
 import { ToolPart } from "../parts/ToolPart"
-import { PatchPart } from "../parts/PatchPart"
 import { SnapshotPart } from "../parts/SnapshotPart"
 import { RetryPart } from "../parts/RetryPart"
 import { SessionErrorPart } from "./SessionErrorPart"
@@ -34,6 +33,11 @@ export function MessagePart({
 
   // Filter out step-start and step-finish parts (they're internal)
   if (part.type === "step-start" || part.type === "step-finish") {
+    return null
+  }
+
+  // Patch parts are internal server messages and should not be rendered
+  if (part.type === "patch") {
     return null
   }
 
@@ -122,28 +126,7 @@ export function MessagePart({
     return null
   }
 
-  // Patches (file edits) - only show standalone ones (not associated with write/edit)
-  if (part.type === "patch") {
-    // Check if there's a write/edit tool before this patch
-    const currentIndex = allParts.findIndex((p) => p.id === part.id)
-    if (currentIndex > 0) {
-      // Look backwards for a write/edit tool
-      for (let i = currentIndex - 1; i >= 0; i--) {
-        const prevPart = allParts[i]
-        if (prevPart.type === "tool" && (prevPart.tool === "write" || prevPart.tool === "edit")) {
-          // This patch is associated with a write/edit tool, skip it
-          return null
-        }
-        // Stop if we hit another patch or non-tool part
-        if (prevPart.type === "patch" || prevPart.type === "text" || prevPart.type === "reasoning") {
-          break
-        }
-      }
-    }
-
-    // Standalone patch (e.g., from patch tool)
-    return <PatchPart key={part.id} part={part as any} sessionID={sessionID || ""} messageID={messageID || ""} />
-  }
+  // Patches are suppressed above
 
   // Snapshots (file state snapshots)
   if (part.type === "snapshot") {

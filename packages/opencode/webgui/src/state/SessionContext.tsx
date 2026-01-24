@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { sdk } from "../lib/api/sdkClient"
-import type { Session } from "@opencode-ai/sdk/client"
+import type { Session, FileDiff } from "@opencode-ai/sdk/client"
 import { eventEmitter } from "../lib/api/events"
 
 /**
@@ -34,6 +34,9 @@ interface SessionContextState {
   // Reasoning state per session
   isReasoning: boolean
   setReasoning: (sessionId: string, active: boolean) => void
+
+  // Session diff data (per session)
+  sessionDiff: Record<string, FileDiff[]>
 
   // Session status for current session
   currentStatus: SessionStatusInfo
@@ -125,6 +128,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [isIdle, setIsIdle] = useState(true)
   const [reasoningMap, setReasoningMap] = useState<Record<string, boolean>>({})
   const [statusMap, setStatusMap] = useState<Record<string, SessionStatusInfo>>({})
+  const [sessionDiffMap, setSessionDiffMap] = useState<Record<string, FileDiff[]>>({})
 
   // Model and Agent selection state (synced with server state + localStorage fallback)
   const [selectedProviderId, setSelectedProviderId] = useState<string | undefined>()
@@ -844,6 +848,30 @@ export function SessionProvider({ children }: SessionProviderProps) {
     loadSessions()
   }, [loadSessions])
 
+  // Load session diff when current session changes
+  useEffect(() => {
+    const sessionId = currentSession?.id
+    if (!sessionId || isVirtualSession) return
+
+    const controller = new AbortController()
+    const fetchDiff = async () => {
+      try {
+        const response = await sdk.session.diff({ path: { id: sessionId } })
+        if (controller.signal.aborted) return
+        if (response.data) {
+          setSessionDiffMap((prev) => ({ ...prev, [sessionId]: response.data }))
+        }
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          console.error("[SessionContext] Failed to load session diff:", err)
+        }
+      }
+    }
+
+    fetchDiff()
+    return () => controller.abort()
+  }, [currentSession?.id, isVirtualSession])
+
   // Listen for session events from SSE
   useEffect(() => {
     const handleSessionCreated = (event: any) => {
@@ -884,6 +912,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
         const deletedId = event.properties.info.id
         console.log("[SessionContext] Session deleted event:", deletedId)
         setSessions((prev) => prev.filter((s) => s.id !== deletedId))
+        setSessionDiffMap((prev) => {
+          if (!prev[deletedId]) return prev
+          const next = { ...prev }
+          delete next[deletedId]
+          return next
+        })
         const isCurrent = currentSession?.id === deletedId
         if (isCurrent) {
           newVirtual()
@@ -908,16 +942,25 @@ export function SessionProvider({ children }: SessionProviderProps) {
       })
     }
 
+    const handleSessionDiff = (event: any) => {
+      if (event.type !== "session.diff" || !event.properties) return
+      const { sessionID, diff } = event.properties as { sessionID: string; diff: FileDiff[] }
+      if (!sessionID) return
+      setSessionDiffMap((prev) => ({ ...prev, [sessionID]: Array.isArray(diff) ? diff : [] }))
+    }
+
     const unsubscribeCreated = eventEmitter.on("session.created", handleSessionCreated)
     const unsubscribeUpdated = eventEmitter.on("session.updated", handleSessionUpdated)
     const unsubscribeDeleted = eventEmitter.on("session.deleted", handleSessionDeleted)
     const unsubscribeStatus = eventEmitter.on("session.status", handleSessionStatus)
+    const unsubscribeDiff = eventEmitter.on("session.diff", handleSessionDiff)
 
     return () => {
       unsubscribeCreated()
       unsubscribeUpdated()
       unsubscribeDeleted()
       unsubscribeStatus()
+      unsubscribeDiff()
     }
   }, [currentSession?.id, setReasoning, newVirtual])
 
@@ -933,6 +976,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setIsIdle,
     isReasoning,
     setReasoning,
+    sessionDiff: sessionDiffMap,
     currentStatus,
     selectedProviderId,
     selectedModelId,

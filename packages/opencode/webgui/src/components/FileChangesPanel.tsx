@@ -1,66 +1,145 @@
-import { useState } from "react"
-
-interface FileChange {
-  path: string
-  linesAdded: number
-  linesRemoved: number
-}
+import { useMemo } from "react"
+import type { FileDiff } from "@opencode-ai/sdk/client"
+import { useOpenFile } from "../hooks/useOpenFile"
+import { useProject } from "../state/ProjectContext"
+import { normalizePath, toDisplayPath } from "../utils/path"
 
 interface FileChangesPanelProps {
-  changes?: FileChange[]
+  diffs?: FileDiff[]
+  fallbackFiles?: string[]
 }
 
-export function FileChangesPanel({ changes = [] }: FileChangesPanelProps) {
-  const [isExpanded, setIsExpanded] = useState(false)
+export function FileChangesPanel({ diffs = [], fallbackFiles = [] }: FileChangesPanelProps) {
+  const openFile = useOpenFile()
+  const { worktree } = useProject()
 
-  const totalLines = changes.reduce((sum, c) => sum + c.linesAdded + c.linesRemoved, 0)
+  const mergedDiffs = useMemo(() => {
+    if (fallbackFiles.length === 0) return diffs
+    // sessionDiff entries (diffs) are primary
+    // Use toDisplayPath to normalize both absolute and relative paths to a consistent format
+    const sessionPaths = new Set(diffs.map((d) => toDisplayPath(d.file, worktree)))
+    const fallbackOnly = fallbackFiles
+      .filter((f) => !sessionPaths.has(toDisplayPath(f, worktree)))
+      .map((file) => ({
+        file,
+        before: "",
+        after: "",
+        additions: 0,
+        deletions: 0,
+      }))
+    return [...diffs, ...fallbackOnly]
+  }, [diffs, fallbackFiles, worktree])
 
-  if (changes.length === 0) {
+  const { modified, deleted, totalAdditions, totalDeletions, netChange } = useMemo(() => {
+    const sortByBasename = (a: FileDiff, b: FileDiff) => {
+      const aPath = normalizePath(a.file)
+      const bPath = normalizePath(b.file)
+      const aBasename = (aPath.split("/").pop() || aPath).toLowerCase()
+      const bBasename = (bPath.split("/").pop() || bPath).toLowerCase()
+      const nameCompare = aBasename.localeCompare(bBasename)
+      if (nameCompare !== 0) return nameCompare
+      return aPath.localeCompare(bPath)
+    }
+
+    const modifiedEntries = mergedDiffs.filter((diff) => diff.after != null).sort(sortByBasename)
+    const deletedEntries = mergedDiffs.filter((diff) => diff.after == null).sort(sortByBasename)
+    const totals = mergedDiffs.reduce(
+      (sum, diff) => {
+        sum.additions += diff.additions
+        sum.deletions += diff.deletions
+        return sum
+      },
+      { additions: 0, deletions: 0 }
+    )
+    return {
+      modified: modifiedEntries,
+      deleted: deletedEntries,
+      totalAdditions: totals.additions,
+      totalDeletions: totals.deletions,
+      netChange: totals.additions - totals.deletions,
+    }
+  }, [mergedDiffs])
+
+  if (mergedDiffs.length === 0) {
     return null
   }
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
-      {/* Collapsed header */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-2 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-      >
-        <span>
-          {changes.length} file{changes.length !== 1 ? "s" : ""} changed • {totalLines} line
-          {totalLines !== 1 ? "s" : ""}
-        </span>
-        <svg
-          className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {/* Expanded file list */}
-      {isExpanded && (
-        <div className="border-t border-gray-200 dark:border-gray-700 max-h-40 overflow-y-auto">
-          {changes.map((change, idx) => (
-            <div
-              key={idx}
-              className="px-4 py-2 text-xs flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-800"
-            >
-              <span className="text-gray-700 dark:text-gray-300 font-mono truncate flex-1">{change.path}</span>
-              <div className="flex items-center gap-2 ml-2">
-                {change.linesAdded > 0 && (
-                  <span className="text-green-600 dark:text-green-400">+{change.linesAdded}</span>
-                )}
-                {change.linesRemoved > 0 && (
-                  <span className="text-red-600 dark:text-red-400">-{change.linesRemoved}</span>
-                )}
-              </div>
+    <div className="bg-gray-50 dark:bg-gray-900">
+      {/* File list */}
+      <div className="max-h-40 overflow-y-auto">
+          <div className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>
+              {mergedDiffs.length} file{mergedDiffs.length !== 1 ? "s" : ""}
+            </span>
+            <span>
+              {modified.length} modified • {deleted.length} deleted
+            </span>
+            <span className="text-green-600 dark:text-green-400">+{totalAdditions}</span>
+            <span className="text-red-600 dark:text-red-400">-{totalDeletions}</span>
+            <span className="text-gray-500 dark:text-gray-500">
+              net {netChange >= 0 ? "+" : ""}
+              {netChange}
+            </span>
+          </div>
+          {modified.length > 0 && (
+            <div className="px-3 py-1.5 flex flex-wrap items-center gap-1.5">
+              {modified.map((diff) => {
+                const displayPath = toDisplayPath(diff.file, worktree) || normalizePath(diff.file)
+                const baseName = displayPath.split("/").pop() || displayPath
+                return (
+                  <span
+                    key={diff.file}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openFile({ path: diff.file, display: displayPath || diff.file })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        openFile({ path: diff.file, display: displayPath || diff.file })
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900/60"
+                    title={displayPath || diff.file}
+                  >
+                    {baseName}
+                    {(diff.additions > 0 || diff.deletions > 0) && (
+                      <>
+                        <span className="text-green-600 dark:text-green-400 text-[10px]">+{diff.additions}</span>
+                        <span className="text-red-600 dark:text-red-400 text-[10px]">-{diff.deletions}</span>
+                      </>
+                    )}
+                  </span>
+                )
+              })}
             </div>
-          ))}
-        </div>
-      )}
+          )}
+
+          {deleted.length > 0 && (
+            <div className="border-t border-gray-200 dark:border-gray-800 px-3 py-1.5 flex flex-wrap items-center gap-1.5">
+              {deleted.map((diff) => {
+                const displayPath = toDisplayPath(diff.file, worktree) || normalizePath(diff.file)
+                const baseName = displayPath.split("/").pop() || displayPath
+                return (
+                  <span
+                    key={diff.file}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono bg-gray-100 dark:bg-gray-800/50 text-gray-500 dark:text-gray-500 rounded line-through"
+                    title={displayPath || diff.file}
+                  >
+                    {baseName}
+                    {(diff.additions > 0 || diff.deletions > 0) && (
+                      <>
+                        <span className="text-green-600 dark:text-green-400 text-[10px] no-underline">+{diff.additions}</span>
+                        <span className="text-red-600 dark:text-red-400 text-[10px] no-underline">-{diff.deletions}</span>
+                      </>
+                    )}
+                  </span>
+                )
+              })}
+            </div>
+          )}
+
+      </div>
     </div>
   )
 }
