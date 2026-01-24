@@ -5,6 +5,14 @@ All notable changes to the OpenCode VSCode extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec2.0.0.html).
 
+### [26.1.24] - 2026-01-24
+- Share / Unshare session
+- Added button"Copy to clipboard" message content
+- Removed rendering internal message "patch" - thanks to caiqy
+- Files changed panel now provide stats from OpenCode server - thanks to caiqy
+- Improved availability of "Retry" button for failed session
+- Updated OpenCode to v1.1.34
+
 ### [26.1.17] - 2026-01-17
 
 - Added support for "Question" tool
