@@ -4,3 +4,4 @@ gen
 app.log
 webgui-dist
 /src/webgui/embed.generated.ts
+src/provider/models-snapshot.ts
