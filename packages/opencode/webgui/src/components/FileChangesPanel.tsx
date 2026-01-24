@@ -3,6 +3,7 @@ import type { FileDiff } from "@opencode-ai/sdk/client"
 import { useOpenFile } from "../hooks/useOpenFile"
 import { useProject } from "../state/ProjectContext"
 import { normalizePath, toDisplayPath } from "../utils/path"
+import { useMergedFileDiffs } from "../hooks/useMergedFileDiffs"
 
 interface FileChangesPanelProps {
   diffs?: FileDiff[]
@@ -12,23 +13,7 @@ interface FileChangesPanelProps {
 export function FileChangesPanel({ diffs = [], fallbackFiles = [] }: FileChangesPanelProps) {
   const openFile = useOpenFile()
   const { worktree } = useProject()
-
-  const mergedDiffs = useMemo(() => {
-    if (fallbackFiles.length === 0) return diffs
-    // sessionDiff entries (diffs) are primary
-    // Use toDisplayPath to normalize both absolute and relative paths to a consistent format
-    const sessionPaths = new Set(diffs.map((d) => toDisplayPath(d.file, worktree)))
-    const fallbackOnly = fallbackFiles
-      .filter((f) => !sessionPaths.has(toDisplayPath(f, worktree)))
-      .map((file) => ({
-        file,
-        before: "",
-        after: "",
-        additions: 0,
-        deletions: 0,
-      }))
-    return [...diffs, ...fallbackOnly]
-  }, [diffs, fallbackFiles, worktree])
+  const mergedDiffs = useMergedFileDiffs(diffs, fallbackFiles)
 
   const { modified, deleted, totalAdditions, totalDeletions, netChange } = useMemo(() => {
     const sortByBasename = (a: FileDiff, b: FileDiff) => {
@@ -75,8 +60,8 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [] }: FileChanges
             <span>
               {modified.length} modified • {deleted.length} deleted
             </span>
-            <span className="text-green-600 dark:text-green-400">+{totalAdditions}</span>
-            <span className="text-red-600 dark:text-red-400">-{totalDeletions}</span>
+            {totalAdditions > 0 && <span className="text-green-600 dark:text-green-400">+{totalAdditions}</span>}
+            {totalDeletions > 0 && <span className="text-red-600 dark:text-red-400">-{totalDeletions}</span>}
             <span className="text-gray-500 dark:text-gray-500">
               net {netChange >= 0 ? "+" : ""}
               {netChange}
@@ -103,11 +88,11 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [] }: FileChanges
                     title={displayPath || diff.file}
                   >
                     {baseName}
-                    {(diff.additions > 0 || diff.deletions > 0) && (
-                      <>
-                        <span className="text-green-600 dark:text-green-400 text-[10px]">+{diff.additions}</span>
-                        <span className="text-red-600 dark:text-red-400 text-[10px]">-{diff.deletions}</span>
-                      </>
+                    {diff.additions > 0 && (
+                      <span className="text-green-600 dark:text-green-400 text-[10px]">+{diff.additions}</span>
+                    )}
+                    {diff.deletions > 0 && (
+                      <span className="text-red-600 dark:text-red-400 text-[10px]">-{diff.deletions}</span>
                     )}
                   </span>
                 )
@@ -127,11 +112,11 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [] }: FileChanges
                     title={displayPath || diff.file}
                   >
                     {baseName}
-                    {(diff.additions > 0 || diff.deletions > 0) && (
-                      <>
-                        <span className="text-green-600 dark:text-green-400 text-[10px] no-underline">+{diff.additions}</span>
-                        <span className="text-red-600 dark:text-red-400 text-[10px] no-underline">-{diff.deletions}</span>
-                      </>
+                    {diff.additions > 0 && (
+                      <span className="text-green-600 dark:text-green-400 text-[10px] no-underline">+{diff.additions}</span>
+                    )}
+                    {diff.deletions > 0 && (
+                      <span className="text-red-600 dark:text-red-400 text-[10px] no-underline">-{diff.deletions}</span>
                     )}
                   </span>
                 )

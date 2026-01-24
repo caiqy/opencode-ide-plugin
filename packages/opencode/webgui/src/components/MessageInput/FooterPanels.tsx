@@ -3,6 +3,7 @@ import { useMessages } from "../../state/MessagesContext"
 import { useSession } from "../../state/SessionContext"
 import { TodosList } from "./TodosPanel"
 import { FileChangesPanel } from "../FileChangesPanel"
+import { useMergedFileDiffs } from "../../hooks/useMergedFileDiffs"
 
 interface FooterPanelsProps {
   sessionID: string | null
@@ -50,13 +51,14 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
   }, [sessionID, getMessagesBySession])
 
   const diffs = sessionID ? sessionDiff[sessionID] : undefined
+  const mergedDiffs = useMergedFileDiffs(diffs, modifiedFiles)
   const hasTodos = todos && todos.length > 0
-  const hasFiles = (diffs && diffs.length > 0) || modifiedFiles.length > 0
+  const hasFiles = mergedDiffs.length > 0
 
   if (!hasTodos && !hasFiles) return null
 
   const completedTodos = todos?.filter((t: any) => t.status === "completed").length ?? 0
-  const fileCount = diffs?.length ?? modifiedFiles.length
+  const fileCount = mergedDiffs.length
 
   return (
     <div className="px-2 py-1 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex flex-col gap-1">
