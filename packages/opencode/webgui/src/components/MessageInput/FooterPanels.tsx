@@ -22,18 +22,39 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
     const files: string[] = []
     const seen = new Set<string>()
 
+    const addFile = (value: string | undefined) => {
+      if (!value) return
+      if (seen.has(value)) return
+      seen.add(value)
+      files.push(value)
+    }
+
     for (const msg of messages) {
       for (const part of msg.parts) {
         if (part.type !== "tool") continue
-        const toolPart = part as { tool?: string; state?: { input?: { filePath?: string }; output?: string } }
+        const toolPart = part as {
+          tool?: string
+          state?: {
+            input?: { filePath?: string }
+            output?: string
+            metadata?: { files?: Array<{ filePath?: string; movePath?: string }> }
+          }
+        }
         if (toolPart.tool === "todowrite" && toolPart.state?.output) {
           todoOutput = toolPart.state.output
         }
-        if ((toolPart.tool === "write" || toolPart.tool === "edit") && toolPart.state?.input?.filePath) {
-          const path = toolPart.state.input.filePath
-          if (!seen.has(path)) {
-            seen.add(path)
-            files.push(path)
+
+        if (toolPart.tool === "write" || toolPart.tool === "edit") {
+          addFile(toolPart.state?.input?.filePath)
+        }
+
+        if (toolPart.tool === "apply_patch") {
+          const patched = toolPart.state?.metadata?.files
+          if (Array.isArray(patched)) {
+            for (const entry of patched) {
+              addFile(entry.filePath)
+              addFile(entry.movePath)
+            }
           }
         }
       }
@@ -63,9 +84,7 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
   return (
     <div className="px-2 py-1 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex flex-col gap-1">
       {/* Expanded content - Files */}
-      {filesExpanded && hasFiles && (
-        <FileChangesPanel diffs={diffs} fallbackFiles={modifiedFiles} />
-      )}
+      {filesExpanded && hasFiles && <FileChangesPanel diffs={diffs} fallbackFiles={modifiedFiles} />}
 
       {/* Expanded content - TODOs */}
       {todosExpanded && hasTodos && <TodosList todos={todos} />}
@@ -77,10 +96,17 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
             onClick={() => setFilesExpanded(!filesExpanded)}
             className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-200"
           >
-            <svg className={`w-3 h-3 transition-transform ${filesExpanded ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              className={`w-3 h-3 transition-transform ${filesExpanded ? "-rotate-90" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            <span>{fileCount} file{fileCount !== 1 ? "s" : ""} changed</span>
+            <span>
+              {fileCount} file{fileCount !== 1 ? "s" : ""} changed
+            </span>
           </button>
         )}
         {hasTodos && (
@@ -88,10 +114,17 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
             onClick={() => setTodosExpanded(!todosExpanded)}
             className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-200"
           >
-            <svg className={`w-3 h-3 transition-transform ${todosExpanded ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              className={`w-3 h-3 transition-transform ${todosExpanded ? "-rotate-90" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            <span>{completedTodos}/{todos.length} TODOs</span>
+            <span>
+              {completedTodos}/{todos.length} TODOs
+            </span>
           </button>
         )}
       </div>

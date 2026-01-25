@@ -254,7 +254,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
           addPart(part.messageID, part)
         }
 
-        // Reload file in IDE when write/edit tool completes
+        // Reload file in IDE when write/edit/apply_patch tool completes
         if (part.type === "tool") {
           const toolPart = part as { tool?: string; state?: { status?: string; input?: { filePath?: string } } }
           if (
@@ -263,6 +263,20 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
             toolPart.state?.input?.filePath
           ) {
             reloadPath(toolPart.state.input.filePath, toolPart.tool)
+          }
+
+          if (toolPart.tool === "apply_patch" && toolPart.state?.status === "completed") {
+            const patched = (
+              toolPart.state as unknown as {
+                metadata?: { files?: Array<{ filePath?: string; movePath?: string }> }
+              }
+            )?.metadata?.files
+            if (Array.isArray(patched)) {
+              for (const entry of patched) {
+                if (entry.filePath) reloadPath(entry.filePath, toolPart.tool)
+                if (entry.movePath) reloadPath(entry.movePath, toolPart.tool)
+              }
+            }
           }
         }
 
