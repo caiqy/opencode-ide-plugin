@@ -46,10 +46,14 @@ export function IconButton({ size = "md", icon, className = "", "aria-label": ar
   const sizeClass = sizeClasses[size]
   const iconSizeClass = iconSizeClasses[size]
 
+  const title = typeof props.title === "string" ? props.title : undefined
+  const tip = typeof title === "string" && title.length > 0 ? title : undefined
+
   return (
     <button
       className={`modern-icon-button ${sizeClass} flex items-center justify-center ${className}`}
       aria-label={ariaLabel}
+      data-tip={tip}
       {...props}
     >
       <div className={iconSizeClass}>{icon}</div>

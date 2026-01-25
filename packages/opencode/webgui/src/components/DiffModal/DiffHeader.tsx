@@ -39,6 +39,7 @@ export function DiffHeader({ patchHash, viewMode, onViewModeChange, onClose, sho
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
               }`}
               title="Split view"
+              data-tip="Split view"
             >
               Split
             </button>
@@ -50,6 +51,7 @@ export function DiffHeader({ patchHash, viewMode, onViewModeChange, onClose, sho
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
               }`}
               title="Unified view"
+              data-tip="Unified view"
             >
               Unified
             </button>
@@ -61,6 +63,7 @@ export function DiffHeader({ patchHash, viewMode, onViewModeChange, onClose, sho
           onClick={onClose}
           className="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
           title="Close (Esc)"
+          data-tip="Close (Esc)"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

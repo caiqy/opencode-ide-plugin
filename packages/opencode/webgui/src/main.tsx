@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client"
 import "./index.css"
 import App from "./App.tsx"
 import { ideBridge } from "./lib/ideBridge"
+import { installTooltipPolyfillBridge } from "./lib/tooltipPolyfill"
 import { SessionProvider } from "./state/SessionContext.tsx"
 import { ToastProvider } from "./state/ToastContext.tsx"
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx"
@@ -12,6 +13,7 @@ import { ProvidersProvider } from "./state/ProvidersContext"
 import { initGlobalDnD } from "./lib/dnd"
 
 ideBridge.init()
+installTooltipPolyfillBridge()
 initGlobalDnD()
 
 createRoot(document.getElementById("root")!).render(

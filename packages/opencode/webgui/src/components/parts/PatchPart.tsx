@@ -80,6 +80,7 @@ export function PatchPart({ part, sessionID, messageID }: PatchPartProps) {
                 }}
                 className="underline decoration-dotted cursor-pointer hover:opacity-80"
                 title={single.display}
+                data-tip={single.display}
               >
                 {`Edited ${single.display}`}
               </span>
@@ -134,6 +135,7 @@ export function PatchPart({ part, sessionID, messageID }: PatchPartProps) {
                       }}
                       className="font-mono text-gray-700 dark:text-gray-300 underline decoration-dotted cursor-pointer hover:opacity-80"
                       title={entry.display}
+                      data-tip={entry.display}
                     >
                       {entry.display}
                     </span>

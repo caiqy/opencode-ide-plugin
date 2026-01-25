@@ -168,31 +168,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                             logger.warn("Failed to install IdeOpenFilesUpdater", e)
                                         }
 
-                                        // Immediate attempt to enable tooltip polyfill (redundant with load handler)
-                                        try {
-                                            val polyfillScriptEarly = """
-                                                (function(){
-                                                    try { 
-                                                        document.documentElement.classList.add('tip-polyfill'); 
-                                                    } catch(e){}
-                                                    try { 
-                                                        if (window.__setTooltipPolyfill) {
-                                                            window.__setTooltipPolyfill(true);
-                                                        }
-                                                    } catch(e){}
-                                                })();
-                                            """.trimIndent()
-                                            browser.cefBrowser.executeJavaScript(
-                                                polyfillScriptEarly,
-                                                browser.cefBrowser.url,
-                                                0
-                                            )
-                                        } catch (e: Exception) {
-                                            logger.debug(
-                                                "Early tooltip polyfill injection failed (will retry on load)",
-                                                e
-                                            )
-                                        }
+                                        // Tooltip polyfill is enabled via IdeBridge message.
                                     } catch (e: Exception) {
                                         logger.error("Failed to create browser component", e)
                                         mainPanel.removeAll()

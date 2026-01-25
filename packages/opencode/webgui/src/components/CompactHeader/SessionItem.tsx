@@ -160,6 +160,7 @@ export function SessionItem({
                     onClick={handleLinkClick}
                     className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
                     title="Open share link"
+                    data-tip="Open share link"
                   >
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
@@ -177,6 +178,7 @@ export function SessionItem({
                   disabled={isSharing}
                   className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-50"
                   title={isShared ? "Unshare session" : "Share session"}
+                  data-tip={isShared ? "Unshare session" : "Share session"}
                 >
                   {isShared ? (
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -203,6 +205,7 @@ export function SessionItem({
                   onClick={onEditStart}
                   className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
                   title="Edit title"
+                  data-tip="Edit title"
                 >
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
@@ -218,6 +221,7 @@ export function SessionItem({
                   onClick={onDeleteStart}
                   className="p-1 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400"
                   title="Delete session"
+                  data-tip="Delete session"
                 >
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path

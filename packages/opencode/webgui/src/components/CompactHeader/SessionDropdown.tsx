@@ -86,6 +86,7 @@ export function SessionDropdown({
                 : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600"
             }`}
             title={isSelectMode ? "Cancel selection" : "Select multiple sessions"}
+            data-tip={isSelectMode ? "Cancel selection" : "Select multiple sessions"}
           >
             {isSelectMode ? (
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

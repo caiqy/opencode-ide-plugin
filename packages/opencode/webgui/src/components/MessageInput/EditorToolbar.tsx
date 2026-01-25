@@ -61,6 +61,7 @@ export function EditorToolbar({
             onClick={onRetry}
             className="h-6 px-2 flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950 rounded border border-red-200 dark:border-red-800"
             title="Restore failed message"
+            data-tip="Restore failed message"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path

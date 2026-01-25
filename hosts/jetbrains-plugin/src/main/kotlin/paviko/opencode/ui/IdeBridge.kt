@@ -91,6 +91,9 @@ object IdeBridge {
                 state.ready = true
                 flushOutbox(project)
             }
+
+            // JetBrains JCEF does not reliably show native title tooltips; enable UI polyfill.
+            send(project, "setTooltipPolyfill", mapOf("enabled" to true))
         } catch (t: Throwable) {
             logger.warn("Failed to inject ideBridge", t)
         }

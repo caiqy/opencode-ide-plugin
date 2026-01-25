@@ -126,6 +126,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
         disabled={disabled || isLoading}
         className="h-6 px-2 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
         title="Select model"
+        data-tip="Select model"
       >
         {getCurrentDisplay()}
         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -163,7 +164,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                     </div>
                     {filterRecent().map((item) => {
                       const isSelected = selectedProviderId === item.provider_id && selectedModelId === item.model_id
-                      
+
                       // Find model name from providers list
                       const provider = providers.find((p) => p.id === item.provider_id)
                       const modelName = provider?.models[item.model_id]?.name || item.model_id

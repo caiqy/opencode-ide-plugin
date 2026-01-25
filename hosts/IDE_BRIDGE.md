@@ -151,6 +151,7 @@ if (ideBridge.isInstalled()) {
 - **insertPaths** — payload: `{ paths: string[] }`
 - **pastePath** — payload: `{ path: string }`
 - **updateOpenedFiles** — payload: `{ openedFiles: string[], currentFile: string | null }`
+- **setTooltipPolyfill** — payload: `{ enabled: boolean }` — JetBrains-only: enables CSS tooltip polyfill for `title` tooltips
 
 ### Web UI → JetBrains host (handled)
 

@@ -78,6 +78,7 @@ export function AttachmentComponent({ nodeKey, metadata }: AttachmentComponentPr
         onClick={handleRemove}
         className="ml-0.5 hover:bg-blue-200 dark:hover:bg-blue-800/50 rounded p-0.5"
         title="Remove attachment"
+        data-tip="Remove attachment"
       >
         <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

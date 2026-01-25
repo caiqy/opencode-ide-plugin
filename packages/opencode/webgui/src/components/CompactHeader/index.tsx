@@ -163,6 +163,7 @@ const CompactHeader = forwardRef<
               currentHasDefaultTitle ? "text-gray-500 dark:text-gray-500 italic" : "text-gray-700 dark:text-gray-300"
             }`}
             title={currentTitle}
+            data-tip={currentTitle}
           >
             <span>{currentSession ? truncatedTitle : "No Session"}</span>
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

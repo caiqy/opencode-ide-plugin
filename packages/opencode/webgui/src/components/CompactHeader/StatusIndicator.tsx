@@ -6,12 +6,14 @@ interface StatusIndicatorProps {
 }
 
 export function StatusIndicator({ connectionState }: StatusIndicatorProps) {
+  const tip = CONNECTION_TOOLTIPS[connectionState]
   return (
     <div
       className={`w-2 h-2 rounded-full ${CONNECTION_COLORS[connectionState]} ${
         connectionState === "connecting" || connectionState === "error" ? "animate-pulse" : ""
       }`}
-      title={CONNECTION_TOOLTIPS[connectionState]}
+      title={tip}
+      data-tip={tip}
     />
   )
 }

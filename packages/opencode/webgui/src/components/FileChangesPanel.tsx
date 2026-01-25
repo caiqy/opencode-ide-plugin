@@ -34,7 +34,7 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [] }: FileChanges
         sum.deletions += diff.deletions
         return sum
       },
-      { additions: 0, deletions: 0 }
+      { additions: 0, deletions: 0 },
     )
     return {
       modified: modifiedEntries,
@@ -53,77 +53,80 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [] }: FileChanges
     <div className="bg-gray-50 dark:bg-gray-900">
       {/* File list */}
       <div className="max-h-40 overflow-y-auto">
-          <div className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span>
-              {mergedDiffs.length} file{mergedDiffs.length !== 1 ? "s" : ""}
-            </span>
-            <span>
-              {modified.length} modified • {deleted.length} deleted
-            </span>
-            {totalAdditions > 0 && <span className="text-green-600 dark:text-green-400">+{totalAdditions}</span>}
-            {totalDeletions > 0 && <span className="text-red-600 dark:text-red-400">-{totalDeletions}</span>}
-            <span className="text-gray-500 dark:text-gray-500">
-              net {netChange >= 0 ? "+" : ""}
-              {netChange}
-            </span>
+        <div className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>
+            {mergedDiffs.length} file{mergedDiffs.length !== 1 ? "s" : ""}
+          </span>
+          <span>
+            {modified.length} modified • {deleted.length} deleted
+          </span>
+          {totalAdditions > 0 && <span className="text-green-600 dark:text-green-400">+{totalAdditions}</span>}
+          {totalDeletions > 0 && <span className="text-red-600 dark:text-red-400">-{totalDeletions}</span>}
+          <span className="text-gray-500 dark:text-gray-500">
+            net {netChange >= 0 ? "+" : ""}
+            {netChange}
+          </span>
+        </div>
+        {modified.length > 0 && (
+          <div className="px-3 py-1.5 flex flex-wrap items-center gap-1.5">
+            {modified.map((diff) => {
+              const displayPath = toDisplayPath(diff.file, worktree) || normalizePath(diff.file)
+              const baseName = displayPath.split("/").pop() || displayPath
+              return (
+                <span
+                  key={diff.file}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openFile({ path: diff.file, display: displayPath || diff.file })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      openFile({ path: diff.file, display: displayPath || diff.file })
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900/60"
+                  title={displayPath || diff.file}
+                  data-tip={displayPath || diff.file}
+                >
+                  {baseName}
+                  {diff.additions > 0 && (
+                    <span className="text-green-600 dark:text-green-400 text-[10px]">+{diff.additions}</span>
+                  )}
+                  {diff.deletions > 0 && (
+                    <span className="text-red-600 dark:text-red-400 text-[10px]">-{diff.deletions}</span>
+                  )}
+                </span>
+              )
+            })}
           </div>
-          {modified.length > 0 && (
-            <div className="px-3 py-1.5 flex flex-wrap items-center gap-1.5">
-              {modified.map((diff) => {
-                const displayPath = toDisplayPath(diff.file, worktree) || normalizePath(diff.file)
-                const baseName = displayPath.split("/").pop() || displayPath
-                return (
-                  <span
-                    key={diff.file}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openFile({ path: diff.file, display: displayPath || diff.file })}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault()
-                        openFile({ path: diff.file, display: displayPath || diff.file })
-                      }
-                    }}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900/60"
-                    title={displayPath || diff.file}
-                  >
-                    {baseName}
-                    {diff.additions > 0 && (
-                      <span className="text-green-600 dark:text-green-400 text-[10px]">+{diff.additions}</span>
-                    )}
-                    {diff.deletions > 0 && (
-                      <span className="text-red-600 dark:text-red-400 text-[10px]">-{diff.deletions}</span>
-                    )}
-                  </span>
-                )
-              })}
-            </div>
-          )}
+        )}
 
-          {deleted.length > 0 && (
-            <div className="border-t border-gray-200 dark:border-gray-800 px-3 py-1.5 flex flex-wrap items-center gap-1.5">
-              {deleted.map((diff) => {
-                const displayPath = toDisplayPath(diff.file, worktree) || normalizePath(diff.file)
-                const baseName = displayPath.split("/").pop() || displayPath
-                return (
-                  <span
-                    key={diff.file}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono bg-gray-100 dark:bg-gray-800/50 text-gray-500 dark:text-gray-500 rounded line-through"
-                    title={displayPath || diff.file}
-                  >
-                    {baseName}
-                    {diff.additions > 0 && (
-                      <span className="text-green-600 dark:text-green-400 text-[10px] no-underline">+{diff.additions}</span>
-                    )}
-                    {diff.deletions > 0 && (
-                      <span className="text-red-600 dark:text-red-400 text-[10px] no-underline">-{diff.deletions}</span>
-                    )}
-                  </span>
-                )
-              })}
-            </div>
-          )}
-
+        {deleted.length > 0 && (
+          <div className="border-t border-gray-200 dark:border-gray-800 px-3 py-1.5 flex flex-wrap items-center gap-1.5">
+            {deleted.map((diff) => {
+              const displayPath = toDisplayPath(diff.file, worktree) || normalizePath(diff.file)
+              const baseName = displayPath.split("/").pop() || displayPath
+              return (
+                <span
+                  key={diff.file}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono bg-gray-100 dark:bg-gray-800/50 text-gray-500 dark:text-gray-500 rounded line-through"
+                  title={displayPath || diff.file}
+                  data-tip={displayPath || diff.file}
+                >
+                  {baseName}
+                  {diff.additions > 0 && (
+                    <span className="text-green-600 dark:text-green-400 text-[10px] no-underline">
+                      +{diff.additions}
+                    </span>
+                  )}
+                  {diff.deletions > 0 && (
+                    <span className="text-red-600 dark:text-red-400 text-[10px] no-underline">-{diff.deletions}</span>
+                  )}
+                </span>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

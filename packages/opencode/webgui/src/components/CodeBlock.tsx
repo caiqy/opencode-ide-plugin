@@ -72,6 +72,7 @@ export function CodeBlock({ language, value, inline = false }: CodeBlockProps) {
           onClick={handleCopy}
           className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors px-2 py-1 rounded hover:bg-gray-300/70 dark:hover:bg-gray-700/50"
           title={copied ? "Copied!" : "Copy code"}
+          data-tip={copied ? "Copied!" : "Copy code"}
         >
           {copied ? (
             <>

@@ -20,6 +20,7 @@ export function KeyInput({ providerName, value, showKey, onValueChange, onToggle
         onClick={onToggleVisibility}
         className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
         title={showKey ? "Hide" : "Show"}
+        data-tip={showKey ? "Hide" : "Show"}
       >
         {showKey ? (
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

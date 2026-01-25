@@ -64,10 +64,14 @@ export function Button({
   const variantClass = variantClasses[variant]
   const sizeClass = sizeClasses[size]
 
+  const title = typeof props.title === "string" ? props.title : undefined
+  const tip = typeof title === "string" && title.length > 0 ? title : undefined
+
   return (
     <button
       className={`modern-button ${variantClass} ${sizeClass} ${className}`}
       disabled={disabled || loading}
+      data-tip={tip}
       {...props}
     >
       {loading ? (

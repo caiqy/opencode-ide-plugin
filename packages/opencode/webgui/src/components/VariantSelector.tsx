@@ -42,6 +42,7 @@ export function VariantSelector({
         disabled={isDisabled}
         className="h-6 px-2 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
         title="Select reasoning effort"
+        data-tip="Select reasoning effort"
       >
         {/* Sparkles icon */}
         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

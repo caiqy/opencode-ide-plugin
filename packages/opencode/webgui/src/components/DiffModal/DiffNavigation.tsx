@@ -23,6 +23,7 @@ export function DiffNavigation({ diffs, selectedFile, onSelectFile }: DiffNaviga
               : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-900"
           }`}
           title={diff.file}
+          data-tip={diff.file}
         >
           {diff.file.split("/").pop() || diff.file}
         </button>

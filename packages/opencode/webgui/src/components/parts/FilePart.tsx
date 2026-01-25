@@ -85,6 +85,7 @@ export function FilePart({ part }: FilePartProps) {
       onClick={handleOpen}
       onKeyDown={handleKeyDown}
       title={part.source?.path || part.filename}
+      data-tip={part.source?.path || part.filename}
     >
       {getFileIcon()}
       <span className="font-mono">{displayName}</span>

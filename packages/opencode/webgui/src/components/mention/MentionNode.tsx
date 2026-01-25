@@ -199,6 +199,7 @@ function MentionComponent({ metadata }: MentionComponentProps) {
       role={isFileLike ? "button" : undefined}
       tabIndex={isFileLike ? 0 : undefined}
       title={metadata.path}
+      data-tip={metadata.path}
       onClick={handleActivate}
       onKeyDown={handleKeyDown}
     >

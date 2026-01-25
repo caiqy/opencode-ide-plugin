@@ -32,6 +32,7 @@ export function UsageDisplay({ usage }: UsageDisplayProps) {
         onClick={() => setShowDetails((v) => !v)}
         className="flex items-center gap-1.5 group whitespace-nowrap overflow-hidden"
         title="Show usage details"
+        data-tip="Show usage details"
       >
         <div className="w-[80px] h-2.5 bg-gray-100 dark:bg-gray-800 rounded overflow-hidden relative">
           <div className={`${color} h-3`} style={{ width: `${pct}%` }} />

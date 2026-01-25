@@ -65,6 +65,7 @@ export function MessageStats({ tokens, cost }: MessageStatsProps) {
         className="modern-icon-button w-6 h-6 p-0.5 flex items-center justify-center"
         aria-label="Show token usage"
         title="Show token usage"
+        data-tip="Show token usage"
       >
         <div className="w-3 h-3">
           <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">

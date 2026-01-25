@@ -99,6 +99,7 @@ export function ActionButtons({
         disabled={isSharing}
         className="w-5 h-5 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
         title={isShared ? "Unshare Session" : "Share Session"}
+        data-tip={isShared ? "Unshare Session" : "Share Session"}
       >
         {isShared ? (
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -127,6 +128,7 @@ export function ActionButtons({
         disabled={isCreatingSession}
         className="w-5 h-5 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
         title="New Session (Cmd/Ctrl+N)"
+        data-tip="New Session (Cmd/Ctrl+N)"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

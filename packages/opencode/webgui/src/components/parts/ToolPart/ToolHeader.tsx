@@ -55,6 +55,7 @@ export function ToolHeader({ tool, status, toolName, filePath, isExpanded, onTog
             onKeyDown={handlePathKeyDown}
             className="underline decoration-dotted cursor-pointer hover:opacity-80"
             title={displayPath || filePath}
+            data-tip={displayPath || filePath}
           >
             {displayPath || filePath}
           </span>
