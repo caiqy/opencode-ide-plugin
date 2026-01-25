@@ -209,14 +209,13 @@ object IdeBridge {
             val lfs = LocalFileSystem.getInstance()
             val vf = lfs.findFileByPath(path) ?: lfs.refreshAndFindFileByPath(path)
             if (vf != null) {
-                ApplicationManager.getApplication().invokeLater {
-                    vf.refresh(false, false)
-                }
+                // Use async=true to avoid blocking EDT during VFS refresh
+                vf.refresh(true, false)
             } else {
-                // File doesn't exist yet (new file), refresh parent directory
+                // File doesn't exist yet (new file), refresh parent directory asynchronously
                 val parentPath = path.substringBeforeLast("/")
                 val parentVf = lfs.findFileByPath(parentPath) ?: lfs.refreshAndFindFileByPath(parentPath)
-                parentVf?.refresh(false, true)
+                parentVf?.refresh(true, true)
             }
         } catch (t: Throwable) {
             logger.warn("reloadFile failed", t)

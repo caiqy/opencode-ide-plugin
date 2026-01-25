@@ -30,7 +30,14 @@ import javax.swing.SwingUtilities
 object BackendLauncher {
     private val logger = Logger.getInstance(BackendLauncher::class.java)
 
+    /**
+     * Launches the backend process.
+     * IMPORTANT: This method performs heavy I/O (binary extraction) and must NOT be called from EDT.
+     */
     fun launchBackend(project: Project): BackendProcess {
+        require(!ApplicationManager.getApplication().isDispatchThread) {
+            "launchBackend must not be called from EDT - it performs heavy I/O operations"
+        }
         val isWin = System.getProperty("os.name").lowercase().contains("win")
         val binName = if (isWin) "opencode.exe" else "opencode"
         val bin = findBundledBinary(binName) ?: binName // fallback to PATH
@@ -96,6 +103,11 @@ object BackendLauncher {
         val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, project)
         val maxAttempts = 100 // 10 seconds with 100ms intervals
         var attempts = 0
+        var initShowRequested = false
+
+        // Capture visibility state before we potentially show Terminal to bootstrap it.
+        // This is used to restore the user's original UI state.
+        val initiallyVisible = ToolWindowManager.getInstance(project).getToolWindow("Terminal")?.isVisible ?: false
 
         fun checkAvailability() {
             if (project.isDisposed) {
@@ -104,19 +116,39 @@ object BackendLauncher {
             }
 
             try {
-                val isVisible = ToolWindowManager.getInstance(project).getToolWindow("Terminal")?.isVisible ?: false
+                val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Terminal")
                 val terminalManager = TerminalToolWindowManager.getInstance(project)
                 val terminalWindow: ToolWindow? = terminalManager.toolWindow
+
+                // The terminal tool window is lazily initialized on some IDE versions.
+                // If it wasn't opened before, TerminalToolWindowManager.toolWindow can stay null forever.
+                // Force initialization by showing it once; it will be hidden back later if it wasn't visible.
+                if (!initShowRequested && toolWindow != null && terminalWindow == null) {
+                    initShowRequested = true
+                    toolWindow.show(null)
+                }
+
                 if (terminalWindow != null && terminalWindow.isAvailable) {
                     logger.info("Terminal tool window is available after ${attempts * 100}ms")
-                    callback(true, isVisible)
+
+                    if (initShowRequested && !initiallyVisible) {
+                        try {
+                            ApplicationManager.getApplication().invokeLater {
+                                try {
+                                    toolWindow?.hide(null)
+                                } catch (_: Throwable) {}
+                            }
+                        } catch (_: Throwable) {}
+                    }
+
+                    callback(true, initiallyVisible)
                     return
                 }
 
                 attempts++
                 if (attempts >= maxAttempts) {
                     logger.error("Terminal tool window did not become available within ${maxAttempts * 100}ms")
-                    callback(false, isVisible)
+                    callback(false, initiallyVisible)
                     return
                 }
 
@@ -244,15 +276,17 @@ object BackendLauncher {
             val app = ApplicationManager.getApplication()
 
             // Show the terminal tool window if it is not visible
+            // Use invokeLater instead of invokeAndWait to avoid potential deadlocks
             if (!isVisible) {
                 if (app.isDispatchThread) {
                     terminalToolWindow?.show(null)
                 } else {
-                    app.invokeAndWait { terminalToolWindow?.show(null) }
+                    app.invokeLater { terminalToolWindow?.show(null) }
                 }
             }
 
             // Focus/select the existing tab to ensure it receives input/execution
+            // Use invokeLater instead of invokeAndWait to avoid potential deadlocks
             try {
                 if (existing != null) {
                     val content = getContentForWidget(project, existing)
@@ -267,7 +301,7 @@ object BackendLauncher {
                         if (app.isDispatchThread) {
                             action.run()
                         } else {
-                            app.invokeAndWait(action)
+                            app.invokeLater(action)
                         }
                     }
                 }

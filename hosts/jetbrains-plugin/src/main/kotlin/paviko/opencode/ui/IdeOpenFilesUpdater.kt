@@ -21,23 +21,41 @@ class IdeOpenFilesUpdater(private val project: Project, private val browser: JBC
         val bus = project.messageBus.connect(this)
         val fem = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
 
-        fun push() {
-            try {
-                val opened = fem.openFiles.mapNotNull { vf -> vfPath(vf) }
-                val current = fem.selectedEditor?.file?.let { vf -> vfPath(vf) }
-                IdeBridge.send(project, "updateOpenedFiles", mapOf("openedFiles" to opened, "currentFile" to current))
-            } catch (e: Exception) {
-                e.printStackTrace()
+        // Perform path computation on background thread to avoid blocking EDT with NIO operations
+        fun pushAsync() {
+            AppExecutorUtil.getAppExecutorService().execute {
+                try {
+                    // Get files on EDT (quick), compute paths on background thread
+                    val app = ApplicationManager.getApplication()
+                    val openFiles = mutableListOf<VirtualFile>()
+                    var selectedFile: VirtualFile? = null
+                    
+                    // Collect files from EDT
+                    val latch = java.util.concurrent.CountDownLatch(1)
+                    app.invokeLater {
+                        try {
+                            openFiles.addAll(fem.openFiles)
+                            selectedFile = fem.selectedEditor?.file
+                        } finally {
+                            latch.countDown()
+                        }
+                    }
+                    latch.await(1, java.util.concurrent.TimeUnit.SECONDS)
+                    
+                    // Compute paths on background thread (NIO operations)
+                    val opened = openFiles.mapNotNull { vf -> vfPath(vf) }
+                    val current = selectedFile?.let { vf -> vfPath(vf) }
+                    
+                    // Send result (IdeBridge.send already handles threading)
+                    IdeBridge.send(project, "updateOpenedFiles", mapOf("openedFiles" to opened, "currentFile" to current))
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
 
         fun pushSafe() {
-            val app = ApplicationManager.getApplication()
-            if (app.isDispatchThread) {
-                push()
-                return
-            }
-            app.invokeLater { push() }
+            pushAsync()
         }
 
         // Initial push when page loads
