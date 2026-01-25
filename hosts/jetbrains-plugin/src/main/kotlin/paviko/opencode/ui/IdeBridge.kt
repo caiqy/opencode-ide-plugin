@@ -12,6 +12,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefJSQuery
+import com.intellij.util.concurrency.AppExecutorUtil
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandlerAdapter
@@ -24,7 +25,7 @@ object IdeBridge {
     private class ProjectState(
         val browser: JBCefBrowser,
         val query: JBCefJSQuery?,
-        val outbox: MutableList<Map<String, Any?>> = mutableListOf()
+        val outbox: java.util.concurrent.ConcurrentLinkedQueue<Map<String, Any?>> = java.util.concurrent.ConcurrentLinkedQueue()
     ) {
         @Volatile var ready = false
     }
@@ -44,10 +45,13 @@ object IdeBridge {
         if (q != null) {
             try {
                 q.addHandler { payload ->
-                    try {
-                        handleInbound(payload ?: "{}", project)
-                    } catch (t: Throwable) {
-                        logger.warn("ideBridge inbound error", t)
+                    val json = payload ?: "{}"
+                    AppExecutorUtil.getAppExecutorService().execute {
+                        try {
+                            handleInbound(json, project)
+                        } catch (t: Throwable) {
+                            logger.warn("ideBridge inbound error", t)
+                        }
                     }
                     null
                 }
@@ -144,7 +148,7 @@ object IdeBridge {
             "reloadPath" -> {
                 val payload = obj.get("payload")
                 val path = payload?.get("path")?.asText() ?: return replyError(project, id, "missing path")
-                reloadFile(project, path)
+                reloadFile(path)
                 replyOk(project, id)
             }
             else -> replyOk(project, id)
@@ -196,10 +200,11 @@ object IdeBridge {
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun replyOk(project: Project, replyTo: String?) { sendRaw(project, mapOf("replyTo" to replyTo, "ok" to true)) }
     private fun replyError(project: Project, replyTo: String?, error: String) { sendRaw(project, mapOf("replyTo" to replyTo, "ok" to false, "error" to error)) }
 
-    private fun reloadFile(project: Project, path: String) {
+    private fun reloadFile(path: String) {
         try {
             val lfs = LocalFileSystem.getInstance()
             val vf = lfs.findFileByPath(path) ?: lfs.refreshAndFindFileByPath(path)
@@ -226,24 +231,27 @@ object IdeBridge {
 
     private fun sendRaw(project: Project, message: Map<String, Any?>) {
         val state = states[project] ?: return
-        val b = state.browser
-        
-        val json = try { mapper.writeValueAsString(message) } catch (_: Throwable) { return }
-        val script = "(function(){ try { if(window.__ideBridgeDeliver){ window.__ideBridgeDeliver(" + mapper.writeValueAsString(json) + "); } else { window.postMessage(" + json + ", '*'); } } catch(e){} })();"
-        try {
-            b.cefBrowser.executeJavaScript(script, b.cefBrowser.url, 0)
-            state.ready = true
-        } catch (t: Throwable) {
-            state.outbox.add(message)
+        AppExecutorUtil.getAppExecutorService().execute {
+            val b = state.browser
+
+            val json = try { mapper.writeValueAsString(message) } catch (_: Throwable) { return@execute }
+            val script = "(function(){ try { if(window.__ideBridgeDeliver){ window.__ideBridgeDeliver(" + mapper.writeValueAsString(json) + "); } else { window.postMessage(" + json + ", '*'); } } catch(e){} })();"
+            try {
+                b.cefBrowser.executeJavaScript(script, b.cefBrowser.url, 0)
+                state.ready = true
+            } catch (_: Throwable) {
+                state.outbox.add(message)
+            }
         }
     }
 
     private fun flushOutbox(project: Project) {
         val state = states[project] ?: return
         if (state.ready) {
-            val pending = ArrayList(state.outbox)
-            state.outbox.clear()
-            for (m in pending) sendRaw(project, m)
+            while (true) {
+                val m = state.outbox.poll() ?: break
+                sendRaw(project, m)
+            }
         }
     }
 }

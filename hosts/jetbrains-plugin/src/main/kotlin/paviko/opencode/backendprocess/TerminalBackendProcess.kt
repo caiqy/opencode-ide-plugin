@@ -2,9 +2,11 @@ package paviko.opencode.backendprocess
 
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.application.ApplicationManager
 import java.io.InputStream
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -25,6 +27,7 @@ internal class TerminalBackendProcess(
     private val isReady = AtomicBoolean(false)
     private val isFailed = AtomicBoolean(false)
     private val failureException = AtomicReference<Exception?>(null)
+    private val readyLatch = CountDownLatch(1)
     private val outputBuffer = PipedOutputStream()
     private val inputStreamBuffer = PipedInputStream(outputBuffer)
 
@@ -46,6 +49,8 @@ internal class TerminalBackendProcess(
                 failureException.set(exception)
                 logger.error("TerminalBackendProcess failed to initialize", exception)
             }
+
+            readyLatch.countDown()
         }
         logger.info("TerminalBackendProcess created, waiting for terminal availability...")
     }
@@ -54,14 +59,17 @@ internal class TerminalBackendProcess(
         get() = inputStreamBuffer
 
     override fun waitFor(): Int {
-        // Wait for the actual process to be ready
-        while (!isReady.get() && !isFailed.get()) {
-            try {
-                Thread.sleep(100)
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                return -1
-            }
+        // Avoid blocking the IDE UI thread.
+        if (ApplicationManager.getApplication().isDispatchThread) {
+            logger.warn("waitFor called on UI thread; returning immediately")
+            return -1
+        }
+
+        try {
+            readyLatch.await()
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return -1
         }
 
         if (isFailed.get()) {

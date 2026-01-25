@@ -67,11 +67,20 @@ object BackendLauncher {
         // Start waiting for terminal availability asynchronously
         waitForTerminalAvailabilityAsync(project) { success, isVisible ->
             if (success) {
-                try {
-                    val result = doLaunchBackend(project, args, baseDir, customCommand, outputBuffer, isVisible)
-                    callback(result, null)
-                } catch (e: Exception) {
-                    callback(null, e)
+                val app = ApplicationManager.getApplication()
+                val run = Runnable {
+                    try {
+                        val result = doLaunchBackend(project, args, baseDir, customCommand, outputBuffer, isVisible)
+                        callback(result, null)
+                    } catch (e: Exception) {
+                        callback(null, e)
+                    }
+                }
+
+                if (app.isDispatchThread) {
+                    run.run()
+                } else {
+                    app.invokeLater(run)
                 }
             } else {
                 callback(null, RuntimeException("Terminal tool window is not available. Please ensure the Terminal plugin is installed and enabled."))
@@ -84,41 +93,42 @@ object BackendLauncher {
      * Uses IntelliJ's Alarm mechanism to periodically check availability.
      */
     private fun waitForTerminalAvailabilityAsync(project: Project, callback: (Boolean, Boolean) -> Unit) {
-        val alarm = Alarm()
+        val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, project)
         val maxAttempts = 100 // 10 seconds with 100ms intervals
         var attempts = 0
 
-        val isVisible = ToolWindowManager.getInstance(project).getToolWindow("Terminal")?.isVisible ?: false
-
         fun checkAvailability() {
-            ApplicationManager.getApplication().invokeLater {
-                try {
-                    val terminalManager = TerminalToolWindowManager.getInstance(project)
-                    val terminalWindow: ToolWindow? = terminalManager.toolWindow
-                    if (terminalWindow != null && terminalWindow.isAvailable) {
-                        // ToolWindowManager.getInstance(project).getToolWindow("Terminal")
-                        logger.info("Terminal tool window is available after ${attempts * 100}ms")
-                        callback(true, isVisible)
-                    } else {
-                        ToolWindowManager.getInstance(project).getToolWindow("Terminal")?.show();
-                        attempts++
-                        if (attempts >= maxAttempts) {
-                            logger.error("Terminal tool window did not become available within ${maxAttempts * 100}ms")
-                            callback(true, isVisible)
-                        } else {
-                            // Schedule next check
-                            alarm.addRequest({ checkAvailability() }, 100)
-                        }
-                    }
-                } catch (e: Exception) {
-                    logger.error("Error checking terminal availability: ${e.message}", e)
-                    callback(false, false)
+            if (project.isDisposed) {
+                callback(false, false)
+                return
+            }
+
+            try {
+                val isVisible = ToolWindowManager.getInstance(project).getToolWindow("Terminal")?.isVisible ?: false
+                val terminalManager = TerminalToolWindowManager.getInstance(project)
+                val terminalWindow: ToolWindow? = terminalManager.toolWindow
+                if (terminalWindow != null && terminalWindow.isAvailable) {
+                    logger.info("Terminal tool window is available after ${attempts * 100}ms")
+                    callback(true, isVisible)
+                    return
                 }
+
+                attempts++
+                if (attempts >= maxAttempts) {
+                    logger.error("Terminal tool window did not become available within ${maxAttempts * 100}ms")
+                    callback(false, isVisible)
+                    return
+                }
+
+                alarm.addRequest({ checkAvailability() }, 100)
+            } catch (e: Exception) {
+                logger.error("Error checking terminal availability: ${e.message}", e)
+                callback(false, false)
             }
         }
         
         logger.info("Waiting for terminal tool window to become available...")
-        checkAvailability()
+        alarm.addRequest({ checkAvailability() }, 0)
     }
     
     private fun doLaunchBackend(
@@ -187,7 +197,7 @@ object BackendLauncher {
             logger.info("Reusing existing terminal '$terminalName'")
 
             // Workaround for JetBrains behavior: existing terminal tab may not run commands unless focused
-            focusTerminal(project, isVisible, terminalToolWindow, terminalManager, existing, minimized, terminalName)
+            focusTerminal(project, isVisible, terminalToolWindow, existing, minimized, terminalName)
 
             existing
         } else {
@@ -226,7 +236,6 @@ object BackendLauncher {
         project: Project,
         isVisible: Boolean,
         terminalToolWindow: ToolWindow?,
-        terminalManager: TerminalToolWindowManager,
         existing: TerminalWidget?,
         minimized: Boolean,
         terminalName: String
@@ -560,4 +569,3 @@ object BackendLauncher {
     }
 
 }
-
