@@ -32,6 +32,8 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
     private var connectionInfo: ConnInfo? = null
     private val logger = Logger.getInstance(ChatToolWindowFactory::class.java)
 
+    private val maxLogChars = 200_000
+
     private fun showError(mainPanel: JPanel, hideableLogs: JComponent, message: String) {
         mainPanel.removeAll()
         mainPanel.add(JPanel(BorderLayout()).apply {
@@ -111,6 +113,11 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                     s
                 }
                 logArea.append(chunk)
+                try {
+                    val doc = logArea.document
+                    val overflow = doc.length - maxLogChars
+                    if (overflow > 0) doc.remove(0, overflow)
+                } catch (_: Throwable) {}
                 logFlushScheduled.set(false)
             }
         }
