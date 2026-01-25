@@ -14,7 +14,8 @@ internal class TerminalOutputCapture(private val outputBuffer: PipedOutputStream
     private val logger = Logger.getInstance(TerminalOutputCapture::class.java)
     private var captureThread: Thread? = null
     private var isCapturing = false
-    private val processedLines = mutableSetOf<String>()
+    private val processedLines = LinkedHashSet<String>()
+    private val processedLimit = 5000
 
     fun startCapturing(terminalWidget: ShellTerminalWidget) {
         isCapturing = true
@@ -72,10 +73,17 @@ internal class TerminalOutputCapture(private val outputBuffer: PipedOutputStream
                                         if (currentIndex > lastNonEmptyLineIndex) {
                                             lastNonEmptyLineIndex = currentIndex
                                             
-                                            // Process new non-empty line
-                                            if (!processedLines.contains(cleanText)) {
-                                                // Skip common shell prompts and command echoes
-                                                if (!isShellPromptOrCommand(cleanText)) {
+                                             // Process new non-empty line
+                                             if (!processedLines.contains(cleanText)) {
+                                                 // Skip common shell prompts and command echoes
+                                                 if (!isShellPromptOrCommand(cleanText)) {
+                                                    if (processedLines.size >= processedLimit) {
+                                                        val it = processedLines.iterator()
+                                                        if (it.hasNext()) {
+                                                            it.next()
+                                                            it.remove()
+                                                        }
+                                                    }
                                                     processedLines.add(cleanText)
                                                     logger.info("Terminal output: $cleanText")
 

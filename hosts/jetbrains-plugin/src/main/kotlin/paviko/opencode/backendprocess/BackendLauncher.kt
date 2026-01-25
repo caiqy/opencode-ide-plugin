@@ -232,9 +232,10 @@ object BackendLauncher {
         terminalName: String
     ) {
         try {
+            val app = ApplicationManager.getApplication()
+
             // Show the terminal tool window if it is not visible
             if (!isVisible) {
-                val app = ApplicationManager.getApplication()
                 if (app.isDispatchThread) {
                     terminalToolWindow?.show(null)
                 } else {
@@ -247,9 +248,17 @@ object BackendLauncher {
                 if (existing != null) {
                     val content = getContentForWidget(project, existing)
                     if (content != null) {
-                        ApplicationManager.getApplication().invokeAndWait {
-                            terminalToolWindow?.contentManager?.setSelectedContent(content, true)
-                            terminalToolWindow?.activate(null, true)
+                        val action = Runnable {
+                            try {
+                                terminalToolWindow?.contentManager?.setSelectedContent(content, true)
+                                terminalToolWindow?.activate(null, true)
+                            } catch (_: Throwable) {}
+                        }
+
+                        if (app.isDispatchThread) {
+                            action.run()
+                        } else {
+                            app.invokeAndWait(action)
                         }
                     }
                 }
@@ -551,5 +560,4 @@ object BackendLauncher {
     }
 
 }
-
 

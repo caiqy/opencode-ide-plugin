@@ -13,9 +13,9 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefClient
+import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
 import paviko.opencode.backendprocess.BackendLauncher
-import paviko.opencode.settings.OpenCodeSettings
 import java.awt.BorderLayout
 import java.awt.Font
 import java.io.BufferedReader
@@ -23,11 +23,24 @@ import java.io.InputStreamReader
 import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import javax.swing.*
 
 class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
     private var connectionInfo: ConnInfo? = null
     private val logger = Logger.getInstance(ChatToolWindowFactory::class.java)
+
+    private fun showError(mainPanel: JPanel, hideableLogs: JComponent, message: String) {
+        mainPanel.removeAll()
+        mainPanel.add(JPanel(BorderLayout()).apply {
+            add(JLabel("<html><center>$message</center></html>"), BorderLayout.CENTER)
+        }, BorderLayout.CENTER)
+        mainPanel.add(hideableLogs, BorderLayout.SOUTH)
+        mainPanel.revalidate()
+        mainPanel.repaint()
+    }
 
     private fun pluginVersion(): String {
         // Use pluginDescriptor.version without hardcoding plugin id.
@@ -80,159 +93,137 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         // Add collapsible logs at the bottom
         mainPanel.add(hideableLogs, BorderLayout.SOUTH)
 
-        val proc = try {
-            BackendLauncher.launchBackend(project)
-        } catch (e: Exception) {
-            logger.error("Failed to launch backend", e)
-            mainPanel.removeAll()
-            mainPanel.add(JPanel(BorderLayout()).apply {
-                add(
-                    JLabel("<html><center>Failed to start backend:<br/>${e.message}<br/><br/>Check logs for details.</center></html>"),
-                    BorderLayout.CENTER
-                )
-            }, BorderLayout.CENTER)
-            mainPanel.add(hideableLogs, BorderLayout.SOUTH)
-            mainPanel.revalidate()
-            mainPanel.repaint()
-            return
+        val procRef = AtomicReference<paviko.opencode.backendprocess.BackendProcess?>(null)
+        val connected = AtomicBoolean(false)
+        val logLock = Any()
+        val logBuffer = StringBuilder()
+        val logFlushScheduled = AtomicBoolean(false)
+
+        fun queueLog(line: String) {
+            synchronized(logLock) {
+                logBuffer.append(line).append('\n')
+            }
+            if (!logFlushScheduled.compareAndSet(false, true)) return
+            SwingUtilities.invokeLater {
+                val chunk = synchronized(logLock) {
+                    val s = logBuffer.toString()
+                    logBuffer.setLength(0)
+                    s
+                }
+                logArea.append(chunk)
+                logFlushScheduled.set(false)
+            }
         }
-        val reader = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8))
-        val logThread = Thread {
-            try {
-                var line: String?
-                var browserSet = false
-                var connectionTimeout = System.currentTimeMillis() + 300000 // 300 second timeout
 
-                while (reader.readLine().also { line = it } != null) {
-                    val l = line!!.trim()
-                    SwingUtilities.invokeLater { logArea.append(l + "\n") }
+        val timeoutMs = 60_000L
+        val timeoutFuture = AppExecutorUtil.getAppScheduledExecutorService().schedule({
+            if (connected.get()) return@schedule
+            logger.warn("Backend connection timeout after ${timeoutMs}ms")
+            SwingUtilities.invokeLater {
+                showError(mainPanel, hideableLogs, "Backend connection timeout.<br/>Check logs for details.")
+            }
+            try { procRef.get()?.destroy() } catch (_: Throwable) {}
+            try { procRef.get()?.inputStream?.close() } catch (_: Throwable) {}
+        }, timeoutMs, TimeUnit.MILLISECONDS)
 
-                    if (!browserSet) {
-                        val serverMatch = Regex("opencode server listening on (https?://\\S+)", RegexOption.IGNORE_CASE).find(l)
-                        if (serverMatch != null) {
-                            val serverUrlRaw = serverMatch.groupValues[1]
-                            try {
-                                val serverUri = URI(serverUrlRaw)
-                                val port = if (serverUri.port != -1) serverUri.port else when (serverUri.scheme?.lowercase()) {
-                                    "https" -> 443
-                                    else -> 80
-                                }
-                                val baseUrl = serverUri.toString().trimEnd('/')
-                                val appUrl = "$baseUrl/app"
+        Disposer.register(toolWindow.disposable) {
+            timeoutFuture.cancel(false)
+            try { procRef.get()?.destroy() } catch (_: Throwable) {}
+            try { procRef.get()?.inputStream?.close() } catch (_: Throwable) {}
+            IdeBridge.remove(project)
+        }
 
-                                proc.stopCapture()
-                                connectionInfo = ConnInfo(port, appUrl)
-                                browserSet = true
-                                logger.info("Backend connection established at $appUrl")
+        AppExecutorUtil.getAppExecutorService().execute {
+            val proc = try {
+                BackendLauncher.launchBackend(project)
+            } catch (e: Exception) {
+                logger.error("Failed to launch backend", e)
+                SwingUtilities.invokeLater {
+                    showError(mainPanel, hideableLogs, "Failed to start backend:<br/>${e.message}<br/><br/>Check logs for details.")
+                }
+                timeoutFuture.cancel(false)
+                return@execute
+            }
+            procRef.set(proc)
 
-                                SwingUtilities.invokeLater {
-                                    try {
-                                        // Create client with JS_QUERY_POOL_SIZE for Windows IDEA 2024.3 compatibility
-                                        // This allows JBCefJSQuery.create() to work after browser creation
-                                        val client = JBCefApp.getInstance().createClient()
-                                        try {
-                                            client.setProperty(JBCefClient.Properties.JS_QUERY_POOL_SIZE, 1)
-                                        } catch (_: Throwable) {}
-                                        val browser = JBCefBrowser.createBuilder()
-                                            .setClient(client)
-                                            .setUrl(withCacheBuster(appUrl, pluginVersion()))
-                                            .build()
+            val reader = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8))
+            val logThread = Thread {
+                try {
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        val l = line!!.trim()
+                        queueLog(l)
 
-                                        // Store browser reference for path insertion (context actions)
-                                        // PathInserter.setBrowser(browser) - Removed, now stateless
-
-                                        // Enable dropping files from the IDE onto the web UI via helper
-                                        try {
-                                            DragAndDropInstaller.install(project, browser, logger)
-                                        } catch (e: Exception) {
-                                            logger.warn("Failed to set up drag and drop", e)
-                                        }
-                                        
-                                        // Add browser to component hierarchy - required for JBCefJSQuery in IDEA 2024.3
-                                        mainPanel.removeAll()
-                                        mainPanel.add(browser.component, BorderLayout.CENTER)
-                                        // keep logs section at the bottom
-                                        mainPanel.add(hideableLogs, BorderLayout.SOUTH)
-                                        mainPanel.revalidate()
-                                        mainPanel.repaint()
-
-                                        // Install IdeBridge - uses CefLoadHandler internally to wait for browser ready
-                                        IdeBridge.install(browser, project)
-
-                                        // Push opened files and current file from IDE into the webview (@ overlay)
-                                        try {
-                                            val filesUpdater = IdeOpenFilesUpdater(project, browser)
-                                            filesUpdater.install()
-                                            Disposer.register(browser, filesUpdater)
-                                        } catch (e: Exception) {
-                                            logger.warn("Failed to install IdeOpenFilesUpdater", e)
-                                        }
-
-                                        // Tooltip polyfill is enabled via IdeBridge message.
-                                    } catch (e: Exception) {
-                                        logger.error("Failed to create browser component", e)
-                                        mainPanel.removeAll()
-                                        mainPanel.add(JPanel(BorderLayout()).apply {
-                                            add(
-                                                JLabel("<html><center>Failed to create browser:<br/>${e.message}</center></html>"),
-                                                BorderLayout.CENTER
-                                            )
-                                        }, BorderLayout.CENTER)
-                                        mainPanel.revalidate()
-                                        mainPanel.repaint()
+                        if (!connected.get()) {
+                            val serverMatch = Regex("opencode server listening on (https?://\\S+)", RegexOption.IGNORE_CASE).find(l)
+                            if (serverMatch != null) {
+                                val serverUrlRaw = serverMatch.groupValues[1]
+                                try {
+                                    val serverUri = URI(serverUrlRaw)
+                                    val port = if (serverUri.port != -1) serverUri.port else when (serverUri.scheme?.lowercase()) {
+                                        "https" -> 443
+                                        else -> 80
                                     }
+                                    val baseUrl = serverUri.toString().trimEnd('/')
+                                    val appUrl = "$baseUrl/app"
+
+                                    proc.stopCapture()
+                                    connectionInfo = ConnInfo(port, appUrl)
+                                    connected.set(true)
+                                    timeoutFuture.cancel(false)
+                                    logger.info("Backend connection established at $appUrl")
+
+                                    SwingUtilities.invokeLater {
+                                        try {
+                                            val client = JBCefApp.getInstance().createClient()
+                                            try { client.setProperty(JBCefClient.Properties.JS_QUERY_POOL_SIZE, 1) } catch (_: Throwable) {}
+                                            val browser = JBCefBrowser.createBuilder()
+                                                .setClient(client)
+                                                .setUrl(withCacheBuster(appUrl, pluginVersion()))
+                                                .build()
+
+                                            try {
+                                                DragAndDropInstaller.install(project, browser, logger)
+                                            } catch (e: Exception) {
+                                                logger.warn("Failed to set up drag and drop", e)
+                                            }
+
+                                            mainPanel.removeAll()
+                                            mainPanel.add(browser.component, BorderLayout.CENTER)
+                                            mainPanel.add(hideableLogs, BorderLayout.SOUTH)
+                                            mainPanel.revalidate()
+                                            mainPanel.repaint()
+
+                                            IdeBridge.install(browser, project)
+                                            try {
+                                                val filesUpdater = IdeOpenFilesUpdater(project, browser)
+                                                filesUpdater.install()
+                                                Disposer.register(browser, filesUpdater)
+                                            } catch (e: Exception) {
+                                                logger.warn("Failed to install IdeOpenFilesUpdater", e)
+                                            }
+                                        } catch (e: Exception) {
+                                            logger.error("Failed to create browser component", e)
+                                            showError(mainPanel, hideableLogs, "Failed to create browser:<br/>${e.message}")
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    logger.warn("Failed to set up browser for backend connection", e)
                                 }
-                            } catch (e: Exception) {
-                                logger.warn("Failed to set up browser for backend connection", e)
                             }
                         }
                     }
-
-                    // Check for connection timeout
-                    if (!browserSet && System.currentTimeMillis() > connectionTimeout) {
-                        logger.error("Backend connection timeout after 30 seconds")
-                        SwingUtilities.invokeLater {
-                            mainPanel.removeAll()
-                            mainPanel.add(JPanel(BorderLayout()).apply {
-                                add(
-                                    JLabel("<html><center>Backend connection timeout.<br/>Check logs for details.</center></html>"),
-                                    BorderLayout.CENTER
-                                )
-                            }, BorderLayout.CENTER)
-                            mainPanel.add(hideableLogs, BorderLayout.SOUTH)
-                            mainPanel.revalidate()
-                            mainPanel.repaint()
-                        }
-                        break
+                } catch (e: Exception) {
+                    logger.error("Error reading backend output", e)
+                    SwingUtilities.invokeLater {
+                        showError(mainPanel, hideableLogs, "Backend communication error:<br/>${e.message}")
                     }
-                }
-            } catch (e: Exception) {
-                logger.error("Error reading backend output", e)
-                SwingUtilities.invokeLater {
-                    mainPanel.removeAll()
-                    mainPanel.add(JPanel(BorderLayout()).apply {
-                        add(
-                            JLabel("<html><center>Backend communication error:<br/>${e.message}</center></html>"),
-                            BorderLayout.CENTER
-                        )
-                    }, BorderLayout.CENTER)
-                    mainPanel.add(hideableLogs, BorderLayout.SOUTH)
-                    mainPanel.revalidate()
-                    mainPanel.repaint()
+                } finally {
+                    try { reader.close() } catch (_: Throwable) {}
                 }
             }
-        }
-        logThread.isDaemon = true
-        logThread.start()
-
-        Disposer.register(toolWindow.disposable) {
-            try {
-                proc.destroy()
-            } catch (_: Throwable) {
-            }
-            // Clear browser references
-            IdeBridge.remove(project)
-
+            logThread.isDaemon = true
+            logThread.start()
         }
     }
 

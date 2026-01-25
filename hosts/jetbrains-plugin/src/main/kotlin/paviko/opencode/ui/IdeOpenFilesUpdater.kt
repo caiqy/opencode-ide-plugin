@@ -2,6 +2,7 @@ package paviko.opencode.ui
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.jcef.JBCefBrowser
@@ -9,9 +10,11 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import org.cef.browser.CefBrowser
 import org.cef.handler.CefLifeSpanHandlerAdapter
 import java.nio.file.Paths
+import java.util.concurrent.ScheduledFuture
 
 class IdeOpenFilesUpdater(private val project: Project, private val browser: JBCefBrowser) : Disposable {
     private val mapper = jacksonObjectMapper()
+    private var scheduled: ScheduledFuture<*>? = null
 
     fun install() {
         // Observe tab/file changes and push to webview
@@ -28,10 +31,19 @@ class IdeOpenFilesUpdater(private val project: Project, private val browser: JBC
             }
         }
 
+        fun pushSafe() {
+            val app = ApplicationManager.getApplication()
+            if (app.isDispatchThread) {
+                push()
+                return
+            }
+            app.invokeLater { push() }
+        }
+
         // Initial push when page loads
         browser.jbCefClient.addLifeSpanHandler(object : CefLifeSpanHandlerAdapter() {
             override fun onAfterCreated(browser: CefBrowser?) {
-                push()
+                pushSafe()
             }
         }, browser.cefBrowser)
 
@@ -40,21 +52,21 @@ class IdeOpenFilesUpdater(private val project: Project, private val browser: JBC
             com.intellij.openapi.fileEditor.FileEditorManagerListener.FILE_EDITOR_MANAGER,
             object : com.intellij.openapi.fileEditor.FileEditorManagerListener {
                 override fun selectionChanged(event: com.intellij.openapi.fileEditor.FileEditorManagerEvent) {
-                    push()
+                    pushSafe()
                 }
 
                 override fun fileOpened(source: com.intellij.openapi.fileEditor.FileEditorManager, file: VirtualFile) {
-                    push()
+                    pushSafe()
                 }
 
                 override fun fileClosed(source: com.intellij.openapi.fileEditor.FileEditorManager, file: VirtualFile) {
-                    push()
+                    pushSafe()
                 }
             })
 
         // Also push periodically as a fallback
-        AppExecutorUtil.getAppScheduledExecutorService()
-            .scheduleWithFixedDelay({ push() }, 2, 5, java.util.concurrent.TimeUnit.SECONDS)
+        scheduled = AppExecutorUtil.getAppScheduledExecutorService()
+            .scheduleWithFixedDelay({ pushSafe() }, 2, 5, java.util.concurrent.TimeUnit.SECONDS)
     }
 
     private fun vfPath(vf: VirtualFile?): String? {
@@ -86,5 +98,8 @@ class IdeOpenFilesUpdater(private val project: Project, private val browser: JBC
         }
     }
 
-    override fun dispose() {}
+    override fun dispose() {
+        try { scheduled?.cancel(false) } catch (_: Throwable) {}
+        scheduled = null
+    }
 }
