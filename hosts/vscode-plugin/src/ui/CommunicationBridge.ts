@@ -557,6 +557,7 @@ export class CommunicationBridge implements PluginCommunicator {
                   "redo",
                   // Clipboard actions for macOS handling
                   "editor.action.clipboardCopyAction",
+                  "editor.action.clipboardCutAction",
                   "editor.action.clipboardPasteAction",
                 ])
                 const cmd = command as string // safe after type guard above
