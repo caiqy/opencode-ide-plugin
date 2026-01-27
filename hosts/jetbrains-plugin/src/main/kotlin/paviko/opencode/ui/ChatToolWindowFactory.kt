@@ -1,8 +1,6 @@
 package paviko.opencode.ui
 
 
-import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.ide.plugins.PluginUtil
 import com.intellij.openapi.diagnostic.Logger
 
 import com.intellij.openapi.project.DumbAware
@@ -14,6 +12,7 @@ import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefClient
 import com.intellij.util.ui.JBUI
+import java.util.UUID
 import paviko.opencode.backendprocess.BackendLauncher
 import paviko.opencode.settings.OpenCodeSettings
 import java.awt.BorderLayout
@@ -28,14 +27,6 @@ import javax.swing.*
 class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
     private var connectionInfo: ConnInfo? = null
     private val logger = Logger.getInstance(ChatToolWindowFactory::class.java)
-
-    private fun pluginVersion(): String {
-        // Use pluginDescriptor.version without hardcoding plugin id.
-        // PluginUtil ties a classloader back to the hosting plugin.
-        val pluginId = PluginUtil.getPluginId(javaClass.classLoader) ?: return "dev"
-        val descriptor = PluginManagerCore.getPlugin(pluginId) ?: return "dev"
-        return descriptor.version
-    }
 
     private fun withCacheBuster(url: String, version: String): String {
         val encodedVersion = URLEncoder.encode(version, StandardCharsets.UTF_8)
@@ -79,6 +70,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         }, BorderLayout.CENTER)
         // Add collapsible logs at the bottom
         mainPanel.add(hideableLogs, BorderLayout.SOUTH)
+        val nonce = UUID.randomUUID().toString()
 
         val proc = try {
             BackendLauncher.launchBackend(project)
@@ -135,7 +127,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                         } catch (_: Throwable) {}
                                         val browser = JBCefBrowser.createBuilder()
                                             .setClient(client)
-                                            .setUrl(withCacheBuster(appUrl, pluginVersion()))
+                                            .setUrl(withCacheBuster(appUrl, nonce))
                                             .build()
 
                                         // Store browser reference for path insertion (context actions)
