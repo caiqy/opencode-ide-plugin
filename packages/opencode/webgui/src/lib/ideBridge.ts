@@ -10,29 +10,65 @@ type Message = {
 
 type Handler = (message: Message) => void
 
+// Parse URL params once at module load
+const params = new URLSearchParams(window.location.search)
+const bridgeBase = params.get("ideBridge")
+const token = params.get("ideBridgeToken")
+
 class IdeBridge {
   ready = false
-  private queue: string[] = []
+  private queue: Message[] = []
   private handlers: Set<Handler> = new Set()
   private pending = new Map<string, { resolve: (m: Message) => void; reject: (e: any) => void }>()
-  private flushTimer: number | null = null
+  private eventSource: EventSource | null = null
+  private reconnectDelay = 1000
+  private readonly maxReconnectDelay = 30000
+  private reconnectScheduled = false
 
   isInstalled(): boolean {
-    return typeof (window as any).__ideBridgeSend === "function" || (window.parent && window.parent !== window)
+    return !!(bridgeBase && token)
   }
 
   init() {
-    const onMessage = (ev: MessageEvent) => {
-      const msg = ev.data as Message
-      this.dispatch(msg)
+    this.connect()
+  }
+
+  private connect() {
+    if (!bridgeBase || !token) return
+
+    this.eventSource = new EventSource(`${bridgeBase}/events?token=${encodeURIComponent(token)}`)
+
+    this.eventSource.onopen = () => {
+      this.ready = true
+      this.reconnectDelay = 1000
+      this.flushQueue()
     }
-    window.addEventListener("message", onMessage)
-    ;(window as any).__ideBridgeOnMessage = (m: any) => {
+
+    this.eventSource.onmessage = (ev) => {
       try {
-        this.dispatch(typeof m === "string" ? JSON.parse(m) : m)
-      } catch {}
-      if (!this.ready) this.flush()
+        const msg = JSON.parse(ev.data) as Message
+        this.dispatch(msg)
+      } catch (e) {
+        console.warn("[ideBridge] Failed to parse SSE message:", e)
+      }
     }
+
+    this.eventSource.onerror = () => {
+      this.ready = false
+      this.scheduleReconnect()
+    }
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectScheduled) return
+    this.reconnectScheduled = true
+    this.eventSource?.close()
+    this.eventSource = null
+    setTimeout(() => {
+      this.reconnectScheduled = false
+      this.connect()
+    }, this.reconnectDelay)
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay)
   }
 
   private dispatch(msg: Message) {
@@ -54,29 +90,68 @@ class IdeBridge {
   on(handler: Handler) {
     this.handlers.add(handler)
   }
+
   off(handler: Handler) {
     this.handlers.delete(handler)
   }
 
   send(msg: Message) {
-    const s = typeof msg === "string" ? String(msg) : JSON.stringify(msg)
-    const fn = (window as any).__ideBridgeSend
-    if (typeof fn === "function") {
-      fn(s)
+    if (!bridgeBase || !token) {
+      console.warn("[ideBridge] Bridge not configured, ignoring send:", msg.type)
       return
     }
+
+    if (!this.ready) {
+      this.queue.push(msg)
+      return
+    }
+
+    this.doSend(msg)
+  }
+
+  private async doSend(msg: Message, retryCount = 0) {
+    if (!bridgeBase || !token) return
+
     try {
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: "__ideBridgeSend", json: s }, "*")
-        return
+      const response = await fetch(`${bridgeBase}/send?token=${encodeURIComponent(token)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(msg),
+      })
+
+      if (!response.ok) {
+        console.warn("[ideBridge] Send failed with status:", response.status)
+        // Requeue on server errors (5xx) with limited retries
+        if (response.status >= 500 && retryCount < 3) {
+          this.requeueWithBackoff(msg, retryCount)
+        }
       }
-    } catch {}
-    this.queue.push(s)
-    this.ensureFlushScheduled()
+    } catch (e) {
+      console.warn("[ideBridge] Send failed:", e)
+      // Network error - requeue with backoff
+      if (retryCount < 3) {
+        this.requeueWithBackoff(msg, retryCount)
+      }
+    }
+  }
+
+  private requeueWithBackoff(msg: Message, retryCount: number) {
+    const delay = Math.min(1000 * Math.pow(2, retryCount), 10000)
+    setTimeout(() => {
+      if (this.ready) {
+        this.doSend(msg, retryCount + 1)
+      } else {
+        this.queue.push(msg)
+      }
+    }, delay)
   }
 
   request<T = any>(type: string, payload?: any): Promise<Message & { result?: T }> {
     return new Promise((resolve, reject) => {
+      if (!this.isInstalled()) {
+        reject(new Error("[ideBridge] Bridge not installed"))
+        return
+      }
       try {
         const id = String(Date.now()) + Math.random().toString(36).slice(2)
         this.pending.set(id, { resolve, reject })
@@ -87,33 +162,10 @@ class IdeBridge {
     })
   }
 
-  private ensureFlushScheduled() {
-    if (this.flushTimer !== null) return
-    const attempt = () => {
-      const fn = (window as any).__ideBridgeSend
-      if (typeof fn === "function") {
-        this.flush()
-        if (this.flushTimer !== null) {
-          window.clearTimeout(this.flushTimer)
-          this.flushTimer = null
-        }
-        return
-      }
-      this.flushTimer = window.setTimeout(attempt, 100)
-    }
-    this.flushTimer = window.setTimeout(attempt, 0)
-  }
-
-  flush() {
-    this.ready = true
+  private flushQueue() {
     const q = this.queue.splice(0, this.queue.length)
-    const fn = (window as any).__ideBridgeSend
-    for (const s of q) {
-      try {
-        if (typeof fn === "function") fn(s)
-        else if (window.parent && window.parent !== window)
-          window.parent.postMessage({ type: "__ideBridgeSend", json: s }, "*")
-      } catch {}
+    for (const msg of q) {
+      this.doSend(msg)
     }
   }
 }

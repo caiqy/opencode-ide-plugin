@@ -1,6 +1,5 @@
 package paviko.opencode.ui
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
@@ -12,8 +11,7 @@ import org.cef.handler.CefLifeSpanHandlerAdapter
 import java.nio.file.Paths
 import java.util.concurrent.ScheduledFuture
 
-class IdeOpenFilesUpdater(private val project: Project, private val browser: JBCefBrowser) : Disposable {
-    private val mapper = jacksonObjectMapper()
+class IdeOpenFilesUpdater(private val project: Project, private val browser: JBCefBrowser, private val sessionId: String) : Disposable {
     private var scheduled: ScheduledFuture<*>? = null
 
     fun install() {
@@ -25,14 +23,12 @@ class IdeOpenFilesUpdater(private val project: Project, private val browser: JBC
         fun pushAsync() {
             AppExecutorUtil.getAppExecutorService().execute {
                 try {
-                    // Get files on EDT (quick), compute paths on background thread
-                    val app = ApplicationManager.getApplication()
+                    // Snapshot open files on EDT like before.
                     val openFiles = mutableListOf<VirtualFile>()
                     var selectedFile: VirtualFile? = null
-                    
-                    // Collect files from EDT
+
                     val latch = java.util.concurrent.CountDownLatch(1)
-                    app.invokeLater {
+                    ApplicationManager.getApplication().invokeLater {
                         try {
                             openFiles.addAll(fem.openFiles)
                             selectedFile = fem.selectedEditor?.file
@@ -40,14 +36,22 @@ class IdeOpenFilesUpdater(private val project: Project, private val browser: JBC
                             latch.countDown()
                         }
                     }
-                    latch.await(1, java.util.concurrent.TimeUnit.SECONDS)
+
+                    try {
+                        latch.await()
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        return@execute
+                    }
+
+                    if (project.isDisposed) return@execute
                     
                     // Compute paths on background thread (NIO operations)
                     val opened = openFiles.mapNotNull { vf -> vfPath(vf) }
                     val current = selectedFile?.let { vf -> vfPath(vf) }
                     
                     // Send result (IdeBridge.send already handles threading)
-                    IdeBridge.send(project, "updateOpenedFiles", mapOf("openedFiles" to opened, "currentFile" to current))
+                    IdeBridge.send(sessionId, "updateOpenedFiles", mapOf("openedFiles" to opened, "currentFile" to current))
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }

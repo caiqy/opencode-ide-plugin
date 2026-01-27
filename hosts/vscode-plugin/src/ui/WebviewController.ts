@@ -6,6 +6,7 @@ import { FileMonitor } from "../utils/FileMonitor"
 import { errorHandler } from "../utils/ErrorHandler"
 import { PathInserter } from "../utils/PathInserter"
 import { logger } from "../globals"
+import { bridgeServer } from "./IdeBridgeServer"
 
 /**
  * Shared webview controller to manage common UI lifecycle and messaging
@@ -25,6 +26,7 @@ export class WebviewController {
   private fileMonitor?: FileMonitor
   private connection?: BackendConnection
   private disposables: vscode.Disposable[] = []
+  private bridgeSessionId: string | null = null
 
   constructor(opts: WebviewControllerOptions) {
     this.webview = opts.webview
@@ -57,12 +59,31 @@ export class WebviewController {
         PathInserter.setCommunicationBridge(this.communicationBridge)
       } catch {}
 
+      // Create bridge session with handlers from CommunicationBridge
+      const session = await bridgeServer.createSession({
+        openFile: (path) => this.communicationBridge!.handleOpenFile(path),
+        openUrl: (url) => this.communicationBridge!.handleOpenUrl(url),
+        reloadPath: (path) => this.communicationBridge!.handleReloadPath(path),
+      })
+      this.bridgeSessionId = session.sessionId
+      
+      // Tell CommunicationBridge to route ideBridge messages through SSE
+      this.communicationBridge.setBridgeSession(session.sessionId, bridgeServer)
+
       // Initialize file monitor (best effort)
       try {
         this.fileMonitor = new FileMonitor()
         this.fileMonitor.startMonitoring((files: string[], current?: string) => {
           try {
-            this.communicationBridge?.updateOpenedFiles(files, current)
+            if (this.bridgeSessionId) {
+              // Normalize paths for cross-platform consistency (especially Windows)
+              const normalizedFiles = files.map(f => this.normalizePath(f)).filter((f): f is string => f !== null)
+              const normalizedCurrent = current ? this.normalizePath(current) : undefined
+              bridgeServer.send(this.bridgeSessionId, {
+                type: "updateOpenedFiles",
+                payload: { openedFiles: normalizedFiles, currentFile: normalizedCurrent },
+              })
+            }
           } catch (e) {
             logger.appendLine(`updateOpenedFiles failed: ${e}`)
           }
@@ -71,8 +92,15 @@ export class WebviewController {
         logger.appendLine(`FileMonitor init failed: ${e}`)
       }
 
-      const urlWithMode = this.buildUiUrlWithMode(connection.uiBase)
-      const html = await this.generateHtmlContent(urlWithMode)
+      // Use asExternalUri for Remote-SSH compatibility
+      const externalUi = await vscode.env.asExternalUri(vscode.Uri.parse(connection.uiBase))
+      const externalBridge = await vscode.env.asExternalUri(vscode.Uri.parse(session.baseUrl))
+
+      // Build iframe src with bridge params
+      const uiUrlWithMode = this.buildUiUrlWithMode(externalUi.toString())
+      const iframeSrc = `${uiUrlWithMode}&ideBridge=${encodeURIComponent(externalBridge.toString())}&ideBridgeToken=${encodeURIComponent(session.token)}`
+
+      const html = await this.generateHtmlContent(iframeSrc)
       this.webview.html = html
 
       // Message handling is now done entirely by CommunicationBridge
@@ -195,6 +223,21 @@ export class WebviewController {
     return html
   }
 
+  private normalizePath(rawPath: string): string | null {
+    try {
+      if (!rawPath || rawPath.trim().length === 0) return null
+      let p = rawPath.trim()
+      if (p.startsWith("file://")) {
+        p = vscode.Uri.parse(p).fsPath
+      }
+      // Normalize and convert to POSIX style for consistency
+      const path = require("path")
+      return path.normalize(p).split(path.sep).join("/")
+    } catch {
+      return null
+    }
+  }
+
   dispose(): void {
     try {
       this.fileMonitor?.stopMonitoring()
@@ -205,6 +248,10 @@ export class WebviewController {
     try {
       PathInserter.clearCommunicationBridge()
     } catch {}
+    if (this.bridgeSessionId) {
+      bridgeServer.removeSession(this.bridgeSessionId)
+      this.bridgeSessionId = null
+    }
     for (const d of this.disposables) {
       try {
         d.dispose()

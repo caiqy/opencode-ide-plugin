@@ -285,15 +285,6 @@
             return
           }
 
-          // Forward ideBridge UI->host messages: child posts { type: '__ideBridgeSend', json }
-          if (message && message.type === "__ideBridgeSend" && typeof message.json === "string") {
-            try {
-              window.vscode.postMessage({ type: "__ideBridgeSend", json: message.json })
-            } catch (e) {
-              console.error("Failed to forward ideBridge message to VS Code:", e)
-            }
-            return
-          }
           // Handle other messages FROM iframe - forward to VS Code extension
           if (message && message.type) {
             try {

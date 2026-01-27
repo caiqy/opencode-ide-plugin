@@ -12,7 +12,6 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
-import com.intellij.ui.jcef.JBCefClient
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
 import paviko.opencode.backendprocess.BackendLauncher
@@ -101,10 +100,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         val logBuffer = StringBuilder()
         val logFlushScheduled = AtomicBoolean(false)
 
-        fun queueLog(line: String) {
-            synchronized(logLock) {
-                logBuffer.append(line).append('\n')
-            }
+        fun scheduleLogFlush() {
             if (!logFlushScheduled.compareAndSet(false, true)) return
             SwingUtilities.invokeLater {
                 val chunk = synchronized(logLock) {
@@ -118,11 +114,23 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                     val overflow = doc.length - maxLogChars
                     if (overflow > 0) doc.remove(0, overflow)
                 } catch (_: Throwable) {}
+
                 logFlushScheduled.set(false)
+
+                // If new logs arrived while we were flushing, schedule again.
+                val hasMore = synchronized(logLock) { logBuffer.isNotEmpty() }
+                if (hasMore) scheduleLogFlush()
             }
         }
 
-        val timeoutMs = 60_000L
+        fun queueLog(line: String) {
+            synchronized(logLock) {
+                logBuffer.append(line).append('\n')
+            }
+            scheduleLogFlush()
+        }
+
+        val timeoutMs = 300_000L
         val timeoutFuture = AppExecutorUtil.getAppScheduledExecutorService().schedule({
             if (connected.get()) return@schedule
             logger.warn("Backend connection timeout after ${timeoutMs}ms")
@@ -137,7 +145,6 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
             timeoutFuture.cancel(false)
             try { procRef.get()?.destroy() } catch (_: Throwable) {}
             try { procRef.get()?.inputStream?.close() } catch (_: Throwable) {}
-            IdeBridge.remove(project)
         }
 
         AppExecutorUtil.getAppExecutorService().execute {
@@ -183,10 +190,10 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                     SwingUtilities.invokeLater {
                                         try {
                                             val client = JBCefApp.getInstance().createClient()
-                                            try { client.setProperty(JBCefClient.Properties.JS_QUERY_POOL_SIZE, 1) } catch (_: Throwable) {}
+                                            
+                                            // Create browser WITHOUT URL first
                                             val browser = JBCefBrowser.createBuilder()
                                                 .setClient(client)
-                                                .setUrl(withCacheBuster(appUrl, pluginVersion()))
                                                 .build()
 
                                             try {
@@ -201,9 +208,28 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                             mainPanel.revalidate()
                                             mainPanel.repaint()
 
-                                            IdeBridge.install(browser, project)
+                                            // Create bridge session and build URL with bridge params
+                                            val session = IdeBridge.createSession(project)
+                                            val baseUrl = withCacheBuster(appUrl, pluginVersion())
+                                            val urlWithBridge = buildString {
+                                                append(baseUrl)
+                                                append(if ('?' in baseUrl) '&' else '?')
+                                                append("ideBridge=")
+                                                append(URLEncoder.encode(session.baseUrl, StandardCharsets.UTF_8))
+                                                append("&ideBridgeToken=")
+                                                append(URLEncoder.encode(session.token, StandardCharsets.UTF_8))
+                                            }
+                                            
+                                            // Load the URL with bridge params
+                                            browser.loadURL(urlWithBridge)
+                                            
+                                            // Register cleanup for the session
+                                            Disposer.register(toolWindow.disposable) {
+                                                IdeBridge.removeSession(session.sessionId)
+                                            }
+                                            
                                             try {
-                                                val filesUpdater = IdeOpenFilesUpdater(project, browser)
+                                                val filesUpdater = IdeOpenFilesUpdater(project, browser, session.sessionId)
                                                 filesUpdater.install()
                                                 Disposer.register(browser, filesUpdater)
                                             } catch (e: Exception) {

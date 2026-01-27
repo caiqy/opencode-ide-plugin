@@ -19,16 +19,17 @@ object DragAndDropInstaller {
                     val t = dtde.transferable
                     val flavor = DataFlavor.javaFileListFlavor
                     if (t.isDataFlavorSupported(flavor)) {
-                        AppExecutorUtil.getAppExecutorService().execute {
-                            val files = try {
-                                @Suppress("UNCHECKED_CAST")
-                                t.getTransferData(flavor) as List<java.io.File>
-                            } catch (e: Exception) {
-                                logger.warn("Failed to read dropped files", e)
-                                emptyList()
-                            }
-                            if (files.isEmpty()) return@execute
+                        val files = try {
+                            @Suppress("UNCHECKED_CAST")
+                            t.getTransferData(flavor) as List<java.io.File>
+                        } catch (e: Exception) {
+                            logger.warn("Failed to read dropped files", e)
+                            emptyList()
+                        }
 
+                        if (files.isEmpty()) return
+
+                        AppExecutorUtil.getAppExecutorService().execute {
                             val filePaths = files.asSequence().filter { it.isFile }.map { it.absolutePath }.toList()
                             if (filePaths.isNotEmpty()) {
                                 IdeBridge.send(project, "insertPaths", mapOf("paths" to filePaths))

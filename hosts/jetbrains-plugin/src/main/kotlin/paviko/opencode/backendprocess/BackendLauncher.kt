@@ -32,7 +32,6 @@ object BackendLauncher {
 
     /**
      * Launches the backend process.
-     * IMPORTANT: This method performs heavy I/O (binary extraction) and must NOT be called from EDT.
      */
     fun launchBackend(project: Project): BackendProcess {
         require(!ApplicationManager.getApplication().isDispatchThread) {
@@ -74,20 +73,11 @@ object BackendLauncher {
         // Start waiting for terminal availability asynchronously
         waitForTerminalAvailabilityAsync(project) { success, isVisible ->
             if (success) {
-                val app = ApplicationManager.getApplication()
-                val run = Runnable {
-                    try {
-                        val result = doLaunchBackend(project, args, baseDir, customCommand, outputBuffer, isVisible)
-                        callback(result, null)
-                    } catch (e: Exception) {
-                        callback(null, e)
-                    }
-                }
-
-                if (app.isDispatchThread) {
-                    run.run()
-                } else {
-                    app.invokeLater(run)
+                try {
+                    val result = doLaunchBackend(project, args, baseDir, customCommand, outputBuffer, isVisible)
+                    callback(result, null)
+                } catch (e: Exception) {
+                    callback(null, e)
                 }
             } else {
                 callback(null, RuntimeException("Terminal tool window is not available. Please ensure the Terminal plugin is installed and enabled."))
@@ -103,52 +93,24 @@ object BackendLauncher {
         val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, project)
         val maxAttempts = 100 // 10 seconds with 100ms intervals
         var attempts = 0
-        var initShowRequested = false
 
-        // Capture visibility state before we potentially show Terminal to bootstrap it.
-        // This is used to restore the user's original UI state.
-        val initiallyVisible = ToolWindowManager.getInstance(project).getToolWindow("Terminal")?.isVisible ?: false
+        val isVisible = ToolWindowManager.getInstance(project).getToolWindow("Terminal")?.isVisible ?: false
 
         fun checkAvailability() {
-            if (project.isDisposed) {
-                callback(false, false)
-                return
-            }
-
             try {
-                val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Terminal")
                 val terminalManager = TerminalToolWindowManager.getInstance(project)
                 val terminalWindow: ToolWindow? = terminalManager.toolWindow
-
-                // The terminal tool window is lazily initialized on some IDE versions.
-                // If it wasn't opened before, TerminalToolWindowManager.toolWindow can stay null forever.
-                // Force initialization by showing it once; it will be hidden back later if it wasn't visible.
-                if (!initShowRequested && toolWindow != null && terminalWindow == null) {
-                    initShowRequested = true
-                    toolWindow.show(null)
-                }
-
                 if (terminalWindow != null && terminalWindow.isAvailable) {
                     logger.info("Terminal tool window is available after ${attempts * 100}ms")
-
-                    if (initShowRequested && !initiallyVisible) {
-                        try {
-                            ApplicationManager.getApplication().invokeLater {
-                                try {
-                                    toolWindow?.hide(null)
-                                } catch (_: Throwable) {}
-                            }
-                        } catch (_: Throwable) {}
-                    }
-
-                    callback(true, initiallyVisible)
+                    callback(true, isVisible)
                     return
                 }
 
+                ToolWindowManager.getInstance(project).getToolWindow("Terminal")?.show()
                 attempts++
                 if (attempts >= maxAttempts) {
                     logger.error("Terminal tool window did not become available within ${maxAttempts * 100}ms")
-                    callback(false, initiallyVisible)
+                    callback(true, isVisible)
                     return
                 }
 
@@ -158,7 +120,7 @@ object BackendLauncher {
                 callback(false, false)
             }
         }
-        
+
         logger.info("Waiting for terminal tool window to become available...")
         alarm.addRequest({ checkAvailability() }, 0)
     }
@@ -227,10 +189,8 @@ object BackendLauncher {
 
         val widget: Any = if (existing != null) {
             logger.info("Reusing existing terminal '$terminalName'")
-
             // Workaround for JetBrains behavior: existing terminal tab may not run commands unless focused
             focusTerminal(project, isVisible, terminalToolWindow, existing, minimized, terminalName)
-
             existing
         } else {
             terminalManager.createShellWidget(workingDir, terminalName, false, !minimized)
@@ -260,7 +220,7 @@ object BackendLauncher {
                 }
             }
         }
-        
+
         return Pair(terminalWidget, TerminalSelection(previousSelected, currentContent))
     }
 
@@ -273,35 +233,24 @@ object BackendLauncher {
         terminalName: String
     ) {
         try {
-            val app = ApplicationManager.getApplication()
-
             // Show the terminal tool window if it is not visible
-            // Use invokeLater instead of invokeAndWait to avoid potential deadlocks
             if (!isVisible) {
+                val app = ApplicationManager.getApplication()
                 if (app.isDispatchThread) {
                     terminalToolWindow?.show(null)
                 } else {
-                    app.invokeLater { terminalToolWindow?.show(null) }
+                    app.invokeAndWait { terminalToolWindow?.show(null) }
                 }
             }
 
             // Focus/select the existing tab to ensure it receives input/execution
-            // Use invokeLater instead of invokeAndWait to avoid potential deadlocks
             try {
                 if (existing != null) {
                     val content = getContentForWidget(project, existing)
                     if (content != null) {
-                        val action = Runnable {
-                            try {
-                                terminalToolWindow?.contentManager?.setSelectedContent(content, true)
-                                terminalToolWindow?.activate(null, true)
-                            } catch (_: Throwable) {}
-                        }
-
-                        if (app.isDispatchThread) {
-                            action.run()
-                        } else {
-                            app.invokeLater(action)
+                        ApplicationManager.getApplication().invokeAndWait {
+                            terminalToolWindow?.contentManager?.setSelectedContent(content, true)
+                            terminalToolWindow?.activate(null, true)
                         }
                     }
                 }
@@ -329,7 +278,7 @@ object BackendLauncher {
         workingDir: String,
         outputBuffer: PipedOutputStream,
         isVisible: Boolean,
-        minimized: Boolean = false
+        minimized: Boolean = false 
     ): BackendProcess {
         // Create terminal widget using unified method - this will handle terminal initialization
         val (shellWidget, selection) = createShellWidget(project, workingDir, "Opencode Backend", isVisible, minimized)
@@ -342,7 +291,7 @@ object BackendLauncher {
         
         // Create a terminal-only backend process
         val backendProcess = RunningTerminalBackendProcess(shellWidget, adjustedArgs.joinToString(" "), outputBuffer)
-        
+
         // Execute the command in the terminal - this inherits full environment
         shellWidget.executeCommand(command)
 

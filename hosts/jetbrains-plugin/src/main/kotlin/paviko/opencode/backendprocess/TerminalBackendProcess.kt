@@ -59,12 +59,6 @@ internal class TerminalBackendProcess(
         get() = inputStreamBuffer
 
     override fun waitFor(): Int {
-        // Avoid blocking the IDE UI thread.
-        if (ApplicationManager.getApplication().isDispatchThread) {
-            logger.warn("waitFor called on UI thread; returning immediately")
-            return -1
-        }
-
         try {
             readyLatch.await()
         } catch (e: InterruptedException) {
