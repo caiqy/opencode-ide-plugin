@@ -30,7 +30,6 @@ import javax.swing.*
 class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
     private var connectionInfo: ConnInfo? = null
     private val logger = Logger.getInstance(ChatToolWindowFactory::class.java)
-
     private val maxLogChars = 200_000
 
     private fun showError(mainPanel: JPanel, hideableLogs: JComponent, message: String) {
@@ -50,7 +49,6 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         val descriptor = PluginManagerCore.getPlugin(pluginId) ?: return "dev"
         return descriptor.version
     }
-
     private fun withCacheBuster(url: String, version: String): String {
         val encodedVersion = URLEncoder.encode(version, StandardCharsets.UTF_8)
         val sep = if (url.contains("?")) "&" else "?"

@@ -178,7 +178,7 @@
           // Handle keyboard events from iframe (macOS fix)
           if (message && (message.type === "keydown-event" || message.type === "keyup-event")) {
             try {
-              const { ctrlKey, metaKey, shiftKey, altKey, code, key, hasSelection } = message.payload
+              const { ctrlKey, metaKey, shiftKey, altKey, code, key, hasSelection, inEditable } = message.payload
 
               // Handle specific VSCode shortcuts that need to be forwarded
               if (message.type === "keydown-event") {
@@ -254,21 +254,19 @@
                   return
                 }
 
-                // Copy (Cmd+C) - macOS only
-                if (metaKey && code === "KeyC") {
-                  window.vscode.postMessage({
-                    type: "executeCommand",
-                    command: "editor.action.clipboardCopyAction",
-                  })
+                // Copy/Cut/Paste: forward to VSCode only when iframe isn't editing
+                if (metaKey && code === "KeyC" && !inEditable && !hasSelection) {
+                  window.vscode.postMessage({ type: "executeCommand", command: "editor.action.clipboardCopyAction" })
                   return
                 }
 
-                // Paste (Cmd+V) - macOS only
-                if (metaKey && code === "KeyV") {
-                  window.vscode.postMessage({
-                    type: "executeCommand",
-                    command: "editor.action.clipboardPasteAction",
-                  })
+                if (metaKey && code === "KeyX" && !inEditable && !hasSelection) {
+                  window.vscode.postMessage({ type: "executeCommand", command: "editor.action.clipboardCutAction" })
+                  return
+                }
+
+                if (metaKey && code === "KeyV" && !inEditable) {
+                  window.vscode.postMessage({ type: "executeCommand", command: "editor.action.clipboardPasteAction" })
                   return
                 }
               }

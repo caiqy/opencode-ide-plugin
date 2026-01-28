@@ -15,6 +15,7 @@ import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp"
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts"
 import { ideBridge } from "./lib/ideBridge"
 import { extractPathsFromDrop } from "./lib/dnd"
+import { initKeyboardHandler, destroyKeyboardHandler } from "./lib/keyboardHandler"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 
@@ -67,6 +68,15 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     onToggleSessionList: handleToggleSessionList,
     isModalOpen: isAnyModalOpen,
   })
+
+  // Fix Cmd/Ctrl clipboard shortcuts in VSCode webview iframe (macOS)
+  useEffect(() => {
+    const handler = initKeyboardHandler()
+    return () => {
+      handler.destroy()
+      destroyKeyboardHandler()
+    }
+  }, [])
 
   // Host → UI bridge messages
   useEffect(() => {
