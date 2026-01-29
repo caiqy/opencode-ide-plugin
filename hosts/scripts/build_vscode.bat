@@ -150,29 +150,31 @@ if "%MISSING_BINARIES%"=="true" (
 )
 
 echo [INFO] Creating VSCode extension package
-where vsce >nul 2>&1
-if errorlevel 1 (
-    echo [INFO] Installing vsce (VSCode Extension Manager)
-    call pnpm run install:vsce
+REM Prefer local vsce (node_modules/.bin) to avoid global installs.
+where pnpm >nul 2>&1
+if not errorlevel 1 (
+    set "VSCE_CMD=pnpm exec vsce"
+) else (
+    set "VSCE_CMD=npx --yes vsce"
 )
-set "YEAR=%DATE:~10,4%"
-set "MONTH=%DATE:~4,2%"
-set "DAY=%DATE:~7,2%"
-set "HOUR=%TIME:~0,2%"
-if "%HOUR:~0,1%"==" " set "HOUR=0%HOUR:~1,1%"
-set "MINUTE=%TIME:~3,2%"
-set "SECOND=%TIME:~6,2%"
-set "STAMP=%YEAR%%MONTH%%DAY%-%HOUR%%MINUTE%%SECOND%"
-set "VSIX_NAME=opencode-vscode-dev-%STAMP%.vsix"
-if "%BUILD_TYPE%"=="production" set "VSIX_NAME=opencode-vscode-%STAMP%.vsix"
+
+REM Use package.json version in the output .vsix name.
+set "PLUGIN_VERSION="
+for /f "usebackq delims=" %%V in (`node -p "require('./package.json').version" 2^>nul`) do set "PLUGIN_VERSION=%%V"
+if "%PLUGIN_VERSION%"=="" set "PLUGIN_VERSION=0.0.0"
+
+set "VSIX_NAME=opencode-vscode-%PLUGIN_VERSION%-dev.vsix"
+if "%BUILD_TYPE%"=="production" set "VSIX_NAME=opencode-vscode-%PLUGIN_VERSION%.vsix"
 
 if "%BUILD_TYPE%"=="production" goto package_production
 
-call vsce package --pre-release --no-dependencies --out "%VSIX_NAME%"
+call %VSCE_CMD% package --pre-release --no-dependencies --out "%VSIX_NAME%"
+if errorlevel 1 exit /b 1
 goto package_complete
 
 :package_production
-call vsce package --no-dependencies --out "%VSIX_NAME%"
+call %VSCE_CMD% package --no-dependencies --out "%VSIX_NAME%"
+if errorlevel 1 exit /b 1
 
 :package_complete
 

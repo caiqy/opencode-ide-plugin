@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { IconButton } from "../common"
 import { MessageStats } from "./MessageStats"
+import { ideBridge } from "../../lib/ideBridge"
 
 interface TokenData {
   input: number
@@ -33,6 +34,29 @@ export function ActionButtons({ onFork, onRevert, revertBusy, tokens, cost, isUs
 
   const canCopy = typeof copyText === "string" && copyText.length > 0
 
+  const writeClipboard = async (value: string) => {
+    try {
+      const promise = navigator.clipboard?.writeText(value)
+      if (promise) {
+        await promise
+        return true
+      }
+    } catch {}
+
+    if (!ideBridge.isInstalled()) return false
+
+    try {
+      const res = await Promise.race([
+        ideBridge.request("clipboardWrite", { text: value }) as Promise<{ ok?: boolean }>,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000)),
+      ])
+      if (!res) return false
+      return !!res.ok
+    } catch {
+      return false
+    }
+  }
+
   useEffect(() => {
     const anyOther = canCopy || !!(isUser && onFork) || !!(isUser && onRevert)
     const delay = anyOther ? 500 : 3000
@@ -52,20 +76,19 @@ export function ActionButtons({ onFork, onRevert, revertBusy, tokens, cost, isUs
   const handleCopy = () => {
     if (!canCopy) return
 
-    const promise = navigator.clipboard?.writeText(copyText)
-    if (!promise) return
+    void (async () => {
+      const ok = await writeClipboard(copyText)
+      if (!ok) {
+        console.error("Failed to copy message")
+        return
+      }
 
-    void promise
-      .then(() => {
-        setCopied(true)
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current)
-        }
-        timeoutRef.current = setTimeout(() => setCopied(false), 1500)
-      })
-      .catch((err) => {
-        console.error("Failed to copy message:", err)
-      })
+      setCopied(true)
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+      timeoutRef.current = setTimeout(() => setCopied(false), 1500)
+    })()
   }
 
   if (!isVisible) return null

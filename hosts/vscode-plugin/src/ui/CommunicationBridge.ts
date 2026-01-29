@@ -459,21 +459,29 @@ export class CommunicationBridge implements PluginCommunicator {
                 await this.handleOpenFile(m.payload?.path ?? m.path)
                 // reply if id present
                 if (m.id) {
-                  this.webview?.postMessage({ replyTo: m.id, ok: true })
+                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
+                }
+              } else if (m && m.type === "clipboardWrite") {
+                const text = m.payload?.text
+                if (typeof text === "string") {
+                  await vscode.env.clipboard.writeText(text)
+                }
+                if (m.id) {
+                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
                 }
               } else if (m && m.type === "openUrl") {
                 await this.handleOpenUrl(m.payload?.url ?? m.url)
                 if (m.id) {
-                  this.webview?.postMessage({ replyTo: m.id, ok: true })
+                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
                 }
               } else if (m && m.type === "reloadPath") {
                 await this.handleReloadPath(m.payload?.path)
                 if (m.id) {
-                  this.webview?.postMessage({ replyTo: m.id, ok: true })
+                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
                 }
               } else {
                 // Generic ack for unknown types
-                if (m && m.id) this.webview?.postMessage({ replyTo: m.id, ok: true })
+                if (m && m.id) this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
               }
             } catch (e) {
               try {
@@ -484,7 +492,8 @@ export class CommunicationBridge implements PluginCommunicator {
                     return undefined
                   }
                 })()
-                if (id) this.webview?.postMessage({ replyTo: id, ok: false, error: String(e) })
+                if (id)
+                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: id, ok: false, error: String(e) })
               } catch {}
               logger.appendLine(`Failed to process __ideBridgeSend: ${e}`)
             }

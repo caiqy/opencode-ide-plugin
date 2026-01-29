@@ -24,6 +24,10 @@ class IdeBridge {
   init() {
     const onMessage = (ev: MessageEvent) => {
       const msg = ev.data as Message
+      if (msg && msg.type === "__ideBridgeReply" && msg.replyTo) {
+        this.dispatch(msg)
+        return
+      }
       this.dispatch(msg)
     }
     window.addEventListener("message", onMessage)
