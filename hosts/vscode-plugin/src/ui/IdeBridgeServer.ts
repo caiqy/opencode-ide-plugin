@@ -5,6 +5,7 @@ export interface SessionHandlers {
   openFile: (path: string) => Promise<void>
   openUrl: (url: string) => Promise<void>
   reloadPath: (path: string) => Promise<void>
+  clipboardWrite: (text: string) => Promise<void>
 }
 
 interface Session {
@@ -40,12 +41,12 @@ class IdeBridgeServer {
         if (addr && typeof addr !== "string") {
           this.port = addr.port
           console.log(`IdeBridgeServer started on port ${this.port}`)
-          
+
           // Start keepalive timer to prevent tunnel timeouts
           if (!this.keepaliveInterval) {
             this.keepaliveInterval = setInterval(() => this.sendKeepaliveToAll(), 15000)
           }
-          
+
           resolve()
         } else {
           reject(new Error("Failed to get server port"))
@@ -205,6 +206,15 @@ class IdeBridgeServer {
             this.replyOk(session, id)
           } else {
             this.replyError(session, id, "Missing path")
+          }
+          break
+
+        case "clipboardWrite":
+          if (typeof payload?.text === "string") {
+            await session.handlers.clipboardWrite(payload.text)
+            this.replyOk(session, id)
+          } else {
+            this.replyError(session, id, "Missing text")
           }
           break
 

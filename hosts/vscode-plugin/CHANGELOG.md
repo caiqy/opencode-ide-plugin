@@ -5,12 +5,18 @@ All notable changes to the OpenCode VSCode extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec2.0.0.html).
 
+### [26.1.29] - 2026-01-29
+
+- Fixed copy & paste in VS Code for Mac OS
+
 ### [26.1.27] - 2026-01-27
+
 - apply_patch tool fallback count for Changed Files panel
 - removed forbidden getPluginId()
 - fixed not showing tooltips
 
 ### [26.1.24] - 2026-01-24
+
 - Share / Unshare session
 - Added button"Copy to clipboard" message content
 - Removed rendering internal message "patch" - thanks to caiqy

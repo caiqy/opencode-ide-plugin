@@ -64,9 +64,12 @@ export class WebviewController {
         openFile: (path) => this.communicationBridge!.handleOpenFile(path),
         openUrl: (url) => this.communicationBridge!.handleOpenUrl(url),
         reloadPath: (path) => this.communicationBridge!.handleReloadPath(path),
+        clipboardWrite: async (text) => {
+          await vscode.env.clipboard.writeText(text)
+        },
       })
       this.bridgeSessionId = session.sessionId
-      
+
       // Tell CommunicationBridge to route ideBridge messages through SSE
       this.communicationBridge.setBridgeSession(session.sessionId, bridgeServer)
 
@@ -77,7 +80,7 @@ export class WebviewController {
           try {
             if (this.bridgeSessionId) {
               // Normalize paths for cross-platform consistency (especially Windows)
-              const normalizedFiles = files.map(f => this.normalizePath(f)).filter((f): f is string => f !== null)
+              const normalizedFiles = files.map((f) => this.normalizePath(f)).filter((f): f is string => f !== null)
               const normalizedCurrent = current ? this.normalizePath(current) : undefined
               bridgeServer.send(this.bridgeSessionId, {
                 type: "updateOpenedFiles",
