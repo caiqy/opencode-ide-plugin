@@ -151,6 +151,14 @@ object IdeBridge {
     }
 
     private fun handleRequest(exchange: HttpExchange) {
+        if (exchange.requestURI.path.contains("/events")) {
+            val raw = exchange.requestURI.rawQuery ?: ""
+            try {
+                val params = parseQuery(raw)
+                val sessionId = exchange.requestURI.path.split("/").filter { it.isNotEmpty() }.getOrNull(1)
+                LOG.debug("IdeBridge events request session=$sessionId tokenPresent=${params["token"] != null}")
+            } catch (_: Throwable) {}
+        }
         // Add CORS headers
         exchange.responseHeaders.apply {
             add("Access-Control-Allow-Origin", "*")
@@ -181,6 +189,7 @@ object IdeBridge {
         val token = queryParams["token"]
 
         if (session == null || session.token != token) {
+            LOG.warn("IdeBridge unauthorized: sessionId=$sessionId action=$action")
             exchange.sendResponseHeaders(401, -1)
             exchange.close()
             return

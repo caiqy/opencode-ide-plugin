@@ -24,6 +24,7 @@ class IdeBridge {
   private reconnectDelay = 1000
   private readonly maxReconnectDelay = 30000
   private reconnectScheduled = false
+  private connectErrorLogged = false
 
   isInstalled(): boolean {
     return !!(bridgeBase && token)
@@ -36,11 +37,21 @@ class IdeBridge {
   private connect() {
     if (!bridgeBase || !token) return
 
-    this.eventSource = new EventSource(`${bridgeBase}/events?token=${encodeURIComponent(token)}`)
+    const url = `${bridgeBase}/events?token=${encodeURIComponent(token)}`
+    try {
+      this.eventSource = new EventSource(url)
+    } catch (e) {
+      console.warn("[ideBridge] Failed to create EventSource", { bridgeBase }, e)
+      this.ready = false
+      this.scheduleReconnect()
+      return
+    }
 
     this.eventSource.onopen = () => {
       this.ready = true
       this.reconnectDelay = 1000
+      this.connectErrorLogged = false
+      console.log("[ideBridge] Connected", { bridgeBase })
       this.flushQueue()
     }
 
@@ -54,6 +65,13 @@ class IdeBridge {
     }
 
     this.eventSource.onerror = () => {
+      if (!this.connectErrorLogged) {
+        this.connectErrorLogged = true
+        console.warn("[ideBridge] Connection error", {
+          bridgeBase,
+          readyState: this.eventSource?.readyState,
+        })
+      }
       this.ready = false
       this.scheduleReconnect()
     }

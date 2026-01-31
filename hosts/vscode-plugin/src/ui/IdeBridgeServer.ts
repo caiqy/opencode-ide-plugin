@@ -1,5 +1,6 @@
 import * as http from "http"
 import * as crypto from "crypto"
+import { logger } from "../globals"
 
 export interface SessionHandlers {
   openFile: (path: string) => Promise<void>
@@ -52,7 +53,10 @@ class IdeBridgeServer {
           reject(new Error("Failed to get server port"))
         }
       })
-      this.server.on("error", reject)
+      this.server.on("error", (e) => {
+        logger.appendLine(`IdeBridgeServer error: ${e}`)
+        reject(e)
+      })
     })
   }
 
@@ -131,6 +135,7 @@ class IdeBridgeServer {
     const session = this.sessions.get(sessionId)
 
     if (!session || session.token !== token) {
+      logger.appendLine(`IdeBridgeServer unauthorized: sessionId=${sessionId} action=${action}`)
       res.writeHead(401)
       res.end()
       return
@@ -160,7 +165,11 @@ class IdeBridgeServer {
     session.sseClients.add(res)
 
     // Send initial connected event
-    res.write("event: connected\ndata: {}\n\n")
+    try {
+      res.write("event: connected\ndata: {}\n\n")
+    } catch (e) {
+      logger.appendLine(`IdeBridgeServer failed to init SSE: ${e}`)
+    }
 
     // Handle client disconnect
     req.on("close", () => {
