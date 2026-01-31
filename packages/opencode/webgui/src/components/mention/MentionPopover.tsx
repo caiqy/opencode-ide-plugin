@@ -1,16 +1,45 @@
+import { useLayoutEffect, useMemo, useRef } from "react"
 import { useMentionSearch, type MentionResult } from "../../hooks/useMentionSearch"
 import { useMentionNavigation } from "../../hooks/useMentionNavigation"
 import type { MentionMetadata } from "./MentionNode"
 
 interface MentionPopoverProps {
   query: string
-  position: { top: number; left: number }
+  position: { top: number; left: number; placement: "top" | "bottom" }
   onSelect: (metadata: MentionMetadata) => void
   onClose: () => void
+  onReposition?: () => void
 }
 
-export function MentionPopover({ query, position, onSelect, onClose }: MentionPopoverProps) {
+export function MentionPopover({ query, position, onSelect, onClose, onReposition }: MentionPopoverProps) {
   const { results, isLoading } = useMentionSearch(query)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  const transform = useMemo(
+    () => (position.placement === "top" ? "translateY(-100%)" : "translateY(0)"),
+    [position.placement],
+  )
+
+  useLayoutEffect(() => {
+    if (!onReposition) return
+    const node = rootRef.current
+    if (!node) return
+
+    onReposition()
+    const frame = requestAnimationFrame(() => onReposition())
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => cancelAnimationFrame(frame)
+    }
+
+    const observer = new ResizeObserver(() => onReposition())
+    observer.observe(node)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }, [onReposition, isLoading, results.length])
 
   const handleSelect = (index: number) => {
     if (results[index]) {
@@ -28,8 +57,9 @@ export function MentionPopover({ query, position, onSelect, onClose }: MentionPo
   if (results.length === 0 && !isLoading) {
     return (
       <div
+        ref={rootRef}
         className="absolute z-50 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded shadow-lg"
-        style={{ top: position.top, left: position.left, transform: "translateY(-100%)" }}
+        style={{ top: position.top, left: position.left, transform, maxWidth: "calc(100vw - 16px)" }}
         data-mention-popover
       >
         <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">
@@ -41,8 +71,9 @@ export function MentionPopover({ query, position, onSelect, onClose }: MentionPo
 
   return (
     <div
+      ref={rootRef}
       className="absolute z-50 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded shadow-lg"
-      style={{ top: position.top, left: position.left, transform: "translateY(-100%)" }}
+      style={{ top: position.top, left: position.left, transform, maxWidth: "calc(100vw - 16px)" }}
       data-mention-popover
     >
       <div ref={listRef} className="max-h-64 overflow-y-auto" style={{ maxWidth: "calc(100vw - 16px)" }}>
