@@ -18,7 +18,11 @@ export function MentionPlugin() {
   const [editor] = useLexicalComposerContext()
   const [showPopover, setShowPopover] = useState(false)
   const [query, setQuery] = useState("")
-  const [position, setPosition] = useState({ top: 0, left: 0 })
+  const [position, setPosition] = useState<{ top: number; left: number; placement: "top" | "bottom" }>({
+    top: 0,
+    left: 0,
+    placement: "top",
+  })
   const [mentionStartOffset, setMentionStartOffset] = useState<number | null>(null)
   const { openedFiles } = useIdeBridgeState()
 
@@ -107,7 +111,7 @@ export function MentionPlugin() {
 
   return showPopover
     ? createPortal(
-        <MentionPopover query={query} position={position} onSelect={insertMention} onClose={resetState} />,
+        <MentionPopover query={query} position={position} onSelect={insertMention} onClose={resetState} onReposition={handlePositionUpdate} />,
         document.body,
       )
     : null

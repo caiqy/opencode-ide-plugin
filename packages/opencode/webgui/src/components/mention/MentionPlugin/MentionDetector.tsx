@@ -7,9 +7,9 @@ export function useMentionDetector(
   setQuery: (query: string) => void,
   setShowPopover: (show: boolean) => void,
   setMentionStartOffset: (offset: number | null) => void,
-  setPosition: (pos: { top: number; left: number }) => void,
+  setPosition: (pos: { top: number; left: number; placement: "top" | "bottom" }) => void,
 ) {
-  const leftRef = useRef<number | null>(null)
+  const leftRef = useRef<{ left: number; width: number } | null>(null)
 
   const handlePositionUpdate = useCallback(() => {
     updatePopoverPosition(editor, leftRef, setPosition)
