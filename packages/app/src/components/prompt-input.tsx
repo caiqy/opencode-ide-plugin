@@ -111,7 +111,7 @@ interface SlashCommand {
   title: string
   description?: string
   keybind?: string
-  type: "builtin" | "custom"
+  type: "builtin" | "custom" | "skill"
 }
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
@@ -136,6 +136,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
   let slashPopoverRef!: HTMLDivElement
+
+  const mirror = { input: false }
 
   const scrollCursorIntoView = () => {
     const container = scrollRef
@@ -169,7 +171,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey))
-  const view = createMemo(() => layout.view(sessionKey))
 
   const commentInReview = (path: string) => {
     const sessionID = params.id
@@ -183,22 +184,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const openComment = (item: { path: string; commentID?: string; commentOrigin?: "review" | "file" }) => {
     if (!item.commentID) return
 
-    comments.setFocus({ file: item.path, id: item.commentID })
-    view().reviewPanel.open()
+    const focus = { file: item.path, id: item.commentID }
+    comments.setActive(focus)
 
-    if (item.commentOrigin === "review") {
-      tabs().open("review")
+    const wantsReview = item.commentOrigin === "review" || (item.commentOrigin !== "file" && commentInReview(item.path))
+    if (wantsReview) {
+      layout.fileTree.open()
+      layout.fileTree.setTab("changes")
+      requestAnimationFrame(() => comments.setFocus(focus))
       return
     }
 
-    if (item.commentOrigin !== "file" && commentInReview(item.path)) {
-      tabs().open("review")
-      return
-    }
-
+    layout.fileTree.open()
+    layout.fileTree.setTab("all")
     const tab = files.tab(item.path)
     tabs().open(tab)
     files.load(item.path)
+    requestAnimationFrame(() => comments.setFocus(focus))
   }
 
   const recent = createMemo(() => {
@@ -517,7 +519,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       type: "custom" as const,
     }))
 
-    return [...custom, ...builtin]
+    const skills = sync.data.skill.map((skill) => ({
+      id: `skill.${skill.name}`,
+      trigger: `skill:${skill.name}`,
+      title: skill.name,
+      description: skill.description,
+      type: "skill" as const,
+    }))
+
+    return [...skills, ...custom, ...builtin]
   })
 
   const handleSlashSelect = (cmd: SlashCommand | undefined) => {
@@ -526,6 +536,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     if (cmd.type === "custom") {
       const text = `/${cmd.trigger} `
+      editorRef.innerHTML = ""
+      editorRef.textContent = text
+      prompt.set([{ type: "text", content: text, start: 0, end: text.length }], text.length)
+      requestAnimationFrame(() => {
+        editorRef.focus()
+        const range = document.createRange()
+        const sel = window.getSelection()
+        range.selectNodeContents(editorRef)
+        range.collapse(false)
+        sel?.removeAllRanges()
+        sel?.addRange(range)
+      })
+      return
+    }
+
+    if (cmd.type === "skill") {
+      // Extract skill name from the id (skill.{name})
+      const skillName = cmd.id.replace("skill.", "")
+      const text = `Load the "${skillName}" skill and follow its instructions.`
       editorRef.innerHTML = ""
       editorRef.textContent = text
       prompt.set([{ type: "text", content: text, start: 0, end: text.length }], text.length)
@@ -650,6 +679,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       () => prompt.current(),
       (currentParts) => {
         const inputParts = currentParts.filter((part) => part.type !== "image") as Prompt
+
+        if (mirror.input) {
+          mirror.input = false
+          if (isNormalizedEditor()) return
+
+          const selection = window.getSelection()
+          let cursorPosition: number | null = null
+          if (selection && selection.rangeCount > 0 && editorRef.contains(selection.anchorNode)) {
+            cursorPosition = getCursorPosition(editorRef)
+          }
+
+          renderEditor(inputParts)
+
+          if (cursorPosition !== null) {
+            setCursorPosition(editorRef, cursorPosition)
+          }
+          return
+        }
+
         const domParts = parseFromDOM()
         if (isNormalizedEditor() && isPromptEqual(inputParts, domParts)) return
 
@@ -764,6 +812,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         setStore("savedPrompt", null)
       }
       if (prompt.dirty()) {
+        mirror.input = true
         prompt.set(DEFAULT_PROMPT, 0)
       }
       queueScroll()
@@ -794,6 +843,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       setStore("savedPrompt", null)
     }
 
+    mirror.input = true
     prompt.set([...rawParts, ...images], cursorPosition)
     queueScroll()
   }
@@ -1015,13 +1065,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
 
+    const ctrl = event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+
     if (store.popover) {
       if (event.key === "Tab") {
         selectPopoverActive()
         event.preventDefault()
         return
       }
-      if (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "Enter") {
+      const nav = event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "Enter"
+      const ctrlNav = ctrl && (event.key === "n" || event.key === "p")
+      if (nav || ctrlNav) {
         if (store.popover === "at") {
           atOnKeyDown(event)
           event.preventDefault()
@@ -1034,8 +1088,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         return
       }
     }
-
-    const ctrl = event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
 
     if (ctrl && event.code === "KeyG") {
       if (store.popover) {
@@ -1536,13 +1588,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       })
 
       const timeoutMs = 5 * 60 * 1000
+      const timer = { id: undefined as number | undefined }
       const timeout = new Promise<Awaited<ReturnType<typeof WorktreeState.wait>>>((resolve) => {
-        setTimeout(() => {
-          resolve({ status: "failed", message: "Workspace is still preparing" })
+        timer.id = window.setTimeout(() => {
+          resolve({ status: "failed", message: language.t("workspace.error.stillPreparing") })
         }, timeoutMs)
       })
 
-      const result = await Promise.race([WorktreeState.wait(sessionDirectory), abort, timeout])
+      const result = await Promise.race([WorktreeState.wait(sessionDirectory), abort, timeout]).finally(() => {
+        if (timer.id === undefined) return
+        clearTimeout(timer.id)
+      })
       pending.delete(session.id)
       if (controller.signal.aborted) return false
       if (result.status === "failed") throw new Error(result.message)
@@ -1677,6 +1733,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                             {language.t("prompt.slash.badge.custom")}
                           </span>
                         </Show>
+                        <Show when={cmd.type === "skill"}>
+                          <span class="text-11-regular text-text-subtle px-1.5 py-0.5 bg-surface-base rounded">
+                            {language.t("prompt.slash.badge.skill")}
+                          </span>
+                        </Show>
                         <Show when={command.keybind(cmd.id)}>
                           <span class="text-12-regular text-text-subtle">{command.keybind(cmd.id)}</span>
                         </Show>
@@ -1711,15 +1772,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           <div class="flex flex-nowrap items-start gap-2 p-2 overflow-x-auto no-scrollbar">
             <For each={prompt.context.items()}>
               {(item) => {
+                const active = () => {
+                  const a = comments.active()
+                  return !!item.commentID && item.commentID === a?.id && item.path === a?.file
+                }
                 return (
                   <Tooltip
                     value={
                       <span class="flex max-w-[300px]">
-                        <span
-                          class="text-text-invert-base truncate min-w-0"
-                          style={{ direction: "rtl", "text-align": "left" }}
-                        >
-                          <bdi>{getDirectory(item.path)}</bdi>
+                        <span class="text-text-invert-base truncate-start [unicode-bidi:plaintext] min-w-0">
+                          {getDirectory(item.path)}
                         </span>
                         <span class="shrink-0">{getFilename(item.path)}</span>
                       </span>
@@ -1729,8 +1791,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   >
                     <div
                       classList={{
-                        "group shrink-0 flex flex-col rounded-[6px] bg-background-stronger pl-2 pr-1 py-1 max-w-[200px] h-12 transition-all shadow-xs-border hover:shadow-xs-border-hover": true,
-                        "cursor-pointer hover:bg-surface-interactive-weak": !!item.commentID,
+                        "group shrink-0 flex flex-col rounded-[6px] pl-2 pr-1 py-1 max-w-[200px] h-12 transition-all transition-transform shadow-xs-border hover:shadow-xs-border-hover": true,
+                        "cursor-pointer hover:bg-surface-interactive-weak": !!item.commentID && !active(),
+                        "cursor-pointer bg-surface-interactive-hover hover:bg-surface-interactive-hover shadow-xs-border-hover":
+                          active(),
+                        "bg-background-stronger": !active(),
                       }}
                       onClick={() => {
                         openComment(item)
@@ -1738,10 +1803,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     >
                       <div class="flex items-center gap-1.5">
                         <FileIcon node={{ path: item.path, type: "file" }} class="shrink-0 size-3.5" />
-                        <div
-                          class="flex items-center text-11-regular min-w-0"
-                          style={{ "font-weight": "var(--font-weight-medium)" }}
-                        >
+                        <div class="flex items-center text-11-regular min-w-0 font-medium">
                           <span class="text-text-strong whitespace-nowrap">{getFilenameTruncated(item.path, 14)}</span>
                           <Show when={item.selection}>
                             {(sel) => (
@@ -1829,9 +1891,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               store.mode === "shell"
                 ? language.t("prompt.placeholder.shell")
                 : commentCount() > 1
-                  ? "Summarize comments…"
+                  ? language.t("prompt.placeholder.summarizeComments")
                   : commentCount() === 1
-                    ? "Summarize comment…"
+                    ? language.t("prompt.placeholder.summarizeComment")
                     : language.t("prompt.placeholder.normal", { example: language.t(EXAMPLES[store.placeholder]) })
             }
             contenteditable="true"
@@ -1853,9 +1915,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               {store.mode === "shell"
                 ? language.t("prompt.placeholder.shell")
                 : commentCount() > 1
-                  ? "Summarize comments…"
+                  ? language.t("prompt.placeholder.summarizeComments")
                   : commentCount() === 1
-                    ? "Summarize comment…"
+                    ? language.t("prompt.placeholder.summarizeComment")
                     : language.t("prompt.placeholder.normal", { example: language.t(EXAMPLES[store.placeholder]) })}
             </div>
           </Show>
@@ -1923,6 +1985,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     keybind={command.keybind("model.variant.cycle")}
                   >
                     <Button
+                      data-action="model-variant-cycle"
                       variant="ghost"
                       class="text-text-base _hidden group-hover/prompt-input:inline-block capitalize text-12-regular"
                       onClick={() => local.model.variant.cycle()}
