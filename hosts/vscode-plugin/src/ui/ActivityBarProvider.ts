@@ -3,6 +3,7 @@ import { BackendConnection, BackendLauncher } from "../backend/BackendLauncher"
 import { SettingsManager } from "../settings/SettingsManager"
 import { errorHandler } from "../utils/ErrorHandler"
 import { WebviewController } from "./WebviewController"
+import { logger } from "../globals"
 
 function withCacheBuster(url: string, version: string): string {
   if (url.includes("v=")) {
@@ -21,6 +22,8 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
     try {
       this.controller?.dispose()
     } catch {}
+    this.controller = undefined
+    this.view = undefined
   }
   private context: vscode.ExtensionContext
   private backendLauncher: BackendLauncher
@@ -28,6 +31,7 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
 
   private connection?: BackendConnection
   private controller?: WebviewController
+  private view?: vscode.WebviewView
 
   constructor(context: vscode.ExtensionContext, backendLauncher: BackendLauncher, settingsManager: SettingsManager) {
     this.context = context
@@ -36,10 +40,33 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
   }
 
   async resolveWebviewView(webviewView: vscode.WebviewView): Promise<void> {
-    // If already initialized, do not reinitialize to preserve state
+    logger.appendLine("resolveWebviewView called - initializing or reinitializing webview")
+
+    // When webview is moved between sidebars, VS Code destroys the old webview
+    // and calls resolveWebviewView with a new WebviewView instance.
+    // We need to dispose the old controller and reinitialize with the new webview.
     if (this.controller) {
-      return
+      logger.appendLine("Disposing existing controller for webview reinitialization")
+      try {
+        this.controller.dispose()
+      } catch {}
+      this.controller = undefined
     }
+
+    // Store reference to current view
+    this.view = webviewView
+
+    // Listen for the webview being disposed (e.g., when moved or closed)
+    webviewView.onDidDispose(() => {
+      logger.appendLine("WebviewView disposed")
+      if (this.controller) {
+        try {
+          this.controller.dispose()
+        } catch {}
+        this.controller = undefined
+      }
+      this.view = undefined
+    })
 
     // Configure webview options
     // WebviewView does not support retainContextWhenHidden in code.
@@ -61,12 +88,18 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
       },
       async (progress) => {
         try {
-          progress.report({ increment: 0, message: "Launching backend..." })
-          const connection = await this.backendLauncher.launchBackend()
-          this.connection = connection
+          // Reuse existing backend connection if available (e.g., when webview is moved between sidebars)
+          if (!this.connection) {
+            progress.report({ increment: 0, message: "Launching backend..." })
+            const connection = await this.backendLauncher.launchBackend()
+            this.connection = connection
 
-          // Cache busting: force web UI reload after extension updates
-          connection.uiBase = withCacheBuster(connection.uiBase, this.context.extension.packageJSON.version)
+            // Cache busting: force web UI reload after extension updates
+            connection.uiBase = withCacheBuster(connection.uiBase, this.context.extension.packageJSON.version)
+          } else {
+            logger.appendLine("Reusing existing backend connection for webview reinitialization")
+            progress.report({ increment: 0, message: "Reconnecting to backend..." })
+          }
 
           progress.report({ increment: 50, message: "Loading web UI..." })
           this.controller = new WebviewController({
@@ -74,9 +107,10 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
             context: this.context,
             settingsManager: this.settingsManager,
           })
-          await this.controller.load(connection)
+          await this.controller.load(this.connection)
 
           progress.report({ increment: 100, message: "Ready!" })
+          logger.appendLine("Webview initialization complete")
         } catch (error) {
           await errorHandler.handleWebviewLoadError(error instanceof Error ? error : new Error(String(error)))
           throw error
