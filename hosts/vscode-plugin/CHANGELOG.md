@@ -5,6 +5,13 @@ All notable changes to the OpenCode VSCode extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec2.0.0.html).
 
+### [26.2.1] - 2026-02-01
+
+- Fix for Copy to clipboard button
+- Improved positioning of reference popup (@ action)
+- Fixed empty plugin content when dragging plugin between sidebars
+- Updated OpenCode to v1.1.48
+
 ### [26.1.29] - 2026-01-29
 
 - Fixed copy & paste in VS Code for Mac OS
