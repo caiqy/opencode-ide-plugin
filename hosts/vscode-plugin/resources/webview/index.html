@@ -365,6 +365,25 @@
                 }
               }
 
+              // Handle drop by asking the extension to read dropped URIs.
+              // VSCode 1.108+ may no longer expose file paths to the iframe.
+              if (eventType === "drop" && payload.dataTransfer && payload.dataTransfer.data) {
+                const dt = payload.dataTransfer.data
+                const uriList = dt["application/vnd.code.uri-list"] || dt["text/uri-list"]
+                if (uriList) {
+                  const uris = uriList
+                    .split(/\r?\n/)
+                    .map((s) => s.trim())
+                    .filter((s) => s && !s.startsWith("#"))
+                  if (uris.length > 0) {
+                    window.vscode.postMessage({ type: "readUris", uris: uris })
+                    event.preventDefault()
+                    event.stopPropagation()
+                    return
+                  }
+                }
+              }
+
               // Forward the drag event to iframe
               if (iframe && iframe.contentWindow) {
                 const targetOrigin = new URL("${uiUrl}").origin
