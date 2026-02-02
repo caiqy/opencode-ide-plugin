@@ -12,6 +12,10 @@ import { logger } from "../globals"
 export class PathInserter {
   private static communicationBridge: CommunicationBridge | undefined
 
+  static getCommunicationBridge(): CommunicationBridge | undefined {
+    return this.communicationBridge
+  }
+
   /**
    * Set the communication bridge for path operations
    * @param bridge The communication bridge to use for communication

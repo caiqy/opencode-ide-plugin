@@ -47,12 +47,26 @@ class IdeBridge {
       return
     }
 
+    this.eventSource.addEventListener("connected", (ev: MessageEvent) => {
+      try {
+        // ignore payload (kept for compatibility)
+        JSON.parse(String(ev.data))
+      } catch {
+      }
+    })
+
     this.eventSource.onopen = () => {
       this.ready = true
       this.reconnectDelay = 1000
       this.connectErrorLogged = false
       console.log("[ideBridge] Connected", { bridgeBase })
       this.flushQueue()
+
+      void this.getState().then((state) => {
+        try {
+          window.dispatchEvent(new CustomEvent("opencode:ui-bridge-state", { detail: { state } }))
+        } catch {}
+      })
     }
 
     this.eventSource.onmessage = (ev) => {
@@ -75,6 +89,23 @@ class IdeBridge {
       this.ready = false
       this.scheduleReconnect()
     }
+  }
+
+  onReady(handler: () => void) {
+    const run = () => {
+      try {
+        handler()
+      } catch {}
+    }
+
+    if (this.ready) {
+      run()
+      return () => {}
+    }
+
+    const listener = () => run()
+    window.addEventListener("opencode:idebridge-ready", listener)
+    return () => window.removeEventListener("opencode:idebridge-ready", listener)
   }
 
   private scheduleReconnect() {
@@ -130,6 +161,8 @@ class IdeBridge {
   private async doSend(msg: Message, retryCount = 0) {
     if (!bridgeBase || !token) return
 
+    const quiet = msg.type === "uiGetState" || msg.type === "uiSetState"
+
     try {
       const response = await fetch(`${bridgeBase}/send?token=${encodeURIComponent(token)}`, {
         method: "POST",
@@ -138,14 +171,14 @@ class IdeBridge {
       })
 
       if (!response.ok) {
-        console.warn("[ideBridge] Send failed with status:", response.status)
+        if (!quiet) console.warn("[ideBridge] Send failed with status:", response.status)
         // Requeue on server errors (5xx) with limited retries
         if (response.status >= 500 && retryCount < 3) {
           this.requeueWithBackoff(msg, retryCount)
         }
       }
     } catch (e) {
-      console.warn("[ideBridge] Send failed:", e)
+      if (!quiet) console.warn("[ideBridge] Send failed:", e)
       // Network error - requeue with backoff
       if (retryCount < 3) {
         this.requeueWithBackoff(msg, retryCount)
@@ -184,6 +217,29 @@ class IdeBridge {
     const q = this.queue.splice(0, this.queue.length)
     for (const msg of q) {
       this.doSend(msg)
+    }
+
+    try {
+      window.dispatchEvent(new Event("opencode:idebridge-ready"))
+    } catch {}
+  }
+
+  async getState<T = any>(): Promise<T | null> {
+    try {
+      const res = await this.request<{ state: T }>("uiGetState")
+      const state = (res as any)?.payload?.state
+      return (state ?? null) as T | null
+    } catch {
+      return null
+    }
+  }
+
+  async setState(state: any): Promise<boolean> {
+    try {
+      const res = await this.request("uiSetState", { state })
+      return !!(res as any)?.ok
+    } catch {
+      return false
     }
   }
 }

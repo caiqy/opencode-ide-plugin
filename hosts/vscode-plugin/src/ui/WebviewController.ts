@@ -16,6 +16,8 @@ export interface WebviewControllerOptions {
   webview: vscode.Webview
   context: vscode.ExtensionContext
   settingsManager?: SettingsManager
+  uiGetState?: () => Promise<any>
+  uiSetState?: (state: any) => Promise<void>
 }
 
 export class WebviewController {
@@ -27,11 +29,15 @@ export class WebviewController {
   private connection?: BackendConnection
   private disposables: vscode.Disposable[] = []
   private bridgeSessionId: string | null = null
+  private uiGetState?: () => Promise<any>
+  private uiSetState?: (state: any) => Promise<void>
 
   constructor(opts: WebviewControllerOptions) {
     this.webview = opts.webview
     this.context = opts.context
     this.settingsManager = opts.settingsManager
+    this.uiGetState = opts.uiGetState
+    this.uiSetState = opts.uiSetState
   }
 
   getCommunicationBridge(): CommunicationBridge | undefined {
@@ -55,19 +61,21 @@ export class WebviewController {
       })
 
       // Make PathInserter aware of the active communication bridge
-      try {
-        PathInserter.setCommunicationBridge(this.communicationBridge)
-      } catch {}
+      // NOTE: PathInserter is now set by container visibility (editor panel / sidebar).
 
       // Create bridge session with handlers from CommunicationBridge
-      const session = await bridgeServer.createSession({
-        openFile: (path) => this.communicationBridge!.handleOpenFile(path),
-        openUrl: (url) => this.communicationBridge!.handleOpenUrl(url),
-        reloadPath: (path) => this.communicationBridge!.handleReloadPath(path),
-        clipboardWrite: async (text) => {
-          await vscode.env.clipboard.writeText(text)
+      const session = await bridgeServer.createSession(
+        {
+          openFile: (path) => this.communicationBridge!.handleOpenFile(path),
+          openUrl: (url) => this.communicationBridge!.handleOpenUrl(url),
+          reloadPath: (path) => this.communicationBridge!.handleReloadPath(path),
+          clipboardWrite: async (text) => {
+            await vscode.env.clipboard.writeText(text)
+          },
+          uiGetState: this.uiGetState,
+          uiSetState: this.uiSetState,
         },
-      })
+      )
       this.bridgeSessionId = session.sessionId
 
       // Tell CommunicationBridge to route ideBridge messages through SSE
@@ -248,9 +256,7 @@ export class WebviewController {
     try {
       this.communicationBridge?.dispose()
     } catch {}
-    try {
-      PathInserter.clearCommunicationBridge()
-    } catch {}
+    // NOTE: container owns PathInserter pointer
     if (this.bridgeSessionId) {
       bridgeServer.removeSession(this.bridgeSessionId)
       this.bridgeSessionId = null

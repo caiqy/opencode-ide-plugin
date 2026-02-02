@@ -1,5 +1,6 @@
 import type { Session } from "@opencode-ai/sdk/client"
 import { SessionList } from "./SessionList"
+import { uiBridgeUpdate } from "../../state/uiBridgeState"
 
 interface SessionDropdownProps {
   sessions: Session[]
@@ -64,6 +65,11 @@ export function SessionDropdown({
 }: SessionDropdownProps) {
   if (!isDropdownOpen) return null
 
+  const handleSelect = (sessionId: string) => {
+    uiBridgeUpdate({ sessionID: sessionId })
+    onSessionSelect(sessionId)
+  }
+
   return (
     <div className="absolute top-full left-0 right-0 w-full bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-lg z-50 max-h-96 flex flex-col">
       {/* Search input and select mode toggle */}
@@ -120,7 +126,7 @@ export function SessionDropdown({
         selectedSessionRef={selectedSessionRef}
         sessionListRef={sessionListRef}
         sharingSessionId={sharingSessionId}
-        onSessionSelect={onSessionSelect}
+        onSessionSelect={handleSelect}
         onEditStart={onEditStart}
         onEditSave={onEditSave}
         onEditCancel={onEditCancel}

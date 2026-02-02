@@ -4,6 +4,7 @@ import { SettingsManager } from "../settings/SettingsManager"
 import { errorHandler } from "../utils/ErrorHandler"
 import { WebviewController } from "./WebviewController"
 import { logger } from "../globals"
+import { PathInserter } from "../utils/PathInserter"
 
 function withCacheBuster(url: string, version: string): string {
   if (url.includes("v=")) {
@@ -32,6 +33,7 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
   private connection?: BackendConnection
   private controller?: WebviewController
   private view?: vscode.WebviewView
+  private uiState: any
 
   constructor(context: vscode.ExtensionContext, backendLauncher: BackendLauncher, settingsManager: SettingsManager) {
     this.context = context
@@ -59,12 +61,21 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
     // Listen for the webview being disposed (e.g., when moved or closed)
     webviewView.onDidDispose(() => {
       logger.appendLine("WebviewView disposed")
+      const bridge = this.controller?.getCommunicationBridge()
       if (this.controller) {
         try {
           this.controller.dispose()
         } catch {}
         this.controller = undefined
       }
+
+      // Clear command routing pointer if it pointed to this controller
+      try {
+        const current = PathInserter.getCommunicationBridge()
+        if (current && bridge && current === bridge) {
+          PathInserter.clearCommunicationBridge()
+        }
+      } catch {}
       this.view = undefined
     })
 
@@ -79,6 +90,13 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
         vscode.Uri.joinPath(this.context.extensionUri, "out"),
       ],
     }
+
+    // Track view visibility/activeness for command routing
+    webviewView.onDidChangeVisibility(() => {
+      if (!webviewView.visible) return
+      const bridge = this.controller?.getCommunicationBridge()
+      if (bridge) PathInserter.setCommunicationBridge(bridge)
+    })
 
     await vscode.window.withProgress(
       {
@@ -106,8 +124,20 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
             webview: webviewView.webview,
             context: this.context,
             settingsManager: this.settingsManager,
+            uiGetState: async () => this.uiState,
+            uiSetState: async (state) => {
+              this.uiState = state
+            },
           })
           await this.controller.load(this.connection)
+
+          // Prefer routing commands to this view when visible
+          if (webviewView.visible) {
+            const bridge = this.controller.getCommunicationBridge()
+            if (bridge) PathInserter.setCommunicationBridge(bridge)
+          }
+
+          // no-op
 
           progress.report({ increment: 100, message: "Ready!" })
           logger.appendLine("Webview initialization complete")

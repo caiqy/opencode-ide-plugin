@@ -7,6 +7,8 @@ export interface SessionHandlers {
   openUrl: (url: string) => Promise<void>
   reloadPath: (path: string) => Promise<void>
   clipboardWrite: (text: string) => Promise<void>
+  uiGetState?: () => Promise<any>
+  uiSetState?: (state: any) => Promise<void>
 }
 
 interface Session {
@@ -226,6 +228,36 @@ class IdeBridgeServer {
             this.replyError(session, id, "Missing text")
           }
           break
+
+        case "uiGetState": {
+          if (!session.handlers.uiGetState) {
+            this.replyError(session, id, "uiGetState not supported")
+            break
+          }
+          const state = await session.handlers.uiGetState()
+          if (id) {
+            this.broadcastSSE(
+              session,
+              JSON.stringify({
+                replyTo: id,
+                ok: true,
+                payload: { state },
+                timestamp: Date.now(),
+              }),
+            )
+          }
+          break
+        }
+
+        case "uiSetState": {
+          if (!session.handlers.uiSetState) {
+            this.replyError(session, id, "uiSetState not supported")
+            break
+          }
+          await session.handlers.uiSetState(payload?.state)
+          this.replyOk(session, id)
+          break
+        }
 
         default:
           this.replyError(session, id, `Unknown type: ${type}`)

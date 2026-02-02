@@ -20,6 +20,7 @@ import { useDragDrop } from "./hooks/useDragDrop"
 import { useEditorKeyboard } from "./hooks/useEditorKeyboard"
 import { useMessageParts } from "./hooks/useMessageParts"
 import { insertPlainWithMentionsImpl } from "./utils"
+import { uiBridgeSubscribe, uiBridgeUpdate } from "../../state/uiBridgeState"
 
 interface MessageInputProps {
   sessionID: string | null
@@ -79,13 +80,17 @@ const MessageInputInner = forwardRef<
   // Providers state for variants computation
   const [providers, setProviders] = useState<Provider[]>([])
 
+  const [isRestoring, setIsRestoring] = useState(false)
+  const restored = useRef(false)
+
   const handleEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
       const root = $getRoot()
       const textContent = root.getTextContent()
       setIsEmpty(textContent.trim().length === 0)
+      if (!isRestoring) uiBridgeUpdate({ input: textContent })
     })
-  }, [])
+  }, [isRestoring])
 
   const resolveToAbsolutePath = useCallback(
     (path: string | undefined): string => {
@@ -144,6 +149,18 @@ const MessageInputInner = forwardRef<
   useDragDrop({ contentEditableRef, containerRef, editor, worktree, parseWithRange })
 
   useEditorKeyboard({ editor, contentEditableRef, parseWithRange, onSubmit: handleSubmit })
+
+  // Restore input from IDE bridge state
+  useEffect(() => {
+    return uiBridgeSubscribe((s) => {
+      if (restored.current) return
+      if (!s.input) return
+      restored.current = true
+      setIsRestoring(true)
+      insertPlainWithMentionsImpl(editor, parseWithRange, s.input, { replace: true })
+      setTimeout(() => setIsRestoring(false), 0)
+    })
+  }, [editor, parseWithRange])
 
   // Expose methods to parent
   useImperativeHandle(

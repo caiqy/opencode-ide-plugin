@@ -52,6 +52,14 @@ interface SessionContextState {
   selectedVariant: string | undefined
   setSelectedVariant: (variant: string | undefined) => Promise<void>
 
+  // IDE bridge restore (does not persist to server)
+  restoreSelections: (state: {
+    providerId: string | null
+    modelId: string | null
+    agent: string | null
+    variant: string | null
+  }) => void
+
   // Virtual session tracking
   isVirtualSession: boolean
 
@@ -412,6 +420,44 @@ export function SessionProvider({ children }: SessionProviderProps) {
         // Fallback to simple update
         setSelectedAgentState(newAgent)
         localStorage.setItem("opencode_selected_agent", newAgent)
+      }
+  },
+    [selectedAgent, selectedProviderId, selectedModelId],
+  )
+
+  const restoreSelections = useCallback(
+    (state: { providerId: string | null; modelId: string | null; agent: string | null; variant: string | null }) => {
+      if (typeof state.agent === "string" && state.agent !== selectedAgent) {
+        setSelectedAgentState(state.agent)
+        localStorage.setItem("opencode_selected_agent", state.agent)
+      }
+
+      const nextProvider = typeof state.providerId === "string" ? state.providerId : undefined
+      const nextModel = typeof state.modelId === "string" ? state.modelId : undefined
+      const hasModel = !!(nextProvider && nextModel)
+
+      if (hasModel && nextProvider !== selectedProviderId) {
+        setSelectedProviderId(nextProvider)
+        if (nextProvider) localStorage.setItem("opencode_selected_provider", nextProvider)
+        if (!nextProvider) localStorage.removeItem("opencode_selected_provider")
+      }
+
+      if (hasModel && nextModel !== selectedModelId) {
+        setSelectedModelId(nextModel)
+        if (nextModel) localStorage.setItem("opencode_selected_model", nextModel)
+        if (!nextModel) localStorage.removeItem("opencode_selected_model")
+      }
+
+      if (typeof state.variant === "string") setSelectedVariantState(state.variant)
+
+      if (typeof state.variant === "string" && nextProvider && nextModel) {
+        const key = `${nextProvider}/${nextModel}`
+        const variant = state.variant
+        setVariantMap((prev) => {
+          const next = { ...prev }
+          next[key] = variant
+          return next
+        })
       }
     },
     [selectedAgent, selectedProviderId, selectedModelId],
@@ -985,6 +1031,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setSelectedAgent,
     selectedVariant,
     setSelectedVariant,
+    restoreSelections,
     isVirtualSession,
     newVirtual,
     createSession,

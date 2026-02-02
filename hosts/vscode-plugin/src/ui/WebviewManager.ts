@@ -6,6 +6,7 @@ import { SettingsManager } from "../settings/SettingsManager"
 import { CommunicationBridge } from "./CommunicationBridge"
 import { errorHandler } from "../utils/ErrorHandler"
 import { logger } from "../globals"
+import { PathInserter } from "../utils/PathInserter"
 
 /**
  * Webview management - handles VSCode webview panel lifecycle and content
@@ -19,6 +20,7 @@ export class WebviewManager {
   private settingsManager?: SettingsManager
   private communicationBridge?: CommunicationBridge
   private controller?: WebviewController
+  private uiState: any
 
   /**
    * Create and configure a webview panel for the OpenCode UI
@@ -81,6 +83,8 @@ export class WebviewManager {
       (e) => {
         if (e.webviewPanel.visible) {
           logger.appendLine("Webview panel became visible")
+          const bridge = this.controller?.getCommunicationBridge()
+          if (bridge) PathInserter.setCommunicationBridge(bridge)
         } else {
           logger.appendLine("Webview panel became hidden")
         }
@@ -142,12 +146,22 @@ export class WebviewManager {
         webview: this.panel.webview,
         context: this.context!,
         settingsManager: this.settingsManager,
+        uiGetState: async () => this.uiState,
+        uiSetState: async (state) => {
+          this.uiState = state
+        },
       })
       // Keep references for compatibility APIs
       this.communicationBridge = this.controller.getCommunicationBridge?.()
 
       // Load UI via controller
       await this.controller.load(connection)
+
+      // Prefer routing commands to this panel when visible
+      if (this.panel.visible) {
+        const bridge = this.controller.getCommunicationBridge()
+        if (bridge) PathInserter.setCommunicationBridge(bridge)
+      }
 
       // Get UI mode from settings with error handling
       let uiMode = "Terminal"
@@ -211,6 +225,14 @@ export class WebviewManager {
       } catch {}
       this.controller = undefined
     }
+
+    // Clear command routing pointer if it pointed to this controller
+    try {
+      const current = PathInserter.getCommunicationBridge()
+      if (current && current === this.communicationBridge) {
+        PathInserter.clearCommunicationBridge()
+      }
+    } catch {}
     if (this.communicationBridge) {
       this.communicationBridge.dispose()
       this.communicationBridge = undefined
