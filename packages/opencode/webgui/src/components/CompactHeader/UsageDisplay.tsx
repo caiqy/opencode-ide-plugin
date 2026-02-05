@@ -57,11 +57,14 @@ export function UsageDisplay({ usage }: UsageDisplayProps) {
       >
         <div className="w-[40px] h-2.5 bg-gray-100 dark:bg-gray-800 rounded overflow-hidden relative">
           <div className={`${color} h-3`} style={{ width: `${pct}%` }} />
+          <span className="absolute inset-0 flex items-center justify-center text-[9px] text-gray-900 dark:text-white/90 drop-shadow-sm leading-none">
+            {Math.round(pct)}%
+          </span>
         </div>
       </button>
 
       {showDetails && (
-        <div className="modern-card absolute top-full left-0 mt-1 w-64 z-50 overflow-hidden ring-1 ring-black/5 p-2">
+        <div className="modern-card absolute bottom-full right-0 mb-1 w-64 max-w-[calc(100vw-16px)] z-50 overflow-hidden ring-1 ring-black/5 p-2">
           <div className="max-h-[calc(100vh-200px)] overflow-y-auto py-1 text-xs">
             <div className="flex items-center justify-between py-0.5">
               <span>Context used</span>
