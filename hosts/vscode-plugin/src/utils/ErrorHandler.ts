@@ -825,13 +825,6 @@ export class ErrorHandler {
       return { message, stack }
     }
 
-    const isIgnorableGlobalRejection = (err: unknown): boolean => {
-      const { message, stack } = getErrorStrings(err)
-      // Known benign errors from other extensions (e.g., Windsurf acknowledgeCascadeCodeEdit)
-      const patterns = ["no unacknowledged steps for file", "acknowledgeCascadeCodeEdit", "windsurf/dist/extension.js"]
-      return patterns.some((p) => message.includes(p) || stack.includes(p))
-    }
-
     const shouldSuppressLanguageServerInitError = (err: unknown): boolean => {
       const { message } = getErrorStrings(err)
       if (!message) {
@@ -848,24 +841,6 @@ export class ErrorHandler {
       logger.appendLine(`[IGNORED] ${source}: ${message} (waiting for language server initialization)`)
       return true
     }
-
-    // Handle unhandled promise rejections
-    process.on("unhandledRejection", (reason, promise) => {
-      const error = reason instanceof Error ? reason : new Error(String(reason))
-      // Suppress known benign global rejections from other extensions
-      if (isIgnorableGlobalRejection(error)) {
-        logger.appendLine(`[IGNORED] Unhandled rejection suppressed: ${error.message}`)
-        return
-      }
-      if (suppressLanguageServerError(error, "Unhandled rejection suppressed")) {
-        return
-      }
-      this.handleError(
-        this.createErrorContext(ErrorCategory.VALIDATION, ErrorSeverity.ERROR, "Global", "unhandledRejection", error, {
-          promise: promise.toString(),
-        }),
-      )
-    })
 
     // Handle uncaught exceptions
     process.on("uncaughtException", (error) => {
