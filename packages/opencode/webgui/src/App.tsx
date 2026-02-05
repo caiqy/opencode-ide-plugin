@@ -248,7 +248,7 @@ function AppContent() {
     },
   })
 
-  const { currentSession, setIsIdle } = useSession()
+  const { currentSession, setSessionIdle } = useSession()
   const { showToast } = useToast()
 
   const handleAllEvents = useCallback(
@@ -266,12 +266,8 @@ function AppContent() {
       if (event.type === "session.idle") {
         const { sessionID } = event.properties
         console.log("[App] session.idle event:", { sessionID, currentSessionID: currentSession?.id })
-        if (currentSession?.id === sessionID) {
-          console.log("[App] Session became idle, setting isIdle to true")
-          setIsIdle(true)
-        } else {
-          console.log("[App] Ignoring idle event for different session")
-        }
+        console.log("[App] Session became idle, updating idle map")
+        setSessionIdle(sessionID, true)
       }
 
       // session.error is handled in MessagesContext.tsx to show a persistent message
@@ -289,7 +285,7 @@ function AppContent() {
         }
       }
     },
-    [currentSession?.id, setIsIdle, showToast],
+    [currentSession?.id, setSessionIdle, showToast],
   )
 
   useEventHandler(emitter, "*", handleAllEvents)

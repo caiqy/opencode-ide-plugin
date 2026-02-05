@@ -27,9 +27,10 @@ interface SessionContextState {
   isLoading: boolean
   error: Error | null
 
-  // Idle state (false = session is running/generating, true = idle)
+  // Idle state for current session
   isIdle: boolean
-  setIsIdle: (isIdle: boolean) => void
+  // Set a specific session's idle state
+  setSessionIdle: (sessionId: string, isIdle: boolean) => void
 
   // Reasoning state per session
   isReasoning: boolean
@@ -125,10 +126,26 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [isCreating, setIsCreating] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
-  const [isIdle, setIsIdle] = useState(true)
+  const [busyMap, setBusyMap] = useState<Record<string, boolean>>({})
   const [reasoningMap, setReasoningMap] = useState<Record<string, boolean>>({})
   const [statusMap, setStatusMap] = useState<Record<string, SessionStatusInfo>>({})
   const [sessionDiffMap, setSessionDiffMap] = useState<Record<string, FileDiff[]>>({})
+
+  const setSessionIdle = useCallback((sessionId: string, idle: boolean) => {
+    if (!sessionId) return
+    setBusyMap((prev) => {
+      const busy = prev[sessionId] ?? false
+      const nextBusy = !idle
+      if (busy === nextBusy) return prev
+      if (!nextBusy) {
+        if (!prev[sessionId]) return prev
+        const next = { ...prev }
+        delete next[sessionId]
+        return next
+      }
+      return { ...prev, [sessionId]: true }
+    })
+  }, [])
 
   // Model and Agent selection state (synced with server state + localStorage fallback)
   const [selectedProviderId, setSelectedProviderId] = useState<string | undefined>()
@@ -141,6 +158,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [variantMap, setVariantMap] = useState<Record<string, string>>({})
 
   const isReasoning = currentSession?.id ? Boolean(reasoningMap[currentSession.id]) : false
+  const isIdle = currentSession?.id ? !(busyMap[currentSession.id] ?? false) : true
   const currentStatus: SessionStatusInfo =
     currentSession?.id && statusMap[currentSession.id]
       ? statusMap[currentSession.id]
@@ -823,18 +841,21 @@ export function SessionProvider({ children }: SessionProviderProps) {
   /**
    * Retry a session's execution
    */
-  const retrySession = useCallback(async (sessionId: string) => {
-    console.log("[SessionContext] Retrying session:", sessionId)
-    setIsIdle(false)
-    try {
-      await sdk.session.retry({ path: { sessionID: sessionId } })
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Failed to retry session"
-      console.error("[SessionContext] Failed to retry session:", errorMsg)
-      setError(new Error(errorMsg))
-      setIsIdle(true)
-    }
-  }, [])
+  const retrySession = useCallback(
+    async (sessionId: string) => {
+      console.log("[SessionContext] Retrying session:", sessionId)
+      setSessionIdle(sessionId, false)
+      try {
+        await sdk.session.retry({ path: { sessionID: sessionId } })
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "Failed to retry session"
+        console.error("[SessionContext] Failed to retry session:", errorMsg)
+        setError(new Error(errorMsg))
+        setSessionIdle(sessionId, true)
+      }
+    },
+    [setSessionIdle],
+  )
 
   /**
    * Clear the current error
@@ -932,6 +953,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
         sessionID: string
         status: SessionStatusInfo
       }
+      if (status.type === "idle") {
+        setSessionIdle(sessionID, true)
+      } else {
+        setSessionIdle(sessionID, false)
+      }
       setStatusMap((prev) => {
         if (status.type === "idle") {
           const next = { ...prev }
@@ -962,7 +988,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       unsubscribeStatus()
       unsubscribeDiff()
     }
-  }, [currentSession?.id, setReasoning, newVirtual])
+  }, [currentSession?.id, setReasoning, setSessionIdle, newVirtual])
 
   const value: SessionContextState = {
     currentSession,
@@ -973,7 +999,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     isLoading,
     error,
     isIdle,
-    setIsIdle,
+    setSessionIdle,
     isReasoning,
     setReasoning,
     sessionDiff: sessionDiffMap,

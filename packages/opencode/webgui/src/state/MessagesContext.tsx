@@ -102,6 +102,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const [questions, setQuestions] = useState<Map<string, QuestionRequest[]>>(new Map())
   const session = useSession()
   const setReasoning = session.setReasoning
+  const setSessionIdle = session.setSessionIdle
 
   // Add or update a message
   const addMessage = useCallback((message: Message) => {
@@ -335,55 +336,51 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   )
 
   // Load messages for a session
-  const loadSessionMessages = useCallback(async (sessionID: string) => {
-    // Skip loading for virtual sessions (not yet persisted to server)
-    if (sessionID.startsWith("virtual-")) {
-      console.log("[MessagesContext] Skipping load for virtual session:", sessionID)
-      return
-    }
-
-    console.log("[MessagesContext] Loading messages for session:", sessionID)
-
-    try {
-      const response = await sdk.session.messages({ path: { id: sessionID } })
-
-      if (response.error) {
-        console.error("[MessagesContext] Failed to load messages:", response.error)
+  const loadSessionMessages = useCallback(
+    async (sessionID: string) => {
+      // Skip loading for virtual sessions (not yet persisted to server)
+      if (sessionID.startsWith("virtual-")) {
+        console.log("[MessagesContext] Skipping load for virtual session:", sessionID)
         return
       }
 
-      if (response.data) {
-        console.log("[MessagesContext] Messages loaded:", response.data.length)
-        // SDK response is already in the correct format: Array<{ info: Message, parts: Array<Part> }>
-        // Cast needed because sdk.session.messages returns non-v2 types, but they're structurally identical
-        const loadedMessages = response.data as unknown as Message[]
+      console.log("[MessagesContext] Loading messages for session:", sessionID)
 
-        console.log("[MessagesContext] Loaded messages sample:", loadedMessages[0])
+      try {
+        const response = await sdk.session.messages({ path: { id: sessionID } })
 
-        // Replace messages for this session only if we received any; otherwise keep existing local state
-        setMessages((prev) => {
-          if (!loadedMessages || loadedMessages.length === 0) return prev
-          const filtered = prev.filter((msg) => msg.info.sessionID !== sessionID)
-          return [...filtered, ...loadedMessages]
-        })
+        if (response.error) {
+          console.error("[MessagesContext] Failed to load messages:", response.error)
+          return
+        }
 
-        try {
-          const { currentSession, setIsIdle } = session
-          if (currentSession?.id === sessionID) {
-            const last = [...loadedMessages].sort((a, b) => a.info.time.created - b.info.time.created).at(-1)
-            if (last) {
-              const completed = (last.info as any)?.time?.completed
-              const isAssistant = (last.info as any)?.role === "assistant"
-              const busy = isAssistant && (!completed || completed === 0)
-              setIsIdle(!busy)
-            }
-          }
-        } catch (e) {}
+        if (response.data) {
+          console.log("[MessagesContext] Messages loaded:", response.data.length)
+          // SDK response is already in the correct format: Array<{ info: Message, parts: Array<Part> }>
+          // Cast needed because sdk.session.messages returns non-v2 types, but they're structurally identical
+          const loadedMessages = response.data as unknown as Message[]
+
+          console.log("[MessagesContext] Loaded messages sample:", loadedMessages[0])
+
+          // Replace messages for this session only if we received any; otherwise keep existing local state
+          setMessages((prev) => {
+            if (!loadedMessages || loadedMessages.length === 0) return prev
+            const filtered = prev.filter((msg) => msg.info.sessionID !== sessionID)
+            return [...filtered, ...loadedMessages]
+          })
+
+          const last = [...loadedMessages].sort((a, b) => a.info.time.created - b.info.time.created).at(-1)
+          const completed = (last ? (last.info as any)?.time?.completed : 0) as unknown
+          const isAssistant = last ? (last.info as any)?.role === "assistant" : false
+          const busy = Boolean(last && isAssistant && (!completed || completed === 0))
+          setSessionIdle(sessionID, !busy)
+        }
+      } catch (err) {
+        console.error("[MessagesContext] Failed to load messages:", err)
       }
-    } catch (err) {
-      console.error("[MessagesContext] Failed to load messages:", err)
-    }
-  }, [])
+    },
+    [setSessionIdle],
+  )
 
   // Permission events
   const handlePermissionAsked = useCallback((event: ServerEvent) => {

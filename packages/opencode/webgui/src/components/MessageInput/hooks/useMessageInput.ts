@@ -30,9 +30,24 @@ export function useMessageInput({
   onError,
 }: UseMessageInputOptions) {
   const [isSending, setIsSending] = useState(false)
-  const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null)
+  const [failedMap, setFailedMap] = useState<Record<string, string>>({})
   const { showToast } = useToast()
-  const { setIsIdle, isVirtualSession, materializeSession } = useSession()
+  const { setSessionIdle, isVirtualSession, materializeSession } = useSession()
+
+  const lastFailedMessage = sessionID ? (failedMap[sessionID] ?? null) : null
+
+  const setFailed = useCallback((id: string, value: string | null) => {
+    if (!id) return
+    setFailedMap((prev) => {
+      if (value === null) {
+        if (!prev[id]) return prev
+        const next = { ...prev }
+        delete next[id]
+        return next
+      }
+      return { ...prev, [id]: value }
+    })
+  }, [])
 
   // Reset isSending when session changes
   useEffect(() => {
@@ -43,7 +58,7 @@ export function useMessageInput({
     if (!sessionID || isEmpty) return
 
     setIsSending(true)
-    setIsIdle(false)
+    setSessionIdle(sessionID, false)
 
     // Save message content before clearing (for potential restore on error)
     let savedMessage = ""
@@ -51,6 +66,8 @@ export function useMessageInput({
       const root = $getRoot()
       savedMessage = root.getTextContent()
     })
+
+    let actualSessionID = sessionID
 
     try {
       // Extract parts from editor
@@ -61,7 +78,6 @@ export function useMessageInput({
       }
 
       // If this is a virtual session, materialize it first
-      let actualSessionID = sessionID
       if (isVirtualSession) {
         console.log("[MessageInput] Materializing virtual session before sending message...")
         const realSession = await materializeSession()
@@ -70,6 +86,11 @@ export function useMessageInput({
         }
         actualSessionID = realSession.id
         console.log("[MessageInput] Virtual session materialized:", actualSessionID)
+      }
+
+      if (actualSessionID !== sessionID) {
+        setSessionIdle(actualSessionID, false)
+        setSessionIdle(sessionID, true)
       }
 
       // Build request body
@@ -101,7 +122,7 @@ export function useMessageInput({
         root.append(paragraph)
       })
 
-      setLastFailedMessage(null)
+      setFailed(actualSessionID, null)
       onMessageSent?.()
 
       setTimeout(() => {
@@ -129,7 +150,7 @@ export function useMessageInput({
       console.error("[MessageInput] Failed to send message:", error)
 
       // Restore failed message for retry
-      setLastFailedMessage(savedMessage)
+      setFailed(actualSessionID, savedMessage)
 
       showToast(error.message, {
         title: "Failed to send message",
@@ -138,7 +159,7 @@ export function useMessageInput({
       })
 
       onError?.(error)
-      setIsIdle(true)
+      setSessionIdle(actualSessionID, true)
     } finally {
       setIsSending(false)
     }
@@ -151,16 +172,17 @@ export function useMessageInput({
     selectedVariant,
     onMessageSent,
     onError,
-    setIsIdle,
+    setSessionIdle,
     showToast,
     isVirtualSession,
     materializeSession,
     editor,
     extractMessageParts,
+    setFailed,
   ])
 
   const handleRetry = useCallback(() => {
-    if (lastFailedMessage) {
+    if (lastFailedMessage && sessionID) {
       editor.update(() => {
         const root = $getRoot()
         root.clear()
@@ -169,19 +191,19 @@ export function useMessageInput({
         paragraph.append(text)
         root.append(paragraph)
       })
-      setLastFailedMessage(null)
+      setFailed(sessionID, null)
       setTimeout(() => {
         editor.focus()
       }, 0)
     }
-  }, [lastFailedMessage, editor])
+  }, [lastFailedMessage, editor, sessionID, setFailed])
 
   const handleAbort = useCallback(async () => {
     if (!sessionID) return
     if (sessionID.startsWith("virtual-")) return
     try {
       await sdk.session.abort({ path: { id: sessionID } })
-      setIsIdle(true)
+      setSessionIdle(sessionID, true)
       setIsSending(false)
       setTimeout(() => {
         editor.focus()
@@ -195,7 +217,7 @@ export function useMessageInput({
         duration: 6000,
       })
     }
-  }, [sessionID, setIsIdle, showToast, editor])
+  }, [sessionID, setSessionIdle, showToast, editor])
 
   const handleCompact = useCallback(
     async (closeModal: () => void) => {

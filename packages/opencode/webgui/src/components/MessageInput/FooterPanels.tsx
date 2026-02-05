@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { useMessages } from "../../state/MessagesContext"
 import { useSession } from "../../state/SessionContext"
 import { TodosList } from "./TodosPanel"
@@ -10,10 +10,29 @@ interface FooterPanelsProps {
 }
 
 export function FooterPanels({ sessionID }: FooterPanelsProps) {
-  const [todosExpanded, setTodosExpanded] = useState(false)
-  const [filesExpanded, setFilesExpanded] = useState(false)
+  const [expanded, setExpanded] = useState<Record<string, { todos: boolean; files: boolean }>>({})
   const { getMessagesBySession } = useMessages()
   const { sessionDiff } = useSession()
+
+  const state = sessionID ? (expanded[sessionID] ?? { todos: false, files: false }) : { todos: false, files: false }
+  const todosExpanded = state.todos
+  const filesExpanded = state.files
+
+  const toggleFiles = useCallback(() => {
+    if (!sessionID) return
+    setExpanded((prev) => {
+      const current = prev[sessionID] ?? { todos: false, files: false }
+      return { ...prev, [sessionID]: { ...current, files: !current.files } }
+    })
+  }, [sessionID])
+
+  const toggleTodos = useCallback(() => {
+    if (!sessionID) return
+    setExpanded((prev) => {
+      const current = prev[sessionID] ?? { todos: false, files: false }
+      return { ...prev, [sessionID]: { ...current, todos: !current.todos } }
+    })
+  }, [sessionID])
 
   const { todos, modifiedFiles } = useMemo(() => {
     if (!sessionID) return { todos: null, modifiedFiles: [] as string[] }
@@ -93,7 +112,7 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
       <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
         {hasFiles && (
           <button
-            onClick={() => setFilesExpanded(!filesExpanded)}
+            onClick={toggleFiles}
             className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-200"
           >
             <svg
@@ -111,7 +130,7 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
         )}
         {hasTodos && (
           <button
-            onClick={() => setTodosExpanded(!todosExpanded)}
+            onClick={toggleTodos}
             className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-200"
           >
             <svg
