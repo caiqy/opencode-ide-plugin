@@ -55,7 +55,7 @@ export function UsageDisplay({ usage }: UsageDisplayProps) {
         title="Show usage details"
         data-tip="Show usage details"
       >
-        <div className="w-[20px] h-2.5 bg-gray-100 dark:bg-gray-800 rounded overflow-hidden relative">
+        <div className="w-[40px] h-2.5 bg-gray-100 dark:bg-gray-800 rounded overflow-hidden relative">
           <div className={`${color} h-3`} style={{ width: `${pct}%` }} />
         </div>
       </button>

@@ -74,6 +74,7 @@ export function EditorToolbar({
             Retry
           </button>
         )}
+        <AgentSelector selectedAgent={selectedAgent} onSelect={onAgentSelect} disabled={isDisabled} />
         <ModelSelector
           key={modelSelectorKey}
           selectedProviderId={selectedProviderId}
@@ -88,7 +89,6 @@ export function EditorToolbar({
           disabled={isDisabled}
           isReasoningModel={isReasoningModel}
         />
-        <AgentSelector selectedAgent={selectedAgent} onSelect={onAgentSelect} disabled={isDisabled} />
         <IconButton
           onClick={onFileSelect}
           size="sm"

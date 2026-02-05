@@ -1,4 +1,6 @@
 import { Button } from "../common"
+import { useSessionUsage } from "../../hooks/useSessionUsage"
+import { UsageDisplay } from "../CompactHeader/UsageDisplay"
 
 interface MessageActionsProps {
   isIdle: boolean
@@ -17,8 +19,11 @@ export function MessageActions({
   onAbort,
   onCompactClick,
 }: MessageActionsProps) {
+  const usage = useSessionUsage()
+
   return (
     <div className="flex items-center gap-1">
+      <UsageDisplay usage={usage} />
       <Button
         variant="ghost"
         size="xs"

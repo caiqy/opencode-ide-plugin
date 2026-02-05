@@ -114,6 +114,12 @@ export function isDefaultTitle(title: string): boolean {
   return /^(New session - |Child session - )\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(title)
 }
 
+function isSubagentSession(session: Session): boolean {
+  if (!session.parentID) return false
+  const title = session.title || ""
+  return /\(@[^)]* subagent\)$/.test(title)
+}
+
 /**
  * Session provider component
  *
@@ -463,7 +469,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
       if (response.data) {
         console.log("[SessionContext] Sessions loaded:", response.data.length)
         // Sort by creation time (newest first)
-        const sorted = [...response.data].sort((a, b) => b.time.created - a.time.created)
+        const sorted = response.data
+          .filter((s) => !isSubagentSession(s))
+          .sort((a, b) => b.time.created - a.time.created)
         setSessions(sorted)
         setIsLoading(false)
         return
@@ -897,6 +905,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   useEffect(() => {
     const handleSessionCreated = (event: any) => {
       if (event.type === "session.created" && event.properties?.info) {
+        if (isSubagentSession(event.properties.info)) return
         console.log("[SessionContext] Session created event:", event.properties.info.id)
         setSessions((prev) => {
           // Check if already exists
@@ -916,12 +925,23 @@ export function SessionProvider({ children }: SessionProviderProps) {
           updated: new Date(updatedSession.time.updated).toISOString(),
           isDefaultTitle: isDefaultTitle(updatedSession.title),
         })
-        // Check if title changed (useful for debugging auto-title generation)
-        const existingSession = sessions.find((s) => s.id === updatedSession.id)
-        if (existingSession && existingSession.title !== updatedSession.title) {
-          console.log("[SessionContext] 🎉 Session title CHANGED:", existingSession.title, "→", updatedSession.title)
-        }
-        setSessions((prev) => prev.map((s) => (s.id === updatedSession.id ? updatedSession : s)))
+
+        const visible = !isSubagentSession(updatedSession)
+
+        setSessions((prev) => {
+          const exists = prev.find((s) => s.id === updatedSession.id)
+          if (!visible) {
+            return exists ? prev.filter((s) => s.id !== updatedSession.id) : prev
+          }
+          if (!exists) {
+            return [updatedSession, ...prev]
+          }
+          if (exists.title !== updatedSession.title) {
+            console.log("[SessionContext] 🎉 Session title CHANGED:", exists.title, "→", updatedSession.title)
+          }
+          return prev.map((s) => (s.id === updatedSession.id ? updatedSession : s))
+        })
+
         if (currentSession?.id === updatedSession.id) {
           setCurrentSession(updatedSession)
         }

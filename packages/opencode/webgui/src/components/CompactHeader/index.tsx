@@ -2,14 +2,12 @@ import { useState, forwardRef, useImperativeHandle, useCallback } from "react"
 import type { ConnectionState } from "../../lib/api/events"
 import { useTheme } from "../../state/ThemeContext"
 import { useSession, isDefaultTitle } from "../../state/SessionContext"
-import { useSessionUsage } from "../../hooks/useSessionUsage"
 import { ConfirmModal } from "../ConfirmModal"
 import { SettingsPanel } from "../SettingsPanel"
 import { useSessionDropdown } from "./hooks/useSessionDropdown"
 import { useSessionActions } from "./hooks/useSessionActions"
 import { StatusIndicator } from "./StatusIndicator"
 import { ActionButtons } from "./ActionButtons"
-import { UsageDisplay } from "./UsageDisplay"
 import { SessionDropdown } from "./SessionDropdown"
 import { sdk } from "../../lib/api/sdkClient"
 import { useToast } from "../../state/ToastContext"
@@ -30,7 +28,6 @@ const CompactHeader = forwardRef<
   const { theme, toggleTheme } = useTheme()
   const { currentSession, setCurrentSession, sessions, setSessions, switchSession, updateSessionTitle, deleteSession } =
     useSession()
-  const usage = useSessionUsage()
   const toast = useToast()
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -170,9 +167,6 @@ const CompactHeader = forwardRef<
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
-
-          {/* Usage summary in header */}
-          <UsageDisplay usage={usage} />
 
           {/* Dropdown menu */}
           <SessionDropdown
