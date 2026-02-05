@@ -37,6 +37,11 @@ interface ProvidersResponse {
   default: Record<string, string>
 }
 
+interface SkillsResponse {
+  name: string
+  description: string
+}
+
 interface PathResponse {
   state: string
   config: string
@@ -71,7 +76,7 @@ export const sdk = {
         }
       }
     },
-  }) as (typeof baseClient.session) & {
+  }) as typeof baseClient.session & {
     retry: (options: { path: { sessionID: string } }) => Promise<any>
   },
   config: {
@@ -176,6 +181,28 @@ export const sdk = {
       const res = await fetch(`/app/api/auth/login/status/${id}`)
       return res.json() as Promise<{ status: "pending" | "success" | "failed"; result?: any }>
     },
+  },
+  app: Object.assign(baseClient.app, {
+    skills: async () => {
+      try {
+        const response = await fetch("/skill", {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        })
+        if (!response.ok) {
+          return { error: { message: "Failed to load skills" }, data: null as SkillsResponse[] | null }
+        }
+        const data = (await response.json()) as SkillsResponse[]
+        return { data, error: null as { message: string } | null }
+      } catch (error) {
+        return {
+          error: { message: error instanceof Error ? error.message : "Unknown error" },
+          data: null as SkillsResponse[] | null,
+        }
+      }
+    },
+  }) as typeof baseClient.app & {
+    skills: () => Promise<{ data: SkillsResponse[] | null; error: { message: string } | null }>
   },
   permissions: {
     respond: async (options: {

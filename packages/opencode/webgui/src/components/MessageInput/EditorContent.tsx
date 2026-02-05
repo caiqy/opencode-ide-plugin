@@ -5,6 +5,7 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin"
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
 import { MentionPlugin } from "../mention/MentionPlugin"
 import { AttachmentPlugin } from "../attachment/AttachmentPlugin"
+import { SlashPlugin } from "../slash/SlashPlugin"
 import type { EditorState } from "lexical"
 
 interface EditorContentProps {
@@ -36,6 +37,7 @@ export function EditorContent({ contentEditableRef, containerRef, onEditorChange
         />
         <OnChangePlugin onChange={onEditorChange} />
         <HistoryPlugin />
+        <SlashPlugin />
         <MentionPlugin />
         <AttachmentPlugin />
       </div>

@@ -47,20 +47,21 @@ export function useMentionNavigation({
       switch (event.key) {
         case "ArrowDown":
           event.preventDefault()
+          if (itemCount <= 0) return
           setSelectedIndex((prev) => (prev + 1) % itemCount)
           break
 
         case "ArrowUp":
           event.preventDefault()
+          if (itemCount <= 0) return
           setSelectedIndex((prev) => (prev - 1 + itemCount) % itemCount)
           break
 
         case "Enter":
         case "Tab":
           event.preventDefault()
-          if (itemCount > 0) {
-            onSelect(selectedIndex)
-          }
+          if (itemCount <= 0) return
+          onSelect(selectedIndex)
           break
 
         case "Escape":
