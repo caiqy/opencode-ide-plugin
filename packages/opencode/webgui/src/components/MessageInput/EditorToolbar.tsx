@@ -55,7 +55,7 @@ export function EditorToolbar({
 }: EditorToolbarProps) {
   return (
     <div className="h-8 px-2 flex items-center justify-between border-t border-gray-100 dark:border-gray-800">
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-0.5">
         {lastFailedMessage && (
           <button
             onClick={onRetry}
