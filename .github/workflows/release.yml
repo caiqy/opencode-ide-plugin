@@ -70,6 +70,21 @@ jobs:
           CLEAN_VERSION="${RAW_VERSION#v}"
           echo "Injecting version: $CLEAN_VERSION"
 
+          # VS Code requires semver (3 segments: major.minor.patch).
+          # Convert 4-segment CalVer YYYY.M.D.B to YYYY.MDD.B
+          # e.g. 2026.2.6.4 -> 2026.206.4
+          VSCODE_VERSION=$(node -e '
+            const v = process.argv[1];
+            const parts = v.split(".");
+            if (parts.length === 4) {
+              const [year, month, day, build] = parts;
+              console.log(year + "." + (parseInt(month) * 100 + parseInt(day)) + "." + build);
+            } else {
+              console.log(v);
+            }
+          ' "$CLEAN_VERSION")
+          echo "VSCode version: $VSCODE_VERSION"
+
           # Update VSCode plugin package.json
           node -e '
             const fs = require("fs");
@@ -78,7 +93,7 @@ jobs:
             pkg.version = process.argv[1];
             fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
             console.log("Updated " + path + " to version " + process.argv[1]);
-          ' "$CLEAN_VERSION"
+          ' "$VSCODE_VERSION"
 
           # Update JetBrains plugin build.gradle.kts
           sed -i "s/^version = \".*\"/version = \"$CLEAN_VERSION\"/" hosts/jetbrains-plugin/build.gradle.kts
