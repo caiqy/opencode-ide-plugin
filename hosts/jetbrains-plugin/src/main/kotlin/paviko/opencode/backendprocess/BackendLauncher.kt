@@ -508,18 +508,37 @@ object BackendLauncher {
     }
 
     /**
-     * Helper to find the ToolWindow Content associated with a terminal widget.
-     * Replaces TerminalToolWindowManager.getContainer(...) which was removed in 2025.3.
-     */
+      * Helper to find the ToolWindow Content associated with a terminal widget.
+      * In 2025.3+ `TerminalToolWindowManager#getContainer(TerminalWidget)` exists, but reflection must
+      * not rely on the widget's concrete class (the method parameter is the `TerminalWidget` interface).
+      * For older builds, fall back to mapping via Swing hierarchy.
+      */
     private fun getContentForWidget(project: Project, widget: Any): com.intellij.ui.content.Content? {
-        // First try the old API if it exists (via reflection to avoid compilation/runtime errors if missing)
+        // First try the API on TerminalToolWindowManager if it exists.
+        // In 2025.3+ the public method is `getContainer(TerminalWidget)`.
+        // Earlier versions used different signatures and/or required mapping via Swing hierarchy.
         try {
             val manager = TerminalToolWindowManager.getInstance(project)
-            val method = manager.javaClass.getMethod("getContainer", widget.javaClass)
-            val container = method.invoke(manager, widget)
+            val direct = manager.javaClass.methods.firstOrNull { m ->
+                m.name == "getContainer" &&
+                    m.parameterCount == 1 &&
+                    m.parameterTypes.first().isAssignableFrom(widget.javaClass)
+            } ?: manager.javaClass.declaredMethods.firstOrNull { m ->
+                m.name == "getContainer" &&
+                    m.parameterCount == 1 &&
+                    m.parameterTypes.first().isAssignableFrom(widget.javaClass)
+            }?.apply { isAccessible = true }
+
+            val container = direct?.invoke(manager, widget)
             if (container != null) {
-                val contentMethod = container.javaClass.getMethod("getContent")
-                return contentMethod.invoke(container) as? com.intellij.ui.content.Content
+                val contentMethod = container.javaClass.methods.firstOrNull { m ->
+                    m.name == "getContent" && m.parameterCount == 0
+                } ?: container.javaClass.declaredMethods.firstOrNull { m ->
+                    m.name == "getContent" && m.parameterCount == 0
+                }?.apply { isAccessible = true }
+
+                val content = contentMethod?.invoke(container)
+                if (content is com.intellij.ui.content.Content) return content
             }
         } catch (e: Exception) {
             // Method missing or failed, proceed to fallback
@@ -542,7 +561,19 @@ object BackendLauncher {
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Terminal") ?: return null
         val contentManager = toolWindow.contentManager
 
-        for (content in contentManager.contents) {
+        val contents = try {
+            val m = contentManager.javaClass.methods.firstOrNull { it.name == "getContentsRecursively" && it.parameterCount == 0 }
+            val result = m?.invoke(contentManager)
+            when (result) {
+                is Array<*> -> result.filterIsInstance<com.intellij.ui.content.Content>()
+                is Iterable<*> -> result.filterIsInstance<com.intellij.ui.content.Content>()
+                else -> contentManager.contents.toList()
+            }
+        } catch (_: Exception) {
+            contentManager.contents.toList()
+        }
+
+        for (content in contents) {
             if (SwingUtilities.isDescendingFrom(component, content.component)) {
                 return content
             }
