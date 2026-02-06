@@ -110,6 +110,17 @@ print_status "Building VSCode extension in $BUILD_TYPE mode"
 
 cd "$PLUGIN_DIR"
 
+# Override version from PLUGIN_VERSION env var if set
+if [ -n "${PLUGIN_VERSION:-}" ]; then
+    print_status "Overriding version with PLUGIN_VERSION=$PLUGIN_VERSION"
+    node -e '
+      const fs = require("fs");
+      const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+      pkg.version = process.argv[1];
+      fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+    ' "$PLUGIN_VERSION"
+fi
+
 if [ "$PACKAGE_ONLY" = false ]; then
     print_status "Cleaning previous build artifacts..."
     set +e

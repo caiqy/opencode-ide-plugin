@@ -64,6 +64,12 @@ echo [INFO] Building VSCode extension in %BUILD_TYPE% mode
 
 cd /d "%PLUGIN_DIR%"
 
+REM Override version from PLUGIN_VERSION env var if set
+if defined PLUGIN_VERSION (
+    echo [INFO] Overriding version with PLUGIN_VERSION=%PLUGIN_VERSION%
+    node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); pkg.version=process.argv[1]; fs.writeFileSync('package.json',JSON.stringify(pkg,null,2)+'\n');" "%PLUGIN_VERSION%"
+)
+
 if "%PACKAGE_ONLY%"=="false" (
     echo [INFO] Cleaning previous build artifacts...
     call pnpm run clean 2>nul

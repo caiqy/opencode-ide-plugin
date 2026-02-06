@@ -29,7 +29,14 @@ echo "=> Building opencode binaries"
 
 cd "$PLUGIN_DIR"
 
+# Override version from PLUGIN_VERSION env var if set
+GRADLE_VERSION_ARGS=""
+if [ -n "${PLUGIN_VERSION:-}" ]; then
+    echo "=> Overriding version with PLUGIN_VERSION=$PLUGIN_VERSION"
+    GRADLE_VERSION_ARGS="-Pplugin.version=$PLUGIN_VERSION"
+fi
+
 echo "=> Building JetBrains plugin"
-"$GRADLEW" buildPlugin "$@"
+"$GRADLEW" buildPlugin $GRADLE_VERSION_ARGS "$@"
 
 echo "=> Build completed"

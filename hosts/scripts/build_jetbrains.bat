@@ -31,8 +31,13 @@ if not "%BIN_STATUS%"=="0" (
 )
 
 echo [INFO] Building JetBrains plugin
+set "GRADLE_VERSION_ARGS="
+if defined PLUGIN_VERSION (
+  echo [INFO] Overriding version with PLUGIN_VERSION=%PLUGIN_VERSION%
+  set "GRADLE_VERSION_ARGS=-Pplugin.version=%PLUGIN_VERSION%"
+)
 pushd "%PLUGIN_DIR%" >nul
-call "%GRADLEW%" buildPlugin %*
+call "%GRADLEW%" buildPlugin %GRADLE_VERSION_ARGS% %*
 set "GRADLE_STATUS=%ERRORLEVEL%"
 popd >nul
 if not "%GRADLE_STATUS%"=="0" (

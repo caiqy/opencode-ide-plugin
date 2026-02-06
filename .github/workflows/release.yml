@@ -63,6 +63,27 @@ jobs:
             fi
           fi
 
+      - name: Inject version into plugin manifests
+        run: |
+          # Strip leading 'v' prefix if present (e.g. v1.2.3 -> 1.2.3)
+          RAW_VERSION="${{ steps.version.outputs.version }}"
+          CLEAN_VERSION="${RAW_VERSION#v}"
+          echo "Injecting version: $CLEAN_VERSION"
+
+          # Update VSCode plugin package.json
+          node -e '
+            const fs = require("fs");
+            const path = "hosts/vscode-plugin/package.json";
+            const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
+            pkg.version = process.argv[1];
+            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
+            console.log("Updated " + path + " to version " + process.argv[1]);
+          ' "$CLEAN_VERSION"
+
+          # Update JetBrains plugin build.gradle.kts
+          sed -i "s/^version = \".*\"/version = \"$CLEAN_VERSION\"/" hosts/jetbrains-plugin/build.gradle.kts
+          echo "Updated hosts/jetbrains-plugin/build.gradle.kts to version $CLEAN_VERSION"
+
       - name: Build backend binaries
         run: ./hosts/scripts/build_opencode.sh
 
