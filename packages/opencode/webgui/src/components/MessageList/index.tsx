@@ -82,7 +82,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
   const items: PartOpenItem[] = visibleMessages.flatMap((msg): PartOpenItem[] => {
     return msg.parts.flatMap((part): PartOpenItem[] => {
       if (part.type === "reasoning") {
-        return [{ type: "reasoning", id: part.id, end: part.time?.end }]
+        return [{ type: "reasoning", id: part.id, text: part.text, end: part.time?.end }]
       }
       if (part.type === "tool") {
         const status = part.state?.status

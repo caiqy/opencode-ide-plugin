@@ -12,6 +12,15 @@ export function ReasoningPart({ part, durationMs }: ReasoningPartProps) {
   const open = usePartOpen()
   const expanded = open.open?.type === "reasoning" && open.open.id === part.id
 
+  const text = (part.text || "").trim()
+  if (!text) {
+    return (
+      <div className="my-1">
+        <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
+      </div>
+    )
+  }
+
   return (
     <CollapsiblePart
       trigger={<span className="leading-none">{label}</span>}

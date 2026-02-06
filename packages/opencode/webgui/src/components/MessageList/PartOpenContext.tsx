@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 type ToolStatus = "pending" | "running" | "completed" | "error"
 
 export type PartOpenItem =
-  | { type: "reasoning"; id: string; end?: number }
+  | { type: "reasoning"; id: string; text?: string; end?: number }
   | { type: "tool"; id: string; tool: string; status?: ToolStatus }
 
 export type PartOpenState = { type: "reasoning" | "tool"; id: string } | null
@@ -20,6 +20,8 @@ function findReasoning(items: PartOpenItem[]) {
     const item = items[i]
     if (item.type !== "reasoning") continue
     if (item.end) continue
+    const text = (item.text || "").trim()
+    if (!text) continue
     return item
   }
 }

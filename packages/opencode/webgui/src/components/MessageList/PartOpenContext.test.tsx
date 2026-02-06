@@ -19,7 +19,7 @@ describe("PartOpenProvider", () => {
     const { rerender } = render(
       <PartOpenProvider
         items={[
-          { type: "reasoning", id: "r1" },
+          { type: "reasoning", id: "r1", text: "x" },
           { type: "tool", id: "x1", tool: "read", status: "completed" },
         ]}
       >
@@ -34,7 +34,7 @@ describe("PartOpenProvider", () => {
     rerender(
       <PartOpenProvider
         items={[
-          { type: "reasoning", id: "r1", end: 123 },
+          { type: "reasoning", id: "r1", text: "x", end: 123 },
           { type: "tool", id: "x1", tool: "read", status: "completed" },
         ]}
       >
@@ -50,7 +50,7 @@ describe("PartOpenProvider", () => {
   it("用户手动展开后不会被新的 thinking 强制跳转", async () => {
     const user = userEvent.setup()
     const { rerender } = render(
-      <PartOpenProvider items={[{ type: "reasoning", id: "r1" }]}>
+      <PartOpenProvider items={[{ type: "reasoning", id: "r1", text: "x" }]}>
         <View />
       </PartOpenProvider>,
     )
@@ -63,7 +63,7 @@ describe("PartOpenProvider", () => {
     expect(screen.getByTestId("open")).toHaveTextContent("tool:t1")
 
     rerender(
-      <PartOpenProvider items={[{ type: "reasoning", id: "r2" }]}>
+      <PartOpenProvider items={[{ type: "reasoning", id: "r2", text: "x" }]}>
         <View />
       </PartOpenProvider>,
     )
