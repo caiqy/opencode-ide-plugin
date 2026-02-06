@@ -56,7 +56,7 @@ export function SessionItem({
   onKeyDown,
   onToggleShare,
 }: SessionItemProps) {
-  const displayTitle = session.title || "Untitled"
+  const displayTitle = session.title || "New Session"
   const hasDefaultTitle = isDefaultTitle(displayTitle)
   const isShared = !!session.share?.url
 

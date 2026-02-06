@@ -52,7 +52,7 @@ export function useSessionDropdown(sessions: Session[]) {
 
   // Filter sessions by search query
   const filteredSessions = sessions.filter((session) => {
-    const title = session.title || "Untitled"
+    const title = session.title || "New Session"
     return title.toLowerCase().includes(searchQuery.toLowerCase())
   })
 

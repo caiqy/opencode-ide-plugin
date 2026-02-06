@@ -145,7 +145,7 @@ const CompactHeader = forwardRef<
     dropdown.setIsDropdownOpen(false)
   }
 
-  const currentTitle = currentSession?.title || "Untitled"
+  const currentTitle = currentSession?.title || "New Session"
   const truncatedTitle = currentTitle.length > 30 ? currentTitle.slice(0, 30) + "..." : currentTitle
   const currentHasDefaultTitle = isDefaultTitle(currentTitle)
 

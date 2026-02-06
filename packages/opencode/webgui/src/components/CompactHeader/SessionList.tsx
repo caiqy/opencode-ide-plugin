@@ -61,7 +61,7 @@ export function SessionList({
       {filteredSessions.map((session, index) => {
         const isActive = session.id === currentSessionId
         const isEditing = editingSessionId === session.id
-        const displayTitle = session.title || "Untitled"
+        const displayTitle = session.title || "New Session"
 
         return (
           <SessionItem

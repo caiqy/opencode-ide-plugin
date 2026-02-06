@@ -73,7 +73,7 @@ export function CommandPalette({
     // Add sessions
     ...sessions.map((session) => ({
       id: `session-${session.id}`,
-      label: session.title || "Untitled",
+      label: session.title || "New Session",
       description: `Switch to session`,
       icon: "💬",
       action: () => {
