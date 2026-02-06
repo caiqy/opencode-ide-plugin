@@ -1,4 +1,17 @@
-import type { Message, Part } from "../../state/MessagesContext"
+import type { Message, Part, WebguiPart } from "../../state/MessagesContext"
+
+const PART_TYPE_PRIORITY: Record<string, number> = {
+  reasoning: 0,
+  tool: 1,
+}
+
+export function partPriority(type: string): number {
+  return PART_TYPE_PRIORITY[type] ?? 2
+}
+
+export function sortParts<T extends { part: WebguiPart }>(items: T[]): T[] {
+  return [...items].sort((a, b) => partPriority(a.part.type) - partPriority(b.part.type))
+}
 
 export function getPartStart(part: Part): number | undefined {
   const time = (part as { time?: { start?: number } }).time

@@ -4,7 +4,7 @@ import { isAssistantMessage, type AssistantMessage } from "../../types/messages"
 import { MessagePart } from "./MessagePart"
 import { SessionErrorPart } from "./SessionErrorPart"
 import { ActionButtons } from "./ActionButtons"
-import { getPartStart, getPartEnd } from "./utils"
+import { getPartStart, getPartEnd, sortParts } from "./utils"
 import { cn } from "../../utils/classNames"
 
 interface MessageRowProps {
@@ -94,9 +94,9 @@ export function MessageRow({ message, onFork, onRevert, revertBusy, sessionID, i
         />
       )}
 
-      {/* Render all parts */}
+      {/* Render all parts (sorted: reasoning → tool → text) */}
       <div className="space-y-1">
-        {partsWithDurations.map(({ part, durationMs }) => (
+        {sortParts(partsWithDurations).map(({ part, durationMs }) => (
           <MessagePart
             key={part.id}
             part={part}
