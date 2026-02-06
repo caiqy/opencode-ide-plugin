@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { sdk } from "../lib/api/sdkClient"
 import type { Provider } from "@opencode-ai/sdk/client"
 import { useDropdown } from "../hooks/useDropdown"
+import { useLocalStorage } from "../hooks/useLocalStorage"
 import { formatDate } from "../utils/formatting"
 
 interface ModelSelectorProps {
@@ -17,6 +18,52 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
   const [defaultIds, setDefaultIds] = useState<{ [key: string]: string }>({})
   const [isLoading, setIsLoading] = useState(true)
   const [recent, setRecent] = useState<Array<{ provider_id: string; model_id: string; last_used: string }>>([])
+  const [favorites, setFavorites] = useLocalStorage<string[]>("opencode_favorite_models_v1", [], {
+    syncAcrossTabs: true,
+  })
+  const favoriteSet = new Set(favorites)
+
+  const toggleFavorite = (providerId: string, modelId: string) => {
+    const key = `${providerId}/${modelId}`
+    setFavorites((prev) => (prev.includes(key) ? prev.filter((x) => x !== key) : [key, ...prev]))
+  }
+
+  const FavoriteButton = (props: { providerId: string; modelId: string }) => {
+    const key = `${props.providerId}/${props.modelId}`
+    const active = favoriteSet.has(key)
+    const label = `Toggle favorite ${key}`
+
+    return (
+      <button
+        type="button"
+        aria-label={label}
+        title={label}
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          toggleFavorite(props.providerId, props.modelId)
+        }}
+        className={
+          active
+            ? "w-5 h-5 flex items-center justify-center text-yellow-500 hover:text-yellow-600"
+            : "w-5 h-5 flex items-center justify-center text-gray-300 hover:text-gray-400"
+        }
+      >
+        <svg
+          className="w-4 h-4"
+          viewBox="0 0 20 20"
+          fill={active ? "currentColor" : "none"}
+          stroke="currentColor"
+          strokeWidth={1.5}
+        >
+          <path
+            d="M10 1.5l2.59 5.25 5.8.84-4.2 4.09.99 5.78L10 14.77 4.82 17.5l.99-5.78L1.61 7.59l5.8-.84L10 1.5z"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+    )
+  }
 
   // Load providers on mount
   useEffect(() => {
@@ -119,6 +166,28 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
     return recent.filter((r) => r.model_id.toLowerCase().includes(q) || r.provider_id.toLowerCase().includes(q))
   }
 
+  const favoriteList = (() => {
+    const needle = searchTerm.trim().toLowerCase()
+    return favorites
+      .map((key) => {
+        const index = key.indexOf("/")
+        if (index === -1) return null
+        const providerID = key.slice(0, index)
+        const modelID = key.slice(index + 1)
+        const provider = providers.find((p) => p.id === providerID)
+        const model = provider?.models[modelID]
+        if (!provider || !model) return null
+        const name = model.name || modelID
+        const matches =
+          needle.length === 0
+            ? true
+            : name.toLowerCase().includes(needle) || provider.name.toLowerCase().includes(needle)
+        if (!matches) return null
+        return { provider_id: providerID, model_id: modelID, name, provider: provider.name }
+      })
+      .filter(Boolean) as Array<{ provider_id: string; model_id: string; name: string; provider: string }>
+  })()
+
   return (
     <div className="relative" ref={dropdownRef}>
       <button
@@ -156,6 +225,50 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
               <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">No providers configured</div>
             ) : (
               <>
+                {/* Favorites group */}
+                {favoriteList.length > 0 && (
+                  <div className="border-b border-gray-100 dark:border-gray-800">
+                    <div className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800">
+                      Favorites
+                    </div>
+                    {favoriteList.map((item) => {
+                      const isSelected = selectedProviderId === item.provider_id && selectedModelId === item.model_id
+                      return (
+                        <div
+                          key={`fav:${item.provider_id}:${item.model_id}`}
+                          onClick={() => handleSelect(item.provider_id, item.model_id)}
+                          role="button"
+                          tabIndex={0}
+                          className={`w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between ${
+                            isSelected
+                              ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                              : "text-gray-900 dark:text-gray-100"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="font-medium truncate">{item.name}</span>
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate max-w-[10rem]">
+                              {item.provider}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <FavoriteButton providerId={item.provider_id} modelId={item.model_id} />
+                            {isSelected && (
+                              <svg className="w-4 h-4 ml-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
                 {/* Recent group */}
                 {filterRecent().length > 0 && (
                   <div className="border-b border-gray-100 dark:border-gray-800">
@@ -205,7 +318,10 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
 
                 {/* Provider groups */}
                 {providers.map((provider) => {
-                  const filteredModels = filterModels(provider)
+                  const filteredModels = filterModels(provider).filter(([modelId]) => {
+                    if (searchTerm.trim().length > 0) return true
+                    return !favoriteSet.has(`${provider.id}/${modelId}`)
+                  })
                   if (filteredModels.length === 0) return null
 
                   return (
@@ -218,9 +334,11 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                         const isDefault = defaultIds.provider === provider.id && defaultIds.model === modelId
 
                         return (
-                          <button
+                          <div
                             key={modelId}
                             onClick={() => handleSelect(provider.id, modelId)}
+                            role="button"
+                            tabIndex={0}
                             className={`w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between ${
                               isSelected
                                 ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
@@ -243,16 +361,19 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                                 )}
                               </div>
                             </div>
-                            {isSelected && (
-                              <svg className="w-4 h-4 ml-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                  fillRule="evenodd"
-                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            )}
-                          </button>
+                            <div className="flex items-center gap-1">
+                              <FavoriteButton providerId={provider.id} modelId={modelId} />
+                              {isSelected && (
+                                <svg className="w-4 h-4 ml-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              )}
+                            </div>
+                          </div>
                         )
                       })}
                     </div>
