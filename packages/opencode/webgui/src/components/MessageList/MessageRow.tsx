@@ -96,6 +96,7 @@ export function MessageRow({ message, onFork, onRevert, revertBusy, sessionID, i
 
       {/* Render all parts (sorted: reasoning → tool → text) */}
       <div className="space-y-1">
+        {isUser && <div className="text-right text-xs text-gray-500 dark:text-gray-400">You</div>}
         {sortParts(partsWithDurations).map(({ part, durationMs }) => (
           <MessagePart
             key={part.id}
