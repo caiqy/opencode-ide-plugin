@@ -64,7 +64,7 @@ export function UsageDisplay({ usage }: UsageDisplayProps) {
       </button>
 
       {showDetails && (
-        <div className="modern-card absolute bottom-full right-0 mb-1 w-64 max-w-[calc(100vw-16px)] z-50 overflow-hidden ring-1 ring-black/5 p-2">
+        <div className="modern-card absolute bottom-full right-0 mb-1 w-64 max-w-[calc(100vw-16px)] z-50 overflow-hidden ring-1 ring-black/5 p-2 text-gray-900 dark:text-gray-100">
           <div className="max-h-[calc(100vh-200px)] overflow-y-auto py-1 text-xs">
             <div className="flex items-center justify-between py-0.5">
               <span>Context used</span>

@@ -105,7 +105,7 @@ body {
 }
 
 .modern-button-ghost {
-  @apply text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 shadow-none border border-transparent;
+  @apply text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 shadow-none border border-transparent;
 }
 
 .modern-button-danger {
@@ -117,5 +117,5 @@ body {
 }
 
 .modern-icon-button {
-  @apply p-1.5 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-200;
+  @apply p-1.5 rounded-md text-gray-500 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-200;
 }

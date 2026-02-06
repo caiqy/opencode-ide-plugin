@@ -89,7 +89,7 @@ export function AgentSelector({ selectedAgent, onSelect, disabled }: AgentSelect
       <button
         onClick={toggle}
         disabled={disabled || isLoading}
-        className="h-6 px-1.5 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
+        className="h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
         title="Select agent"
         data-tip="Select agent"
       >
