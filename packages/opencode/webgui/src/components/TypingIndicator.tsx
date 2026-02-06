@@ -55,7 +55,7 @@ export function TypingIndicator({ visible }: TypingIndicatorProps) {
   const countdown = currentStatus.type === "retry" && typeof seconds === "number" && seconds > 0 ? seconds : null
 
   return (
-    <div className="my-1 space-y-1 min-h-[1rem]">
+    <div className="mt-1 mb-3 space-y-1 min-h-[1rem]">
       {visible && (
         <button className="relative inline-flex items-center gap-0.5 pr-4 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
           <span className="leading-none">Generating</span>
