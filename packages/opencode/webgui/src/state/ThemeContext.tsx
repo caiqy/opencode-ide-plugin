@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useEffect, type ReactNode } from "react"
+import { useLocalStorage } from "../hooks/useLocalStorage"
 
 type Theme = "light" | "dark"
 
@@ -9,27 +10,23 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
+function systemTheme(): Theme {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("light")
+  const [theme, setTheme] = useLocalStorage<Theme>("oc-webgui-theme", systemTheme())
 
   useEffect(() => {
-    // Apply theme to document root
-    console.log("[ThemeProvider] Applying theme:", theme)
     if (theme === "dark") {
       document.documentElement.classList.add("dark")
     } else {
       document.documentElement.classList.remove("dark")
     }
-    console.log("[ThemeProvider] document.documentElement.classList:", document.documentElement.classList.toString())
   }, [theme])
 
   const toggleTheme = () => {
-    console.log("[ThemeProvider] Toggle theme called, current:", theme)
-    setTheme((prev) => {
-      const newTheme = prev === "light" ? "dark" : "light"
-      console.log("[ThemeProvider] New theme:", newTheme)
-      return newTheme
-    })
+    setTheme((prev) => (prev === "light" ? "dark" : "light"))
   }
 
   return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>
