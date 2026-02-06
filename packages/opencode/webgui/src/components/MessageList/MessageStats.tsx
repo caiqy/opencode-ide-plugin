@@ -83,7 +83,7 @@ export function MessageStats({ tokens, cost }: MessageStatsProps) {
         <div
           ref={popoverRef}
           className={cn(
-            "modern-card absolute left-1/2 -translate-x-1/2 w-48 z-50 overflow-hidden ring-1 ring-black/5 p-2 text-xs",
+            "modern-card absolute left-1/2 -translate-x-1/2 w-48 z-50 overflow-hidden ring-1 ring-black/5 p-2 text-xs text-gray-900 dark:text-gray-100",
             position === "above" ? "bottom-full mb-2" : "top-full mt-2",
           )}
         >
