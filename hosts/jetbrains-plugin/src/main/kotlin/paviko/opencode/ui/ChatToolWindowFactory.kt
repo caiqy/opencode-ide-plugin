@@ -43,12 +43,9 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
     }
 
     private fun pluginVersion(): String {
-        // Use pluginDescriptor.version without hardcoding plugin id.
-        // PluginUtil ties a classloader back to the hosting plugin.
-        val pluginId = PluginUtil.getPluginId(javaClass.classLoader) ?: return "dev"
-        val descriptor = PluginManagerCore.getPlugin(pluginId) ?: return "dev"
-        return descriptor.version
+        return javaClass.`package`?.implementationVersion ?: java.time.LocalDate.now().toString()
     }
+
     private fun withCacheBuster(url: String, version: String): String {
         val encodedVersion = URLEncoder.encode(version, StandardCharsets.UTF_8)
         val sep = if (url.contains("?")) "&" else "?"

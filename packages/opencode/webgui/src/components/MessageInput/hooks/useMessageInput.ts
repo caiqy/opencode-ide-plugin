@@ -45,7 +45,6 @@ export function useMessageInput({
     setIsSending(true)
     setIsIdle(false)
 
-    // Save message content before clearing (for potential restore on error)
     let savedMessage = ""
     editor.getEditorState().read(() => {
       const root = $getRoot()
@@ -53,14 +52,9 @@ export function useMessageInput({
     })
 
     try {
-      // Extract parts from editor
-      const parts = extractMessageParts()
+      const trimmedMessage = savedMessage.trim()
+      const isCommand = trimmedMessage.startsWith("/")
 
-      if (parts.length === 0) {
-        throw new Error("No message content")
-      }
-
-      // If this is a virtual session, materialize it first
       let actualSessionID = sessionID
       if (isVirtualSession) {
         console.log("[MessageInput] Materializing virtual session before sending message...")
@@ -72,28 +66,6 @@ export function useMessageInput({
         console.log("[MessageInput] Virtual session materialized:", actualSessionID)
       }
 
-      // Build request body
-      const requestBody: any = {
-        parts,
-      }
-
-      // Add model if selected
-      if (selectedProviderId && selectedModelId) {
-        requestBody.model = {
-          providerID: selectedProviderId,
-          modelID: selectedModelId,
-        }
-      }
-
-      // Always include agent (defaults to 'build')
-      requestBody.agent = selectedAgent
-
-      // Add variant if selected
-      if (selectedVariant) {
-        requestBody.variant = selectedVariant
-      }
-
-      // Clear editor immediately (optimistic UI)
       editor.update(() => {
         const root = $getRoot()
         root.clear()
@@ -108,21 +80,81 @@ export function useMessageInput({
         editor.focus()
       }, 0)
 
-      // Send message (this may take minutes, but UI is already cleared)
-      const response = await sdk.session.prompt({
-        path: { id: actualSessionID },
-        body: requestBody,
-      })
+      if (isCommand) {
+        const commandParts = trimmedMessage.slice(1).split(/\s+/)
+        const commandName = commandParts[0]
+        const commandArgs = commandParts.slice(1).join(" ")
 
-      if (response.error) {
-        const errorMsg =
-          "data" in response.error &&
-          response.error.data &&
-          typeof response.error.data === "object" &&
-          "message" in response.error.data
-            ? String(response.error.data.message)
-            : "Failed to send message"
-        throw new Error(errorMsg)
+        const requestBody: any = {
+          command: commandName,
+          // Server schema requires `arguments` even if empty
+          arguments: commandArgs,
+        }
+
+        if (selectedProviderId && selectedModelId) {
+          requestBody.model = `${selectedProviderId}/${selectedModelId}`
+        }
+
+        requestBody.agent = selectedAgent
+
+        if (selectedVariant) {
+          requestBody.variant = selectedVariant
+        }
+
+        const response = await sdk.session.command({
+          path: { id: actualSessionID },
+          body: requestBody,
+        })
+
+        if (response.error) {
+          const errorMsg =
+            "data" in response.error &&
+            response.error.data &&
+            typeof response.error.data === "object" &&
+            "message" in response.error.data
+              ? String(response.error.data.message)
+              : "Failed to execute command"
+          throw new Error(errorMsg)
+        }
+      } else {
+        const parts = extractMessageParts()
+
+        if (parts.length === 0) {
+          throw new Error("No message content")
+        }
+
+        const requestBody: any = {
+          parts,
+        }
+
+        if (selectedProviderId && selectedModelId) {
+          requestBody.model = {
+            providerID: selectedProviderId,
+            modelID: selectedModelId,
+          }
+        }
+
+        requestBody.agent = selectedAgent
+
+        if (selectedVariant) {
+          requestBody.variant = selectedVariant
+        }
+
+        const response = await sdk.session.prompt({
+          path: { id: actualSessionID },
+          body: requestBody,
+        })
+
+        if (response.error) {
+          const errorMsg =
+            "data" in response.error &&
+            response.error.data &&
+            typeof response.error.data === "object" &&
+            "message" in response.error.data
+              ? String(response.error.data.message)
+              : "Failed to send message"
+          throw new Error(errorMsg)
+        }
       }
     } catch (err) {
       const error = err instanceof Error ? err : new Error("Failed to send message")
