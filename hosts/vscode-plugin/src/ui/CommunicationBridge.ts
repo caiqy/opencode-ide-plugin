@@ -27,6 +27,40 @@ export class CommunicationBridge implements PluginCommunicator {
   private onStateChange?: (key: string, value: any) => Promise<void>
   private messageHandlerDisposable?: vscode.Disposable
 
+  private storageKey(key: string): string {
+    return `opencode.webgui.storage.${key}`
+  }
+
+  private async storageGet(keys: string[]): Promise<Record<string, string | null>> {
+    const result: Record<string, string | null> = {}
+    const state = this.context?.globalState
+
+    for (const key of keys) {
+      if (!state) {
+        result[key] = null
+        continue
+      }
+      const value = state.get<string>(this.storageKey(key))
+      result[key] = typeof value === "string" ? value : null
+    }
+
+    return result
+  }
+
+  private async storageSet(key: string, value: string | null | undefined): Promise<void> {
+    const state = this.context?.globalState
+    if (!state) {
+      return
+    }
+
+    if (typeof value === "string") {
+      await state.update(this.storageKey(key), value)
+      return
+    }
+
+    await state.update(this.storageKey(key), undefined)
+  }
+
   constructor(options: CommunicationBridgeOptions = {}) {
     this.webview = options.webview
     this.context = options.context
@@ -476,6 +510,23 @@ export class CommunicationBridge implements PluginCommunicator {
                 }
               } else if (m && m.type === "reloadPath") {
                 await this.handleReloadPath(m.payload?.path)
+                if (m.id) {
+                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
+                }
+              } else if (m && m.type === "storageGet") {
+                const keys = Array.isArray(m.payload?.keys)
+                  ? m.payload.keys.filter((item: unknown): item is string => typeof item === "string")
+                  : []
+                const result = await this.storageGet(keys)
+                if (m.id) {
+                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true, result })
+                }
+              } else if (m && m.type === "storageSet") {
+                const key = typeof m.payload?.key === "string" ? m.payload.key : ""
+                const value = typeof m.payload?.value === "string" ? m.payload.value : null
+                if (key) {
+                  await this.storageSet(key, value)
+                }
                 if (m.id) {
                   this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
                 }

@@ -3,6 +3,7 @@ import { sdk } from "../lib/api/sdkClient"
 import type { Provider } from "@opencode-ai/sdk/client"
 import { useDropdown } from "../hooks/useDropdown"
 import { useLocalStorage } from "../hooks/useLocalStorage"
+import { ideBridge } from "../lib/ideBridge"
 import { formatDate } from "../utils/formatting"
 
 interface ModelSelectorProps {
@@ -21,7 +22,55 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
   const [favorites, setFavorites] = useLocalStorage<string[]>("opencode_favorite_models_v1", [], {
     syncAcrossTabs: true,
   })
+  const [hydrated, setHydrated] = useState(false)
   const favoriteSet = new Set(favorites)
+
+  useEffect(() => {
+    const sync = async () => {
+      if (!ideBridge.isInstalled()) {
+        setHydrated(true)
+        return
+      }
+
+      const local = window.localStorage.getItem("opencode_favorite_models_v1")
+      const reply = await ideBridge.request("storageGet", {
+        keys: ["opencode_favorite_models_v1"],
+      })
+      const host =
+        typeof reply.result?.opencode_favorite_models_v1 === "string" ? reply.result.opencode_favorite_models_v1 : null
+
+      if (host) {
+        const next = JSON.parse(host)
+        if (Array.isArray(next)) {
+          setFavorites(next.filter((x): x is string => typeof x === "string"))
+        }
+        setHydrated(true)
+        return
+      }
+
+      if (local) {
+        await ideBridge.request("storageSet", {
+          key: "opencode_favorite_models_v1",
+          value: local,
+        })
+      }
+
+      setHydrated(true)
+    }
+
+    sync()
+  }, [setFavorites])
+
+  useEffect(() => {
+    if (!hydrated || !ideBridge.isInstalled()) {
+      return
+    }
+
+    ideBridge.request("storageSet", {
+      key: "opencode_favorite_models_v1",
+      value: JSON.stringify(favorites),
+    })
+  }, [favorites, hydrated])
 
   const toggleFavorite = (providerId: string, modelId: string) => {
     const key = `${providerId}/${modelId}`
