@@ -53,15 +53,20 @@ export function AgentSelector({ selectedAgent, onSelect, disabled }: AgentSelect
     }
   }, [])
 
+  const cap = (name: string) => {
+    if (!name) return ""
+    return name[0].toUpperCase() + name.slice(1)
+  }
+
   // Get current selection display
   const getCurrentDisplay = () => {
     if (!selectedAgent) {
       // Use first available agent or fallback to 'build'
-      return agents.length > 0 ? agents[0].name : "build"
+      return agents.length > 0 ? cap(agents[0].name) : "Build"
     }
 
     const agent = agents.find((a) => a.name === selectedAgent)
-    return agent ? agent.name : selectedAgent
+    return agent ? cap(agent.name) : cap(selectedAgent)
   }
 
   const handleSelect = async (agentName: string) => {
@@ -132,7 +137,7 @@ export function AgentSelector({ selectedAgent, onSelect, disabled }: AgentSelect
                   >
                     <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-medium truncate">{agent.name}</span>
+                        <span className="font-medium truncate">{cap(agent.name)}</span>
                         {agent.builtIn && (
                           <span className="px-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-[10px] rounded">
                             built-in

@@ -10,6 +10,7 @@ import { RevertSummary } from "./RevertSummary"
 import { QuestionPart } from "./Parts/QuestionPart"
 import { useMessageScroll } from "./hooks/useMessageScroll"
 import { useMessageActions } from "./hooks/useMessageActions"
+import { PartOpenProvider, type PartOpenItem } from "./PartOpenContext"
 
 interface MessageListProps {
   sessionID?: string | null
@@ -78,6 +79,20 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
     return sortedMessages.slice(0, index)
   })()
 
+  const items: PartOpenItem[] = visibleMessages.flatMap((msg): PartOpenItem[] => {
+    return msg.parts.flatMap((part): PartOpenItem[] => {
+      if (part.type === "reasoning") {
+        return [{ type: "reasoning", id: part.id, end: part.time?.end }]
+      }
+      if (part.type === "tool") {
+        const status = part.state?.status
+        const safe = status === "pending" || status === "running" || status === "completed" || status === "error"
+        return [{ type: "tool", id: part.id, tool: part.tool, status: safe ? status : undefined }]
+      }
+      return []
+    })
+  })
+
   const lastMessageID = visibleMessages.at(-1)?.info.id
 
   // Build rows with optional inline reverted summary block
@@ -144,26 +159,28 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
   return (
     <>
       <div ref={messagesContainerRef} className="h-full">
-        <div className="space-y-2">
-          {/* Revert banner (pinned to top of scroll area) */}
-          {currentSession?.revert?.messageID && (
-            <RevertBanner onRedo={handleRedoClick} onRestore={handleRestoreClick} isRevertBusy={isRevertBusy} />
-          )}
+        <PartOpenProvider items={items}>
+          <div className="space-y-2">
+            {/* Revert banner (pinned to top of scroll area) */}
+            {currentSession?.revert?.messageID && (
+              <RevertBanner onRedo={handleRedoClick} onRestore={handleRestoreClick} isRevertBusy={isRevertBusy} />
+            )}
 
-          {rows}
+            {rows}
 
-          {/* Pending questions from server */}
-          {pendingQuestions.map((question) => (
-            <div key={question.id} className="px-4">
-              <QuestionPart request={question} />
-            </div>
-          ))}
+            {/* Pending questions from server */}
+            {pendingQuestions.map((question) => (
+              <div key={question.id} className="px-4">
+                <QuestionPart request={question} />
+              </div>
+            ))}
 
-          {/* Typing indicator - hide while reasoning parts are streaming */}
-          <TypingIndicator visible={!isIdle && !isReasoning} />
-          {/* Scroll anchor */}
-          <div ref={messagesEndRef} />
-        </div>
+            {/* Typing indicator - hide while reasoning parts are streaming */}
+            <TypingIndicator visible={!isIdle && !isReasoning} />
+            {/* Scroll anchor */}
+            <div ref={messagesEndRef} />
+          </div>
+        </PartOpenProvider>
       </div>
 
       {/* Fork confirmation modal */}
