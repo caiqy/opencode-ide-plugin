@@ -119,3 +119,26 @@ body {
 .modern-icon-button {
   @apply p-1.5 rounded-md text-gray-500 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-200;
 }
+
+@keyframes model-selection-breathe {
+  0%,
+  100% {
+    transform: scale(0.9);
+    opacity: 0.55;
+  }
+
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+.model-selection-dot-breathe {
+  animation: model-selection-breathe 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-selection-dot-breathe {
+    animation: none;
+  }
+}

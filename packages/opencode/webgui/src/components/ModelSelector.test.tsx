@@ -154,4 +154,28 @@ describe("ModelSelector favorites", () => {
       value: JSON.stringify(["openai/gpt-4.1"]),
     })
   })
+
+  it("选中模型使用前置亮点，且不再显示末尾勾选图标", async () => {
+    render(<ModelSelector selectedProviderId="openai" selectedModelId="gpt-4.1" onSelect={() => {}} />)
+    await screen.findByText("GPT 4.1")
+
+    const user = userEvent.setup()
+    await user.click(screen.getByTitle("Select model"))
+
+    const input = screen.getByPlaceholderText("Search models...")
+    const dropdown = input.closest("div")?.parentElement
+    expect(dropdown).toBeTruthy()
+
+    const ui = within(dropdown as HTMLElement)
+    const selectedRow = ui.getByText("GPT 4.1").closest("[role='button']")
+    expect(selectedRow).toBeTruthy()
+
+    const leadingDot = (selectedRow as HTMLElement).querySelector("[data-slot='model-selection-indicator']")
+    expect(leadingDot).toBeInTheDocument()
+
+    const legacyCheckPath = (selectedRow as HTMLElement).querySelector(
+      "svg path[d='M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z']",
+    )
+    expect(legacyCheckPath).not.toBeInTheDocument()
+  })
 })

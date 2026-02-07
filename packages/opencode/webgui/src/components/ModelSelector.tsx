@@ -114,6 +114,24 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
     )
   }
 
+  const ModelSelectionIndicator = (props: { selected: boolean }) => {
+    return (
+      <span
+        data-slot="model-selection-indicator"
+        aria-hidden="true"
+        className="inline-flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center"
+      >
+        <span
+          className={`h-1.5 w-1.5 rounded-full transition-opacity duration-200 ${
+            props.selected
+              ? "bg-blue-500 dark:bg-blue-400 shadow-[0_0_0_4px_rgba(59,130,246,0.22)] dark:shadow-[0_0_0_4px_rgba(96,165,250,0.22)] model-selection-dot-breathe"
+              : "opacity-0"
+          }`}
+        />
+      </span>
+    )
+  }
+
   // Load providers on mount
   useEffect(() => {
     let active = true
@@ -295,6 +313,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                           }`}
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <ModelSelectionIndicator selected={isSelected} />
                             <span className="font-medium truncate">{item.name}</span>
                             <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate max-w-[10rem]">
                               {item.provider}
@@ -302,15 +321,6 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                           </div>
                           <div className="flex items-center gap-1">
                             <FavoriteButton providerId={item.provider_id} modelId={item.model_id} />
-                            {isSelected && (
-                              <svg className="w-4 h-4 ml-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                  fillRule="evenodd"
-                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            )}
                           </div>
                         </div>
                       )
@@ -342,6 +352,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                           }`}
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <ModelSelectionIndicator selected={isSelected} />
                             <span className="font-medium truncate">{modelName}</span>
                             <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
                               {formatDate(item.last_used)}
@@ -350,15 +361,6 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                               {item.provider_id}
                             </span>
                           </div>
-                          {isSelected && (
-                            <svg className="w-4 h-4 ml-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                              <path
-                                fillRule="evenodd"
-                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          )}
                         </button>
                       )
                     })}
@@ -395,6 +397,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                             }`}
                           >
                             <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <ModelSelectionIndicator selected={isSelected} />
                               <span className="font-medium truncate">{model.name}</span>
                               <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
                                 {/*<span>{formatDate(model.release_date)}</span>*/}
@@ -412,15 +415,6 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                             </div>
                             <div className="flex items-center gap-1">
                               <FavoriteButton providerId={provider.id} modelId={modelId} />
-                              {isSelected && (
-                                <svg className="w-4 h-4 ml-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
-                              )}
                             </div>
                           </div>
                         )
