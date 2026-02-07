@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 import { useMessages } from "../../state/MessagesContext"
 import { useSession } from "../../state/SessionContext"
+import { useUISettings } from "../../state/UISettingsContext"
 import { TypingIndicator } from "../TypingIndicator"
 import { ConfirmModal } from "../ConfirmModal"
 import { EmptyState } from "./EmptyState"
@@ -20,6 +21,7 @@ interface MessageListProps {
 export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
   const { getMessagesBySession, messages, getQuestionsBySession } = useMessages()
   const { isIdle, isReasoning, currentSession } = useSession()
+  const { autoExpandMessageParts } = useUISettings()
 
   // Get pending questions for current session
   const pendingQuestions = sessionID ? getQuestionsBySession(sessionID) : []
@@ -159,7 +161,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
   return (
     <>
       <div ref={messagesContainerRef} className="h-full">
-        <PartOpenProvider items={items}>
+        <PartOpenProvider items={items} defaultExpanded={autoExpandMessageParts}>
           <div className="space-y-2">
             {/* Revert banner (pinned to top of scroll area) */}
             {currentSession?.revert?.messageID && (

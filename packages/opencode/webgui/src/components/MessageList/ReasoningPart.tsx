@@ -10,7 +10,7 @@ interface ReasoningPartProps {
 export function ReasoningPart({ part, durationMs }: ReasoningPartProps) {
   const label = durationMs !== undefined ? `Thought for ${Math.max(1, Math.floor(durationMs / 1000))}s` : "Thinking..."
   const open = usePartOpen()
-  const expanded = open.open?.type === "reasoning" && open.open.id === part.id
+  const expanded = open.isOpen(part.id)
 
   const text = (part.text || "").trim()
   if (!text) {
@@ -28,13 +28,7 @@ export function ReasoningPart({ part, durationMs }: ReasoningPartProps) {
       content={part.text || ""}
       contentClassName="mt-1 text-xs text-gray-600 dark:text-gray-400 pl-3 border-l-2 border-purple-300 dark:border-purple-700"
       expanded={expanded}
-      onExpandedChange={(next) => {
-        if (!next) {
-          open.openManual(null)
-          return
-        }
-        open.openManual({ type: "reasoning", id: part.id })
-      }}
+      onExpandedChange={(next) => open.setOpen(part.id, next)}
     />
   )
 }

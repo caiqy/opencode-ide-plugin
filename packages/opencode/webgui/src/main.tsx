@@ -11,6 +11,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary.tsx"
 import { ProjectProvider } from "./state/ProjectContext.tsx"
 import { IdeBridgeProvider } from "./state/IdeBridgeContext"
 import { ProvidersProvider } from "./state/ProvidersContext"
+import { UISettingsProvider } from "./state/UISettingsContext"
 import { initGlobalDnD } from "./lib/dnd"
 
 window.addEventListener(
@@ -35,7 +36,9 @@ createRoot(document.getElementById("root")!).render(
           <ToastProvider>
             <IdeBridgeProvider>
               <ProvidersProvider>
-                <App />
+                <UISettingsProvider>
+                  <App />
+                </UISettingsProvider>
               </ProvidersProvider>
             </IdeBridgeProvider>
           </ToastProvider>

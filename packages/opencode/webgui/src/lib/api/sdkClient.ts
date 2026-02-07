@@ -68,6 +68,7 @@ interface StateResponse {
   }>
   show_tool_details?: boolean
   show_thinking_blocks?: boolean
+  message_parts_auto_expand?: boolean
 }
 
 interface ProvidersResponse {
@@ -385,6 +386,8 @@ export const sdk = {
         if (body.agent !== undefined) next.agent = body.agent
         if (body.show_tool_details !== undefined) next.show_tool_details = body.show_tool_details
         if (body.show_thinking_blocks !== undefined) next.show_thinking_blocks = body.show_thinking_blocks
+        if (body.message_parts_auto_expand !== undefined)
+          next.message_parts_auto_expand = body.message_parts_auto_expand
         if (body.recently_used_models !== undefined) next.recently_used_models = body.recently_used_models
         if (body.recently_used_agents !== undefined) next.recently_used_agents = body.recently_used_agents
 

@@ -23,6 +23,7 @@ describe("sdk migration baseline", () => {
         provider: "openai",
         model: "gpt-4.1",
         variant: { "openai/gpt-4.1": "fast" },
+        message_parts_auto_expand: false,
       },
     })
     await sdk.state.update({
@@ -38,6 +39,7 @@ describe("sdk migration baseline", () => {
       model: "gpt-4.1",
       agent: "build",
       variant: { "openai/gpt-4.1": "fast" },
+      message_parts_auto_expand: false,
     })
   })
 

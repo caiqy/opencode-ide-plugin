@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react"
+import { useState, useMemo } from "react"
 import { DiffModal } from "../../DiffModal"
 import { useMessages } from "../../../state/MessagesContext"
 import { usePartOpen } from "../../MessageList/PartOpenContext"
@@ -50,20 +50,12 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const [isResponding, setIsResponding] = useState<"once" | "always" | "reject" | null>(null)
 
   const open = usePartOpen()
-  const isExpanded = open.open?.type === "tool" && open.open.id === part.id
+  const isExpanded = open.isOpen(part.id)
 
   const { getPermissionForCall, respondPermission } = useMessages()
   const permission = useMemo(() => {
     return sessionID ? getPermissionForCall(sessionID, part.callID) : undefined
   }, [getPermissionForCall, sessionID, part.callID])
-
-  const lastPermissionID = useRef<string | null>(null)
-  useEffect(() => {
-    if (permission && permission.id !== lastPermissionID.current) {
-      lastPermissionID.current = permission.id
-      open.openManual({ type: "tool", id: part.id })
-    }
-  }, [permission, open, part.id])
 
   const toolName = getToolDisplayName(part.tool, part.state.input, part.state.title, part.state.output)
   const filePath = (part.state.input?.filePath as string | undefined) || undefined
@@ -79,9 +71,6 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     setIsResponding(reply)
     await respondPermission(permission.id, reply)
     setIsResponding(null)
-    if (open.open?.type === "tool" && open.open.id === part.id) {
-      open.openManual(null)
-    }
   }
 
   const renderOutput = () => {
@@ -117,13 +106,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
         toolName={toolName}
         filePath={filePath}
         isExpanded={isExpanded}
-        onToggle={() => {
-          if (isExpanded) {
-            open.openManual(null)
-            return
-          }
-          open.openManual({ type: "tool", id: part.id })
-        }}
+        onToggle={() => open.toggle(part.id)}
       />
 
       {/* Expanded content */}

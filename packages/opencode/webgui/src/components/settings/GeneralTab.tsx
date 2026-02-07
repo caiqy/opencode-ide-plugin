@@ -1,5 +1,6 @@
 import type { Config } from "@opencode-ai/sdk/client"
 import { useProject } from "../../state/ProjectContext"
+import { useUISettings } from "../../state/UISettingsContext"
 
 interface GeneralTabProps {
   formData: Partial<Config>
@@ -8,6 +9,8 @@ interface GeneralTabProps {
 
 export function GeneralTab({ formData, setFormData }: GeneralTabProps) {
   const { worktree } = useProject()
+  const { autoExpandMessageParts, setAutoExpandMessageParts } = useUISettings()
+
   return (
     <div className="space-y-4">
       <div>
@@ -33,6 +36,34 @@ export function GeneralTab({ formData, setFormData }: GeneralTabProps) {
           <span className="text-sm text-gray-700 dark:text-gray-300">Auto-update</span>
         </label>
         <p className="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400">Automatically update to the latest version</p>
+      </div>
+
+      <div>
+        <label className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            checked={autoExpandMessageParts}
+            onChange={(e) => {
+              setAutoExpandMessageParts(e.target.checked).catch((error) => {
+                console.error("[GeneralTab] Failed to update auto-expand setting:", error)
+              })
+            }}
+            className="rounded border-gray-300 dark:border-gray-700"
+          />
+          <span className="text-sm text-gray-700 dark:text-gray-300">Auto expand thinking and tool calls</span>
+          <button
+            type="button"
+            aria-label="Auto expand help"
+            title="When disabled, thinking/tool blocks are collapsed by default and can still be expanded manually."
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-500 dark:border-gray-600 dark:text-gray-400"
+          >
+            i
+          </button>
+        </label>
+        <p className="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400">
+          Applies immediately. When enabled, thinking/tool blocks open by default and stay expanded unless manually
+          collapsed.
+        </p>
       </div>
 
       <div>

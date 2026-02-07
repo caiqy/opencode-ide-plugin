@@ -20,7 +20,13 @@ export function useMessageScroll(
             const base = `${part.id}:${part.type}`
             const textValue = (part as { text?: string }).text
             const length = typeof textValue === "string" ? textValue.length : 0
-            return `${base}:${length}`
+            const toolState = (part as { state?: { status?: string; output?: string; metadata?: { output?: string } } })
+              .state
+            const status = typeof toolState?.status === "string" ? toolState.status : ""
+            const outputLength = typeof toolState?.output === "string" ? toolState.output.length : 0
+            const metadataOutputLength =
+              typeof toolState?.metadata?.output === "string" ? toolState.metadata.output.length : 0
+            return `${base}:${length}:${status}:${outputLength}:${metadataOutputLength}`
           })
           .join(",")
         return `${message.info.id}:${message.parts.length}:${partsSignature}`

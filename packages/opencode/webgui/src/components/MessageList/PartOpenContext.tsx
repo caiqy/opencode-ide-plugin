@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 
 type ToolStatus = "pending" | "running" | "completed" | "error"
 
@@ -6,83 +6,71 @@ export type PartOpenItem =
   | { type: "reasoning"; id: string; text?: string; end?: number }
   | { type: "tool"; id: string; tool: string; status?: ToolStatus }
 
-export type PartOpenState = { type: "reasoning" | "tool"; id: string } | null
-
 interface PartOpenValue {
-  open: PartOpenState
-  openManual: (open: PartOpenState) => void
+  isOpen: (id: string) => boolean
+  setOpen: (id: string, open: boolean) => void
+  toggle: (id: string) => void
 }
 
 const PartOpenContext = createContext<PartOpenValue | undefined>(undefined)
 
-function findReasoning(items: PartOpenItem[]) {
-  for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i]
-    if (item.type !== "reasoning") continue
-    if (item.end) continue
-    const text = (item.text || "").trim()
-    if (!text) continue
-    return item
-  }
-}
+export function PartOpenProvider(props: { items: PartOpenItem[]; children: ReactNode; defaultExpanded?: boolean }) {
+  const defaultExpanded = props.defaultExpanded ?? true
+  const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map())
 
-function findBash(items: PartOpenItem[]) {
-  for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i]
-    if (item.type !== "tool") continue
-    if (item.tool !== "bash") continue
-    if (item.status !== "pending" && item.status !== "running") continue
-    return item
-  }
-}
-
-function findEnd(items: PartOpenItem[], id: string) {
-  for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i]
-    if (item.type !== "reasoning") continue
-    if (item.id !== id) continue
-    return item.end
-  }
-}
-
-export function PartOpenProvider(props: { items: PartOpenItem[]; children: ReactNode }) {
-  const [open, setOpen] = useState<PartOpenState>(null)
-  const [mode, setMode] = useState<"auto" | "manual">("auto")
-  const closed = useRef<Set<string>>(new Set())
-
-  const openManual = useCallback((next: PartOpenState) => {
-    const nextMode = next ? "manual" : "auto"
-    setMode(nextMode)
-    setOpen(next)
-  }, [])
+  const itemIDs = useMemo(() => new Set(props.items.map((item) => item.id)), [props.items])
 
   useEffect(() => {
-    if (mode === "auto" && open?.type === "reasoning") {
-      const end = findEnd(props.items, open.id)
-      const done = typeof end === "number"
-      const once = !closed.current.has(open.id)
-      if (done && once) {
-        closed.current.add(open.id)
-        setOpen(null)
-        return
+    setOverrides((prev) => {
+      let changed = false
+      const next = new Map<string, boolean>()
+      for (const [id, isOpen] of prev) {
+        if (!itemIDs.has(id)) {
+          changed = true
+          continue
+        }
+        next.set(id, isOpen)
       }
-    }
+      return changed ? next : prev
+    })
+  }, [itemIDs])
 
-    if (mode !== "auto") return
-    if (open) return
+  const isOpen = useCallback(
+    (id: string) => {
+      const overridden = overrides.get(id)
+      if (typeof overridden === "boolean") return overridden
+      return defaultExpanded
+    },
+    [overrides, defaultExpanded],
+  )
 
-    const r = findReasoning(props.items)
-    if (r) {
-      setOpen({ type: "reasoning", id: r.id })
-      return
-    }
+  const setOpen = useCallback(
+    (id: string, open: boolean) => {
+      setOverrides((prev) => {
+        const current = prev.get(id)
+        if (open === defaultExpanded) {
+          if (typeof current === "undefined") return prev
+          const next = new Map(prev)
+          next.delete(id)
+          return next
+        }
+        if (current === open) return prev
+        const next = new Map(prev)
+        next.set(id, open)
+        return next
+      })
+    },
+    [defaultExpanded],
+  )
 
-    const b = findBash(props.items)
-    if (!b) return
-    setOpen({ type: "tool", id: b.id })
-  }, [props.items, open, mode])
+  const toggle = useCallback(
+    (id: string) => {
+      setOpen(id, !isOpen(id))
+    },
+    [isOpen, setOpen],
+  )
 
-  return <PartOpenContext.Provider value={{ open, openManual }}>{props.children}</PartOpenContext.Provider>
+  return <PartOpenContext.Provider value={{ isOpen, setOpen, toggle }}>{props.children}</PartOpenContext.Provider>
 }
 
 export function usePartOpen() {
