@@ -175,68 +175,71 @@ export function SessionProvider({ children }: SessionProviderProps) {
   useEffect(() => {
     const initializeState = async () => {
       try {
-        // Fetch state from server
-        const stateResponse = await sdk.state.get()
+        // Fetch preferences from kv.json and model.json (shared with CLI)
+        const [kvRes, modelRes] = await Promise.all([sdk.kv.get(), sdk.model.get()])
+        const kv = kvRes.data ?? {}
+        const modelPrefs = modelRes.data
 
-        if (stateResponse.data) {
-          const state = stateResponse.data
+        // Cache agent_model map from kv
+        if (kv.webgui_agent_model) {
+          setAgentModelMap(kv.webgui_agent_model)
+        }
 
-          // Cache agent_model map
-          if (state.agent_model) {
-            setAgentModelMap(state.agent_model)
+        // Load variant map from model.json
+        if (modelPrefs?.variant) {
+          setVariantMap(modelPrefs.variant as Record<string, string>)
+        }
+
+        // Set agent (default to 'build' if not set)
+        const agent = kv.webgui_agent || "build"
+        setSelectedAgentState(agent)
+        localStorage.setItem("opencode_selected_agent", agent)
+
+        // Check if there's a per-agent model preference
+        let providerId = kv.webgui_provider as string | undefined
+        let modelId = kv.webgui_model as string | undefined
+
+        if (kv.webgui_agent_model?.[agent]) {
+          providerId = kv.webgui_agent_model[agent].provider_id
+          modelId = kv.webgui_agent_model[agent].model_id
+        }
+
+        // If no kv state, try recent list from model.json, then config fallback
+        if (!providerId || !modelId) {
+          const recent = modelPrefs?.recent ?? []
+          if (recent.length > 0) {
+            providerId = recent[0].providerID
+            modelId = recent[0].modelID
           }
+        }
 
-          // Load variant map from server state
-          if (state.variant) {
-            setVariantMap(state.variant)
-          }
+        if (!providerId || !modelId) {
+          const configResponse = await sdk.config.get()
 
-          // Set agent (default to 'build' if not set)
-          const agent = state.agent || "build"
-          setSelectedAgentState(agent)
-          localStorage.setItem("opencode_selected_agent", agent)
-
-          // Check if there's a per-agent model preference
-          let providerId = state.provider
-          let modelId = state.model
-
-          if (state.agent_model && state.agent_model[agent]) {
-            // Use per-agent model preference
-            providerId = state.agent_model[agent].provider_id
-            modelId = state.agent_model[agent].model_id
-          }
-
-          // If no state, try config fallback
-          if (!providerId || !modelId) {
-            const configResponse = await sdk.config.get()
-
-            if (configResponse.data?.model) {
-              // Parse "provider/model" format
-              const parts = configResponse.data.model.split("/")
-              if (parts.length === 2) {
-                providerId = parts[0]
-                modelId = parts[1]
-              }
+          if (configResponse.data?.model) {
+            const parts = configResponse.data.model.split("/")
+            if (parts.length === 2) {
+              providerId = parts[0]
+              modelId = parts[1]
             }
           }
+        }
 
-          // Set model/provider if we have them
-          if (providerId && modelId) {
-            setSelectedProviderId(providerId)
-            setSelectedModelId(modelId)
-            localStorage.setItem("opencode_selected_provider", providerId)
-            localStorage.setItem("opencode_selected_model", modelId)
+        // Set model/provider if we have them
+        if (providerId && modelId) {
+          setSelectedProviderId(providerId)
+          setSelectedModelId(modelId)
+          localStorage.setItem("opencode_selected_provider", providerId)
+          localStorage.setItem("opencode_selected_model", modelId)
 
-            // Compute initial variant for the selected model
-            if (state.variant) {
-              const modelKey = `${providerId}/${modelId}`
-              setSelectedVariantState(state.variant[modelKey])
-            }
+          // Compute initial variant for the selected model
+          if (modelPrefs?.variant) {
+            const modelKey = `${providerId}/${modelId}`
+            setSelectedVariantState((modelPrefs.variant as Record<string, string>)[modelKey])
           }
         }
       } catch (err) {
         console.error("[SessionContext] Failed to load state from server, using localStorage fallback:", err)
-        // Fallback to localStorage if server state fails
         const savedProvider = localStorage.getItem("opencode_selected_provider")
         const savedModel = localStorage.getItem("opencode_selected_model")
         const savedAgent = localStorage.getItem("opencode_selected_agent")
@@ -296,23 +299,22 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
           setAgentModelMap(updatedAgentModel)
 
-          const stateResponse = await sdk.state.get()
-          const existingRecent = stateResponse.data?.recently_used_models ?? []
-          const now = new Date().toISOString()
-          const filtered = existingRecent.filter(
-            (item) => !(item.provider_id === providerId && item.model_id === modelId),
-          )
-          const nextRecent = [{ provider_id: providerId, model_id: modelId, last_used: now }, ...filtered].slice(0, 2)
-
-          // Update server state
-          await sdk.state.update({
+          // Persist to kv.json (webgui-specific keys)
+          await sdk.kv.update({
             body: {
-              provider: providerId,
-              model: modelId,
-              agent_model: updatedAgentModel,
-              recently_used_models: nextRecent,
+              webgui_provider: providerId,
+              webgui_model: modelId,
+              webgui_agent_model: updatedAgentModel,
             },
           })
+
+          // Update model.json recent list (shared with CLI)
+          const modelRes = await sdk.model.get()
+          const existing = modelRes.data?.recent ?? []
+          const entry = { providerID: providerId, modelID: modelId }
+          const deduped = [entry, ...existing.filter((r) => r.providerID !== providerId || r.modelID !== modelId)]
+          if (deduped.length > 10) deduped.length = 10
+          await sdk.model.update({ body: { recent: deduped } })
         } catch (err) {
           console.error("[SessionContext] Failed to save model preference to server:", err)
         }
@@ -342,9 +344,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
         }
         setVariantMap(updatedVariantMap)
 
-        // Persist to server
+        // Persist variant to model.json (shared with CLI)
         try {
-          await sdk.state.update({
+          await sdk.model.update({
             body: {
               variant: updatedVariantMap,
             },
@@ -364,14 +366,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const setSelectedAgent = useCallback(
     async (newAgent: string) => {
       try {
-        // Fetch current state to get agent_model map
-        const stateResponse = await sdk.state.get()
+        // Fetch current kv to get agent_model map
+        const kvRes = await sdk.kv.get()
         const currentAgent = selectedAgent
         const currentProvider = selectedProviderId
         const currentModel = selectedModelId
 
         // Save current model for current agent if we have one
-        let agentModel = stateResponse.data?.agent_model || {}
+        let agentModel = kvRes.data?.webgui_agent_model || {}
         if (currentAgent && currentProvider && currentModel) {
           agentModel = {
             ...agentModel,
@@ -405,13 +407,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
           if (newModel) localStorage.setItem("opencode_selected_model", newModel)
         }
 
-        // Persist to server (save both agent and agent_model map)
-        await sdk.state.update({
+        // Persist to kv.json (webgui-specific keys)
+        await sdk.kv.update({
           body: {
-            agent: newAgent,
-            agent_model: agentModel,
-            provider: newProvider,
-            model: newModel,
+            webgui_agent: newAgent,
+            webgui_agent_model: agentModel,
+            webgui_provider: newProvider,
+            webgui_model: newModel,
           },
         })
         console.log("[SessionContext] Agent and model preferences saved to server")

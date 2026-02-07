@@ -9,32 +9,20 @@ import { createOpencodeClient, type Provider } from "@opencode-ai/sdk/client"
 // The server runs on the same origin, so we use '/' for relative requests
 const baseClient = createOpencodeClient({ baseUrl: "/" })
 
-/**
- * State API response types
- */
-interface StateResponse {
-  theme?: string
-  agent_model?: Record<string, { provider_id: string; model_id: string }>
-  provider?: string
-  model?: string
-  agent?: string
-  variant?: Record<string, string>
-  recently_used_models?: Array<{
-    provider_id: string
-    model_id: string
-    last_used: string // RFC3339 timestamp
-  }>
-  recently_used_agents?: Array<{
-    agent_name: string
-    last_used: string // RFC3339 timestamp
-  }>
-  show_tool_details?: boolean
-  show_thinking_blocks?: boolean
-}
-
 interface ProvidersResponse {
   providers: Provider[]
   default: Record<string, string>
+}
+
+interface ModelEntry {
+  providerID: string
+  modelID: string
+}
+
+interface ModelPreferences {
+  recent: ModelEntry[]
+  favorite: ModelEntry[]
+  variant?: Record<string, string>
 }
 
 interface PathResponse {
@@ -219,36 +207,69 @@ export const sdk = {
       return { data, error: null }
     },
   },
-  state: {
+  model: {
     get: async () => {
       try {
-        const response = await fetch("/app/api/state", {
+        const response = await fetch("/app/api/model", {
           method: "GET",
           headers: { "Content-Type": "application/json" },
         })
         if (!response.ok) {
-          return { error: { message: "Failed to fetch state" }, data: null }
+          return { error: { message: "Failed to fetch model preferences" }, data: null as ModelPreferences | null }
         }
-        const data = (await response.json()) as StateResponse
-        return { data, error: null }
+        const data = (await response.json()) as ModelPreferences
+        return { data, error: null as { message: string } | null }
       } catch (error) {
-        return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null }
+        return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null as ModelPreferences | null }
       }
     },
-    update: async (options: { body: Partial<StateResponse> }) => {
+    update: async (options: { body: Partial<ModelPreferences> }) => {
       try {
-        const response = await fetch("/app/api/state", {
+        const response = await fetch("/app/api/model", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(options.body),
         })
         if (!response.ok) {
-          return { error: { message: "Failed to update state" }, data: null }
+          return { error: { message: "Failed to update model preferences" }, data: null as ModelPreferences | null }
         }
-        const data = (await response.json()) as StateResponse
-        return { data, error: null }
+        const data = (await response.json()) as ModelPreferences
+        return { data, error: null as { message: string } | null }
       } catch (error) {
-        return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null }
+        return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null as ModelPreferences | null }
+      }
+    },
+  },
+  kv: {
+    get: async () => {
+      try {
+        const response = await fetch("/app/api/kv", {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        })
+        if (!response.ok) {
+          return { error: { message: "Failed to fetch kv" }, data: null as Record<string, any> | null }
+        }
+        const data = (await response.json()) as Record<string, any>
+        return { data, error: null as { message: string } | null }
+      } catch (error) {
+        return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null as Record<string, any> | null }
+      }
+    },
+    update: async (options: { body: Record<string, any> }) => {
+      try {
+        const response = await fetch("/app/api/kv", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(options.body),
+        })
+        if (!response.ok) {
+          return { error: { message: "Failed to update kv" }, data: null as Record<string, any> | null }
+        }
+        const data = (await response.json()) as Record<string, any>
+        return { data, error: null as { message: string } | null }
+      } catch (error) {
+        return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null as Record<string, any> | null }
       }
     },
   },

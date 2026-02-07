@@ -44,7 +44,7 @@ import { websocket } from "hono/bun"
 import { HTTPException } from "hono/http-exception"
 import { errors } from "./error"
 import { Pty } from "@/pty"
-import * as State from "@/webgui/state/state"
+
 import path from "path"
 import * as fs from "fs"
 import { fileURLToPath } from "url"

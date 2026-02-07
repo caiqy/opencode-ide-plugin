@@ -3,8 +3,8 @@ import { Hono } from "hono"
 import { validator, describeRoute, resolver } from "hono-openapi"
 import { stream } from "hono/streaming"
 import { z } from "zod"
-import * as State from "@/webgui/state/state.ts"
-import { StateSchema } from "@/webgui/state/state.ts"
+import path from "path"
+import { Global } from "../../global"
 import { ModelsDev } from "../../provider/models"
 import { Auth } from "../../auth"
 import { Instance } from "../../project/instance"
@@ -12,8 +12,6 @@ import { mapValues } from "remeda"
 import { Provider } from "@/provider/provider.ts"
 import { SessionPrompt } from "../../session/prompt"
 import { MessageV2 } from "../../session/message-v2"
-
-const StatePatchSchema = StateSchema.partial()
 
 type AuthSession = {
   status: "pending" | "success" | "failed"
@@ -396,125 +394,147 @@ export const WebGuiRoute = new Hono()
     },
   )
   .get(
-    "/state",
+    "/kv",
     describeRoute({
-      description: "Get TUI state (theme, model, agent preferences)",
-      operationId: "state.get",
+      description: "Get key-value preferences from kv.json (shared with CLI)",
+      operationId: "kv.get",
       responses: {
         200: {
-          description: "TUI state",
+          description: "KV store contents",
           content: {
             "application/json": {
-              schema: resolver(
-                z
-                  .object({
-                    theme: z.string().optional(),
-                    agent_model: z
-                      .record(
-                        z.string(),
-                        z.object({
-                          provider_id: z.string(),
-                          model_id: z.string(),
-                        }),
-                      )
-                      .optional(),
-                    provider: z.string().optional(),
-                    model: z.string().optional(),
-                    agent: z.string().optional(),
-                    variant: z.record(z.string(), z.string()).optional(),
-                    recently_used_models: z
-                      .array(
-                        z.object({
-                          provider_id: z.string(),
-                          model_id: z.string(),
-                          last_used: z.string(),
-                        }),
-                      )
-                      .optional(),
-                    recently_used_agents: z
-                      .array(
-                        z.object({
-                          agent_name: z.string(),
-                          last_used: z.string(),
-                        }),
-                      )
-                      .optional(),
-                    show_tool_details: z.boolean().optional(),
-                    show_thinking_blocks: z.boolean().optional(),
-                  })
-                  .meta({ ref: "State" }),
-              ),
+              schema: resolver(z.record(z.string(), z.any())),
             },
           },
         },
       },
     }),
     async (c) => {
-      const state = await State.read()
-      return c.json(state)
+      const file = Bun.file(path.join(Global.Path.state, "kv.json"))
+      if (!(await file.exists())) return c.json({})
+      try {
+        return c.json(await file.json())
+      } catch {
+        return c.json({})
+      }
     },
   )
   .patch(
-    "/state",
+    "/kv",
     describeRoute({
-      description: "Update TUI state (merge with existing)",
-      operationId: "state.update",
+      description: "Update key-value preferences in kv.json (shared with CLI)",
+      operationId: "kv.update",
       responses: {
         200: {
-          description: "Successfully updated state",
+          description: "Updated KV store",
+          content: {
+            "application/json": {
+              schema: resolver(z.record(z.string(), z.any())),
+            },
+          },
+        },
+      },
+    }),
+    validator("json", z.record(z.string(), z.any())),
+    async (c) => {
+      const partial = c.req.valid("json")
+      const file = Bun.file(path.join(Global.Path.state, "kv.json"))
+      let existing: Record<string, any> = {}
+      try {
+        if (await file.exists()) existing = await file.json()
+      } catch {}
+      const merged = { ...existing, ...partial }
+      await Bun.write(file, JSON.stringify(merged, null, 2))
+      return c.json(merged)
+    },
+  )
+  .get(
+    "/model",
+    describeRoute({
+      description: "Get model preferences (recent, favorite, variant) from model.json",
+      operationId: "model.get",
+      responses: {
+        200: {
+          description: "Model preferences",
           content: {
             "application/json": {
               schema: resolver(
-                z
-                  .object({
-                    theme: z.string().optional(),
-                    agent_model: z
-                      .record(
-                        z.string(),
-                        z.object({
-                          provider_id: z.string(),
-                          model_id: z.string(),
-                        }),
-                      )
-                      .optional(),
-                    provider: z.string().optional(),
-                    model: z.string().optional(),
-                    agent: z.string().optional(),
-                    variant: z.record(z.string(), z.string()).optional(),
-                    recently_used_models: z
-                      .array(
-                        z.object({
-                          provider_id: z.string(),
-                          model_id: z.string(),
-                          last_used: z.string(),
-                        }),
-                      )
-                      .optional(),
-                    recently_used_agents: z
-                      .array(
-                        z.object({
-                          agent_name: z.string(),
-                          last_used: z.string(),
-                        }),
-                      )
-                      .optional(),
-                    show_tool_details: z.boolean().optional(),
-                    show_thinking_blocks: z.boolean().optional(),
-                  })
-                  .meta({ ref: "State" }),
+                z.object({
+                  recent: z.array(z.object({ providerID: z.string(), modelID: z.string() })),
+                  favorite: z.array(z.object({ providerID: z.string(), modelID: z.string() })),
+                  variant: z.record(z.string(), z.string()).optional(),
+                }),
               ),
             },
           },
         },
-        ...errors(400),
       },
     }),
-    validator("json", StatePatchSchema),
+    async (c) => {
+      const file = Bun.file(path.join(Global.Path.state, "model.json"))
+      const exists = await file.exists()
+      if (!exists) return c.json({ recent: [], favorite: [], variant: {} })
+      try {
+        const data = await file.json()
+        return c.json({
+          recent: Array.isArray(data.recent) ? data.recent : [],
+          favorite: Array.isArray(data.favorite) ? data.favorite : [],
+          variant: typeof data.variant === "object" && data.variant !== null ? data.variant : {},
+        })
+      } catch {
+        return c.json({ recent: [], favorite: [], variant: {} })
+      }
+    },
+  )
+  .patch(
+    "/model",
+    describeRoute({
+      description: "Update model preferences (recent, favorite, variant) in model.json",
+      operationId: "model.update",
+      responses: {
+        200: {
+          description: "Updated model preferences",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.object({
+                  recent: z.array(z.object({ providerID: z.string(), modelID: z.string() })),
+                  favorite: z.array(z.object({ providerID: z.string(), modelID: z.string() })),
+                  variant: z.record(z.string(), z.string()).optional(),
+                }),
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        recent: z.array(z.object({ providerID: z.string(), modelID: z.string() })).optional(),
+        favorite: z.array(z.object({ providerID: z.string(), modelID: z.string() })).optional(),
+        variant: z.record(z.string(), z.string()).optional(),
+      }),
+    ),
     async (c) => {
       const partial = c.req.valid("json")
-      await State.write(partial)
-      const updated = await State.read()
-      return c.json(updated)
+      const file = Bun.file(path.join(Global.Path.state, "model.json"))
+      let existing = { recent: [] as any[], favorite: [] as any[], variant: {} as Record<string, string> }
+      try {
+        if (await file.exists()) {
+          const data = await file.json()
+          existing = {
+            recent: Array.isArray(data.recent) ? data.recent : [],
+            favorite: Array.isArray(data.favorite) ? data.favorite : [],
+            variant: typeof data.variant === "object" && data.variant !== null ? data.variant : {},
+          }
+        }
+      } catch {}
+      if (partial.recent !== undefined) existing.recent = partial.recent
+      if (partial.favorite !== undefined) existing.favorite = partial.favorite
+      if (partial.variant !== undefined) existing.variant = { ...existing.variant, ...partial.variant }
+      await Bun.write(file, JSON.stringify(existing))
+      return c.json(existing)
     },
   )
   .post(
