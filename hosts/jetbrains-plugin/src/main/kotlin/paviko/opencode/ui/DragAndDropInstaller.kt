@@ -1,8 +1,8 @@
 package paviko.opencode.ui
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.ui.jcef.JBCefBrowser
+import com.intellij.util.concurrency.AppExecutorUtil
 import java.awt.datatransfer.DataFlavor
 import java.awt.dnd.DnDConstants
 import java.awt.dnd.DropTarget
@@ -10,7 +10,6 @@ import java.awt.dnd.DropTargetAdapter
 import java.awt.dnd.DropTargetDropEvent
 
 object DragAndDropInstaller {
-    private val mapper = jacksonObjectMapper()
     fun install(project: com.intellij.openapi.project.Project, browser: JBCefBrowser, logger: Logger) {
         val comp = browser.component
         val dt = DropTarget(comp, object : DropTargetAdapter() {
@@ -20,28 +19,37 @@ object DragAndDropInstaller {
                     val t = dtde.transferable
                     val flavor = DataFlavor.javaFileListFlavor
                     if (t.isDataFlavorSupported(flavor)) {
-                        @Suppress("UNCHECKED_CAST")
-                        val files = t.getTransferData(flavor) as List<java.io.File>
-                        // Only send regular files to insertPaths to avoid chips/segments for directories
-                        val filePaths = files.filter { it.isFile }.map { it.absolutePath }
-                        if (filePaths.isNotEmpty()) {
-                            IdeBridge.send(project, "insertPaths", mapOf("paths" to filePaths))
+                        val files = try {
+                            @Suppress("UNCHECKED_CAST")
+                            t.getTransferData(flavor) as List<java.io.File>
+                        } catch (e: Exception) {
+                            logger.warn("Failed to read dropped files", e)
+                            emptyList()
                         }
-                        // Additionally, send directories via pastePath (no chips/segments)
-                        val dirPaths = files.filter { it.isDirectory }.map { it.absolutePath }
-                        if (dirPaths.isNotEmpty()) {
-                            for (dp in dirPaths) {
-                                IdeBridge.send(project, "pastePath", mapOf("path" to dp))
+
+                        if (files.isEmpty()) return
+
+                        AppExecutorUtil.getAppExecutorService().execute {
+                            val filePaths = files.asSequence().filter { it.isFile }.map { it.absolutePath }.toList()
+                            if (filePaths.isNotEmpty()) {
+                                IdeBridge.send(project, "insertPaths", mapOf("paths" to filePaths))
                             }
+
+                            val dirPaths = files.asSequence().filter { it.isDirectory }.map { it.absolutePath }.toList()
+                            if (dirPaths.isNotEmpty()) {
+                                for (dp in dirPaths) {
+                                    IdeBridge.send(project, "pastePath", mapOf("path" to dp))
+                                }
+                            }
+
+                            try {
+                                javax.swing.SwingUtilities.invokeLater {
+                                    try { browser.cefBrowser.setFocus(true) } catch (_: Throwable) {}
+                                    try { browser.component.requestFocusInWindow() } catch (_: Throwable) {}
+                                    try { browser.component.requestFocus() } catch (_: Throwable) {}
+                                }
+                            } catch (_: Throwable) {}
                         }
-                        // Proactively restore focus to the embedded browser after injecting paths
-                        try {
-                            javax.swing.SwingUtilities.invokeLater {
-                                try { browser.cefBrowser.setFocus(true) } catch (_: Throwable) {}
-                                try { browser.component.requestFocusInWindow() } catch (_: Throwable) {}
-                                try { browser.component.requestFocus() } catch (_: Throwable) {}
-                            }
-                        } catch (_: Throwable) { }
                     }
                 } catch (e: Exception) {
                     logger.warn("Error handling file drop", e)

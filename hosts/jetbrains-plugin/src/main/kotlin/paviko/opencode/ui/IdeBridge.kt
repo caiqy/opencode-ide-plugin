@@ -1,6 +1,7 @@
 package paviko.opencode.ui
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
@@ -10,144 +11,336 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
-import com.intellij.ui.jcef.JBCefBrowser
-import com.intellij.ui.jcef.JBCefJSQuery
-import org.cef.browser.CefBrowser
-import org.cef.browser.CefFrame
-import org.cef.handler.CefLoadHandlerAdapter
-import javax.swing.SwingUtilities
+import com.sun.net.httpserver.HttpExchange
+import com.sun.net.httpserver.HttpServer
+import java.io.OutputStreamWriter
+import java.net.InetSocketAddress
+import java.net.URLDecoder
+import java.util.*
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+
+data class Session(
+    val id: String,
+    val token: String,
+    val project: Project,
+    val sseClients: MutableSet<HttpExchange> = Collections.synchronizedSet(mutableSetOf())
+)
+
+data class SessionInfo(val baseUrl: String, val token: String, val sessionId: String)
 
 object IdeBridge {
-    private val logger = Logger.getInstance(IdeBridge::class.java)
-    private val mapper = jacksonObjectMapper()
+    private val LOG = Logger.getInstance(IdeBridge::class.java)
+    private val gson = Gson()
     
-    private class ProjectState(
-        val browser: JBCefBrowser,
-        val query: JBCefJSQuery?,
-        val outbox: MutableList<Map<String, Any?>> = mutableListOf()
-    ) {
-        @Volatile var ready = false
+    private var server: HttpServer? = null
+    private var port: Int = 0
+    private val sessions = ConcurrentHashMap<String, Session>()
+    private val projectToSession = ConcurrentHashMap<Project, String>()
+    @Volatile private var executor = Executors.newCachedThreadPool()
+    private var keepaliveTimer: java.util.Timer? = null
+
+    @Synchronized
+    fun start() {
+        if (server != null) return
+
+        // If stop() was called previously, executor may be shutdown.
+        if (executor.isShutdown) executor = Executors.newCachedThreadPool()
+        
+        server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+            executor = this@IdeBridge.executor
+            createContext("/idebridge") { exchange -> handleRequest(exchange) }
+            start()
+        }
+        port = server!!.address.port
+        LOG.info("IdeBridge server started on port $port")
     }
 
-    private val states = java.util.concurrent.ConcurrentHashMap<Project, ProjectState>()
+    @Synchronized
+    fun stop() {
+        keepaliveTimer?.cancel()
+        keepaliveTimer = null
+        server?.stop(0)
+        server = null
+        sessions.clear()
+        projectToSession.clear()
+        try { executor.shutdownNow() } catch (_: Throwable) {}
+    }
 
-    fun install(browser: JBCefBrowser, project: Project) {
-        // Create JBCefJSQuery immediately (requires JS_QUERY_POOL_SIZE set on client)
-        val q = try { JBCefJSQuery.create(browser) } catch (t: Throwable) { 
-            logger.warn("Failed to create JBCefJSQuery", t)
-            null 
+    fun createSession(project: Project): SessionInfo {
+        start() // ensure server is running
+        
+        // Remove any existing session for this project
+        projectToSession[project]?.let { oldId ->
+            removeSession(oldId)
         }
         
-        val state = ProjectState(browser, q)
-        states[project] = state
+        val sessionId = UUID.randomUUID().toString()
+        val token = UUID.randomUUID().toString()
+        sessions[sessionId] = Session(sessionId, token, project)
+        projectToSession[project] = sessionId
         
-        if (q != null) {
-            try {
-                q.addHandler { payload ->
-                    try {
-                        handleInbound(payload ?: "{}", project)
-                    } catch (t: Throwable) {
-                        logger.warn("ideBridge inbound error", t)
+        // Start keepalive timer if not running
+        if (keepaliveTimer == null) {
+            keepaliveTimer = java.util.Timer("IdeBridge-Keepalive", true).apply {
+                scheduleAtFixedRate(object : java.util.TimerTask() {
+                    override fun run() {
+                        sendKeepaliveToAll()
                     }
-                    null
+                }, 15000, 15000) // Every 15 seconds
+            }
+        }
+        
+        val baseUrl = "http://127.0.0.1:$port/idebridge/$sessionId"
+        return SessionInfo(baseUrl, token, sessionId)
+    }
+
+    fun removeSession(sessionId: String) {
+        sessions.remove(sessionId)?.let { session ->
+            projectToSession.remove(session.project)
+            synchronized(session.sseClients) {
+                session.sseClients.forEach { 
+                    try { it.close() } catch (_: Throwable) {}
                 }
+            }
+        }
+    }
+
+    fun send(sessionId: String, type: String, payload: Map<String, Any?> = emptyMap()) {
+        val session = sessions[sessionId] ?: return
+        val msg = JsonObject().apply {
+            addProperty("type", type)
+            add("payload", gson.toJsonTree(payload))
+            addProperty("timestamp", System.currentTimeMillis())
+        }
+        broadcastSSE(session, gson.toJson(msg))
+    }
+    
+    /**
+     * Send a message to UI using project reference (looks up session automatically).
+     * Used by PathInserter, DragAndDropInstaller, and other utilities.
+     */
+    fun send(project: Project, type: String, payload: Map<String, Any?> = emptyMap()) {
+        val sessionId = projectToSession[project]
+        if (sessionId == null) {
+            LOG.warn("No session found for project: ${project.name}")
+            return
+        }
+        send(sessionId, type, payload)
+    }
+    
+    private fun sendKeepaliveToAll() {
+        sessions.values.forEach { session ->
+            synchronized(session.sseClients) {
+                val toRemove = mutableListOf<HttpExchange>()
+                session.sseClients.forEach { client ->
+                    try {
+                        val writer = OutputStreamWriter(client.responseBody)
+                        writer.write(": ping\n\n")
+                        writer.flush()
+                    } catch (e: Exception) {
+                        toRemove.add(client)
+                    }
+                }
+                toRemove.forEach {
+                    session.sseClients.remove(it)
+                    try { it.close() } catch (_: Throwable) {}
+                }
+            }
+        }
+    }
+
+    private fun handleRequest(exchange: HttpExchange) {
+        if (exchange.requestURI.path.contains("/events")) {
+            val raw = exchange.requestURI.rawQuery ?: ""
+            try {
+                val params = parseQuery(raw)
+                val sessionId = exchange.requestURI.path.split("/").filter { it.isNotEmpty() }.getOrNull(1)
+                LOG.debug("IdeBridge events request session=$sessionId tokenPresent=${params["token"] != null}")
             } catch (_: Throwable) {}
         }
+        // Add CORS headers
+        exchange.responseHeaders.apply {
+            add("Access-Control-Allow-Origin", "*")
+            add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            add("Access-Control-Allow-Headers", "Content-Type")
+        }
+
+        if (exchange.requestMethod == "OPTIONS") {
+            exchange.sendResponseHeaders(204, -1)
+            exchange.close()
+            return
+        }
+
+        // Parse path: /idebridge/{sessionId}/{action}
+        val pathParts = exchange.requestURI.path.split("/").filter { it.isNotEmpty() }
+        if (pathParts.size < 3 || pathParts[0] != "idebridge") {
+            exchange.sendResponseHeaders(404, -1)
+            exchange.close()
+            return
+        }
+
+        val sessionId = pathParts[1]
+        val action = pathParts[2]
+        val session = sessions[sessionId]
+
+        // Parse token from query
+        val queryParams = parseQuery(exchange.requestURI.rawQuery ?: "")
+        val token = queryParams["token"]
+
+        if (session == null || session.token != token) {
+            LOG.warn("IdeBridge unauthorized: sessionId=$sessionId action=$action")
+            exchange.sendResponseHeaders(401, -1)
+            exchange.close()
+            return
+        }
+
+        when (action) {
+            "events" -> handleSSE(exchange, session)
+            "send" -> handleSend(exchange, session)
+            else -> {
+                exchange.sendResponseHeaders(404, -1)
+                exchange.close()
+            }
+        }
+    }
+
+    private fun handleSSE(exchange: HttpExchange, session: Session) {
+        exchange.responseHeaders.apply {
+            add("Content-Type", "text/event-stream")
+            add("Cache-Control", "no-cache, no-transform")
+            add("Connection", "keep-alive")
+            add("X-Accel-Buffering", "no") // Disable nginx buffering
+        }
+        exchange.sendResponseHeaders(200, 0)
         
-        val sendInvoke = try { q?.inject("String(json)") } catch (_: Throwable) { null } ?: "void 0"
+        synchronized(session.sseClients) {
+            session.sseClients.add(exchange)
+        }
         
-        // Use onLoadEnd to inject JS after page loads - handles race condition on Windows IDEA 2024.3
-        // Re-injects on every page load since JS context resets on navigation
-        val loadHandler = object : CefLoadHandlerAdapter() {
-            override fun onLoadEnd(cefBrowser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
-                // Only inject in main frame
-                if (frame?.isMain == true) {
-                    SwingUtilities.invokeLater {
-                        injectBridgeJs(browser, project, sendInvoke)
+        // Send initial connection event
+        try {
+            val writer = OutputStreamWriter(exchange.responseBody)
+            writer.write("event: connected\ndata: {}\n\n")
+            writer.flush()
+        } catch (e: Exception) {
+            synchronized(session.sseClients) {
+                session.sseClients.remove(exchange)
+            }
+            try { exchange.close() } catch (_: Throwable) {}
+        }
+        
+        // Keep connection open - will be cleaned up when client disconnects or session removed
+    }
+
+    private fun handleSend(exchange: HttpExchange, session: Session) {
+        if (exchange.requestMethod != "POST") {
+            exchange.sendResponseHeaders(405, -1)
+            exchange.close()
+            return
+        }
+
+        try {
+            val body = exchange.requestBody.bufferedReader().readText()
+            val msg = gson.fromJson(body, JsonObject::class.java)
+            
+            val type = msg.get("type")?.asString
+            val id = msg.get("id")?.asString
+            val payload = msg.getAsJsonObject("payload")
+
+            when (type) {
+                "openFile" -> {
+                    val rawPath = payload?.get("path")?.asString
+                    if (rawPath != null) {
+                        val lineFromPayload1Based = payload.get("line")?.asInt ?: -1
+                        val rangeRegex = Regex(":(\\d+)(?:-(\\d+))?$")
+                        val match = rangeRegex.find(rawPath)
+                        val startFromPath1Based = try {
+                            match?.groupValues?.getOrNull(1)?.toInt()
+                        } catch (_: Throwable) { null }
+                        val endFromPath1Based = try {
+                            match?.groupValues?.getOrNull(2)?.toInt()
+                        } catch (_: Throwable) { null }
+                        val cleanedPath = rawPath.replace(rangeRegex, "")
+
+                        val startLine1Based = if (lineFromPayload1Based > 0) lineFromPayload1Based else startFromPath1Based ?: -1
+                        val endLine1Based = endFromPath1Based ?: -1
+
+                        val startLine0Based = if (startLine1Based > 0) startLine1Based - 1 else -1
+                        val endLine0Based = if (endLine1Based > 0) endLine1Based - 1 else -1
+
+                        openFile(session.project, cleanedPath, startLine0Based, endLine0Based)
+                        replyOk(session, id)
+                    } else {
+                        replyError(session, id, "Missing path")
                     }
                 }
+                "openUrl" -> {
+                    val url = payload?.get("url")?.asString
+                    if (url != null) {
+                        BrowserUtil.browse(url)
+                        replyOk(session, id)
+                    } else {
+                        replyError(session, id, "Missing url")
+                    }
+                }
+                "reloadPath" -> {
+                    val path = payload?.get("path")?.asString
+                    if (path != null) {
+                        reloadPath(path)
+                        replyOk(session, id)
+                    } else {
+                        replyError(session, id, "Missing path")
+                    }
+                }
+                else -> replyError(session, id, "Unknown type: $type")
             }
+
+            exchange.sendResponseHeaders(204, -1)
+        } catch (e: Exception) {
+            LOG.warn("Error handling send", e)
+            exchange.sendResponseHeaders(400, -1)
         }
-        
-        browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
+        exchange.close()
     }
-    
-    private fun injectBridgeJs(browser: JBCefBrowser, project: Project, sendInvoke: String) {
-        try {
-            val js = (
-                "(function(){" +
-                "if(!window.ideBridge){" +
-                "  var q=[];" +
-                "  window.ideBridge={ready:false,send:function(m){try{var s=(typeof m==='string')?m:JSON.stringify(m); if(typeof window.__ideBridgeSend==='function'){window.__ideBridgeSend(s);} else {q.push(s);}}catch(e){}},request:function(m){return new Promise(function(res,rej){try{var id=String(Date.now())+Math.random().toString(36).slice(2); m.id=id; var r=function(msg){try{if(msg && msg.replyTo===id){window.removeEventListener('message',rWrap); res(msg);} }catch(e){} }; var rWrap=function(ev){try{ r(ev.data||ev); }catch(e){} }; window.addEventListener('message', rWrap); window.ideBridge.send(m);}catch(e){rej(e)}});},onMessage:function(h){window.__ideBridgeOnMessage=h}};" +
-                "  window.__ideBridgeSend=function(json){$sendInvoke};" +
-                "  window.__ideBridgeDeliver=function(s){try{var m=(typeof s==='string')?JSON.parse(s):s; if(typeof window.__ideBridgeOnMessage==='function'){window.__ideBridgeOnMessage(m);} else {window.postMessage(m,'*');}}catch(e){}};" +
-                "  window.ideBridge._flush=function(){try{window.ideBridge.ready=true; var a=q.splice(0,q.length); for(var i=0;i<a.length;i++){try{window.__ideBridgeSend(a[i])}catch(e){}}}catch(e){}};" +
-                "}" +
-                "})();"
-            )
-            browser.cefBrowser.executeJavaScript(js, browser.cefBrowser.url, 0)
-            val state = states[project]
-            if (state != null) {
-                state.ready = true
-                flushOutbox(project)
-            }
 
-            // JetBrains JCEF does not reliably show native title tooltips; enable UI polyfill.
-            send(project, "setTooltipPolyfill", mapOf("enabled" to true))
-        } catch (t: Throwable) {
-            logger.warn("Failed to inject ideBridge", t)
+    private fun replyOk(session: Session, id: String?) {
+        if (id == null) return
+        val msg = JsonObject().apply {
+            addProperty("replyTo", id)
+            addProperty("ok", true)
+            addProperty("timestamp", System.currentTimeMillis())
         }
+        broadcastSSE(session, gson.toJson(msg))
     }
 
-    fun remove(project: Project) {
-        states.remove(project)
+    private fun replyError(session: Session, id: String?, error: String) {
+        if (id == null) return
+        val msg = JsonObject().apply {
+            addProperty("replyTo", id)
+            addProperty("ok", false)
+            addProperty("error", error)
+            addProperty("timestamp", System.currentTimeMillis())
+        }
+        broadcastSSE(session, gson.toJson(msg))
     }
 
-    private fun handleInbound(json: String, project: Project) {
-        val obj = try { mapper.readTree(json) } catch (_: Throwable) { null } ?: return
-        val id = obj.get("id")?.asText()
-        val type = obj.get("type")?.asText() ?: return
-        when (type) {
-            "openFile" -> {
-                val payload = obj.get("payload")
-                val rawPath = payload?.get("path")?.asText() ?: return replyError(project, id, "missing path")
-                val lineFromPayload1Based = payload.get("line")?.asInt() ?: -1
-                val rangeRegex = Regex(":(\\d+)(?:-(\\d+))?$")
-                val match = rangeRegex.find(rawPath)
-                val startFromPath1Based = try {
-                    match?.groupValues?.getOrNull(1)?.toInt()
-                } catch (_: Throwable) { null }
-                val endFromPath1Based = try {
-                    match?.groupValues?.getOrNull(2)?.toInt()
-                } catch (_: Throwable) { null }
-                val cleanedPath = rawPath.replace(rangeRegex, "")
-
-                val startLine1Based = if (lineFromPayload1Based > 0) lineFromPayload1Based else startFromPath1Based ?: -1
-                val endLine1Based = endFromPath1Based ?: -1
-
-                val startLine0Based = if (startLine1Based > 0) startLine1Based - 1 else -1
-                val endLine0Based = if (endLine1Based > 0) endLine1Based - 1 else -1
-
-                openFile(project, cleanedPath, startLine0Based, endLine0Based)
-                replyOk(project, id)
-            }
-            "openUrl" -> {
-                val payload = obj.get("payload")
-                val url = payload?.get("url")?.asText() ?: return replyError(project, id, "missing url")
+    private fun broadcastSSE(session: Session, json: String) {
+        synchronized(session.sseClients) {
+            val toRemove = mutableListOf<HttpExchange>()
+            session.sseClients.forEach { client ->
                 try {
-                    BrowserUtil.browse(url)
-                    replyOk(project, id)
-                } catch (t: Throwable) {
-                    replyError(project, id, t.message ?: "Failed to open url")
+                    val writer = OutputStreamWriter(client.responseBody)
+                    writer.write("event: message\ndata: $json\n\n")
+                    writer.flush()
+                } catch (e: Exception) {
+                    toRemove.add(client)
                 }
             }
-            "reloadPath" -> {
-                val payload = obj.get("payload")
-                val path = payload?.get("path")?.asText() ?: return replyError(project, id, "missing path")
-                reloadFile(project, path)
-                replyOk(project, id)
+            toRemove.forEach { 
+                session.sseClients.remove(it)
+                try { it.close() } catch (_: Throwable) {}
             }
-            else -> replyOk(project, id)
         }
     }
 
@@ -192,58 +385,36 @@ object IdeBridge {
                 }
             }
         } catch (t: Throwable) {
-            logger.warn("openFile failed", t)
+            LOG.warn("openFile failed", t)
         }
     }
 
-    private fun replyOk(project: Project, replyTo: String?) { sendRaw(project, mapOf("replyTo" to replyTo, "ok" to true)) }
-    private fun replyError(project: Project, replyTo: String?, error: String) { sendRaw(project, mapOf("replyTo" to replyTo, "ok" to false, "error" to error)) }
-
-    private fun reloadFile(project: Project, path: String) {
+    private fun reloadPath(path: String) {
         try {
             val lfs = LocalFileSystem.getInstance()
             val vf = lfs.findFileByPath(path) ?: lfs.refreshAndFindFileByPath(path)
             if (vf != null) {
-                ApplicationManager.getApplication().invokeLater {
-                    vf.refresh(false, false)
-                }
+                // Use async=true to avoid blocking EDT during VFS refresh
+                vf.refresh(true, false)
             } else {
-                // File doesn't exist yet (new file), refresh parent directory
+                // File doesn't exist yet (new file), refresh parent directory asynchronously
                 val parentPath = path.substringBeforeLast("/")
                 val parentVf = lfs.findFileByPath(parentPath) ?: lfs.refreshAndFindFileByPath(parentPath)
-                parentVf?.refresh(false, true)
+                parentVf?.refresh(true, true)
             }
         } catch (t: Throwable) {
-            logger.warn("reloadFile failed", t)
+            LOG.warn("reloadPath failed", t)
         }
     }
 
-    fun send(project: Project, type: String, payload: Map<String, Any?> = emptyMap()) {
-        val message = mutableMapOf<String, Any?>("type" to type, "timestamp" to System.currentTimeMillis())
-        if (payload.isNotEmpty()) message["payload"] = payload
-        sendRaw(project, message)
-    }
-
-    private fun sendRaw(project: Project, message: Map<String, Any?>) {
-        val state = states[project] ?: return
-        val b = state.browser
-        
-        val json = try { mapper.writeValueAsString(message) } catch (_: Throwable) { return }
-        val script = "(function(){ try { if(window.__ideBridgeDeliver){ window.__ideBridgeDeliver(" + mapper.writeValueAsString(json) + "); } else { window.postMessage(" + json + ", '*'); } } catch(e){} })();"
-        try {
-            b.cefBrowser.executeJavaScript(script, b.cefBrowser.url, 0)
-            state.ready = true
-        } catch (t: Throwable) {
-            state.outbox.add(message)
-        }
-    }
-
-    private fun flushOutbox(project: Project) {
-        val state = states[project] ?: return
-        if (state.ready) {
-            val pending = ArrayList(state.outbox)
-            state.outbox.clear()
-            for (m in pending) sendRaw(project, m)
-        }
+    private fun parseQuery(query: String): Map<String, String> {
+        return query.split("&")
+            .filter { it.isNotEmpty() }
+            .associate { param ->
+                val parts = param.split("=", limit = 2)
+                val key = URLDecoder.decode(parts[0], "UTF-8")
+                val value = if (parts.size > 1) URLDecoder.decode(parts[1], "UTF-8") else ""
+                key to value
+            }
     }
 }

@@ -1,18 +1,18 @@
 import { useLayoutEffect, useMemo, useRef } from "react"
-import { useSlashSearch } from "../../hooks/useSlashSearch"
+import { useCommandSearch, type CommandResult } from "../../hooks/useCommandSearch"
 import { useMentionNavigation } from "../../hooks/useMentionNavigation"
-import type { SlashItem } from "./utils"
+import type { CommandMetadata } from "./CommandPlugin/CommandHandler"
 
-interface SlashPopoverProps {
+interface CommandPopoverProps {
   query: string
   position: { top: number; left: number; placement: "top" | "bottom" }
-  onSelect: (item: SlashItem) => void
+  onSelect: (metadata: CommandMetadata) => void
   onClose: () => void
   onReposition?: () => void
 }
 
-export function SlashPopover({ query, position, onSelect, onClose, onReposition }: SlashPopoverProps) {
-  const { results, isLoading, error } = useSlashSearch(query)
+export function CommandPopover({ query, position, onSelect, onClose, onReposition }: CommandPopoverProps) {
+  const { results, isLoading } = useCommandSearch(query)
   const rootRef = useRef<HTMLDivElement>(null)
 
   const transform = useMemo(
@@ -42,9 +42,9 @@ export function SlashPopover({ query, position, onSelect, onClose, onReposition 
   }, [onReposition, isLoading, results.length])
 
   const handleSelect = (index: number) => {
-    const item = results[index]
-    if (!item) return
-    onSelect(item)
+    if (results[index]) {
+      onSelect(results[index].metadata)
+    }
   }
 
   const { selectedIndex, setSelectedIndex, listRef } = useMentionNavigation({
@@ -54,18 +54,17 @@ export function SlashPopover({ query, position, onSelect, onClose, onReposition 
     isOpen: true,
   })
 
-  const empty = results.length === 0 && !isLoading
-  const message = error ? error.message : query ? "No results found" : "Type to search..."
-
-  if (empty) {
+  if (results.length === 0 && !isLoading) {
     return (
       <div
         ref={rootRef}
         className="absolute z-50 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded shadow-lg"
         style={{ top: position.top, left: position.left, transform, maxWidth: "calc(100vw - 16px)" }}
-        data-slash-popover
+        data-command-popover
       >
-        <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">{message}</div>
+        <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">
+          {query ? "No commands found" : "Type to search commands..."}
+        </div>
       </div>
     )
   }
@@ -75,20 +74,20 @@ export function SlashPopover({ query, position, onSelect, onClose, onReposition 
       ref={rootRef}
       className="absolute z-50 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded shadow-lg"
       style={{ top: position.top, left: position.left, transform, maxWidth: "calc(100vw - 16px)" }}
-      data-slash-popover
+      data-command-popover
     >
       <div ref={listRef} className="max-h-64 overflow-y-auto" style={{ maxWidth: "calc(100vw - 16px)" }}>
         {isLoading && results.length === 0 ? (
-          <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">Loading...</div>
+          <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">Loading commands...</div>
         ) : (
           <div className="py-0.5">
-            {results.map((item, index) => (
-              <SlashItemRow
-                key={item.id}
-                item={item}
+            {results.map((result, index) => (
+              <CommandItem
+                key={result.id}
+                result={result}
                 isSelected={index === selectedIndex}
                 index={index}
-                onClick={() => onSelect(item)}
+                onClick={() => onSelect(result.metadata)}
                 onMouseEnter={() => setSelectedIndex(index)}
               />
             ))}
@@ -99,19 +98,22 @@ export function SlashPopover({ query, position, onSelect, onClose, onReposition 
   )
 }
 
-interface SlashItemRowProps {
-  item: SlashItem
+interface CommandItemProps {
+  result: CommandResult
   isSelected: boolean
   index: number
   onClick: () => void
   onMouseEnter: () => void
 }
 
-function SlashItemRow({ item, isSelected, index, onClick, onMouseEnter }: SlashItemRowProps) {
-  const suffix = item.kind === "command" && item.source && item.source !== "command" ? ":" + item.source : ""
-  const display = item.kind === "skill" ? `/skill:${item.name}` : `/${item.name}${suffix}`
-  const badge =
-    item.kind === "skill" ? "Skill" : item.source === "mcp" ? "MCP" : item.source === "skill" ? "Skill" : "Command"
+function CommandItem({ result, isSelected, index, onClick, onMouseEnter }: CommandItemProps) {
+  const { metadata } = result
+  const typeLabel = metadata.source === "skill" ? "Skill" : metadata.source === "mcp" ? "MCP" : "Command"
+  const badgeClass = metadata.source === "skill"
+    ? "text-emerald-600 dark:text-emerald-400"
+    : metadata.source === "mcp"
+      ? "text-indigo-600 dark:text-indigo-400"
+      : "text-amber-600 dark:text-amber-400"
 
   return (
     <div
@@ -132,7 +134,7 @@ function SlashItemRow({ item, isSelected, index, onClick, onMouseEnter }: SlashI
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={2}
-            d={item.kind === "skill" ? "M12 6v12m6-6H6" : "M8 7h8M8 12h8M8 17h8"}
+            d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
           />
         </svg>
       </div>
@@ -143,12 +145,12 @@ function SlashItemRow({ item, isSelected, index, onClick, onMouseEnter }: SlashI
               isSelected ? "text-gray-900 dark:text-gray-100 font-medium" : "text-gray-900 dark:text-gray-100"
             }`}
           >
-            {display}
+            /{metadata.name}
           </span>
-          <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">{badge}</span>
+          <span className={`text-xs font-medium ${badgeClass}`}>{typeLabel}</span>
         </div>
-        {item.description && (
-          <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{item.description}</div>
+        {metadata.description && (
+          <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{metadata.description}</div>
         )}
       </div>
     </div>

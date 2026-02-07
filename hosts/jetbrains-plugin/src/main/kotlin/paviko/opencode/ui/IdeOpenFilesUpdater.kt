@@ -1,7 +1,7 @@
 package paviko.opencode.ui
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.jcef.JBCefBrowser
@@ -9,29 +9,63 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import org.cef.browser.CefBrowser
 import org.cef.handler.CefLifeSpanHandlerAdapter
 import java.nio.file.Paths
+import java.util.concurrent.ScheduledFuture
 
-class IdeOpenFilesUpdater(private val project: Project, private val browser: JBCefBrowser) : Disposable {
-    private val mapper = jacksonObjectMapper()
+class IdeOpenFilesUpdater(private val project: Project, private val browser: JBCefBrowser, private val sessionId: String) : Disposable {
+    private var scheduled: ScheduledFuture<*>? = null
 
     fun install() {
         // Observe tab/file changes and push to webview
         val bus = project.messageBus.connect(this)
         val fem = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
 
-        fun push() {
-            try {
-                val opened = fem.openFiles.mapNotNull { vf -> vfPath(vf) }
-                val current = fem.selectedEditor?.file?.let { vf -> vfPath(vf) }
-                IdeBridge.send(project, "updateOpenedFiles", mapOf("openedFiles" to opened, "currentFile" to current))
-            } catch (e: Exception) {
-                e.printStackTrace()
+        // Perform path computation on background thread to avoid blocking EDT with NIO operations
+        fun pushAsync() {
+            AppExecutorUtil.getAppExecutorService().execute {
+                try {
+                    // Snapshot open files on EDT like before.
+                    val openFiles = mutableListOf<VirtualFile>()
+                    var selectedFile: VirtualFile? = null
+
+                    val latch = java.util.concurrent.CountDownLatch(1)
+                    ApplicationManager.getApplication().invokeLater {
+                        try {
+                            openFiles.addAll(fem.openFiles)
+                            selectedFile = fem.selectedEditor?.file
+                        } finally {
+                            latch.countDown()
+                        }
+                    }
+
+                    try {
+                        latch.await()
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        return@execute
+                    }
+
+                    if (project.isDisposed) return@execute
+                    
+                    // Compute paths on background thread (NIO operations)
+                    val opened = openFiles.mapNotNull { vf -> vfPath(vf) }
+                    val current = selectedFile?.let { vf -> vfPath(vf) }
+                    
+                    // Send result (IdeBridge.send already handles threading)
+                    IdeBridge.send(sessionId, "updateOpenedFiles", mapOf("openedFiles" to opened, "currentFile" to current))
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
+        }
+
+        fun pushSafe() {
+            pushAsync()
         }
 
         // Initial push when page loads
         browser.jbCefClient.addLifeSpanHandler(object : CefLifeSpanHandlerAdapter() {
             override fun onAfterCreated(browser: CefBrowser?) {
-                push()
+                pushSafe()
             }
         }, browser.cefBrowser)
 
@@ -40,21 +74,21 @@ class IdeOpenFilesUpdater(private val project: Project, private val browser: JBC
             com.intellij.openapi.fileEditor.FileEditorManagerListener.FILE_EDITOR_MANAGER,
             object : com.intellij.openapi.fileEditor.FileEditorManagerListener {
                 override fun selectionChanged(event: com.intellij.openapi.fileEditor.FileEditorManagerEvent) {
-                    push()
+                    pushSafe()
                 }
 
                 override fun fileOpened(source: com.intellij.openapi.fileEditor.FileEditorManager, file: VirtualFile) {
-                    push()
+                    pushSafe()
                 }
 
                 override fun fileClosed(source: com.intellij.openapi.fileEditor.FileEditorManager, file: VirtualFile) {
-                    push()
+                    pushSafe()
                 }
             })
 
         // Also push periodically as a fallback
-        AppExecutorUtil.getAppScheduledExecutorService()
-            .scheduleWithFixedDelay({ push() }, 2, 5, java.util.concurrent.TimeUnit.SECONDS)
+        scheduled = AppExecutorUtil.getAppScheduledExecutorService()
+            .scheduleWithFixedDelay({ pushSafe() }, 2, 5, java.util.concurrent.TimeUnit.SECONDS)
     }
 
     private fun vfPath(vf: VirtualFile?): String? {
@@ -86,5 +120,8 @@ class IdeOpenFilesUpdater(private val project: Project, private val browser: JBC
         }
     }
 
-    override fun dispose() {}
+    override fun dispose() {
+        try { scheduled?.cancel(false) } catch (_: Throwable) {}
+        scheduled = null
+    }
 }

@@ -3,6 +3,7 @@ import * as path from "path"
 import { errorHandler } from "../utils/ErrorHandler"
 import { PluginCommunicator, UnifiedMessage } from "../types/UnifiedMessage"
 import { logger } from "../globals"
+import type { bridgeServer as BridgeServerType } from "./IdeBridgeServer"
 
 /**
  * Communication bridge between VSCode and WebUI
@@ -26,40 +27,8 @@ export class CommunicationBridge implements PluginCommunicator {
   private context?: vscode.ExtensionContext
   private onStateChange?: (key: string, value: any) => Promise<void>
   private messageHandlerDisposable?: vscode.Disposable
-
-  private storageKey(key: string): string {
-    return `opencode.webgui.storage.${key}`
-  }
-
-  private async storageGet(keys: string[]): Promise<Record<string, string | null>> {
-    const result: Record<string, string | null> = {}
-    const state = this.context?.globalState
-
-    for (const key of keys) {
-      if (!state) {
-        result[key] = null
-        continue
-      }
-      const value = state.get<string>(this.storageKey(key))
-      result[key] = typeof value === "string" ? value : null
-    }
-
-    return result
-  }
-
-  private async storageSet(key: string, value: string | null | undefined): Promise<void> {
-    const state = this.context?.globalState
-    if (!state) {
-      return
-    }
-
-    if (typeof value === "string") {
-      await state.update(this.storageKey(key), value)
-      return
-    }
-
-    await state.update(this.storageKey(key), undefined)
-  }
+  private _bridgeSessionId?: string
+  private _bridgeServer?: typeof BridgeServerType
 
   constructor(options: CommunicationBridgeOptions = {}) {
     this.webview = options.webview
@@ -105,6 +74,28 @@ export class CommunicationBridge implements PluginCommunicator {
    */
   setStateChangeCallback(callback: (key: string, value: any) => Promise<void>): void {
     this.onStateChange = callback
+  }
+
+  /**
+   * Set bridge session for routing ideBridge-type messages via SSE
+   * @param sessionId Bridge session ID
+   * @param server Bridge server instance
+   */
+  setBridgeSession(sessionId: string, server: typeof BridgeServerType): void {
+    this._bridgeSessionId = sessionId
+    this._bridgeServer = server
+    logger.appendLine(`Bridge session set: ${sessionId}`)
+  }
+
+  /**
+   * Send a message via the bridge server SSE (for ideBridge messages)
+   */
+  private sendViaBridge(type: string, payload: any): boolean {
+    if (this._bridgeSessionId && this._bridgeServer) {
+      this._bridgeServer.send(this._bridgeSessionId, { type, payload })
+      return true
+    }
+    return false
   }
 
   // VSCode → WebUI communication methods
@@ -161,13 +152,13 @@ export class CommunicationBridge implements PluginCommunicator {
         return
       }
 
-      // Send unified message
-      this.sendMessage({
-        type: "insertPaths",
-        paths: validPaths,
-      })
+      // Route through bridge server SSE (required)
+      if (!this.sendViaBridge("insertPaths", { paths: validPaths })) {
+        logger.appendLine("Bridge session not set; cannot send insertPaths")
+        return
+      }
 
-      logger.appendLine(`Inserted ${validPaths.length} paths: ${validPaths.join(", ")}`)
+      logger.appendLine(`Inserted ${validPaths.length} paths via bridge: ${validPaths.join(", ")}`)
     } catch (error) {
       logger.appendLine(`Error inserting paths: ${error}`)
 
@@ -199,13 +190,13 @@ export class CommunicationBridge implements PluginCommunicator {
         return
       }
 
-      // Send unified message
-      this.sendMessage({
-        type: "pastePath",
-        path: normalizedPath,
-      })
+      // Route through bridge server SSE (required)
+      if (!this.sendViaBridge("pastePath", { path: normalizedPath })) {
+        logger.appendLine("Bridge session not set; cannot send pastePath")
+        return
+      }
 
-      logger.appendLine(`Pasted path: ${normalizedPath}`)
+      logger.appendLine(`Pasted path via bridge: ${normalizedPath}`)
     } catch (error) {
       logger.appendLine(`Error pasting path: ${error}`)
 
@@ -485,71 +476,6 @@ export class CommunicationBridge implements PluginCommunicator {
     this.messageHandlerDisposable = this.webview.onDidReceiveMessage(
       async (message) => {
         try {
-          // ideBridge JSON tunnel from iframe
-          if (message && message.type === "__ideBridgeSend" && typeof message.json === "string") {
-            try {
-              const m = JSON.parse(message.json)
-              if (m && m.type === "openFile") {
-                await this.handleOpenFile(m.payload?.path ?? m.path)
-                // reply if id present
-                if (m.id) {
-                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
-                }
-              } else if (m && m.type === "clipboardWrite") {
-                const text = m.payload?.text
-                if (typeof text === "string") {
-                  await vscode.env.clipboard.writeText(text)
-                }
-                if (m.id) {
-                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
-                }
-              } else if (m && m.type === "openUrl") {
-                await this.handleOpenUrl(m.payload?.url ?? m.url)
-                if (m.id) {
-                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
-                }
-              } else if (m && m.type === "reloadPath") {
-                await this.handleReloadPath(m.payload?.path)
-                if (m.id) {
-                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
-                }
-              } else if (m && m.type === "storageGet") {
-                const keys = Array.isArray(m.payload?.keys)
-                  ? m.payload.keys.filter((item: unknown): item is string => typeof item === "string")
-                  : []
-                const result = await this.storageGet(keys)
-                if (m.id) {
-                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true, result })
-                }
-              } else if (m && m.type === "storageSet") {
-                const key = typeof m.payload?.key === "string" ? m.payload.key : ""
-                const value = typeof m.payload?.value === "string" ? m.payload.value : null
-                if (key) {
-                  await this.storageSet(key, value)
-                }
-                if (m.id) {
-                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
-                }
-              } else {
-                // Generic ack for unknown types
-                if (m && m.id) this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: m.id, ok: true })
-              }
-            } catch (e) {
-              try {
-                const id = (() => {
-                  try {
-                    return JSON.parse(message.json).id
-                  } catch {
-                    return undefined
-                  }
-                })()
-                if (id)
-                  this.webview?.postMessage({ type: "__ideBridgeReply", replyTo: id, ok: false, error: String(e) })
-              } catch {}
-              logger.appendLine(`Failed to process __ideBridgeSend: ${e}`)
-            }
-            return
-          }
           switch (message.type) {
             case "openFile":
               await this.handleOpenFile(message.path)

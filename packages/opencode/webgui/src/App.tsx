@@ -16,12 +16,14 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts"
 import { ideBridge } from "./lib/ideBridge"
 import { extractPathsFromDrop } from "./lib/dnd"
 import { initKeyboardHandler, destroyKeyboardHandler } from "./lib/keyboardHandler"
+import { uiBridgeSubscribe, uiBridgeUpdate, type UiBridgeState } from "./state/uiBridgeState"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 
 // Inner component that uses MessagesContext
 function AppInner({ connectionState }: { connectionState: ConnectionState }) {
-  const { currentSession, sessions, newVirtual, switchSession, isCreating, error, clearError } = useSession()
+  const { currentSession, sessions, newVirtual, switchSession, isCreating, error, clearError, restoreSelections } =
+    useSession()
   const { loadSessionMessages } = useMessages()
   const { showToast } = useToast()
   const compactHeaderRef = useRef<{ toggleSessionDropdown: () => void }>(null)
@@ -36,6 +38,32 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+
+  const [bridge, setBridge] = useState<UiBridgeState | null>(null)
+  const restored = useRef({ session: false, selections: false })
+
+  useEffect(() => uiBridgeSubscribe((s) => setBridge(s)), [])
+
+  useEffect(() => {
+    if (restored.current.session) return
+    if (!bridge?.sessionID) return
+    restored.current.session = true
+    void switchSession(bridge.sessionID)
+  }, [bridge?.sessionID, switchSession])
+
+  useEffect(() => {
+    if (restored.current.selections) return
+    if (!bridge) return
+    const has = !!(bridge.agent || bridge.variant || (bridge.providerId && bridge.modelId))
+    if (!has) return
+    restored.current.selections = true
+    restoreSelections({
+      providerId: bridge.providerId,
+      modelId: bridge.modelId,
+      agent: bridge.agent,
+      variant: bridge.variant,
+    })
+  }, [bridge, restoreSelections])
 
   const handleNewSession = useCallback(() => {
     newVirtual()
@@ -169,6 +197,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     if (currentSession?.id) {
       console.log("[App] Current session changed, loading messages:", currentSession.id)
       loadSessionMessages(currentSession.id)
+      uiBridgeUpdate({ sessionID: currentSession.id })
       // Focus message input when session changes
       setTimeout(() => {
         messageInputRef.current?.focus()

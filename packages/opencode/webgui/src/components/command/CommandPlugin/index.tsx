@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
   COMMAND_PRIORITY_LOW,
@@ -7,17 +7,13 @@ import {
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
-  $getSelection,
-  $isRangeSelection,
-  $isTextNode,
 } from "lexical"
+import { CommandPopover } from "../CommandPopover"
 import { createPortal } from "react-dom"
-import { SlashPopover } from "../SlashPopover"
-import type { SlashItem } from "../utils"
-import { makeSlashInsert } from "../utils"
-import { extractSlashQueryFromSelection, updateSlashPopoverPosition } from "./utils"
+import { useCommandDetector } from "./CommandDetector"
+import { useCommandHandler } from "./CommandHandler"
 
-export function SlashPlugin() {
+export function CommandPlugin() {
   const [editor] = useLexicalComposerContext()
   const [showPopover, setShowPopover] = useState(false)
   const [query, setQuery] = useState("")
@@ -26,49 +22,17 @@ export function SlashPlugin() {
     left: 0,
     placement: "top",
   })
-  const [slashStartOffset, setSlashStartOffset] = useState<number | null>(null)
-  const leftRef = useRef<{ left: number; width: number } | null>(null)
+  const [commandStartOffset, setCommandStartOffset] = useState<number | null>(null)
 
-  const resetState = useCallback(() => {
-    setShowPopover(false)
-    setQuery("")
-    setSlashStartOffset(null)
-    leftRef.current = null
-  }, [])
-
-  const handlePositionUpdate = useCallback(() => {
-    updateSlashPopoverPosition(editor, leftRef, setPosition)
-  }, [editor])
-
-  const handleTextChange = useCallback(() => {
-    const slashQuery = extractSlashQueryFromSelection(setSlashStartOffset)
-    if (slashQuery === null) {
-      resetState()
-      return
-    }
-    setQuery(slashQuery)
-    setShowPopover(true)
-    handlePositionUpdate()
-  }, [handlePositionUpdate, resetState])
-
-  const insert = useCallback(
-    (item: SlashItem) => {
-      editor.update(() => {
-        const selection = $getSelection()
-        if (!$isRangeSelection(selection)) return
-        const node = selection.anchor.getNode()
-        if (!$isTextNode(node)) return
-        if (slashStartOffset === null) return
-
-        const off = selection.anchor.offset
-        const text = makeSlashInsert(item)
-        node.spliceText(slashStartOffset, off - slashStartOffset, text)
-        selection.setTextNodeRange(node, text.length, node, text.length)
-      })
-      resetState()
-    },
-    [editor, resetState, slashStartOffset],
+  const { handleTextChange, handlePositionUpdate, resetState } = useCommandDetector(
+    editor,
+    setQuery,
+    setShowPopover,
+    setCommandStartOffset,
+    setPosition,
   )
+
+  const { insertCommand } = useCommandHandler(editor, commandStartOffset, resetState)
 
   useEffect(() => {
     return editor.registerUpdateListener(({ editorState }) => {
@@ -80,14 +44,17 @@ export function SlashPlugin() {
 
   useEffect(() => {
     if (!showPopover) return
+
     const frame = requestAnimationFrame(() => {
       handlePositionUpdate()
     })
+
     return () => cancelAnimationFrame(frame)
-  }, [handlePositionUpdate, query, showPopover])
+  }, [showPopover, query, handlePositionUpdate])
 
   useEffect(() => {
     if (!showPopover) return
+
     const removeArrowDownCommand = editor.registerCommand(
       KEY_ARROW_DOWN_COMMAND,
       () => {
@@ -95,6 +62,7 @@ export function SlashPlugin() {
       },
       COMMAND_PRIORITY_LOW,
     )
+
     const removeArrowUpCommand = editor.registerCommand(
       KEY_ARROW_UP_COMMAND,
       () => {
@@ -102,6 +70,7 @@ export function SlashPlugin() {
       },
       COMMAND_PRIORITY_LOW,
     )
+
     const removeEnterCommand = editor.registerCommand(
       KEY_ENTER_COMMAND,
       () => {
@@ -109,6 +78,7 @@ export function SlashPlugin() {
       },
       COMMAND_PRIORITY_LOW,
     )
+
     const removeTabCommand = editor.registerCommand(
       KEY_TAB_COMMAND,
       () => {
@@ -116,6 +86,7 @@ export function SlashPlugin() {
       },
       COMMAND_PRIORITY_LOW,
     )
+
     const removeEscapeCommand = editor.registerCommand(
       KEY_ESCAPE_COMMAND,
       () => {
@@ -132,17 +103,11 @@ export function SlashPlugin() {
       removeTabCommand()
       removeEscapeCommand()
     }
-  }, [editor, resetState, showPopover])
+  }, [editor, showPopover, resetState])
 
   return showPopover
     ? createPortal(
-        <SlashPopover
-          query={query}
-          position={position}
-          onSelect={insert}
-          onClose={resetState}
-          onReposition={handlePositionUpdate}
-        />,
+        <CommandPopover query={query} position={position} onSelect={insertCommand} onClose={resetState} onReposition={handlePositionUpdate} />,
         document.body,
       )
     : null

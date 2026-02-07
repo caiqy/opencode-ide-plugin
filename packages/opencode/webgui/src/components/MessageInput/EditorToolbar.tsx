@@ -1,8 +1,10 @@
+import { useEffect } from "react"
 import { ModelSelector } from "../ModelSelector"
 import { AgentSelector } from "../AgentSelector"
 import { VariantSelector } from "../VariantSelector"
 import { IconButton } from "../common"
 import { MessageActions } from "./MessageActions"
+import { uiBridgeUpdate } from "../../state/uiBridgeState"
 
 interface EditorToolbarProps {
   selectedProviderId: string | undefined
@@ -53,6 +55,15 @@ export function EditorToolbar({
   onVariantSelect,
   isReasoningModel,
 }: EditorToolbarProps) {
+  useEffect(() => {
+    uiBridgeUpdate({
+      providerId: selectedProviderId ?? null,
+      modelId: selectedModelId ?? null,
+      agent: selectedAgent ?? null,
+      variant: selectedVariant ?? null,
+    })
+  }, [selectedProviderId, selectedModelId, selectedAgent, selectedVariant])
+
   return (
     <div className="h-8 px-2 flex items-center justify-between border-t border-gray-100 dark:border-gray-800">
       <div className="flex items-center gap-0.5">
