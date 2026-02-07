@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { fireEvent, render } from "@testing-library/react"
 import { useMessageScroll } from "./useMessageScroll"
 
@@ -66,6 +66,10 @@ describe("useMessageScroll", () => {
     })
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it("在底部时持续自动滚动，用户离开底部后停止自动滚动", () => {
     const { rerender, getByTestId } = render(
       <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={true} />,
@@ -77,14 +81,16 @@ describe("useMessageScroll", () => {
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1)
 
-    // 用户滚离底部（distance = 100 > threshold）
+    // 用户向上滚动（wheel deltaY < 0）
+    fireEvent.wheel(parent, { deltaY: -100 })
+    // 滚离底部（distance = 100 > threshold）
     setScrollMetrics(parent, 1000, 500, 400)
     fireEvent.scroll(parent)
 
     rerender(<TestHarness sessionID="s1" sortedMessages={textMessage("ab")} isIdle={false} isReasoning={true} />)
     expect(scrollIntoView).toHaveBeenCalledTimes(1)
 
-    // 回到底部后恢复自动滚动
+    // 用户手动滚回底部（非程序触发）
     setScrollMetrics(parent, 1000, 500, 520)
     fireEvent.scroll(parent)
 
@@ -107,6 +113,101 @@ describe("useMessageScroll", () => {
     rerender(
       <TestHarness sessionID="s1" sortedMessages={toolMessage("completed")} isIdle={false} isReasoning={false} />,
     )
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
+  it("smooth 动画超过旧窗口后到达底部，不应清空用户上滑意图", () => {
+    vi.useFakeTimers()
+
+    const { rerender, getByTestId } = render(
+      <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    // 初始在底部
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    // 新内容到达，触发 smooth 程序滚动
+    rerender(<TestHarness sessionID="s1" sortedMessages={textMessage("ab")} isIdle={false} isReasoning={false} />)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: "smooth", block: "end" })
+
+    // 模拟动画耗时超过旧的 500ms 窗口（但仍在当前 1000ms 安全窗口内）
+    vi.advanceTimersByTime(700)
+
+    // 用户在这期间 wheel 向上，表达离底意图
+    fireEvent.wheel(parent, { deltaY: -100 })
+
+    // 动画结束时触发到底部 scroll 事件
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+
+    // 新内容到达 → 仍不应自动滚动（用户意图不可被动画清空）
+    rerender(<TestHarness sessionID="s1" sortedMessages={textMessage("abc")} isIdle={false} isReasoning={false} />)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
+  it("scrollbar 拖拽或键盘滚动离开底部后停止自动滚动", () => {
+    const { rerender, getByTestId } = render(
+      <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    // 初始在底部
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    // 用户通过 scrollbar/键盘滚离底部（无 wheel 事件，仅 scroll 事件）
+    setScrollMetrics(parent, 1000, 500, 200)
+    fireEvent.scroll(parent)
+
+    // 新内容到达 → 不应自动滚动
+    rerender(<TestHarness sessionID="s1" sortedMessages={textMessage("ab")} isIdle={false} isReasoning={false} />)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    // 用户手动滚回底部
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+
+    // 新内容到达 → 应恢复自动滚动
+    rerender(<TestHarness sessionID="s1" sortedMessages={textMessage("abc")} isIdle={false} isReasoning={false} />)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
+  it("微小 wheel delta 不应触发离底锁定", () => {
+    const { rerender, getByTestId } = render(
+      <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    // 小幅误触滚轮（阈值内）
+    fireEvent.wheel(parent, { deltaY: -1 })
+
+    // 新内容到达 → 仍应自动滚动
+    rerender(<TestHarness sessionID="s1" sortedMessages={textMessage("ab")} isIdle={false} isReasoning={false} />)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
+  it("切换 session 后重置滚动状态", () => {
+    const { rerender, getByTestId } = render(
+      <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    // 用户 wheel 向上
+    fireEvent.wheel(parent, { deltaY: -100 })
+    setScrollMetrics(parent, 1000, 500, 300)
+    fireEvent.scroll(parent)
+
+    // 切换 session → 应重置，新内容应自动滚动
+    rerender(<TestHarness sessionID="s2" sortedMessages={textMessage("b")} isIdle={false} isReasoning={false} />)
     expect(scrollIntoView).toHaveBeenCalledTimes(2)
   })
 })
