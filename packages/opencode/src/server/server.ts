@@ -3,7 +3,6 @@ import { Bus } from "@/bus"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono } from "hono"
-import type { Context } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import { proxy } from "hono/proxy"
@@ -23,12 +22,6 @@ import { Flag } from "../flag/flag"
 import { Command } from "../command"
 import { Global } from "../global"
 import { ProjectRoutes } from "./routes/project"
-import { WebGuiRoute } from "../webgui/server/webgui.ts"
-import { ToolRegistry } from "../tool/registry"
-import { zodToJsonSchema } from "zod-to-json-schema"
-import { SessionPrompt } from "../session/prompt"
-import { SessionCompaction } from "../session/compaction"
-import { SessionRevert } from "../session/revert"
 import { SessionRoutes } from "./routes/session"
 import { PtyRoutes } from "./routes/pty"
 import { McpRoutes } from "./routes/mcp"
@@ -43,121 +36,13 @@ import type { ContentfulStatusCode } from "hono/utils/http-status"
 import { websocket } from "hono/bun"
 import { HTTPException } from "hono/http-exception"
 import { errors } from "./error"
-import { Pty } from "@/pty"
-import * as State from "@/webgui/state/state"
-import path from "path"
-import * as fs from "fs"
-import { fileURLToPath } from "url"
-import { embeddedWebGui } from "../webgui/embed.generated"
-import { Buffer } from "node:buffer"
-import { PermissionNext } from "@/permission/next"
 import { QuestionRoutes } from "./routes/question"
-import { Installation } from "@/installation"
 import { PermissionRoutes } from "./routes/permission"
 import { GlobalRoutes } from "./routes/global"
 import { MDNS } from "./mdns"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
-
-const embeddedWebGuiMap = new Map<string, string>(
-  embeddedWebGui.map((item): [string, string] => [item.path, item.data]),
-)
-
-const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
-const webGuiCandidates = [
-  path.join(moduleDirectory, "../../webgui-dist"),
-  path.resolve(path.dirname(process.execPath), "../packages/opencode/webgui-dist"),
-  path.resolve(process.cwd(), "packages/opencode/webgui-dist"),
-  path.resolve(process.cwd(), "../packages/opencode/webgui-dist"),
-]
-
-function existingWebGuiRoot() {
-  const existing = webGuiCandidates.find((candidate) => fs.existsSync(path.join(candidate, "index.html")))
-  return existing ?? webGuiCandidates[0]
-}
-
-const webGuiRoot = existingWebGuiRoot()
-
-function webGuiRelative(pathname: string) {
-  const withoutPrefix = pathname.replace(/^\/app/, "")
-  const trimmed = withoutPrefix.replace(/^\/+/, "")
-  if (trimmed.length === 0) return "index.html"
-  if (trimmed.endsWith("/")) return trimmed + "index.html"
-  return trimmed
-}
-
-function webGuiContentType(relativePath: string) {
-  if (relativePath.endsWith(".html")) return "text/html; charset=utf-8"
-  if (relativePath.endsWith(".js")) return "application/javascript; charset=utf-8"
-  if (relativePath.endsWith(".css")) return "text/css; charset=utf-8"
-  if (relativePath.endsWith(".svg")) return "image/svg+xml"
-  if (relativePath.endsWith(".png")) return "image/png"
-  if (relativePath.endsWith(".jpg") || relativePath.endsWith(".jpeg")) return "image/jpeg"
-  if (relativePath.endsWith(".gif")) return "image/gif"
-  if (relativePath.endsWith(".webp")) return "image/webp"
-  if (relativePath.endsWith(".ico")) return "image/x-icon"
-  if (relativePath.endsWith(".json")) return "application/json; charset=utf-8"
-  if (relativePath.endsWith(".txt")) return "text/plain; charset=utf-8"
-  if (relativePath.endsWith(".map")) return "application/json; charset=utf-8"
-  return "application/octet-stream"
-}
-
-function webGuiCacheControl(relativePath: string) {
-  if (relativePath.endsWith(".html") || relativePath.endsWith(".js")) return "no-store"
-  return "public, max-age=3600"
-}
-
-function serveWebGuiFromFs(relativePath: string) {
-  const fullPath = path.join(webGuiRoot, relativePath)
-  if (!fs.existsSync(fullPath)) return
-  const file = Bun.file(fullPath)
-  return new Response(file, {
-    headers: {
-      "Content-Type": webGuiContentType(relativePath),
-      "Cache-Control": webGuiCacheControl(relativePath),
-    },
-  })
-}
-
-function serveWebGuiFromEmbed(relativePath: string) {
-  const encoded = embeddedWebGuiMap.get(relativePath)
-  if (!encoded) return
-  const buffer = Buffer.from(encoded, "base64")
-  const body = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
-  return new Response(body, {
-    headers: {
-      "Content-Type": webGuiContentType(relativePath),
-      "Cache-Control": webGuiCacheControl(relativePath),
-    },
-  })
-}
-
-function serveWebGui(pathname: string) {
-  const relativePath = webGuiRelative(pathname)
-  const fsResponse = serveWebGuiFromFs(relativePath)
-  if (fsResponse) return fsResponse
-  const embedResponse = serveWebGuiFromEmbed(relativePath)
-  if (embedResponse) return embedResponse
-  if (!relativePath.includes(".")) {
-    const fallbackFs = serveWebGuiFromFs("index.html")
-    if (fallbackFs) return fallbackFs
-    const fallbackEmbed = serveWebGuiFromEmbed("index.html")
-    if (fallbackEmbed) return fallbackEmbed
-  }
-}
-
-function handleWebGui(c: Context) {
-  const response = serveWebGui(c.req.path)
-  if (response) return response
-  return c.text("Not Found", 404)
-}
-
-function handleWebGuiRoot(c: Context) {
-  const response = serveWebGui("index.html")
-  if (response) return response
-  return c.text("Not Found", 404)
-}
 
 export namespace Server {
   const log = Log.create({ service: "server" })
@@ -300,27 +185,21 @@ export namespace Server {
           },
         )
         .use(async (c, next) => {
-          let directory = c.req.query("directory") || c.req.header("x-opencode-directory") || process.cwd()
-          try {
-            directory = decodeURIComponent(directory)
-          } catch {
-            // fallback to original value
-          }
-
+          if (c.req.path === "/log") return next()
+          const raw = c.req.query("directory") || c.req.header("x-opencode-directory") || process.cwd()
+          const directory = (() => {
+            try {
+              return decodeURIComponent(raw)
+            } catch {
+              return raw
+            }
+          })()
           return Instance.provide({
             directory,
             init: InstanceBootstrap,
             async fn() {
               return next()
             },
-          }).catch((err) => {
-            console.log("Caught Error in Instance.provide:", err, err.code, err.message)
-            if (err instanceof Storage.NotFoundError) return c.text(err.message, 404)
-            // If the directory doesn't exist or is invalid, return 400
-            if ((err as any).code === "ENOENT" || (err as any).message?.includes("No such file or directory")) {
-              return c.text(`Invalid directory: ${directory}`, 400)
-            }
-            throw err
           })
         })
         .get(
@@ -651,13 +530,9 @@ export namespace Server {
             })
           },
         )
-        // Mount Web GUI API routes
-        .route("/app/api", WebGuiRoute)
-        // Serve Web GUI static files, prioritizing filesystem assets and falling back to embedded bundle
-        .get("/app", handleWebGui)
-        .get("/app/*", handleWebGui)
         .all("/*", async (c) => {
           const path = c.req.path
+
           const response = await proxy(`https://app.opencode.ai${path}`, {
             ...c.req,
             headers: {
@@ -688,7 +563,13 @@ export namespace Server {
     return result
   }
 
-  export function listen(opts: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
+  export function listen(opts: {
+    port: number
+    hostname: string
+    mdns?: boolean
+    mdnsDomain?: string
+    cors?: string[]
+  }) {
     _corsWhitelist = opts.cors ?? []
 
     const args = {
@@ -716,7 +597,7 @@ export namespace Server {
       opts.hostname !== "localhost" &&
       opts.hostname !== "::1"
     if (shouldPublishMDNS) {
-      MDNS.publish(server.port!)
+      MDNS.publish(server.port!, opts.mdnsDomain)
     } else if (opts.mdns) {
       log.warn("mDNS enabled but hostname is loopback; skipping mDNS publish")
     }
