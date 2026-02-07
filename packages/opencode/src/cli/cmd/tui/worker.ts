@@ -127,11 +127,6 @@ export const rpc = {
       throw e
     }
   },
-  async server(input: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
-    if (server) await server.stop(true)
-    server = Server.listen(input)
-    return { url: server.url.toString() }
-  },
   async checkUpgrade(input: { directory: string }) {
     await Instance.provide({
       directory: input.directory,
