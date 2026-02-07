@@ -10,16 +10,19 @@ interface UseEditorKeyboardOptions {
 }
 
 export function useEditorKeyboard({ editor, contentEditableRef, parseWithRange, onSubmit }: UseEditorKeyboardOptions) {
-  // Register Cmd/Ctrl+Enter command
+  // Register Enter-to-send command
   useEffect(() => {
     return editor.registerCommand(
       KEY_ENTER_COMMAND,
       (event) => {
-        if ((event?.metaKey || event?.ctrlKey) && event.key === "Enter") {
-          event?.preventDefault()
-          onSubmit()
-          return true
-        }
+        if (!event || event.key !== "Enter") return false
+        if (event.metaKey || event.ctrlKey || event.shiftKey) return false
+        if (document.querySelector("[data-mention-popover], [data-command-popover]")) return false
+
+        event.preventDefault()
+        onSubmit()
+        return true
+
         return false
       },
       COMMAND_PRIORITY_HIGH,

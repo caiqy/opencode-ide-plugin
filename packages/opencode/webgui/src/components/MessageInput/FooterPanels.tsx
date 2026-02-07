@@ -22,7 +22,15 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
     if (!sessionID) return
     setExpanded((prev) => {
       const current = prev[sessionID] ?? { todos: false, files: false }
-      return { ...prev, [sessionID]: { ...current, files: !current.files } }
+      const nextFiles = !current.files
+      return {
+        ...prev,
+        [sessionID]: {
+          ...current,
+          files: nextFiles,
+          todos: nextFiles ? false : current.todos,
+        },
+      }
     })
   }, [sessionID])
 
@@ -30,7 +38,15 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
     if (!sessionID) return
     setExpanded((prev) => {
       const current = prev[sessionID] ?? { todos: false, files: false }
-      return { ...prev, [sessionID]: { ...current, todos: !current.todos } }
+      const nextTodos = !current.todos
+      return {
+        ...prev,
+        [sessionID]: {
+          ...current,
+          todos: nextTodos,
+          files: nextTodos ? false : current.files,
+        },
+      }
     })
   }, [sessionID])
 
