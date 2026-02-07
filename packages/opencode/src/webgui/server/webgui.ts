@@ -548,7 +548,7 @@ export const WebGuiRoute = new Hono()
         c.header("Content-Type", "application/json")
         return stream(c, async (stream) => {
           try {
-            const msg = await SessionPrompt.loop(sessionID)
+            const msg = await SessionPrompt.loop({ sessionID })
             stream.write(JSON.stringify(msg))
           } catch (e) {
             console.error(`[WebGui] Error in retry loop for session ${sessionID}:`, e)
