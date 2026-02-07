@@ -5,9 +5,47 @@
 
 import { createOpencodeClient, type Provider } from "@opencode-ai/sdk/client"
 
-// Create a single SDK client instance with relative baseUrl
-// The server runs on the same origin, so we use '/' for relative requests
-const baseClient = createOpencodeClient({ baseUrl: "/" })
+// Create a single SDK client instance on current origin
+const baseClient = createOpencodeClient({
+  baseUrl: typeof window === "undefined" ? "http://localhost:4096" : window.location.origin,
+})
+
+type AuthMethod = {
+  label: string
+  type: "oauth" | "api"
+}
+
+type OAuthStatus = {
+  status: "pending" | "success" | "failed"
+  result?: {
+    message?: string
+  }
+}
+
+const oauth = new Map<
+  string,
+  {
+    provider: string
+    method: number
+    status: OAuthStatus
+  }
+>()
+
+function oauthID() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+  return `oauth-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function errorMessage(input: unknown, fallback: string) {
+  if (!input || typeof input !== "object") return fallback
+  const msg = (input as { message?: unknown }).message
+  if (typeof msg === "string" && msg.length > 0) return msg
+  const data = (input as { data?: { message?: unknown } }).data
+  if (typeof data?.message === "string" && data.message.length > 0) return data.message
+  return fallback
+}
 
 /**
  * State API response types
@@ -49,6 +87,37 @@ interface PathResponse {
   directory: string
 }
 
+const stateKey = "opencode_webgui_state_v1"
+
+function stateValue() {
+  if (typeof localStorage === "undefined") return {}
+  const raw = localStorage.getItem(stateKey)
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") return {}
+    return parsed as StateResponse
+  } catch {
+    return {}
+  }
+}
+
+function stateStore(value: StateResponse) {
+  if (typeof localStorage === "undefined") return
+  localStorage.setItem(stateKey, JSON.stringify(value))
+}
+
+function retryParts(input: any[]) {
+  return input
+    .filter((part) => ["text", "file", "agent", "subtask"].includes(part.type))
+    .map((part) => {
+      const { sessionID, messageID, ...rest } = part
+      void sessionID
+      void messageID
+      return rest
+    })
+}
+
 /**
  * Extended SDK client with state management methods
  * TODO: Remove once SDK is regenerated with Stainless
@@ -58,17 +127,38 @@ export const sdk = {
   session: Object.assign(baseClient.session, {
     retry: async (options: { path: { sessionID: string } }) => {
       try {
-        const response = await fetch(`/app/api/session/${options.path.sessionID}/retry`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const messages = await baseClient.session.messages({
+          path: { id: options.path.sessionID },
         })
-
-        if (!response.ok) {
-          return { error: { message: "Failed to retry session" }, data: null }
+        if (messages.error || !messages.data) {
+          return { error: { message: errorMessage(messages.error, "Failed to load session messages") }, data: null }
         }
 
-        const data = await response.json()
-        return { data, error: null }
+        const sorted = [...messages.data].sort((a, b) => a.info.time.created - b.info.time.created)
+        const latest = [...sorted].reverse().find((item) => item.info.role === "user")
+        if (!latest) return { error: { message: "No user message to retry" }, data: null }
+        const info = latest.info as {
+          agent?: string
+          model?: {
+            providerID: string
+            modelID: string
+          }
+        }
+
+        const response = await baseClient.session.prompt({
+          path: { id: options.path.sessionID },
+          body: {
+            parts: retryParts(latest.parts),
+            agent: info.agent,
+            model: info.model,
+          },
+        })
+
+        if (response.error || !response.data) {
+          return { error: { message: errorMessage(response.error, "Failed to retry session") }, data: null }
+        }
+
+        return { data: response.data, error: null }
       } catch (error) {
         return {
           error: { message: error instanceof Error ? error.message : "Unknown error" },
@@ -85,16 +175,15 @@ export const sdk = {
     providers: baseClient.config.providers.bind(baseClient.config),
     allProviders: async () => {
       try {
-        const response = await fetch("/app/api/config/providers", {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        })
-
-        if (!response.ok) {
+        const response = await baseClient.provider.list()
+        if (response.error || !response.data) {
           return { error: { message: "Failed to load providers" }, data: null as ProvidersResponse | null }
         }
 
-        const data = (await response.json()) as ProvidersResponse
+        const data: ProvidersResponse = {
+          providers: response.data.all as unknown as Provider[],
+          default: response.data.default,
+        }
         return { data, error: null as { message: string } | null }
       } catch (error) {
         return {
@@ -131,55 +220,88 @@ export const sdk = {
   },
   auth: {
     set: async (provider: string, value: any) => {
-      const res = await fetch("/app/api/auth/set", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, value }),
+      const res = await baseClient.auth.set({
+        path: { id: provider },
+        body: value,
       })
-      if (!res.ok) throw new Error(await res.text())
+      if (res.error) throw new Error(errorMessage(res.error, "Failed to set auth"))
     },
     list: async () => {
-      const res = await fetch("/app/api/auth/list")
-      return res.json() as Promise<Record<string, any>>
+      const res = await baseClient.provider.list()
+      if (res.error || !res.data) return {}
+      return Object.fromEntries(res.data.connected.map((item) => [item, true])) as Record<string, any>
     },
     remove: async (provider: string) => {
-      await fetch("/app/api/auth/remove", {
-        method: "POST",
+      const res = await fetch(`/auth/${provider}`, {
+        method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
       })
+      if (!res.ok) throw new Error(await res.text())
     },
     methods: async (provider: string) => {
-      const res = await fetch(`/app/api/auth/methods?provider=${provider}`)
-      return res.json() as Promise<
-        Array<{
-          label: string
-          type: "oauth" | "api"
-          prompts?: any[]
-        }>
-      >
+      const res = await baseClient.provider.auth()
+      if (res.error || !res.data) return []
+      return (res.data[provider] ?? []) as AuthMethod[]
     },
     start: async (provider: string, methodIndex: number, inputs: any) => {
-      const res = await fetch("/app/api/auth/login/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, methodIndex, inputs }),
+      void inputs
+      const res = await baseClient.provider.oauth.authorize({
+        path: { id: provider },
+        body: { method: methodIndex },
       })
-      if (!res.ok) throw new Error(await res.text())
-      return res.json() as Promise<{ id: string; url?: string; method: "auto" | "code"; instructions?: string }>
+      if (res.error || !res.data) {
+        throw new Error(errorMessage(res.error, "Failed to start login"))
+      }
+
+      const id = oauthID()
+      const status: OAuthStatus = { status: "pending" }
+      oauth.set(id, {
+        provider,
+        method: methodIndex,
+        status,
+      })
+
+      return {
+        id,
+        url: res.data.url,
+        method: res.data.method,
+        instructions: res.data.instructions,
+      }
     },
     submit: async (id: string, code: string) => {
-      const res = await fetch("/app/api/auth/login/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, code }),
+      const flow = oauth.get(id)
+      if (!flow) throw new Error("OAuth flow not found")
+      const res = await baseClient.provider.oauth.callback({
+        path: { id: flow.provider },
+        body: {
+          method: flow.method,
+          code,
+        },
       })
-      if (!res.ok) throw new Error(await res.text())
-      return res.json() as Promise<boolean>
+      if (res.error) {
+        const message = errorMessage(res.error, "Failed to submit OAuth code")
+        flow.status = {
+          status: "failed",
+          result: {
+            message,
+          },
+        }
+        throw new Error(message)
+      }
+      flow.status = { status: "success" }
+      return Boolean(res.data)
     },
     status: async (id: string) => {
-      const res = await fetch(`/app/api/auth/login/status/${id}`)
-      return res.json() as Promise<{ status: "pending" | "success" | "failed"; result?: any }>
+      const flow = oauth.get(id)
+      if (!flow) {
+        return {
+          status: "failed",
+          result: {
+            message: "OAuth flow not found",
+          },
+        }
+      }
+      return flow.status
     },
   },
   app: Object.assign(baseClient.app, {
@@ -248,32 +370,40 @@ export const sdk = {
   },
   state: {
     get: async () => {
-      try {
-        const response = await fetch("/app/api/state", {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        })
-        if (!response.ok) {
-          return { error: { message: "Failed to fetch state" }, data: null }
-        }
-        const data = (await response.json()) as StateResponse
-        return { data, error: null }
-      } catch (error) {
-        return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null }
-      }
+      const data = stateValue()
+      return { data, error: null }
     },
     update: async (options: { body: Partial<StateResponse> }) => {
       try {
-        const response = await fetch("/app/api/state", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(options.body),
-        })
-        if (!response.ok) {
-          return { error: { message: "Failed to update state" }, data: null }
+        const prev = stateValue()
+        const body = options.body
+        const next = { ...prev } as StateResponse
+
+        if (body.theme !== undefined) next.theme = body.theme
+        if (body.provider !== undefined) next.provider = body.provider
+        if (body.model !== undefined) next.model = body.model
+        if (body.agent !== undefined) next.agent = body.agent
+        if (body.show_tool_details !== undefined) next.show_tool_details = body.show_tool_details
+        if (body.show_thinking_blocks !== undefined) next.show_thinking_blocks = body.show_thinking_blocks
+        if (body.recently_used_models !== undefined) next.recently_used_models = body.recently_used_models
+        if (body.recently_used_agents !== undefined) next.recently_used_agents = body.recently_used_agents
+
+        if (body.agent_model) {
+          next.agent_model = {
+            ...(next.agent_model ?? {}),
+            ...body.agent_model,
+          }
         }
-        const data = (await response.json()) as StateResponse
-        return { data, error: null }
+
+        if (body.variant) {
+          next.variant = {
+            ...(next.variant ?? {}),
+            ...body.variant,
+          }
+        }
+
+        stateStore(next)
+        return { data: next, error: null }
       } catch (error) {
         return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null }
       }
