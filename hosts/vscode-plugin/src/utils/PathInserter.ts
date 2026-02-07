@@ -11,6 +11,7 @@ import { logger } from "../globals"
  */
 export class PathInserter {
   private static communicationBridge: CommunicationBridge | undefined
+  private static bridges = new Set<CommunicationBridge>()
 
   static getCommunicationBridge(): CommunicationBridge | undefined {
     return this.communicationBridge
@@ -21,11 +22,30 @@ export class PathInserter {
    * @param bridge The communication bridge to use for communication
    */
   static setCommunicationBridge(bridge: CommunicationBridge | undefined): void {
+    if (bridge) {
+      this.bridges.add(bridge)
+    }
     this.communicationBridge = bridge
     if (bridge) {
       logger.appendLine("Communication bridge set for PathInserter")
     } else {
       logger.appendLine("Communication bridge cleared from PathInserter")
+    }
+  }
+
+  /**
+   * Remove a specific bridge and fall back to another registered bridge if it was active
+   */
+  static removeCommunicationBridge(bridge: CommunicationBridge): void {
+    this.bridges.delete(bridge)
+    if (this.communicationBridge === bridge) {
+      const remaining = [...this.bridges]
+      this.communicationBridge = remaining.length > 0 ? remaining[remaining.length - 1] : undefined
+      logger.appendLine(
+        this.communicationBridge
+          ? "Communication bridge fell back to another instance"
+          : "Communication bridge cleared from PathInserter",
+      )
     }
   }
 
@@ -179,7 +199,16 @@ export class PathInserter {
    * Clear the communication bridge reference
    */
   static clearCommunicationBridge(): void {
-    this.setCommunicationBridge(undefined)
+    if (this.communicationBridge) {
+      this.bridges.delete(this.communicationBridge)
+    }
+    const remaining = [...this.bridges]
+    this.communicationBridge = remaining.length > 0 ? remaining[remaining.length - 1] : undefined
+    logger.appendLine(
+      this.communicationBridge
+        ? "Communication bridge fell back to another instance"
+        : "Communication bridge cleared from PathInserter",
+    )
   }
 
   /**

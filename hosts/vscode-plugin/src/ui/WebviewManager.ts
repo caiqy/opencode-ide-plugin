@@ -151,11 +151,11 @@ export class WebviewManager {
           this.uiState = state
         },
       })
-      // Keep references for compatibility APIs
-      this.communicationBridge = this.controller.getCommunicationBridge?.()
-
       // Load UI via controller
       await this.controller.load(connection)
+
+      // Keep references for compatibility APIs (must be after load() which creates the bridge)
+      this.communicationBridge = this.controller.getCommunicationBridge()
 
       // Prefer routing commands to this panel when visible
       if (this.panel.visible) {
@@ -219,6 +219,9 @@ export class WebviewManager {
    * Clean up resources
    */
   private cleanup(): void {
+    // Grab bridge ref before controller.dispose() clears it
+    const bridge = this.communicationBridge ?? this.controller?.getCommunicationBridge()
+
     if (this.controller) {
       try {
         this.controller.dispose()
@@ -226,11 +229,10 @@ export class WebviewManager {
       this.controller = undefined
     }
 
-    // Clear command routing pointer if it pointed to this controller
+    // Remove this bridge from PathInserter registry; it will fall back to another if available
     try {
-      const current = PathInserter.getCommunicationBridge()
-      if (current && current === this.communicationBridge) {
-        PathInserter.clearCommunicationBridge()
+      if (bridge) {
+        PathInserter.removeCommunicationBridge(bridge)
       }
     } catch {}
     if (this.communicationBridge) {
