@@ -35,7 +35,7 @@ interface MessagesContextValue {
   clearMessages: () => void
   getMessagesBySession: (sessionID: string) => Message[]
   loadSessionMessages: (sessionID: string) => Promise<void>
-  setMessages: (messages: Message[]) => void
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   removeSessionErrors: (sessionID: string, afterTimestamp?: number) => void
   // permissions
   permissions: PermissionRequest[]
@@ -220,9 +220,10 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
 
       const key = infoSessionErrorKey(info)
 
-      // updateMessageInfo creates the message if it doesn't exist
+      // updateMessageInfoCleaningOptimistic removes optimistic placeholders
+      // when a real user message arrives, then upserts the real message.
       setMessages((prev) => {
-        const next = Store.updateMessageInfo(prev, info.id, info)
+        const next = Store.updateMessageInfoCleaningOptimistic(prev, info.id, info)
         if (!key) return next
 
         // If we later receive a message-level error, remove any synthetic session error we created for it.

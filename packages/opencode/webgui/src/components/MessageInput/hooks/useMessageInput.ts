@@ -3,6 +3,8 @@ import { $getRoot, $createParagraphNode, $createTextNode, type LexicalEditor } f
 import { sdk } from "../../../lib/api/sdkClient"
 import { useSession } from "../../../state/SessionContext"
 import { useToast } from "../../../state/ToastContext"
+import { useMessages } from "../../../state/MessagesContext"
+import { createOptimisticUserMessage, removeOptimisticMessages } from "../../../lib/messagesStore"
 
 interface UseMessageInputOptions {
   sessionID: string | null
@@ -33,6 +35,7 @@ export function useMessageInput({
   const [failedMap, setFailedMap] = useState<Record<string, string>>({})
   const { showToast } = useToast()
   const { setSessionIdle, isVirtualSession, materializeSession } = useSession()
+  const { addMessage, setMessages } = useMessages()
 
   const lastFailedMessage = sessionID ? (failedMap[sessionID] ?? null) : null
 
@@ -96,6 +99,11 @@ export function useMessageInput({
 
       setFailed(actualSessionID, null)
       onMessageSent?.()
+
+      // Optimistic update: show user message immediately without waiting for SSE
+      if (!isCommand) {
+        addMessage(createOptimisticUserMessage(actualSessionID, trimmedMessage))
+      }
 
       setTimeout(() => {
         editor.focus()
@@ -184,6 +192,9 @@ export function useMessageInput({
       // Restore failed message for retry
       setFailed(actualSessionID, savedMessage)
 
+      // Remove optimistic message on failure
+      setMessages((prev) => removeOptimisticMessages(prev, actualSessionID))
+
       showToast(error.message, {
         title: "Failed to send message",
         variant: "error",
@@ -211,6 +222,8 @@ export function useMessageInput({
     editor,
     extractMessageParts,
     setFailed,
+    addMessage,
+    setMessages,
   ])
 
   const handleRetry = useCallback(() => {

@@ -121,7 +121,12 @@ export function applyPartDelta(messages: Message[], messageID: string, part: Web
 /**
  * Update a specific part in a message
  */
-export function updatePart(messages: Message[], messageID: string, partID: string, update: Partial<WebguiPart>): Message[] {
+export function updatePart(
+  messages: Message[],
+  messageID: string,
+  partID: string,
+  update: Partial<WebguiPart>,
+): Message[] {
   const messageIndex = messages.findIndex((m) => m.info.id === messageID)
 
   if (messageIndex < 0) return messages
@@ -162,4 +167,61 @@ export function removePart(messages: Message[], messageID: string, partID: strin
  */
 export function getMessagesBySession(messages: Message[], sessionID: string): Message[] {
   return messages.filter((m) => m.info.sessionID === sessionID)
+}
+
+const OPTIMISTIC_PREFIX = "optimistic-"
+
+/**
+ * Create an optimistic user message for immediate local display.
+ * Will be replaced when the real message arrives via SSE.
+ */
+export function createOptimisticUserMessage(sessionID: string, text: string): Message {
+  const id = `${OPTIMISTIC_PREFIX}${sessionID}-${Date.now()}`
+  return {
+    info: {
+      id,
+      sessionID,
+      role: "user",
+      time: { created: Date.now() },
+    } as SDKMessage,
+    parts: [
+      {
+        id: `part-${id}`,
+        type: "text",
+        text,
+        sessionID,
+        messageID: id,
+      } as WebguiPart,
+    ],
+  }
+}
+
+/**
+ * Check whether a message is an optimistic placeholder.
+ */
+export function isOptimisticMessage(message: Message): boolean {
+  return message.info.id.startsWith(OPTIMISTIC_PREFIX)
+}
+
+/**
+ * Remove all optimistic messages for a given session.
+ * Returns the same array reference when nothing was removed.
+ */
+export function removeOptimisticMessages(messages: Message[], sessionID: string): Message[] {
+  const hasAny = messages.some((m) => m.info.sessionID === sessionID && isOptimisticMessage(m))
+  if (!hasAny) return messages
+  return messages.filter((m) => !(m.info.sessionID === sessionID && isOptimisticMessage(m)))
+}
+
+/**
+ * Like updateMessageInfo, but when a real user message arrives,
+ * first removes any optimistic placeholders for that session.
+ */
+export function updateMessageInfoCleaningOptimistic(
+  messages: Message[],
+  messageID: string,
+  info: SDKMessage,
+): Message[] {
+  const cleaned = info.role === "user" ? removeOptimisticMessages(messages, info.sessionID) : messages
+  return updateMessageInfo(cleaned, messageID, info)
 }
