@@ -181,4 +181,17 @@ describe("ModelSelector favorites", () => {
     )
     expect(legacyCheckPath).not.toBeInTheDocument()
   })
+
+  it("触发按钮在暗色主题下使用更亮的文本颜色（与工具栏其他选择器一致）", async () => {
+    render(<ModelSelector onSelect={() => {}} />)
+
+    // 等待首屏异步加载完成，避免 React act(...) 警告
+    await screen.findByText("GPT 4.1")
+
+    const trigger = screen.getByTitle("Select model")
+    expect(trigger).toHaveClass("dark:text-gray-200")
+    expect(trigger).not.toHaveClass("dark:text-gray-400")
+    expect(trigger).toHaveClass("px-1.5")
+    expect(trigger).toHaveClass("gap-0.5")
+  })
 })
