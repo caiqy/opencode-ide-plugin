@@ -3,8 +3,9 @@
 function fileUrlToPath(uri: string): string | null {
   try {
     const u = new URL(uri)
-    if (u.protocol !== "file:") return null
+    // Accept file://, vscode-remote://, wsl:// and similar IDE schemes
     const raw = decodeURIComponent(u.pathname)
+    if (!raw || raw === "/") return null
     // Normalize Windows drive-letter paths like "/C:/foo" -> "C:/foo" while
     // leaving POSIX paths ("/home/user") untouched.
     if (/^\/[A-Za-z]:[\\/]/.test(raw)) return raw.slice(1)

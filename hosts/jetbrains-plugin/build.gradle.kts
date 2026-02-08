@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "paviko.opencode"
-version = findProperty("plugin.version")?.toString() ?: "26.2.7"
+version = findProperty("plugin.version")?.toString() ?: "26.2.8"
 
 repositories {
     mavenCentral()

@@ -5,6 +5,14 @@ All notable changes to the OpenCode VSCode extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec2.0.0.html).
 
+### [26.2.8] - 2026-02-08
+
+- Favorites models
+- Improved resource extraction to use deterministic paths and cleanup stale temp files
+- Fixed drag&drop file in Remote-SSH on Windows and Linux
+- Multi instance management fix
+- Enhance CSP handling for Remote-SSH compatibility
+
 ### [26.2.7] - 2026-02-07
 
 - Add command execution support with / command prefix

@@ -76,6 +76,17 @@ interface ProvidersResponse {
   default: Record<string, string>
 }
 
+interface ModelEntry {
+  providerID: string
+  modelID: string
+}
+
+interface ModelPreferences {
+  recent: ModelEntry[]
+  favorite: ModelEntry[]
+  variant?: Record<string, string>
+}
+
 interface SkillsResponse {
   name: string
   description: string
@@ -89,6 +100,8 @@ interface PathResponse {
 }
 
 const stateKey = "opencode_webgui_state_v1"
+const modelKey = "opencode_webgui_model_v1"
+const kvKey = "opencode_webgui_kv_v1"
 
 function stateValue() {
   if (typeof localStorage === "undefined") return {}
@@ -106,6 +119,92 @@ function stateValue() {
 function stateStore(value: StateResponse) {
   if (typeof localStorage === "undefined") return
   localStorage.setItem(stateKey, JSON.stringify(value))
+}
+
+function recentFromState(state: StateResponse) {
+  return (state.recently_used_models ?? []).map((item) => ({
+    providerID: item.provider_id,
+    modelID: item.model_id,
+  }))
+}
+
+function modelFromState(state: StateResponse): ModelPreferences {
+  return {
+    recent: recentFromState(state),
+    favorite: [],
+    variant: state.variant ?? {},
+  }
+}
+
+function modelValue() {
+  const state = stateValue()
+  const fallback = modelFromState(state)
+  if (typeof localStorage === "undefined") return fallback
+  const raw = localStorage.getItem(modelKey)
+  if (!raw) return fallback
+  try {
+    const parsed = JSON.parse(raw) as {
+      recent?: unknown
+      favorite?: unknown
+      variant?: unknown
+    }
+
+    const recent = Array.isArray(parsed.recent)
+      ? parsed.recent.filter(
+          (item): item is ModelEntry =>
+            Boolean(item) &&
+            typeof item === "object" &&
+            typeof (item as { providerID?: unknown }).providerID === "string" &&
+            typeof (item as { modelID?: unknown }).modelID === "string",
+        )
+      : fallback.recent
+
+    const favorite = Array.isArray(parsed.favorite)
+      ? parsed.favorite.filter(
+          (item): item is ModelEntry =>
+            Boolean(item) &&
+            typeof item === "object" &&
+            typeof (item as { providerID?: unknown }).providerID === "string" &&
+            typeof (item as { modelID?: unknown }).modelID === "string",
+        )
+      : fallback.favorite
+
+    const variant =
+      parsed.variant && typeof parsed.variant === "object"
+        ? (parsed.variant as Record<string, string>)
+        : fallback.variant
+
+    return {
+      recent,
+      favorite,
+      variant,
+    }
+  } catch {
+    return fallback
+  }
+}
+
+function modelStore(value: ModelPreferences) {
+  if (typeof localStorage === "undefined") return
+  localStorage.setItem(modelKey, JSON.stringify(value))
+}
+
+function kvValue() {
+  if (typeof localStorage === "undefined") return {}
+  const raw = localStorage.getItem(kvKey)
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") return {}
+    return parsed as Record<string, any>
+  } catch {
+    return {}
+  }
+}
+
+function kvStore(value: Record<string, any>) {
+  if (typeof localStorage === "undefined") return
+  localStorage.setItem(kvKey, JSON.stringify(value))
 }
 
 function retryParts(input: any[]) {
@@ -406,9 +505,104 @@ export const sdk = {
         }
 
         stateStore(next)
+
+        const model = modelValue()
+        let shouldStoreModel = false
+        if (body.recently_used_models !== undefined) {
+          model.recent = recentFromState(next)
+          shouldStoreModel = true
+        }
+        if (body.variant) {
+          model.variant = {
+            ...(model.variant ?? {}),
+            ...body.variant,
+          }
+          shouldStoreModel = true
+        }
+        if (shouldStoreModel) {
+          modelStore(model)
+        }
+
         return { data: next, error: null }
       } catch (error) {
         return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null }
+      }
+    },
+  },
+  model: {
+    get: async () => {
+      const data = modelValue()
+      return { data, error: null as { message: string } | null }
+    },
+    update: async (options: { body: Partial<ModelPreferences> }) => {
+      try {
+        const prev = modelValue()
+        const body = options.body
+        const next: ModelPreferences = {
+          recent: body.recent ?? prev.recent ?? [],
+          favorite: body.favorite ?? prev.favorite ?? [],
+          variant: body.variant
+            ? {
+                ...(prev.variant ?? {}),
+                ...body.variant,
+              }
+            : (prev.variant ?? {}),
+        }
+
+        modelStore(next)
+
+        const state = stateValue()
+        if (body.recent !== undefined) {
+          const now = Date.now()
+          state.recently_used_models = next.recent.map((entry, index) => ({
+            provider_id: entry.providerID,
+            model_id: entry.modelID,
+            last_used: new Date(now - index).toISOString(),
+          }))
+
+          const first = next.recent[0]
+          if (first) {
+            state.provider = first.providerID
+            state.model = first.modelID
+          }
+        }
+
+        if (body.variant !== undefined) {
+          state.variant = {
+            ...(state.variant ?? {}),
+            ...(body.variant ?? {}),
+          }
+        }
+
+        stateStore(state)
+
+        return { data: next, error: null as { message: string } | null }
+      } catch (error) {
+        return {
+          error: { message: error instanceof Error ? error.message : "Unknown error" },
+          data: null as ModelPreferences | null,
+        }
+      }
+    },
+  },
+  kv: {
+    get: async () => {
+      const data = kvValue()
+      return { data, error: null as { message: string } | null }
+    },
+    update: async (options: { body: Record<string, any> }) => {
+      try {
+        const next = {
+          ...kvValue(),
+          ...options.body,
+        }
+        kvStore(next)
+        return { data: next, error: null as { message: string } | null }
+      } catch (error) {
+        return {
+          error: { message: error instanceof Error ? error.message : "Unknown error" },
+          data: null as Record<string, any> | null,
+        }
       }
     },
   },

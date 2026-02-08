@@ -69,11 +69,10 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
         this.controller = undefined
       }
 
-      // Clear command routing pointer if it pointed to this controller
+      // Remove this bridge from PathInserter registry; it will fall back to another if available
       try {
-        const current = PathInserter.getCommunicationBridge()
-        if (current && bridge && current === bridge) {
-          PathInserter.clearCommunicationBridge()
+        if (bridge) {
+          PathInserter.removeCommunicationBridge(bridge)
         }
       } catch {}
       this.view = undefined

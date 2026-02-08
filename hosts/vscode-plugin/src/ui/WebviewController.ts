@@ -121,7 +121,11 @@ export class WebviewController {
       const uiUrlWithMode = this.buildUiUrlWithMode(externalUi.toString())
       const iframeSrc = `${uiUrlWithMode}&ideBridge=${encodeURIComponent(externalBridge.toString())}&ideBridgeToken=${encodeURIComponent(session.token)}`
 
-      const html = await this.generateHtmlContent(iframeSrc)
+      // Extract origins for dynamic CSP (Remote-SSH compatibility)
+      const uiOrigin = new URL(externalUi.toString()).origin
+      const bridgeOrigin = new URL(externalBridge.toString()).origin
+
+      const html = await this.generateHtmlContent(iframeSrc, { uiOrigin, bridgeOrigin })
       this.webview.html = html
 
       // Message handling is now done entirely by CommunicationBridge
@@ -145,30 +149,36 @@ export class WebviewController {
         uris.map(async (u) => {
           try {
             const uri = vscode.Uri.parse(u)
-            const filePath = uri.fsPath
+            // For non-file URIs (e.g. vscode-remote://ssh-remote+host/path),
+            // fsPath includes the authority as a UNC prefix (//ssh-remote+host/path)
+            // which is not a valid filesystem path. Use uri.path instead.
+            const filePath = uri.scheme === "file" ? uri.fsPath : uri.path
+            // For vscode.workspace.fs operations, keep the original URI so the
+            // remote extension host resolves the file on the correct machine
+            // (works for file://, vscode-remote://, wsl://, etc.)
+            const fileUri = uri
 
-            // Check if it's a file or directory
             try {
-              const stat = await vscode.workspace.fs.stat(uri)
+              const stat = await vscode.workspace.fs.stat(fileUri)
               if (stat.type === vscode.FileType.File) {
                 filePaths.push(filePath)
               } else if (stat.type === vscode.FileType.Directory) {
                 directoryPaths.push(filePath)
               }
-            } catch (statError) {
+            } catch {
               // If stat fails, assume it's a file
               filePaths.push(filePath)
             }
 
             // Create webview-safe URI for direct display
-            const webviewUri = this.webview.asWebviewUri(uri)
+            const webviewUri = this.webview.asWebviewUri(fileUri)
 
             // Optionally read file contents as base64 for fallback
             let data: string | undefined
             try {
-              const buf = await vscode.workspace.fs.readFile(uri)
+              const buf = await vscode.workspace.fs.readFile(fileUri)
               data = Buffer.from(buf).toString("base64")
-            } catch (readError) {
+            } catch {
               // File reading failed, but webviewUri might still work
             }
 
@@ -236,12 +246,48 @@ export class WebviewController {
     return base.includes("?") ? `${base}&mode=${uiMode}` : `${base}?mode=${uiMode}`
   }
 
-  private async generateHtmlContent(uiUrl: string): Promise<string> {
+  private async generateHtmlContent(
+    uiUrl: string,
+    origins: { uiOrigin: string; bridgeOrigin: string },
+  ): Promise<string> {
     const htmlUri = vscode.Uri.joinPath(this.context.extensionUri, "resources", "webview", "index.html")
     const bytes = await vscode.workspace.fs.readFile(htmlUri)
     let html = Buffer.from(bytes).toString("utf8")
-    html = html.replace(/\$\{uiUrl\}/g, uiUrl).replace(/\$\{cspSource\}/g, this.webview.cspSource)
+
+    // Build dynamic CSP origins - include both specific origins and localhost fallbacks
+    const cspOrigins = this.buildCspOrigins(origins.uiOrigin, origins.bridgeOrigin)
+
+    html = html
+      .replace(/\$\{uiUrl\}/g, uiUrl)
+      .replace(/\$\{cspSource\}/g, this.webview.cspSource)
+      .replace(/\$\{cspOrigins\}/g, cspOrigins)
+
     return html
+  }
+
+  private buildCspOrigins(uiOrigin: string, bridgeOrigin: string): string {
+    // Collect unique origins, always include localhost fallbacks for compatibility
+    const origins = new Set<string>([
+      "http://127.0.0.1:*",
+      "https://127.0.0.1:*",
+      "http://localhost:*",
+      "https://localhost:*",
+    ])
+
+    // Add the actual resolved origins (handles Remote-SSH tunnels, codespaces, etc.)
+    for (const origin of [uiOrigin, bridgeOrigin]) {
+      try {
+        const url = new URL(origin)
+        // Add with wildcard port for flexibility
+        origins.add(`${url.protocol}//${url.hostname}:*`)
+        // Also add the exact origin
+        origins.add(origin)
+      } catch {
+        // Skip invalid origins
+      }
+    }
+
+    return Array.from(origins).join(" ")
   }
 
   private normalizePath(rawPath: string): string | null {

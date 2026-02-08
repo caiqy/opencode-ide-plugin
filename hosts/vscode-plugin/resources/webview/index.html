@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' http://127.0.0.1:* https://127.0.0.1:* ${cspSource}; style-src 'unsafe-inline' http://127.0.0.1:* https://127.0.0.1:* ${cspSource}; img-src 'self' data: http://127.0.0.1:* https://127.0.0.1:* https://*.vscode-cdn.net; connect-src ws://127.0.0.1:* wss://127.0.0.1:* http://127.0.0.1:* https://127.0.0.1:*; font-src 'self' data: http://127.0.0.1:* https://127.0.0.1:*; media-src 'self' http://127.0.0.1:* https://127.0.0.1:*; frame-src http://127.0.0.1:* https://127.0.0.1:*; object-src 'none'; base-uri 'none'"
+      content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' ${cspOrigins} ${cspSource}; style-src 'unsafe-inline' ${cspOrigins} ${cspSource}; img-src 'self' data: ${cspOrigins} https://*.vscode-cdn.net; connect-src ws://127.0.0.1:* wss://127.0.0.1:* ws://localhost:* wss://localhost:* ${cspOrigins}; font-src 'self' data: ${cspOrigins}; media-src 'self' ${cspOrigins}; frame-src ${cspOrigins}; object-src 'none'; base-uri 'none'"
     />
     <title>OpenCode</title>
     <style>

@@ -7,8 +7,13 @@ import * as os from "os"
  * Handles OS/architecture detection and binary extraction from extension resources
  */
 export class ResourceExtractor {
+  private static readonly STABLE_DIR = "opencode-bin"
+  private static readonly STALE_PREFIX = "opencode-"
+
   /**
-   * Extract the appropriate opencode binary for the current platform
+   * Extract the appropriate opencode binary for the current platform.
+   * Uses a deterministic path so the binary is reused across launches and
+   * only re-copied when the source file size changes (e.g. extension update).
    * @param extensionPath Path to the extension directory
    * @returns Promise resolving to the path of the extracted binary
    */
@@ -16,31 +21,57 @@ export class ResourceExtractor {
     const osType = this.detectOS()
     const arch = this.detectArchitecture()
 
-    // Determine binary name based on OS
     const binaryName = osType === "windows" ? "opencode.exe" : "opencode"
 
-    // Construct path to binary in extension resources
     const binaryPath = path.join(extensionPath, "resources", "bin", osType, arch, binaryName)
 
-    // Check if binary exists
     if (!fs.existsSync(binaryPath)) {
       throw new Error(`Binary not found for platform ${osType}/${arch} at ${binaryPath}`)
     }
 
-    // Create temporary file
-    const tempDir = os.tmpdir()
-    const tempFileName = `opencode-${Date.now()}-${Math.random().toString(36).substr(2, 9)}${osType === "windows" ? ".exe" : ""}`
-    const tempPath = path.join(tempDir, tempFileName)
+    const stableDir = path.join(os.tmpdir(), this.STABLE_DIR)
+    await fs.promises.mkdir(stableDir, { recursive: true })
+    const destPath = path.join(stableDir, binaryName)
 
-    // Copy binary to temporary location
-    await fs.promises.copyFile(binaryPath, tempPath)
-
-    // Make executable on Unix-like systems
-    if (osType !== "windows") {
-      await this.makeExecutable(tempPath)
+    try {
+      await fs.promises.copyFile(binaryPath, destPath)
+    } catch (e: any) {
+      // Binary may be in use – continue with existing copy
+      console.log(`[ResourceExtractor] Could not overwrite binary (may be in use): ${e?.code || e}`)
     }
 
-    return tempPath
+    if (osType !== "windows") {
+      await this.makeExecutable(destPath)
+    }
+
+    // Best-effort cleanup of stale random temp files from previous versions
+    this.cleanupStaleTempFiles().catch(() => {})
+
+    return destPath
+  }
+
+  /**
+   * Remove stale opencode-* temp files/dirs left by older plugin versions.
+   */
+  private static async cleanupStaleTempFiles(): Promise<void> {
+    const tmpDir = os.tmpdir()
+    const entries = await fs.promises.readdir(tmpDir)
+    for (const entry of entries) {
+      if (!entry.startsWith(this.STALE_PREFIX) || entry === this.STABLE_DIR) continue
+      // Match old random pattern: opencode-<timestamp>-<random> or opencode-<random-dir>
+      if (!/^opencode-\d/.test(entry)) continue
+      const full = path.join(tmpDir, entry)
+      try {
+        const stat = await fs.promises.stat(full)
+        if (stat.isDirectory()) {
+          await fs.promises.rm(full, { recursive: true, force: true })
+        } else {
+          await fs.promises.unlink(full)
+        }
+      } catch {
+        // ignore – file may be in use or already removed
+      }
+    }
   }
 
   /**
