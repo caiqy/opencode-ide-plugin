@@ -48,9 +48,9 @@ function errorMessage(input: unknown, fallback: string) {
 }
 
 /**
- * State API response types
+ * Legacy webgui state snapshot (migration only)
  */
-interface StateResponse {
+interface LegacyStateSnapshot {
   theme?: string
   agent_model?: Record<string, { provider_id: string; model_id: string }>
   provider?: string
@@ -102,6 +102,7 @@ interface PathResponse {
 const stateKey = "opencode_webgui_state_v1"
 const modelKey = "opencode_webgui_model_v1"
 const kvKey = "opencode_webgui_kv_v1"
+const legacyFavoriteKey = "opencode_favorite_models_v1"
 
 function stateValue() {
   if (typeof localStorage === "undefined") return {}
@@ -110,25 +111,92 @@ function stateValue() {
   try {
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== "object") return {}
-    return parsed as StateResponse
+    return parsed as LegacyStateSnapshot
   } catch {
     return {}
   }
 }
 
-function stateStore(value: StateResponse) {
-  if (typeof localStorage === "undefined") return
-  localStorage.setItem(stateKey, JSON.stringify(value))
-}
-
-function recentFromState(state: StateResponse) {
+function recentFromState(state: LegacyStateSnapshot) {
   return (state.recently_used_models ?? []).map((item) => ({
     providerID: item.provider_id,
     modelID: item.model_id,
   }))
 }
 
-function modelFromState(state: StateResponse): ModelPreferences {
+function kvFromLegacyState(state: LegacyStateSnapshot) {
+  const migrated: Record<string, any> = {}
+  if (typeof state.agent === "string") migrated.webgui_agent = state.agent
+  if (typeof state.provider === "string") migrated.webgui_provider = state.provider
+  if (typeof state.model === "string") migrated.webgui_model = state.model
+  if (state.agent_model && typeof state.agent_model === "object") {
+    migrated.webgui_agent_model = state.agent_model
+  }
+  if (typeof state.message_parts_auto_expand === "boolean") {
+    migrated.webgui_message_parts_auto_expand = state.message_parts_auto_expand
+  }
+  return migrated
+}
+
+function modelEntryKey(entry: ModelEntry) {
+  return `${entry.providerID}/${entry.modelID}`
+}
+
+function parseModelEntryArray(input: unknown) {
+  if (!Array.isArray(input)) return [] as ModelEntry[]
+  return input.filter(
+    (item): item is ModelEntry =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      typeof (item as { providerID?: unknown }).providerID === "string" &&
+      typeof (item as { modelID?: unknown }).modelID === "string",
+  )
+}
+
+function parseLegacyFavoriteEntries(raw: string | null | undefined) {
+  if (!raw) return [] as ModelEntry[]
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    const result: ModelEntry[] = []
+    for (const item of parsed) {
+      if (typeof item !== "string") continue
+      const index = item.indexOf("/")
+      if (index <= 0 || index >= item.length - 1) continue
+      result.push({
+        providerID: item.slice(0, index),
+        modelID: item.slice(index + 1),
+      })
+    }
+    return result
+  } catch {
+    return []
+  }
+}
+
+function mergeModelEntries(primary: ModelEntry[], secondary: ModelEntry[]) {
+  const merged: ModelEntry[] = []
+  const seen = new Set<string>()
+  for (const item of [...primary, ...secondary]) {
+    const key = modelEntryKey(item)
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(item)
+  }
+  return merged
+}
+
+function legacyFavoriteEntries() {
+  if (typeof localStorage === "undefined") return [] as ModelEntry[]
+  return parseLegacyFavoriteEntries(localStorage.getItem(legacyFavoriteKey))
+}
+
+function legacyFavoriteStore(entries: ModelEntry[]) {
+  if (typeof localStorage === "undefined") return
+  localStorage.setItem(legacyFavoriteKey, JSON.stringify(entries.map(modelEntryKey)))
+}
+
+function modelFromState(state: LegacyStateSnapshot): ModelPreferences {
   return {
     recent: recentFromState(state),
     favorite: [],
@@ -140,8 +208,21 @@ function modelValue() {
   const state = stateValue()
   const fallback = modelFromState(state)
   if (typeof localStorage === "undefined") return fallback
+
+  const legacyFavorite = legacyFavoriteEntries()
   const raw = localStorage.getItem(modelKey)
-  if (!raw) return fallback
+  if (!raw) {
+    const favorite = mergeModelEntries(fallback.favorite, legacyFavorite)
+    const migrated = {
+      ...fallback,
+      favorite,
+    }
+    if (favorite.length > 0) {
+      modelStore(migrated)
+    }
+    return migrated
+  }
+
   try {
     const parsed = JSON.parse(raw) as {
       recent?: unknown
@@ -149,56 +230,73 @@ function modelValue() {
       variant?: unknown
     }
 
-    const recent = Array.isArray(parsed.recent)
-      ? parsed.recent.filter(
-          (item): item is ModelEntry =>
-            Boolean(item) &&
-            typeof item === "object" &&
-            typeof (item as { providerID?: unknown }).providerID === "string" &&
-            typeof (item as { modelID?: unknown }).modelID === "string",
-        )
-      : fallback.recent
+    const recent = parsed.recent !== undefined ? parseModelEntryArray(parsed.recent) : fallback.recent
 
-    const favorite = Array.isArray(parsed.favorite)
-      ? parsed.favorite.filter(
-          (item): item is ModelEntry =>
-            Boolean(item) &&
-            typeof item === "object" &&
-            typeof (item as { providerID?: unknown }).providerID === "string" &&
-            typeof (item as { modelID?: unknown }).modelID === "string",
-        )
-      : fallback.favorite
+    const parsedFavorite = parsed.favorite !== undefined ? parseModelEntryArray(parsed.favorite) : fallback.favorite
+    const favorite = mergeModelEntries(parsedFavorite, legacyFavorite)
 
     const variant =
       parsed.variant && typeof parsed.variant === "object"
         ? (parsed.variant as Record<string, string>)
         : fallback.variant
 
-    return {
+    const result = {
       recent,
       favorite,
       variant,
     }
+
+    if (favorite.length !== parsedFavorite.length) {
+      modelStore(result)
+    }
+
+    return result
   } catch {
-    return fallback
+    const favorite = mergeModelEntries(fallback.favorite, legacyFavorite)
+    const migrated = {
+      ...fallback,
+      favorite,
+    }
+    if (favorite.length > 0) {
+      modelStore(migrated)
+    }
+    return migrated
   }
 }
 
 function modelStore(value: ModelPreferences) {
   if (typeof localStorage === "undefined") return
   localStorage.setItem(modelKey, JSON.stringify(value))
+  legacyFavoriteStore(value.favorite)
 }
 
 function kvValue() {
   if (typeof localStorage === "undefined") return {}
+  const legacy = kvFromLegacyState(stateValue())
   const raw = localStorage.getItem(kvKey)
-  if (!raw) return {}
+  if (!raw) {
+    if (Object.keys(legacy).length > 0) {
+      kvStore(legacy)
+    }
+    return legacy
+  }
   try {
     const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== "object") return {}
-    return parsed as Record<string, any>
+    if (!parsed || typeof parsed !== "object") return legacy
+    const current = parsed as Record<string, any>
+    const merged = {
+      ...legacy,
+      ...current,
+    }
+    if (JSON.stringify(merged) !== JSON.stringify(current)) {
+      kvStore(merged)
+    }
+    return merged
   } catch {
-    return {}
+    if (Object.keys(legacy).length > 0) {
+      kvStore(legacy)
+    }
+    return legacy
   }
 }
 
@@ -468,67 +566,6 @@ export const sdk = {
       return { data, error: null }
     },
   },
-  state: {
-    get: async () => {
-      const data = stateValue()
-      return { data, error: null }
-    },
-    update: async (options: { body: Partial<StateResponse> }) => {
-      try {
-        const prev = stateValue()
-        const body = options.body
-        const next = { ...prev } as StateResponse
-
-        if (body.theme !== undefined) next.theme = body.theme
-        if (body.provider !== undefined) next.provider = body.provider
-        if (body.model !== undefined) next.model = body.model
-        if (body.agent !== undefined) next.agent = body.agent
-        if (body.show_tool_details !== undefined) next.show_tool_details = body.show_tool_details
-        if (body.show_thinking_blocks !== undefined) next.show_thinking_blocks = body.show_thinking_blocks
-        if (body.message_parts_auto_expand !== undefined)
-          next.message_parts_auto_expand = body.message_parts_auto_expand
-        if (body.recently_used_models !== undefined) next.recently_used_models = body.recently_used_models
-        if (body.recently_used_agents !== undefined) next.recently_used_agents = body.recently_used_agents
-
-        if (body.agent_model) {
-          next.agent_model = {
-            ...(next.agent_model ?? {}),
-            ...body.agent_model,
-          }
-        }
-
-        if (body.variant) {
-          next.variant = {
-            ...(next.variant ?? {}),
-            ...body.variant,
-          }
-        }
-
-        stateStore(next)
-
-        const model = modelValue()
-        let shouldStoreModel = false
-        if (body.recently_used_models !== undefined) {
-          model.recent = recentFromState(next)
-          shouldStoreModel = true
-        }
-        if (body.variant) {
-          model.variant = {
-            ...(model.variant ?? {}),
-            ...body.variant,
-          }
-          shouldStoreModel = true
-        }
-        if (shouldStoreModel) {
-          modelStore(model)
-        }
-
-        return { data: next, error: null }
-      } catch (error) {
-        return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null }
-      }
-    },
-  },
   model: {
     get: async () => {
       const data = modelValue()
@@ -550,31 +587,6 @@ export const sdk = {
         }
 
         modelStore(next)
-
-        const state = stateValue()
-        if (body.recent !== undefined) {
-          const now = Date.now()
-          state.recently_used_models = next.recent.map((entry, index) => ({
-            provider_id: entry.providerID,
-            model_id: entry.modelID,
-            last_used: new Date(now - index).toISOString(),
-          }))
-
-          const first = next.recent[0]
-          if (first) {
-            state.provider = first.providerID
-            state.model = first.modelID
-          }
-        }
-
-        if (body.variant !== undefined) {
-          state.variant = {
-            ...(state.variant ?? {}),
-            ...(body.variant ?? {}),
-          }
-        }
-
-        stateStore(state)
 
         return { data: next, error: null as { message: string } | null }
       } catch (error) {
