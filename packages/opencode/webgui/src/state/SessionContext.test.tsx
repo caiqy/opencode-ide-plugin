@@ -5,7 +5,11 @@ import type { ReactNode } from "react"
 vi.mock("../lib/api/sdkClient", () => {
   return {
     sdk: {
-      state: {
+      kv: {
+        get: vi.fn(),
+        update: vi.fn(),
+      },
+      model: {
         get: vi.fn(),
         update: vi.fn(),
       },
@@ -50,15 +54,18 @@ describe("SessionContext migration", () => {
     ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.state.update as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.kv.get as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.kv.update as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.model.get as any).mockResolvedValue({ data: { recent: [], favorite: [], variant: {} }, error: null })
+    ;(sdk.model.update as any).mockResolvedValue({ data: {}, error: null })
   })
 
-  it("session context still initializes model and agent from state api", async () => {
-    ;(sdk.state.get as any).mockResolvedValue({
+  it("session context still initializes model and agent from kv/model api", async () => {
+    ;(sdk.kv.get as any).mockResolvedValue({
       data: {
-        agent: "plan",
-        provider: "openai",
-        model: "gpt-4.1",
+        webgui_agent: "plan",
+        webgui_provider: "openai",
+        webgui_model: "gpt-4.1",
       },
       error: null,
     })
@@ -73,7 +80,8 @@ describe("SessionContext migration", () => {
   })
 
   it("retry still triggers assistant loop call path", async () => {
-    ;(sdk.state.get as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.kv.get as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.model.get as any).mockResolvedValue({ data: { recent: [], favorite: [] }, error: null })
 
     const { result } = renderHook(() => useSession(), { wrapper })
 

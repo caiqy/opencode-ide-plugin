@@ -23,8 +23,8 @@ export function UISettingsProvider(props: { children: ReactNode }) {
     let mounted = true
 
     const load = async () => {
-      const response = await sdk.state.get()
-      const value = response.data?.message_parts_auto_expand
+      const response = await sdk.kv.get()
+      const value = response.data?.webgui_message_parts_auto_expand
       if (!mounted) return
       if (typeof value === "boolean") {
         setAutoExpandMessagePartsState(value)
@@ -42,9 +42,9 @@ export function UISettingsProvider(props: { children: ReactNode }) {
 
   const setAutoExpandMessageParts = useCallback(async (next: boolean) => {
     setAutoExpandMessagePartsState(next)
-    const response = await sdk.state.update({
+    const response = await sdk.kv.update({
       body: {
-        message_parts_auto_expand: next,
+        webgui_message_parts_auto_expand: next,
       },
     })
     if (response.error) {
