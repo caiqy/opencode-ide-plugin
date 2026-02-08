@@ -8,8 +8,9 @@ vi.mock("../lib/api/sdkClient", () => {
       config: {
         providers: vi.fn(),
       },
-      state: {
+      model: {
         get: vi.fn(),
+        update: vi.fn(),
       },
     },
   }
@@ -50,12 +51,14 @@ describe("ModelSelector favorites", () => {
       },
       error: null,
     })
-    ;(sdk.state.get as any).mockResolvedValue({
+    ;(sdk.model.get as any).mockResolvedValue({
       data: {
-        recently_used_models: [],
+        recent: [],
+        favorite: [],
       },
       error: null,
     })
+    ;(sdk.model.update as any).mockResolvedValue({ data: { recent: [], favorite: [] }, error: null })
     ;(ideBridge.isInstalled as any).mockReturnValue(false)
     ;(ideBridge.request as any).mockResolvedValue({ ok: true, result: {} })
   })

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { sdk } from "../lib/api/sdkClient"
 import type { Provider } from "@opencode-ai/sdk/client"
 import { useDropdown } from "../hooks/useDropdown"
+import { ideBridge } from "../lib/ideBridge"
 
 interface ModelSelectorProps {
   selectedProviderId?: string
@@ -16,18 +17,94 @@ interface ModelEntry {
 }
 
 const MAX_RECENT = 10
+const LEGACY_FAVORITE_KEY = "opencode_favorite_models_v1"
 
-function StarIcon({ filled, onClick }: { filled: boolean; onClick: (e: React.MouseEvent) => void }) {
+function favoriteKey(entry: ModelEntry) {
+  return `${entry.providerID}/${entry.modelID}`
+}
+
+function parseLegacyFavorite(raw: string | null | undefined): ModelEntry[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    const result: ModelEntry[] = []
+    for (const item of parsed) {
+      if (typeof item !== "string") continue
+      const index = item.indexOf("/")
+      if (index <= 0 || index >= item.length - 1) continue
+      result.push({
+        providerID: item.slice(0, index),
+        modelID: item.slice(index + 1),
+      })
+    }
+    return result
+  } catch {
+    return []
+  }
+}
+
+function mergeFavorite(primary: ModelEntry[], secondary: ModelEntry[]) {
+  const merged: ModelEntry[] = []
+  const seen = new Set<string>()
+  for (const item of [...primary, ...secondary]) {
+    const key = favoriteKey(item)
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(item)
+  }
+  return merged
+}
+
+function sameFavorite(a: ModelEntry[], b: ModelEntry[]) {
+  if (a.length !== b.length) return false
+  return a.every((item, index) => favoriteKey(item) === favoriteKey(b[index]))
+}
+
+function StarIcon({
+  filled,
+  label,
+  onClick,
+}: {
+  filled: boolean
+  label: string
+  onClick: (e: React.MouseEvent) => void
+}) {
   return (
     <button
       onClick={onClick}
+      aria-label={label}
       className="flex-shrink-0 p-0.5 hover:scale-110 transition-transform"
-      title={filled ? "Remove from favorites" : "Add to favorites"}
+      title={label}
     >
-      <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill={filled ? "#eab308" : "none"} stroke={filled ? "#eab308" : "currentColor"} strokeWidth={1.5}>
+      <svg
+        className="w-3.5 h-3.5"
+        viewBox="0 0 20 20"
+        fill={filled ? "#eab308" : "none"}
+        stroke={filled ? "#eab308" : "currentColor"}
+        strokeWidth={1.5}
+      >
         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
       </svg>
     </button>
+  )
+}
+
+function ModelSelectionIndicator({ selected }: { selected: boolean }) {
+  return (
+    <span
+      data-slot="model-selection-indicator"
+      aria-hidden="true"
+      className="inline-flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center"
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full transition-opacity duration-200 ${
+          selected
+            ? "bg-blue-500 dark:bg-blue-400 shadow-[0_0_0_4px_rgba(0,120,212,0.22)] dark:shadow-[0_0_0_4px_rgba(77,170,252,0.22)] model-selection-dot-breathe"
+            : "opacity-0"
+        }`}
+      />
+    </span>
   )
 }
 
@@ -38,6 +115,10 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
   const [isLoading, setIsLoading] = useState(true)
   const [recent, setRecent] = useState<ModelEntry[]>([])
   const [favorite, setFavorite] = useState<ModelEntry[]>([])
+  const [readyForHydration, setReadyForHydration] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
+
+  const favoriteSet = new Set(favorite.map(favoriteKey))
 
   const isFavorite = useCallback(
     (providerID: string, modelID: string) => favorite.some((f) => f.providerID === providerID && f.modelID === modelID),
@@ -72,13 +153,97 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
       } catch (err) {
         if (active) console.error("[ModelSelector] Failed to load:", err)
       } finally {
-        if (active) setIsLoading(false)
+        if (active) {
+          setIsLoading(false)
+          setReadyForHydration(true)
+        }
       }
     }
 
     load()
-    return () => { active = false }
+    return () => {
+      active = false
+    }
   }, [])
+
+  useEffect(() => {
+    if (!readyForHydration) return
+
+    let cancelled = false
+
+    const applyLegacy = (entries: ModelEntry[]) => {
+      if (entries.length === 0) return
+      setFavorite((prev) => {
+        const merged = mergeFavorite(entries, prev)
+        if (sameFavorite(prev, merged)) return prev
+        sdk.model
+          .update({ body: { favorite: merged } })
+          .catch((err) => console.error("[ModelSelector] Failed to migrate legacy favorites:", err))
+        return merged
+      })
+    }
+
+    const hydrateLegacyFavorites = async () => {
+      const localRaw = typeof window === "undefined" ? null : window.localStorage.getItem(LEGACY_FAVORITE_KEY)
+
+      if (!ideBridge.isInstalled()) {
+        applyLegacy(parseLegacyFavorite(localRaw))
+        if (!cancelled) setHydrated(true)
+        return
+      }
+
+      try {
+        const reply = await ideBridge.request("storageGet", {
+          keys: [LEGACY_FAVORITE_KEY],
+        })
+
+        if (cancelled) return
+
+        const hostRaw =
+          typeof reply.result?.[LEGACY_FAVORITE_KEY] === "string" ? reply.result[LEGACY_FAVORITE_KEY] : null
+        const hostFavorites = parseLegacyFavorite(hostRaw)
+
+        if (hostFavorites.length > 0) {
+          applyLegacy(hostFavorites)
+        } else if (localRaw) {
+          await ideBridge.request("storageSet", {
+            key: LEGACY_FAVORITE_KEY,
+            value: localRaw,
+          })
+        }
+      } catch (err) {
+        console.error("[ModelSelector] Failed to hydrate legacy favorites:", err)
+      } finally {
+        if (!cancelled) setHydrated(true)
+      }
+    }
+
+    hydrateLegacyFavorites()
+
+    return () => {
+      cancelled = true
+    }
+  }, [readyForHydration])
+
+  useEffect(() => {
+    if (!hydrated) return
+
+    const serialized = JSON.stringify(favorite.map(favoriteKey))
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LEGACY_FAVORITE_KEY, serialized)
+    }
+
+    if (!ideBridge.isInstalled()) return
+
+    ideBridge
+      .request("storageSet", {
+        key: LEGACY_FAVORITE_KEY,
+        value: serialized,
+      })
+      .catch((err) => {
+        console.error("[ModelSelector] Failed to sync favorites to IDE storage:", err)
+      })
+  }, [favorite, hydrated])
 
   const getCurrentDisplay = () => {
     const pid = selectedProviderId || defaultIds.provider
@@ -97,9 +262,9 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
     if (deduped.length > MAX_RECENT) deduped.length = MAX_RECENT
     setRecent(deduped)
 
-    sdk.model.update({ body: { recent: deduped } }).catch((err) =>
-      console.error("[ModelSelector] Failed to update recent:", err),
-    )
+    sdk.model
+      .update({ body: { recent: deduped } })
+      .catch((err) => console.error("[ModelSelector] Failed to update recent:", err))
 
     close()
   }
@@ -112,9 +277,9 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
       : [{ providerID, modelID }, ...favorite]
     setFavorite(next)
 
-    sdk.model.update({ body: { favorite: next } }).catch((err) =>
-      console.error("[ModelSelector] Failed to update favorites:", err),
-    )
+    sdk.model
+      .update({ body: { favorite: next } })
+      .catch((err) => console.error("[ModelSelector] Failed to update favorites:", err))
   }
 
   const filterModels = (provider: Provider) => {
@@ -151,11 +316,19 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
     const provider = providers.find((p) => p.id === providerID)
     const model = provider?.models[modelID]
     const name = model?.name || modelID
+    const label = `Toggle favorite ${providerID}/${modelID}`
 
     return (
-      <button
+      <div
         key={`${providerID}:${modelID}`}
         onClick={() => handleSelect(providerID, modelID)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return
+          event.preventDefault()
+          void handleSelect(providerID, modelID)
+        }}
         className={`w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between ${
           isSelected
             ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
@@ -163,6 +336,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
         }`}
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
+          <ModelSelectionIndicator selected={isSelected} />
           <span className="font-medium truncate">{name}</span>
           {extraLabel}
           <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate max-w-[6rem]">
@@ -170,18 +344,13 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
           </span>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          <StarIcon filled={isFavorite(providerID, modelID)} onClick={(e) => toggleFavorite(providerID, modelID, e)} />
-          {isSelected && (
-            <svg className="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-          )}
+          <StarIcon
+            filled={isFavorite(providerID, modelID)}
+            label={label}
+            onClick={(e) => toggleFavorite(providerID, modelID, e)}
+          />
         </div>
-      </button>
+      </div>
     )
   }
 
@@ -242,7 +411,10 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
 
                 {/* Provider groups */}
                 {providers.map((provider) => {
-                  const filtered = filterModels(provider)
+                  const filtered = filterModels(provider).filter(([modelId]) => {
+                    if (searchTerm.trim().length > 0) return true
+                    return !favoriteSet.has(`${provider.id}/${modelId}`)
+                  })
                   if (filtered.length === 0) return null
 
                   return (
