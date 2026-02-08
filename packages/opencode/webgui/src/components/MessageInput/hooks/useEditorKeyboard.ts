@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH, type LexicalEditor } from "lexical"
+import { KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH, REDO_COMMAND, UNDO_COMMAND, type LexicalEditor } from "lexical"
 import { insertPlainWithMentionsImpl } from "../utils"
 
 interface UseEditorKeyboardOptions {
@@ -34,6 +34,15 @@ export function useEditorKeyboard({ editor, contentEditableRef, parseWithRange, 
     const el = contentEditableRef.current
     if (!el) return
 
+    const onHistory = (e: Event) => {
+      const ev = e as CustomEvent<{ action?: "undo" | "redo" }>
+      const action = ev.detail?.action
+      if (action !== "undo" && action !== "redo") return
+      e.preventDefault()
+      e.stopPropagation()
+      editor.dispatchCommand(action === "undo" ? UNDO_COMMAND : REDO_COMMAND, undefined)
+    }
+
     const onPasteText = (e: Event) => {
       const ev = e as CustomEvent<{ text?: string }>
       const text = ev.detail?.text
@@ -52,9 +61,11 @@ export function useEditorKeyboard({ editor, contentEditableRef, parseWithRange, 
       insertPlainWithMentionsImpl(editor, parseWithRange, plain)
     }
 
+    el.addEventListener("opencode:history", onHistory as any, true)
     el.addEventListener("opencode:paste-text", onPasteText as any, true)
     el.addEventListener("paste", onPaste as any, true)
     return () => {
+      el.removeEventListener("opencode:history", onHistory as any, true)
       el.removeEventListener("opencode:paste-text", onPasteText as any, true)
       el.removeEventListener("paste", onPaste as any, true)
     }

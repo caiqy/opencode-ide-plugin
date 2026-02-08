@@ -236,8 +236,14 @@
                   return
                 }
 
-                // Undo (Cmd+Z)
-                if (metaKey && !shiftKey && code === "KeyZ") {
+                const isUndoShortcut = (metaKey || ctrlKey) && !shiftKey && code === "KeyZ"
+                const isRedoShortcut =
+                  (metaKey && shiftKey && code === "KeyZ") ||
+                  (ctrlKey && !shiftKey && code === "KeyY") ||
+                  (ctrlKey && shiftKey && code === "KeyZ")
+
+                // Undo (Cmd/Ctrl+Z) - only when iframe isn't editing text
+                if (isUndoShortcut && !inEditable) {
                   window.vscode.postMessage({
                     type: "executeCommand",
                     command: "undo",
@@ -245,8 +251,8 @@
                   return
                 }
 
-                // Redo (Cmd+Shift+Z)
-                if (metaKey && shiftKey && code === "KeyZ") {
+                // Redo (Cmd+Shift+Z / Ctrl+Y / Ctrl+Shift+Z) - only when iframe isn't editing text
+                if (isRedoShortcut && !inEditable) {
                   window.vscode.postMessage({
                     type: "executeCommand",
                     command: "redo",

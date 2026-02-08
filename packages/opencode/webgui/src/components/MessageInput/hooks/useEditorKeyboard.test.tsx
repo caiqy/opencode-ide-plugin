@@ -1,10 +1,11 @@
 import { describe, it, expect, vi } from "vitest"
 import { renderHook } from "@testing-library/react"
-import type { LexicalEditor } from "lexical"
+import { REDO_COMMAND, UNDO_COMMAND, type LexicalEditor } from "lexical"
 import { useEditorKeyboard } from "./useEditorKeyboard"
 
 function setup() {
   const onSubmit = vi.fn()
+  const dispatchCommand = vi.fn()
   let enterHandler: ((event?: KeyboardEvent) => boolean) | undefined
 
   const editor = {
@@ -12,6 +13,7 @@ function setup() {
       enterHandler = handler
       return vi.fn()
     }),
+    dispatchCommand,
   } as unknown as LexicalEditor
 
   const contentEditableRef = { current: document.createElement("div") } as React.RefObject<HTMLDivElement | null>
@@ -29,7 +31,7 @@ function setup() {
     throw new Error("Enter handler not registered")
   }
 
-  return { onSubmit, enterHandler }
+  return { onSubmit, enterHandler, dispatchCommand, contentEditableRef }
 }
 
 describe("useEditorKeyboard", () => {
@@ -82,5 +84,33 @@ describe("useEditorKeyboard", () => {
     expect(onSubmit).not.toHaveBeenCalled()
 
     document.body.removeChild(popover)
+  })
+
+  it("收到 opencode:history undo 事件时应触发 Lexical UNDO_COMMAND", () => {
+    const { contentEditableRef, dispatchCommand } = setup()
+    const historyEvent = new CustomEvent("opencode:history", {
+      detail: { action: "undo" },
+      bubbles: true,
+      cancelable: true,
+    })
+
+    contentEditableRef.current?.dispatchEvent(historyEvent)
+
+    expect(historyEvent.defaultPrevented).toBe(true)
+    expect(dispatchCommand).toHaveBeenCalledWith(UNDO_COMMAND, undefined)
+  })
+
+  it("收到 opencode:history redo 事件时应触发 Lexical REDO_COMMAND", () => {
+    const { contentEditableRef, dispatchCommand } = setup()
+    const historyEvent = new CustomEvent("opencode:history", {
+      detail: { action: "redo" },
+      bubbles: true,
+      cancelable: true,
+    })
+
+    contentEditableRef.current?.dispatchEvent(historyEvent)
+
+    expect(historyEvent.defaultPrevented).toBe(true)
+    expect(dispatchCommand).toHaveBeenCalledWith(REDO_COMMAND, undefined)
   })
 })

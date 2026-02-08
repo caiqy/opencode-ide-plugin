@@ -9,6 +9,8 @@ type KeyPayload = {
   inEditable: boolean
 }
 
+type HistoryAction = "undo" | "redo"
+
 function isIframe(): boolean {
   try {
     return window.parent !== window
@@ -45,9 +47,23 @@ function hasDomSelection(): boolean {
   return (sel.toString() || "").length > 0
 }
 
+function elementFromNode(node: Node | null): Element | null {
+  if (!node) return null
+  if (node instanceof Element) return node
+  return node.parentElement
+}
+
+function isSelectionInEditable(): boolean {
+  const sel = window.getSelection?.()
+  if (!sel) return false
+  const anchor = elementFromNode(sel.anchorNode)
+  const focus = elementFromNode(sel.focusNode)
+  return isEditableElement(anchor) || isEditableElement(focus)
+}
+
 function computeState(): { inEditable: boolean; hasSelection: boolean; active: Element | null } {
   const active = document.activeElement
-  const inEditable = isEditableElement(active)
+  const inEditable = isEditableElement(active) || isSelectionInEditable()
   const hasSelection = selectionLengthInInput(active) > 0 || hasDomSelection()
   return { inEditable, hasSelection, active }
 }
@@ -71,6 +87,20 @@ function dispatchPasteText(target: Element | null, text: string): boolean {
   try {
     const ev = new CustomEvent("opencode:paste-text", {
       detail: { text },
+      bubbles: true,
+      cancelable: true,
+    })
+    ;(target ?? document.body).dispatchEvent(ev)
+    return ev.defaultPrevented
+  } catch {
+    return false
+  }
+}
+
+function dispatchHistoryAction(target: Element | null, action: HistoryAction): boolean {
+  try {
+    const ev = new CustomEvent("opencode:history", {
+      detail: { action },
       bubbles: true,
       cancelable: true,
     })
@@ -161,11 +191,16 @@ export class KeyboardHandler {
         return
       }
 
-      if (mod && ev.code === "KeyZ" && inEditable) {
-        try {
-          document.execCommand(ev.shiftKey ? "redo" : "undo")
-        } catch {}
-        stop(ev)
+      if (mod && inEditable && (ev.code === "KeyZ" || ev.code === "KeyY")) {
+        let action: HistoryAction | null = null
+        if (ev.code === "KeyZ") action = ev.shiftKey ? "redo" : "undo"
+        if (ev.code === "KeyY" && !ev.shiftKey) action = "redo"
+        if (!action) return
+
+        const handled = dispatchHistoryAction(active, action)
+        if (handled) {
+          stop(ev)
+        }
         return
       }
 
