@@ -29,8 +29,11 @@ object ResourceExtractor {
         // Read resource into memory so we can check size before writing
         val bytes = stream.use { it.readBytes() }
 
-        if (!dest.exists() || dest.length() != bytes.size.toLong()) {
+        try {
             dest.writeBytes(bytes)
+        } catch (e: Exception) {
+            // Binary may be in use – continue with existing copy
+            logger.info("Could not overwrite binary (may be in use): ${e.message}")
         }
 
         dest.setExecutable(true)

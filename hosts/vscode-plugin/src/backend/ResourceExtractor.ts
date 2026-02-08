@@ -33,11 +33,11 @@ export class ResourceExtractor {
     await fs.promises.mkdir(stableDir, { recursive: true })
     const destPath = path.join(stableDir, binaryName)
 
-    const srcStats = await fs.promises.stat(binaryPath)
-    const needsCopy = await this.needsRecopy(destPath, srcStats.size)
-
-    if (needsCopy) {
+    try {
       await fs.promises.copyFile(binaryPath, destPath)
+    } catch (e: any) {
+      // Binary may be in use – continue with existing copy
+      console.log(`[ResourceExtractor] Could not overwrite binary (may be in use): ${e?.code || e}`)
     }
 
     if (osType !== "windows") {
@@ -48,18 +48,6 @@ export class ResourceExtractor {
     this.cleanupStaleTempFiles().catch(() => {})
 
     return destPath
-  }
-
-  /**
-   * Check whether the destination binary needs to be (re-)copied.
-   */
-  private static async needsRecopy(destPath: string, srcSize: number): Promise<boolean> {
-    try {
-      const destStats = await fs.promises.stat(destPath)
-      return destStats.size !== srcSize
-    } catch {
-      return true
-    }
   }
 
   /**

@@ -139,30 +139,36 @@ export class WebviewController {
         uris.map(async (u) => {
           try {
             const uri = vscode.Uri.parse(u)
-            const filePath = uri.fsPath
+            // For non-file URIs (e.g. vscode-remote://ssh-remote+host/path),
+            // fsPath includes the authority as a UNC prefix (//ssh-remote+host/path)
+            // which is not a valid filesystem path. Use uri.path instead.
+            const filePath = uri.scheme === "file" ? uri.fsPath : uri.path
+            // For vscode.workspace.fs operations, keep the original URI so the
+            // remote extension host resolves the file on the correct machine
+            // (works for file://, vscode-remote://, wsl://, etc.)
+            const fileUri = uri
 
-            // Check if it's a file or directory
             try {
-              const stat = await vscode.workspace.fs.stat(uri)
+              const stat = await vscode.workspace.fs.stat(fileUri)
               if (stat.type === vscode.FileType.File) {
                 filePaths.push(filePath)
               } else if (stat.type === vscode.FileType.Directory) {
                 directoryPaths.push(filePath)
               }
-            } catch (statError) {
+            } catch {
               // If stat fails, assume it's a file
               filePaths.push(filePath)
             }
 
             // Create webview-safe URI for direct display
-            const webviewUri = this.webview.asWebviewUri(uri)
+            const webviewUri = this.webview.asWebviewUri(fileUri)
 
             // Optionally read file contents as base64 for fallback
             let data: string | undefined
             try {
-              const buf = await vscode.workspace.fs.readFile(uri)
+              const buf = await vscode.workspace.fs.readFile(fileUri)
               data = Buffer.from(buf).toString("base64")
-            } catch (readError) {
+            } catch {
               // File reading failed, but webviewUri might still work
             }
 
