@@ -8,6 +8,7 @@
  */
 
 import { createOpencodeClient, type Provider } from "@opencode-ai/sdk/client"
+import { ideBridge } from "../ideBridge"
 
 export const serverBase: string =
   ((globalThis as any).__OPENCODE_SERVER_URL__ as string | undefined)?.replace(/\/$/, "") || ""
@@ -214,32 +215,19 @@ export const sdk = {
   },
   model: {
     get: async () => {
+      if (!ideBridge.isInstalled()) return { data: { recent: [], favorite: [], variant: {} } as ModelPreferences, error: null as { message: string } | null }
       try {
-        const response = await fetch(`${serverBase}/app/api/model`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        })
-        if (!response.ok) {
-          return { error: { message: "Failed to fetch model preferences" }, data: null as ModelPreferences | null }
-        }
-        const data = (await response.json()) as ModelPreferences
-        return { data, error: null as { message: string } | null }
+        const res = await ideBridge.request("model.get")
+        return { data: (res.payload ?? { recent: [], favorite: [], variant: {} }) as ModelPreferences, error: null as { message: string } | null }
       } catch (error) {
         return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null as ModelPreferences | null }
       }
     },
     update: async (options: { body: Partial<ModelPreferences> }) => {
+      if (!ideBridge.isInstalled()) return { data: null as ModelPreferences | null, error: { message: "IdeBridge not available" } }
       try {
-        const response = await fetch(`${serverBase}/app/api/model`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(options.body),
-        })
-        if (!response.ok) {
-          return { error: { message: "Failed to update model preferences" }, data: null as ModelPreferences | null }
-        }
-        const data = (await response.json()) as ModelPreferences
-        return { data, error: null as { message: string } | null }
+        const res = await ideBridge.request("model.update", options.body)
+        return { data: (res.payload ?? { recent: [], favorite: [], variant: {} }) as ModelPreferences, error: null as { message: string } | null }
       } catch (error) {
         return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null as ModelPreferences | null }
       }
@@ -247,32 +235,19 @@ export const sdk = {
   },
   kv: {
     get: async () => {
+      if (!ideBridge.isInstalled()) return { data: {} as Record<string, any>, error: null as { message: string } | null }
       try {
-        const response = await fetch(`${serverBase}/app/api/kv`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        })
-        if (!response.ok) {
-          return { error: { message: "Failed to fetch kv" }, data: null as Record<string, any> | null }
-        }
-        const data = (await response.json()) as Record<string, any>
-        return { data, error: null as { message: string } | null }
+        const res = await ideBridge.request("kv.get")
+        return { data: (res.payload ?? {}) as Record<string, any>, error: null as { message: string } | null }
       } catch (error) {
         return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null as Record<string, any> | null }
       }
     },
     update: async (options: { body: Record<string, any> }) => {
+      if (!ideBridge.isInstalled()) return { data: null as Record<string, any> | null, error: { message: "IdeBridge not available" } }
       try {
-        const response = await fetch(`${serverBase}/app/api/kv`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(options.body),
-        })
-        if (!response.ok) {
-          return { error: { message: "Failed to update kv" }, data: null as Record<string, any> | null }
-        }
-        const data = (await response.json()) as Record<string, any>
-        return { data, error: null as { message: string } | null }
+        const res = await ideBridge.request("kv.update", options.body)
+        return { data: (res.payload ?? {}) as Record<string, any>, error: null as { message: string } | null }
       } catch (error) {
         return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null as Record<string, any> | null }
       }

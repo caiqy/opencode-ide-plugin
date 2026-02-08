@@ -1,5 +1,8 @@
 import * as http from "http"
 import * as crypto from "crypto"
+import * as fs from "fs"
+import * as path from "path"
+import * as os from "os"
 import { logger } from "../globals"
 
 export interface SessionHandlers {
@@ -249,6 +252,76 @@ class IdeBridgeServer {
           break
         }
 
+        case "kv.get": {
+          const file = path.join(this.statePath(), "kv.json")
+          try {
+            if (fs.existsSync(file)) {
+              this.replyWithPayload(session, id, JSON.parse(fs.readFileSync(file, "utf-8")))
+            } else {
+              this.replyWithPayload(session, id, {})
+            }
+          } catch {
+            this.replyWithPayload(session, id, {})
+          }
+          break
+        }
+
+        case "kv.update": {
+          const dir = this.statePath()
+          const file = path.join(dir, "kv.json")
+          let existing: Record<string, any> = {}
+          try {
+            if (fs.existsSync(file)) existing = JSON.parse(fs.readFileSync(file, "utf-8"))
+          } catch {}
+          const merged = { ...existing, ...(payload ?? {}) }
+          fs.mkdirSync(dir, { recursive: true })
+          fs.writeFileSync(file, JSON.stringify(merged, null, 2))
+          this.replyWithPayload(session, id, merged)
+          break
+        }
+
+        case "model.get": {
+          const file = path.join(this.statePath(), "model.json")
+          try {
+            if (fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, "utf-8"))
+              this.replyWithPayload(session, id, {
+                recent: Array.isArray(data.recent) ? data.recent : [],
+                favorite: Array.isArray(data.favorite) ? data.favorite : [],
+                variant: typeof data.variant === "object" && data.variant !== null ? data.variant : {},
+              })
+            } else {
+              this.replyWithPayload(session, id, { recent: [], favorite: [], variant: {} })
+            }
+          } catch {
+            this.replyWithPayload(session, id, { recent: [], favorite: [], variant: {} })
+          }
+          break
+        }
+
+        case "model.update": {
+          const dir = this.statePath()
+          const file = path.join(dir, "model.json")
+          let existing = { recent: [] as any[], favorite: [] as any[], variant: {} as Record<string, string> }
+          try {
+            if (fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, "utf-8"))
+              existing = {
+                recent: Array.isArray(data.recent) ? data.recent : [],
+                favorite: Array.isArray(data.favorite) ? data.favorite : [],
+                variant: typeof data.variant === "object" && data.variant !== null ? data.variant : {},
+              }
+            }
+          } catch {}
+          if (payload?.recent !== undefined) existing.recent = payload.recent
+          if (payload?.favorite !== undefined) existing.favorite = payload.favorite
+          if (payload?.variant !== undefined) existing.variant = { ...existing.variant, ...payload.variant }
+          fs.mkdirSync(dir, { recursive: true })
+          fs.writeFileSync(file, JSON.stringify(existing))
+          this.replyWithPayload(session, id, existing)
+          break
+        }
+
         case "uiSetState": {
           if (!session.handlers.uiSetState) {
             this.replyError(session, id, "uiSetState not supported")
@@ -269,6 +342,23 @@ class IdeBridgeServer {
       res.writeHead(400)
     }
     res.end()
+  }
+
+  private statePath(): string {
+    return path.join(process.env.XDG_STATE_HOME || path.join(os.homedir(), ".local", "state"), "opencode")
+  }
+
+  private replyWithPayload(session: Session, id: string | undefined, payload: any): void {
+    if (!id) return
+    this.broadcastSSE(
+      session,
+      JSON.stringify({
+        replyTo: id,
+        ok: true,
+        payload,
+        timestamp: Date.now(),
+      }),
+    )
   }
 
   private replyOk(session: Session, id?: string): void {

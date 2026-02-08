@@ -251,18 +251,13 @@ build_variant() {
     elif [ "$variant" = "gui-only" ]; then
         print_status "=== Packaging GUI-ONLY variant ==="
 
-        # Build webgui if webgui-dist doesn't exist yet
-        if [ ! -d "$WEBGUI_DIST" ] || [ -z "$(ls -A "$WEBGUI_DIST" 2>/dev/null)" ]; then
-            print_status "Building webgui..."
-            (
-                cd "$WEBGUI_DIR"
-                run_install
-                if $PNPM_AVAILABLE; then
-                    pnpm run build
-                else
-                    npm run build
-                fi
-            )
+        # Always rebuild webgui to pick up source changes
+        # The monorepo uses bun workspaces – deps are already installed at root level
+        print_status "Building webgui..."
+        if command -v bun >/dev/null 2>&1; then
+            (cd "$WEBGUI_DIR" && bun run build)
+        else
+            (cd "$WEBGUI_DIR" && npm run build)
         fi
 
         if [ ! -d "$WEBGUI_DIST" ]; then
