@@ -124,7 +124,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
         <span
           className={`h-1.5 w-1.5 rounded-full transition-opacity duration-200 ${
             props.selected
-              ? "bg-blue-500 dark:bg-blue-400 shadow-[0_0_0_4px_rgba(59,130,246,0.22)] dark:shadow-[0_0_0_4px_rgba(96,165,250,0.22)] model-selection-dot-breathe"
+              ? "bg-blue-500 dark:bg-blue-400 shadow-[0_0_0_4px_rgba(0,120,212,0.22)] dark:shadow-[0_0_0_4px_rgba(77,170,252,0.22)] model-selection-dot-breathe"
               : "opacity-0"
           }`}
         />

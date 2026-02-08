@@ -21,7 +21,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
   // Single question with single select = auto-submit mode
   const isSingleQuestionSingleSelect = useMemo(
     () => questions.length === 1 && questions[0]?.multiple !== true,
-    [questions]
+    [questions],
   )
 
   // Show confirm tab for multiple questions or multi-select
@@ -108,7 +108,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
         return newAnswers
       })
     },
-    [activeTab, isMultiple, isSingleQuestionSingleSelect, request.id, questions.length, replyQuestion]
+    [activeTab, isMultiple, isSingleQuestionSingleSelect, request.id, questions.length, replyQuestion],
   )
 
   // Handle custom input change
@@ -120,7 +120,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
         return newInputs
       })
     },
-    [activeTab]
+    [activeTab],
   )
 
   // Handle selecting custom option
@@ -217,7 +217,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
   }
 
   return (
-    <div className="my-0.5 border rounded-lg border-blue-300 dark:border-blue-700 overflow-hidden bg-[#fbfdff] dark:bg-gray-900">
+    <div className="my-0.5 border rounded-lg border-blue-300 dark:border-blue-700 overflow-hidden bg-gray-50 dark:bg-gray-900">
       {/* Header */}
       <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
         <div className="text-xs font-medium text-blue-700 dark:text-blue-300">Question from assistant</div>
@@ -225,12 +225,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
 
       {/* Tabs (only show if multiple questions or multi-select) */}
       {showConfirmTab && (
-        <QuestionTabs
-          tabs={tabsData}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          showConfirm={showConfirmTab}
-        />
+        <QuestionTabs tabs={tabsData} activeTab={activeTab} onTabChange={setActiveTab} showConfirm={showConfirmTab} />
       )}
 
       {/* Content */}
@@ -261,7 +256,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
 
       {/* Footer with navigation (only for non-single-select mode) */}
       {!isSingleQuestionSingleSelect && (
-        <div className="px-3 py-2 border-t border-[#e4e9f2] dark:border-gray-800 bg-[#f8fafc] dark:bg-gray-900/50 flex items-center justify-between">
+        <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-between">
           <div className="flex gap-2">
             {activeTab > 0 && (
               <button
@@ -282,9 +277,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
           </div>
 
           <div className="flex gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <span>
-              {isConfirmTab ? "Review" : `${activeTab + 1}/${questions.length}`}
-            </span>
+            <span>{isConfirmTab ? "Review" : `${activeTab + 1}/${questions.length}`}</span>
             <span>•</span>
             <button
               onClick={handleDismiss}
@@ -299,7 +292,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
 
       {/* Simple footer for single-select single-question */}
       {isSingleQuestionSingleSelect && (
-        <div className="px-3 py-2 border-t border-[#e4e9f2] dark:border-gray-800 bg-[#f8fafc] dark:bg-gray-900/50 flex items-center justify-end">
+        <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-end">
           <button
             onClick={handleDismiss}
             disabled={isLoading}

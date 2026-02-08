@@ -71,10 +71,10 @@ export function getStatusClasses(status: "pending" | "running" | "completed" | "
   }
 
   if (status === "pending") {
-    return "bg-[#f9fbff] dark:bg-gray-900 text-gray-600 dark:text-gray-300"
+    return "bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300"
   }
 
-  return "bg-[#fcfdff] dark:bg-gray-900 text-gray-700 dark:text-gray-100"
+  return "bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-100"
 }
 
 export function getBorderColor(status: "pending" | "running" | "completed" | "error", hasPermission: boolean) {
@@ -82,7 +82,7 @@ export function getBorderColor(status: "pending" | "running" | "completed" | "er
     case "error":
       return "border-red-300 dark:border-red-700"
     default:
-      return hasPermission ? "border-amber-400 dark:border-amber-600" : "border-[#e4e9f2] dark:border-gray-700"
+      return hasPermission ? "border-amber-400 dark:border-amber-600" : "border-gray-200 dark:border-gray-700"
   }
 }
 

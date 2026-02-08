@@ -42,7 +42,7 @@ export function ToolHeader({ tool, status, toolName, filePath, isExpanded, onTog
   return (
     <button
       onClick={onToggle}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left ${getStatusClasses(status)} hover:bg-[#f1f4fa] dark:hover:bg-gray-800 transition-colors`}
+      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left ${getStatusClasses(status)} hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
     >
       {getStatusIcon(status)}
       {showFileLink ? (

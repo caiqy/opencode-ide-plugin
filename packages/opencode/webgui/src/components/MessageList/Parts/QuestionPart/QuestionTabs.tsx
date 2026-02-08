@@ -11,7 +11,7 @@ export function QuestionTabs({ tabs, activeTab, onTabChange, showConfirm }: Ques
   const isConfirmTab = activeTab === tabs.length
 
   return (
-    <div className="flex flex-row gap-1 px-3 py-2 border-b border-[#e4e9f2] dark:border-gray-800 bg-[#f8fafc] dark:bg-gray-900/50">
+    <div className="flex flex-row gap-1 px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
       {tabs.map((tab, index) => {
         const isActive = index === activeTab
         return (
@@ -24,7 +24,7 @@ export function QuestionTabs({ tabs, activeTab, onTabChange, showConfirm }: Ques
                 ? "bg-blue-600 text-white"
                 : tab.answered
                   ? "bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700",
             )}
           >
             {tab.header}
@@ -39,7 +39,7 @@ export function QuestionTabs({ tabs, activeTab, onTabChange, showConfirm }: Ques
             "px-2 py-1 text-xs rounded transition-colors",
             isConfirmTab
               ? "bg-blue-600 text-white"
-              : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+              : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700",
           )}
         >
           Confirm

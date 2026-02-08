@@ -97,7 +97,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
   return (
     <div
-      className={`my-0.5 border rounded-lg ${getBorderColor(part.state.status, Boolean(permission))} overflow-hidden bg-[#fbfdff] dark:bg-gray-900`}
+      className={`my-0.5 border rounded-lg ${getBorderColor(part.state.status, Boolean(permission))} overflow-hidden bg-gray-50 dark:bg-gray-900`}
     >
       {/* Header */}
       <ToolHeader
@@ -111,7 +111,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
       {/* Expanded content */}
       {isExpanded && (
-        <div className="border-t border-[#e4e9f2] dark:border-gray-800 bg-[#fbfdff] dark:bg-gray-950">
+        <div className="border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
           {/* Permission banner */}
           {permission && <PermissionBanner permission={permission} isResponding={isResponding} onRespond={onRespond} />}
 

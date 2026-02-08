@@ -29,8 +29,8 @@ export function ConfirmTab({ questions, answers, onSubmit, onDismiss, isLoading 
               className={cn(
                 "p-2 rounded border",
                 hasAnswer
-                  ? "border-[#e4e9f2] dark:border-gray-700 bg-white dark:bg-gray-900"
-                  : "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20"
+                  ? "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                  : "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20",
               )}
             >
               <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{question.header}</div>
@@ -53,7 +53,7 @@ export function ConfirmTab({ questions, answers, onSubmit, onDismiss, isLoading 
             "px-3 py-1.5 text-xs rounded font-medium transition-colors",
             allAnswered
               ? "bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-              : "bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+              : "bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed",
           )}
         >
           {isLoading ? "Submitting..." : "Submit"}

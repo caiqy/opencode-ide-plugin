@@ -56,9 +56,7 @@ export function QuestionOptions({
       {/* Question text */}
       <div className="text-sm text-gray-800 dark:text-gray-200 mb-3">
         {question.question}
-        {isMultiple && (
-          <span className="text-gray-500 dark:text-gray-400 text-xs ml-2">(select all that apply)</span>
-        )}
+        {isMultiple && <span className="text-gray-500 dark:text-gray-400 text-xs ml-2">(select all that apply)</span>}
       </div>
 
       {/* Options list */}
@@ -73,13 +71,11 @@ export function QuestionOptions({
                 "w-full text-left p-2 rounded border transition-colors",
                 isSelected
                   ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                  : "border-[#e4e9f2] dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-900"
+                  : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-900",
               )}
             >
               <div className="flex items-start gap-2">
-                <span className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 w-4 flex-shrink-0">
-                  {index + 1}.
-                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 w-4 flex-shrink-0">{index + 1}.</span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     {isMultiple ? (
@@ -88,7 +84,7 @@ export function QuestionOptions({
                           "w-4 h-4 flex items-center justify-center border rounded text-xs",
                           isSelected
                             ? "border-blue-500 bg-blue-500 text-white"
-                            : "border-gray-300 dark:border-gray-600"
+                            : "border-gray-300 dark:border-gray-600",
                         )}
                       >
                         {isSelected && "✓"}
@@ -97,9 +93,7 @@ export function QuestionOptions({
                       <span
                         className={cn(
                           "w-4 h-4 flex items-center justify-center border rounded-full",
-                          isSelected
-                            ? "border-blue-500 bg-blue-500"
-                            : "border-gray-300 dark:border-gray-600"
+                          isSelected ? "border-blue-500 bg-blue-500" : "border-gray-300 dark:border-gray-600",
                         )}
                       >
                         {isSelected && <span className="w-2 h-2 bg-white rounded-full" />}
@@ -108,14 +102,12 @@ export function QuestionOptions({
                     <span
                       className={cn(
                         "text-sm font-medium",
-                        isSelected ? "text-blue-700 dark:text-blue-300" : "text-gray-800 dark:text-gray-200"
+                        isSelected ? "text-blue-700 dark:text-blue-300" : "text-gray-800 dark:text-gray-200",
                       )}
                     >
                       {option.label}
                     </span>
-                    {!isMultiple && isSelected && (
-                      <span className="text-green-600 dark:text-green-400 text-xs">✓</span>
-                    )}
+                    {!isMultiple && isSelected && <span className="text-green-600 dark:text-green-400 text-xs">✓</span>}
                   </div>
                   {option.description && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-6">{option.description}</p>
@@ -133,7 +125,7 @@ export function QuestionOptions({
               "w-full text-left p-2 rounded border transition-colors",
               isCustomSelected
                 ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                : "border-[#e4e9f2] dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-900"
+                : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-900",
             )}
           >
             <button onClick={handleCustomClick} className="w-full text-left">
@@ -149,7 +141,7 @@ export function QuestionOptions({
                           "w-4 h-4 flex items-center justify-center border rounded text-xs",
                           isCustomSelected
                             ? "border-blue-500 bg-blue-500 text-white"
-                            : "border-gray-300 dark:border-gray-600"
+                            : "border-gray-300 dark:border-gray-600",
                         )}
                       >
                         {isCustomSelected && "✓"}
@@ -158,9 +150,7 @@ export function QuestionOptions({
                       <span
                         className={cn(
                           "w-4 h-4 flex items-center justify-center border rounded-full",
-                          isCustomSelected
-                            ? "border-blue-500 bg-blue-500"
-                            : "border-gray-300 dark:border-gray-600"
+                          isCustomSelected ? "border-blue-500 bg-blue-500" : "border-gray-300 dark:border-gray-600",
                         )}
                       >
                         {isCustomSelected && <span className="w-2 h-2 bg-white rounded-full" />}
@@ -169,7 +159,7 @@ export function QuestionOptions({
                     <span
                       className={cn(
                         "text-sm font-medium",
-                        isCustomSelected ? "text-blue-700 dark:text-blue-300" : "text-gray-800 dark:text-gray-200"
+                        isCustomSelected ? "text-blue-700 dark:text-blue-300" : "text-gray-800 dark:text-gray-200",
                       )}
                     >
                       Type your own answer
