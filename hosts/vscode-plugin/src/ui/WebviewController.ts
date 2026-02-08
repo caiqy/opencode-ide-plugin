@@ -74,6 +74,16 @@ export class WebviewController {
           },
           uiGetState: this.uiGetState,
           uiSetState: this.uiSetState,
+          storageGet: async (keys: string[]) => {
+            const result: Record<string, string | undefined> = {}
+            for (const key of keys) {
+              result[key] = this.context.globalState.get<string>(key)
+            }
+            return result
+          },
+          storageSet: async (key: string, value: string) => {
+            await this.context.globalState.update(key, value)
+          },
         },
       )
       this.bridgeSessionId = session.sessionId

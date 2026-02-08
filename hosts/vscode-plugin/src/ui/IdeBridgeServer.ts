@@ -9,6 +9,8 @@ export interface SessionHandlers {
   clipboardWrite: (text: string) => Promise<void>
   uiGetState?: () => Promise<any>
   uiSetState?: (state: any) => Promise<void>
+  storageGet?: (keys: string[]) => Promise<Record<string, string | undefined>>
+  storageSet?: (key: string, value: string) => Promise<void>
 }
 
 interface Session {
@@ -256,6 +258,41 @@ class IdeBridgeServer {
           }
           await session.handlers.uiSetState(payload?.state)
           this.replyOk(session, id)
+          break
+        }
+
+        case "storageGet": {
+          if (!session.handlers.storageGet) {
+            this.replyError(session, id, "storageGet not supported")
+            break
+          }
+          const keys: string[] = Array.isArray(payload?.keys) ? payload.keys : []
+          const storageResult = await session.handlers.storageGet(keys)
+          if (id) {
+            this.broadcastSSE(
+              session,
+              JSON.stringify({
+                replyTo: id,
+                ok: true,
+                result: storageResult,
+                timestamp: Date.now(),
+              }),
+            )
+          }
+          break
+        }
+
+        case "storageSet": {
+          if (!session.handlers.storageSet) {
+            this.replyError(session, id, "storageSet not supported")
+            break
+          }
+          if (typeof payload?.key === "string" && typeof payload?.value === "string") {
+            await session.handlers.storageSet(payload.key, payload.value)
+            this.replyOk(session, id)
+          } else {
+            this.replyError(session, id, "Missing key or value")
+          }
           break
         }
 
