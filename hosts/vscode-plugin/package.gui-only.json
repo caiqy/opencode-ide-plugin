@@ -1,0 +1,21 @@
+{
+  "name": "opencode-ux-plus-gui-only",
+  "displayName": "OpenCode UX+ GUI Only (unofficial)",
+  "description": "Unofficial OpenCode VSCode extension - GUI only, requires system opencode binary",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "title": "OpenCode UX+ gui only"
+        }
+      ]
+    },
+    "views": {
+      "opencode": [
+        {
+          "name": "OpenCode UX+ gui only"
+        }
+      ]
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import type { FileDiff } from "@opencode-ai/sdk/client"
+import { serverBase } from "./sdkClient"
 
 // Event type definitions based on server Bus events
 export type ServerEvent =
@@ -147,7 +148,7 @@ export interface EventStreamOptions {
  * @returns Object with connection state, event emitter, and control functions
  */
 export function useEventStream(options: EventStreamOptions = {}) {
-  const { url = "/event", onConnectionStateChange, debug = false } = options
+  const { url = `${serverBase}/event`, onConnectionStateChange, debug = false } = options
 
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting")
   const emitterRef = useRef<EventEmitter>(new EventEmitter({ debug }))

@@ -1,4 +1,6 @@
 import * as vscode from "vscode"
+import * as fs from "fs"
+import * as path from "path"
 import { BackendConnection } from "../backend/BackendLauncher"
 import { SettingsManager } from "../settings/SettingsManager"
 import { CommunicationBridge } from "./CommunicationBridge"
@@ -7,6 +9,7 @@ import { errorHandler } from "../utils/ErrorHandler"
 import { PathInserter } from "../utils/PathInserter"
 import { logger } from "../globals"
 import { bridgeServer } from "./IdeBridgeServer"
+import { webguiServer } from "./WebguiStaticServer"
 
 /**
  * Shared webview controller to manage common UI lifecycle and messaging
@@ -66,9 +69,9 @@ export class WebviewController {
       // Create bridge session with handlers from CommunicationBridge
       const session = await bridgeServer.createSession(
         {
-          openFile: (path) => this.communicationBridge!.handleOpenFile(path),
+          openFile: (p) => this.communicationBridge!.handleOpenFile(p),
           openUrl: (url) => this.communicationBridge!.handleOpenUrl(url),
-          reloadPath: (path) => this.communicationBridge!.handleReloadPath(path),
+          reloadPath: (p) => this.communicationBridge!.handleReloadPath(p),
           clipboardWrite: async (text) => {
             await vscode.env.clipboard.writeText(text)
           },
@@ -103,8 +106,11 @@ export class WebviewController {
         logger.appendLine(`FileMonitor init failed: ${e}`)
       }
 
+      // Determine UI source: embedded webgui (gui-only) or remote server (standard)
+      const uiBaseUrl = await this.resolveUiBaseUrl(connection)
+
       // Use asExternalUri for Remote-SSH compatibility
-      const externalUi = await vscode.env.asExternalUri(vscode.Uri.parse(connection.uiBase))
+      const externalUi = await vscode.env.asExternalUri(vscode.Uri.parse(uiBaseUrl))
       const externalBridge = await vscode.env.asExternalUri(vscode.Uri.parse(session.baseUrl))
 
       // Build iframe src with bridge params
@@ -225,6 +231,32 @@ export class WebviewController {
         })),
       })
     }
+  }
+
+  /**
+   * Resolve the base URL for the webgui iframe.
+   *
+   * gui-only mode: embedded webgui lives in resources/webgui-app/.  We start a
+   * local static HTTP server that serves those files under /app/ and injects
+   * `window.__OPENCODE_SERVER_URL__` so the webgui can reach the REST API on
+   * the opencode server.
+   *
+   * Standard mode: the opencode server serves both REST API and webgui, so we
+   * use connection.uiBase directly.
+   */
+  private async resolveUiBaseUrl(connection: BackendConnection): Promise<string> {
+    const webguiDir = path.join(this.context.extensionUri.fsPath, "resources", "webgui-app")
+    if (fs.existsSync(path.join(webguiDir, "index.html"))) {
+      // gui-only: derive REST API root from uiBase using URL parsing
+      // (uiBase may carry query params like ?v=26.2.8 from cache-busting)
+      const parsed = new URL(connection.uiBase)
+      const serverRoot = parsed.origin
+      logger.appendLine(`gui-only mode: serving embedded webgui, REST API at ${serverRoot}`)
+      const base = await webguiServer.start(webguiDir, serverRoot)
+      return `${base}/app`
+    }
+    // Standard mode: opencode server serves the webgui
+    return connection.uiBase
   }
 
   private buildUiUrlWithMode(base: string): string {

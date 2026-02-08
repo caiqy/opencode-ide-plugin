@@ -84,7 +84,7 @@ jobs:
             npm run compile:production
           fi
 
-      - name: Package VSCode plugin from staging (no prepublish)
+      - name: Package VSCode plugin (standard) from staging
         working-directory: hosts/vscode-plugin
         run: |
           STAGE_DIR="../tmp_opencode_vscode_stage"
@@ -95,6 +95,8 @@ jobs:
           cp package.json "$STAGE_DIR/"
           cp -R out "$STAGE_DIR/out"
           cp -R resources "$STAGE_DIR/resources"
+          # Exclude gui-only artifacts from standard build
+          rm -rf "$STAGE_DIR/resources/webgui-app"
           [ -f README.md ] && cp README.md "$STAGE_DIR/" || true
           [ -f CHANGELOG.md ] && cp CHANGELOG.md "$STAGE_DIR/" || true
           [ -f ../../LICENSE ] && cp ../../LICENSE "$STAGE_DIR/" || true
@@ -111,7 +113,72 @@ jobs:
           '
 
           # Package from staging directory without touching dependencies
-          ( cd "$STAGE_DIR" && npx -y @vscode/vsce package --no-dependencies --out "opencode-$(date +%Y%m%d-%H%M%S).vsix" )
+          ( cd "$STAGE_DIR" && npx -y @vscode/vsce package --no-dependencies --out "opencode-standard.vsix" )
+
+          # Move artifact back into plugin dir for later collection
+          mv "$STAGE_DIR"/*.vsix .
+
+          # Clean up staging
+          rm -rf "$STAGE_DIR"
+
+      - name: Build webgui for gui-only variant
+        run: |
+          cd packages/opencode/webgui
+          if [ -f pnpm-lock.yaml ]; then
+            pnpm install --frozen-lockfile
+            pnpm run build
+          elif [ -f bun.lock ] || [ -f bun.lockb ]; then
+            bun install --frozen-lockfile
+            bun run build
+          else
+            npm ci
+            npm run build
+          fi
+
+      - name: Package VSCode plugin (gui-only) from staging
+        working-directory: hosts/vscode-plugin
+        run: |
+          WEBGUI_DIST="../../packages/opencode/webgui-dist"
+          if [ ! -d "$WEBGUI_DIST" ]; then
+            echo "::error::webgui-dist not found at $WEBGUI_DIST"
+            exit 1
+          fi
+
+          STAGE_DIR="../tmp_opencode_vscode_gui_only_stage"
+          rm -rf "$STAGE_DIR"
+          mkdir -p "$STAGE_DIR"
+
+          # Copy minimal required files — NO binaries
+          cp package.json "$STAGE_DIR/"
+          cp -R out "$STAGE_DIR/out"
+          mkdir -p "$STAGE_DIR/resources"
+          # Copy resources except bin/
+          for item in resources/*; do
+            [ "$(basename "$item")" = "bin" ] && continue
+            cp -R "$item" "$STAGE_DIR/resources/"
+          done
+          # Embed webgui-dist
+          cp -R "$WEBGUI_DIST" "$STAGE_DIR/resources/webgui-app"
+          [ -f README.md ] && cp README.md "$STAGE_DIR/" || true
+          [ -f CHANGELOG.md ] && cp CHANGELOG.md "$STAGE_DIR/" || true
+          [ -f ../../LICENSE ] && cp ../../LICENSE "$STAGE_DIR/" || true
+
+          # Deep-merge gui-only overrides into package.json, remove scripts/devDependencies
+          node -e '
+            const fs=require("fs");
+            const path=require("path");
+            function deep(t,s){for(const k of Object.keys(s)){const sv=s[k],tv=t[k];if(Array.isArray(sv)&&Array.isArray(tv)){for(let i=0;i<sv.length;i++){if(i<tv.length&&typeof sv[i]==="object"&&typeof tv[i]==="object"){deep(tv[i],sv[i])}else{tv[i]=sv[i]}}}else if(sv&&typeof sv==="object"&&!Array.isArray(sv)&&tv&&typeof tv==="object"&&!Array.isArray(tv)){deep(tv,sv)}else{t[k]=sv}}return t}
+            const pkgPath=path.resolve(process.cwd(), "../tmp_opencode_vscode_gui_only_stage/package.json");
+            const pkg=JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+            const overrides=JSON.parse(fs.readFileSync("package.gui-only.json", "utf8"));
+            deep(pkg, overrides);
+            delete pkg.scripts;
+            delete pkg.devDependencies;
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+          '
+
+          # Package gui-only variant
+          ( cd "$STAGE_DIR" && npx -y @vscode/vsce package --no-dependencies --out "opencode-gui-only.vsix" )
 
           # Move artifact back into plugin dir for later collection
           mv "$STAGE_DIR"/*.vsix .
@@ -130,20 +197,21 @@ jobs:
         run: |
           mkdir -p release-artifacts
 
-          # Find and copy VSCode extension
-          find hosts/vscode-plugin -name "*.vsix" -type f -exec cp {} release-artifacts/ \;
+          # Copy and rename VSCode standard extension
+          if [ -f hosts/vscode-plugin/opencode-standard.vsix ]; then
+            cp hosts/vscode-plugin/opencode-standard.vsix \
+              "release-artifacts/opencode-vscode-${{ steps.version.outputs.version }}.vsix"
+          fi
+
+          # Copy and rename VSCode gui-only extension
+          if [ -f hosts/vscode-plugin/opencode-gui-only.vsix ]; then
+            cp hosts/vscode-plugin/opencode-gui-only.vsix \
+              "release-artifacts/opencode-vscode-gui-only-${{ steps.version.outputs.version }}.vsix"
+          fi
 
           # Find and copy JetBrains plugin
           find hosts/jetbrains-plugin/build/distributions -name "*.zip" -type f -exec cp {} release-artifacts/ \;
-
-          # Rename artifacts with version
           cd release-artifacts
-          for file in *.vsix; do
-            if [ -f "$file" ]; then
-              mv "$file" "opencode-vscode-${{ steps.version.outputs.version }}.vsix"
-            fi
-          done
-
           for file in *.zip; do
             if [ -f "$file" ]; then
               mv "$file" "opencode-jetbrains-${{ steps.version.outputs.version }}.zip"
@@ -165,14 +233,20 @@ jobs:
             ## OpenCode Release ${{ steps.version.outputs.version }}
 
             This release includes:
-            - **VSCode Extension**: `opencode-vscode-${{ steps.version.outputs.version }}.vsix`
+            - **VSCode Extension (standard)**: `opencode-vscode-${{ steps.version.outputs.version }}.vsix` — bundles opencode binaries
+            - **VSCode Extension (gui-only)**: `opencode-vscode-gui-only-${{ steps.version.outputs.version }}.vsix` — lightweight, uses system `opencode` binary
             - **JetBrains Plugin**: `opencode-jetbrains-${{ steps.version.outputs.version }}.zip`
 
             ### Installation Instructions
 
-            #### VSCode Extension
+            #### VSCode Extension (standard — includes binaries)
             1. Download `opencode-vscode-${{ steps.version.outputs.version }}.vsix`
             2. Install using: `code --install-extension opencode-vscode-${{ steps.version.outputs.version }}.vsix`
+
+            #### VSCode Extension (gui-only — requires system opencode)
+            1. Ensure `opencode` is installed and available in your PATH
+            2. Download `opencode-vscode-gui-only-${{ steps.version.outputs.version }}.vsix`
+            3. Install using: `code --install-extension opencode-vscode-gui-only-${{ steps.version.outputs.version }}.vsix`
 
             #### JetBrains Plugin
             1. Download `opencode-jetbrains-${{ steps.version.outputs.version }}.zip`
@@ -200,11 +274,18 @@ jobs:
           echo "Checking release artifacts..."
           ls -la ./test-artifacts/ || echo "No artifacts found"
 
-          # Check if VSCode extension exists
-          if ls ./test-artifacts/*.vsix 1> /dev/null 2>&1; then
-            echo "✓ VSCode extension found"
+          # Check if VSCode standard extension exists
+          if ls ./test-artifacts/opencode-vscode-v*.vsix 1> /dev/null 2>&1; then
+            echo "✓ VSCode extension (standard) found"
           else
-            echo "✗ VSCode extension missing"
+            echo "✗ VSCode extension (standard) missing"
+          fi
+
+          # Check if VSCode gui-only extension exists
+          if ls ./test-artifacts/opencode-vscode-gui-only-*.vsix 1> /dev/null 2>&1; then
+            echo "✓ VSCode extension (gui-only) found"
+          else
+            echo "✗ VSCode extension (gui-only) missing"
           fi
 
           # Check if JetBrains plugin exists

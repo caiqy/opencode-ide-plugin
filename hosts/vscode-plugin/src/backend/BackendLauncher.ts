@@ -18,6 +18,11 @@ export interface BackendConnection {
 export class BackendLauncher {
   private currentProcess?: ChildProcess
   private currentConnection?: Omit<BackendConnection, "process">
+  private extensionPath?: string
+
+  constructor(extensionPath?: string) {
+    this.extensionPath = extensionPath
+  }
 
   /**
    * Launch the opencode backend process
@@ -168,7 +173,8 @@ export class BackendLauncher {
   }
 
   /**
-   * Extract the appropriate binary for the current OS/architecture
+   * Extract the appropriate binary for the current OS/architecture.
+   * Tries bundled binary first, falls back to system PATH opencode.
    * @returns Promise resolving to the path of the extracted binary
    */
   private async extractBinary(): Promise<string> {
@@ -179,13 +185,32 @@ export class BackendLauncher {
       return override.trim()
     }
 
-    // Get extension path
-    const extension = vscode.extensions.getExtension("paviko.opencode-ux-plus")
-    if (!extension) {
-      throw new Error("Extension not found")
+    // Resolve extension path dynamically (works for any extension ID)
+    const extPath = this.extensionPath
+      || vscode.extensions.getExtension("paviko.opencode-ux-plus")?.extensionPath
+      || vscode.extensions.getExtension("paviko.opencode-ux-plus-gui-only")?.extensionPath
+
+    // Try bundled binary first
+    if (extPath) {
+      try {
+        return await ResourceExtractor.extractBinary(extPath)
+      } catch {
+        logger.appendLine("Bundled binary not found, falling back to system PATH")
+      }
     }
 
-    return ResourceExtractor.extractBinary(extension.extensionPath)
+    // Fall back to system opencode binary
+    return this.resolveSystemBinary()
+  }
+
+  /**
+   * Resolve opencode binary from system PATH
+   * @returns The binary name to be resolved via PATH
+   */
+  private resolveSystemBinary(): string {
+    const name = process.platform === "win32" ? "opencode.exe" : "opencode"
+    logger.appendLine(`Using system binary: ${name}`)
+    return name
   }
 
   /**

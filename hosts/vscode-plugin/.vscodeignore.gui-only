@@ -48,10 +48,10 @@ npm-debug.log*
 !out/**/*.js
 !out/**/*.js.map
 
-# Include resources (binaries)
+# Include resources BUT exclude binaries (gui-only mode)
 !resources/**
+resources/bin/**
 
-# Exclude gui-only build artifacts and config
-resources/webgui-app/**
+# Gui-only build config files (not needed in VSIX)
 package.gui-only.json
 .vscodeignore.gui-only
