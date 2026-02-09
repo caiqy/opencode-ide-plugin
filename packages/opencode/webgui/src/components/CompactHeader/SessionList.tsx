@@ -51,7 +51,7 @@ export function SessionList({
   if (filteredSessions.length === 0) {
     return (
       <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-center">
-        {sessions.length === 0 ? "No sessions yet" : "No matching sessions"}
+        {sessions.length === 0 ? "暂无会话" : "没有匹配的会话"}
       </div>
     )
   }
@@ -61,7 +61,7 @@ export function SessionList({
       {filteredSessions.map((session, index) => {
         const isActive = session.id === currentSessionId
         const isEditing = editingSessionId === session.id
-        const displayTitle = session.title || "New Session"
+        const displayTitle = session.title || "新建会话"
 
         return (
           <SessionItem

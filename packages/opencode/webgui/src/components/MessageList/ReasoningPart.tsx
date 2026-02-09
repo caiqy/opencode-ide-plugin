@@ -8,7 +8,10 @@ interface ReasoningPartProps {
 }
 
 export function ReasoningPart({ part, durationMs }: ReasoningPartProps) {
-  const label = durationMs !== undefined ? `Thought for ${Math.max(1, Math.floor(durationMs / 1000))}s` : "Thinking..."
+  const label =
+    durationMs !== undefined
+      ? `思考了 ${Math.max(1, Math.floor(durationMs / 1000))} 秒`
+      : "思考中…"
   const open = usePartOpen()
   const expanded = open.isOpen(part.id)
 

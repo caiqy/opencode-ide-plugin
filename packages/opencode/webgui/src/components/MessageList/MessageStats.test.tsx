@@ -18,8 +18,8 @@ describe("MessageStats", () => {
       />,
     )
 
-    await user.click(screen.getByRole("button", { name: "Show token usage" }))
-    expect(screen.getByText("Total")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "查看令牌用量" }))
+    expect(screen.getByText("总计")).toBeInTheDocument()
 
     const popover = container.querySelector(".modern-card")
     expect(popover).toBeTruthy()

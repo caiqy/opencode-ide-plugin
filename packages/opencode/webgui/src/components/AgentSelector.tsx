@@ -90,8 +90,8 @@ export function AgentSelector({ selectedAgent, onSelect, disabled }: AgentSelect
         onClick={toggle}
         disabled={disabled || isLoading}
         className="h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
-        title="Select agent"
-        data-tip="Select agent"
+        title="选择智能体"
+        data-tip="选择智能体"
       >
         {getCurrentDisplay()}
         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,7 +107,7 @@ export function AgentSelector({ selectedAgent, onSelect, disabled }: AgentSelect
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search agents..."
+              placeholder="搜索智能体…"
               className="w-full px-2 py-1 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               autoFocus
             />
@@ -116,10 +116,10 @@ export function AgentSelector({ selectedAgent, onSelect, disabled }: AgentSelect
           {/* Agents list */}
           <div className="overflow-y-auto flex-1">
             {isLoading ? (
-              <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">Loading agents...</div>
+              <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">正在加载智能体…</div>
             ) : filteredAgents.length === 0 ? (
               <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">
-                {searchTerm ? "No agents found" : "No agents available"}
+                {searchTerm ? "未找到智能体" : "暂无可用智能体"}
               </div>
             ) : (
               filteredAgents.map((agent) => {
@@ -140,7 +140,7 @@ export function AgentSelector({ selectedAgent, onSelect, disabled }: AgentSelect
                         <span className="font-medium truncate">{cap(agent.name)}</span>
                         {agent.builtIn && (
                           <span className="px-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-[10px] rounded">
-                            built-in
+                            内置
                           </span>
                         )}
                       </div>

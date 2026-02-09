@@ -75,7 +75,7 @@ export function ApiKeysTab({
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Configure API keys or login to AI providers. Keys are stored securely.
+          配置 API Key 或登录 AI 提供方。密钥会被安全存储。
         </p>
       </div>
 
@@ -136,10 +136,10 @@ export function ApiKeysTab({
         isOpen={!!providerManagement.providerToDelete}
         onClose={() => providerManagement.setProviderToDelete(null)}
         onConfirm={providerManagement.confirmDeleteProvider}
-        title="Remove Provider"
-        message={`Are you sure you want to remove ${providerManagement.providerToDelete}? This will remove any stored authentication tokens.`}
-        confirmText="Remove"
-        cancelText="Cancel"
+        title="移除提供方"
+        message={`确定要移除 ${providerManagement.providerToDelete} 吗？这会删除已存储的认证令牌。`}
+        confirmText="移除"
+        cancelText="取消"
         variant="danger"
         isLoading={providerManagement.isDeleting}
       />

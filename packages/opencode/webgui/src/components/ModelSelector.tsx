@@ -248,10 +248,10 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
   const getCurrentDisplay = () => {
     const pid = selectedProviderId || defaultIds.provider
     const mid = selectedModelId || defaultIds.model
-    if (!pid || !mid) return "Select Model"
+    if (!pid || !mid) return "选择模型"
     const provider = providers.find((p) => p.id === pid)
-    if (!provider) return "Select Model"
-    return provider.models[mid]?.name || "Select Model"
+    if (!provider) return "选择模型"
+    return provider.models[mid]?.name || "选择模型"
   }
 
   const handleSelect = async (providerID: string, modelID: string) => {
@@ -316,7 +316,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
     const provider = providers.find((p) => p.id === providerID)
     const model = provider?.models[modelID]
     const name = model?.name || modelID
-    const label = `Toggle favorite ${providerID}/${modelID}`
+    const label = `切换收藏 ${providerID}/${modelID}`
 
     return (
       <div
@@ -360,8 +360,8 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
         onClick={toggle}
         disabled={disabled || isLoading}
         className="h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
-        title="Select model"
-        data-tip="Select model"
+        title="选择模型"
+        data-tip="选择模型"
       >
         {getCurrentDisplay()}
         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -376,7 +376,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search models..."
+              placeholder="搜索模型…"
               className="w-full px-2 py-1 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               autoFocus
             />
@@ -384,16 +384,16 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
 
           <div className="overflow-y-auto flex-1">
             {isLoading ? (
-              <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">Loading models...</div>
+              <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">正在加载模型…</div>
             ) : providers.length === 0 ? (
-              <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">No providers configured</div>
+              <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">尚未配置提供方</div>
             ) : (
               <>
                 {/* Favorites group */}
                 {filteredFavorites().length > 0 && (
                   <div className="border-b border-gray-100 dark:border-gray-800">
                     <div className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800">
-                      Favorites
+                      收藏
                     </div>
                     {filteredFavorites().map((item) => renderModelRow(item.providerID, item.modelID))}
                   </div>
@@ -403,7 +403,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                 {filteredRecent().length > 0 && (
                   <div className="border-b border-gray-100 dark:border-gray-800">
                     <div className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800">
-                      Recent
+                      最近
                     </div>
                     {filteredRecent().map((item) => renderModelRow(item.providerID, item.modelID))}
                   </div>
@@ -431,12 +431,12 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
                           <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
                             {model.capabilities.reasoning && (
                               <span className="px-1 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-[9px] leading-none">
-                                reasoning
+                                推理
                               </span>
                             )}
                             {isDefault && (
                               <span className="px-1 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-[9px] leading-none">
-                                default
+                                默认
                               </span>
                             )}
                           </div>,

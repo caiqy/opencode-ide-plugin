@@ -64,7 +64,7 @@ describe("useOAuthFlow migration", () => {
 
     expect(interval).not.toHaveBeenCalled()
     expect(sdk.auth.submit).toHaveBeenCalledWith("flow-auto", "")
-    expect(result.current.authStatus.openai).toBe("Connected!")
+    expect(result.current.authStatus.openai).toBe("已连接！")
     expect(setConfiguredProviders).toHaveBeenCalledWith(["openai"])
     expect(setSelectedProviderToAdd).toHaveBeenCalledWith("")
     expect(markProvidersDirty).toHaveBeenCalled()
@@ -96,7 +96,7 @@ describe("useOAuthFlow migration", () => {
     })
 
     expect(result.current.manualCodeState?.providerId).toBe("openai")
-    expect(result.current.authStatus.openai).toBe("Waiting for code...")
+    expect(result.current.authStatus.openai).toBe("等待输入授权码…")
 
     act(() => {
       result.current.setManualCodeInput("abc123")
@@ -109,6 +109,6 @@ describe("useOAuthFlow migration", () => {
     await waitFor(() => {
       expect(sdk.auth.submit).toHaveBeenCalledWith("flow-code", "abc123")
     })
-    expect(result.current.authStatus.openai).toBe("Connected!")
+    expect(result.current.authStatus.openai).toBe("已连接！")
   })
 })

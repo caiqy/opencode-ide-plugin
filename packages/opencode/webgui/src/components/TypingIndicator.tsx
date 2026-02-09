@@ -58,7 +58,7 @@ export function TypingIndicator({ visible }: TypingIndicatorProps) {
     <div className="mt-1 mb-3 space-y-1 min-h-[1rem]">
       {visible && (
         <button className="relative inline-flex items-center gap-0.5 pr-4 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
-          <span className="leading-none">Generating</span>
+          <span className="leading-none">生成中</span>
           <div className="flex gap-0.5">
             <div
               className="w-0.5 h-0.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce"
@@ -81,7 +81,7 @@ export function TypingIndicator({ visible }: TypingIndicatorProps) {
           <span>{statusText}</span>
           {currentStatus.type === "retry" && (
             <span className="text-[10px] text-orange-700 dark:text-orange-200">
-              {countdown !== null ? `retrying in ${countdown}s` : "retrying soon"} · attempt #{currentStatus.attempt}
+              {countdown !== null ? `${countdown} 秒后重试` : "即将重试"} · 第{currentStatus.attempt}次尝试
             </span>
           )}
         </div>

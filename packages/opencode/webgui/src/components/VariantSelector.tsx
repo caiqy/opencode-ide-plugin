@@ -9,6 +9,9 @@ interface VariantSelectorProps {
 }
 
 const formatVariantName = (variant: string) => {
+  const translated =
+    variant === "low" ? "低" : variant === "medium" ? "中" : variant === "high" ? "高" : undefined
+  if (translated) return translated
   return variant.charAt(0).toUpperCase() + variant.slice(1)
 }
 
@@ -32,7 +35,7 @@ export function VariantSelector({
   const getCurrentDisplay = () => {
     if (selectedVariant) return formatVariantName(selectedVariant)
     if (isDisabled && !isReasoningModel) return ""
-    return "Default"
+    return "默认"
   }
 
   return (
@@ -41,8 +44,8 @@ export function VariantSelector({
         onClick={toggle}
         disabled={isDisabled}
         className="h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
-        title="Select reasoning effort"
-        data-tip="Select reasoning effort"
+        title="选择推理强度"
+        data-tip="选择推理强度"
       >
         {/* Sparkles icon */}
         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -72,7 +75,7 @@ export function VariantSelector({
                   : "text-gray-900 dark:text-gray-100"
               }`}
             >
-              <span className="font-medium">Default</span>
+              <span className="font-medium">默认</span>
               {selectedVariant === undefined && (
                 <svg className="w-4 h-4 ml-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path

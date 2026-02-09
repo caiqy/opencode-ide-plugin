@@ -47,7 +47,7 @@ describe("Button", () => {
     render(<Button loading>Submit</Button>)
     const button = screen.getByRole("button")
     expect(button).toBeDisabled()
-    expect(screen.getByText("Loading...")).toBeInTheDocument()
+    expect(screen.getByText("加载中…")).toBeInTheDocument()
     expect(button.querySelector("svg")).toBeInTheDocument()
   })
 

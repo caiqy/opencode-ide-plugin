@@ -13,7 +13,7 @@ export function KeyboardShortcutsHelp({ isOpen, onClose }: KeyboardShortcutsHelp
     <Modal isOpen={isOpen} onClose={onClose} size="xl">
       <ModalHeader onClose={onClose}>
         <h2 id="shortcuts-help-title" className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-          Keyboard Shortcuts
+          键盘快捷键
         </h2>
       </ModalHeader>
 
@@ -55,11 +55,11 @@ export function KeyboardShortcutsHelp({ isOpen, onClose }: KeyboardShortcutsHelp
         {/* Footer note */}
         <div className="mt-4 rounded border border-blue-200 bg-blue-50 p-2 dark:border-blue-900 dark:bg-blue-950/30">
           <p className="text-sm text-blue-800 dark:text-blue-200">
-            <strong>Tip:</strong> Use{" "}
+            <strong>提示：</strong> 随时按{" "}
             <kbd className="rounded border border-blue-300 bg-white px-1.5 py-0.5 text-xs font-semibold dark:border-blue-700 dark:bg-blue-900">
               ?
             </kbd>{" "}
-            to quickly access this help dialog anytime.
+            即可快速打开此帮助对话框。
           </p>
         </div>
       </ModalBody>

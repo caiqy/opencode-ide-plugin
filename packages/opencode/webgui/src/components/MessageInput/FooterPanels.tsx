@@ -140,7 +140,7 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
             <span>
-              {fileCount} file{fileCount !== 1 ? "s" : ""} changed
+              {fileCount} 个文件变更
             </span>
           </button>
         )}
@@ -158,7 +158,7 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
             <span>
-              {completedTodos}/{todos.length} TODOs
+              {completedTodos}/{todos.length} 任务列表
             </span>
           </button>
         )}

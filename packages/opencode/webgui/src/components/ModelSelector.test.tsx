@@ -71,14 +71,14 @@ describe("ModelSelector favorites", () => {
     await screen.findByText("GPT 4.1")
 
     const user = userEvent.setup()
-    await user.click(screen.getByTitle("Select model"))
+    await user.click(screen.getByTitle("选择模型"))
 
-    const input = screen.getByPlaceholderText("Search models...")
+    const input = screen.getByPlaceholderText("搜索模型…")
     const dropdown = input.closest("div")?.parentElement
     expect(dropdown).toBeTruthy()
 
     const ui = within(dropdown as HTMLElement)
-    expect(ui.getByText("Favorites")).toBeInTheDocument()
+    expect(ui.getByText("收藏")).toBeInTheDocument()
     expect(ui.getByText("GPT 4.1")).toBeInTheDocument()
   })
 
@@ -89,20 +89,20 @@ describe("ModelSelector favorites", () => {
     await screen.findByText("GPT 4.1")
 
     const user = userEvent.setup()
-    await user.click(screen.getByTitle("Select model"))
+    await user.click(screen.getByTitle("选择模型"))
 
-    const input = screen.getByPlaceholderText("Search models...")
+    const input = screen.getByPlaceholderText("搜索模型…")
     const dropdown = input.closest("div")?.parentElement
     expect(dropdown).toBeTruthy()
 
     const ui = within(dropdown as HTMLElement)
-    expect(ui.queryByText("Favorites")).not.toBeInTheDocument()
+    expect(ui.queryByText("收藏")).not.toBeInTheDocument()
 
-    await user.click(ui.getByLabelText("Toggle favorite openai/gpt-4.1"))
+    await user.click(ui.getByLabelText("切换收藏 openai/gpt-4.1"))
     expect(onSelect).not.toHaveBeenCalled()
 
     expect(JSON.parse(localStorage.getItem("opencode_favorite_models_v1") || "[]")).toEqual(["openai/gpt-4.1"])
-    expect(ui.getByText("Favorites")).toBeInTheDocument()
+    expect(ui.getByText("收藏")).toBeInTheDocument()
   })
 
   it("在 IDE 环境中会从 host storage 恢复收藏", async () => {
@@ -124,14 +124,14 @@ describe("ModelSelector favorites", () => {
     await screen.findByText("GPT 4.1")
 
     const user = userEvent.setup()
-    await user.click(screen.getByTitle("Select model"))
+    await user.click(screen.getByTitle("选择模型"))
 
-    const input = screen.getByPlaceholderText("Search models...")
+    const input = screen.getByPlaceholderText("搜索模型…")
     const dropdown = input.closest("div")?.parentElement
     expect(dropdown).toBeTruthy()
 
     const ui = within(dropdown as HTMLElement)
-    expect(ui.getByText("Favorites")).toBeInTheDocument()
+    expect(ui.getByText("收藏")).toBeInTheDocument()
     expect(ideBridge.request).toHaveBeenCalledWith("storageGet", {
       keys: ["opencode_favorite_models_v1"],
     })
@@ -144,13 +144,13 @@ describe("ModelSelector favorites", () => {
     const user = userEvent.setup()
     render(<ModelSelector onSelect={() => {}} />)
     await screen.findByText("GPT 4.1")
-    await user.click(screen.getByTitle("Select model"))
+    await user.click(screen.getByTitle("选择模型"))
 
-    const input = screen.getByPlaceholderText("Search models...")
+    const input = screen.getByPlaceholderText("搜索模型…")
     const dropdown = input.closest("div")?.parentElement
     const ui = within(dropdown as HTMLElement)
 
-    await user.click(ui.getByLabelText("Toggle favorite openai/gpt-4.1"))
+    await user.click(ui.getByLabelText("切换收藏 openai/gpt-4.1"))
 
     expect(ideBridge.request).toHaveBeenCalledWith("storageSet", {
       key: "opencode_favorite_models_v1",
@@ -163,9 +163,9 @@ describe("ModelSelector favorites", () => {
     await screen.findByText("GPT 4.1")
 
     const user = userEvent.setup()
-    await user.click(screen.getByTitle("Select model"))
+    await user.click(screen.getByTitle("选择模型"))
 
-    const input = screen.getByPlaceholderText("Search models...")
+    const input = screen.getByPlaceholderText("搜索模型…")
     const dropdown = input.closest("div")?.parentElement
     expect(dropdown).toBeTruthy()
 
@@ -188,7 +188,7 @@ describe("ModelSelector favorites", () => {
     // 等待首屏异步加载完成，避免 React act(...) 警告
     await screen.findByText("GPT 4.1")
 
-    const trigger = screen.getByTitle("Select model")
+    const trigger = screen.getByTitle("选择模型")
     expect(trigger).toHaveClass("dark:text-gray-200")
     expect(trigger).not.toHaveClass("dark:text-gray-400")
     expect(trigger).toHaveClass("px-1.5")

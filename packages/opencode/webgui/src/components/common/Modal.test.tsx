@@ -113,20 +113,20 @@ describe("ModalHeader", () => {
 
   it("renders close button when onClose is provided", () => {
     render(<ModalHeader onClose={vi.fn()}>Header</ModalHeader>)
-    const closeButton = screen.getByRole("button", { name: /close modal/i })
+    const closeButton = screen.getByRole("button", { name: "关闭" })
     expect(closeButton).toBeInTheDocument()
   })
 
   it("does not render close button when onClose is not provided", () => {
     render(<ModalHeader>Header</ModalHeader>)
-    expect(screen.queryByRole("button", { name: /close modal/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "关闭" })).not.toBeInTheDocument()
   })
 
   it("calls onClose when close button is clicked", async () => {
     const user = userEvent.setup()
     const handleClose = vi.fn()
     render(<ModalHeader onClose={handleClose}>Header</ModalHeader>)
-    const closeButton = screen.getByRole("button", { name: /close modal/i })
+    const closeButton = screen.getByRole("button", { name: "关闭" })
     await user.click(closeButton)
     expect(handleClose).toHaveBeenCalledTimes(1)
   })

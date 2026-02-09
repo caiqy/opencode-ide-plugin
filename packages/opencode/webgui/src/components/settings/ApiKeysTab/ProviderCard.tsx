@@ -75,19 +75,19 @@ export function ProviderCard({
           <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{provider.name}</span>
           {isTemporary && (
             <span className="text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 px-1.5 py-0.5 rounded-full">
-              New
+              新
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500 dark:text-gray-400">
-            {isConnected ? "Connected" : "Not Configured"}
+            {isConnected ? "已连接" : "未配置"}
           </span>
           <button
             onClick={(e) => onDelete(provider.id, e)}
             className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-            title="Remove provider"
-            data-tip="Remove provider"
+            title="移除提供方"
+            data-tip="移除提供方"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -107,7 +107,7 @@ export function ProviderCard({
       {isExpanded && (
         <div className="px-3 pb-3 pt-0 border-t border-blue-100 dark:border-blue-900/30 mt-2">
           <div className="pt-3 space-y-3">
-            {isLoading && <div className="text-xs text-gray-400 animate-pulse">Loading auth methods...</div>}
+            {isLoading && <div className="text-xs text-gray-400 animate-pulse">正在加载认证方式…</div>}
 
             {hasOAuth && (
               <OAuthSection
@@ -136,7 +136,7 @@ export function ProviderCard({
                       <span className="w-full border-t border-gray-200 dark:border-gray-700" />
                     </div>
                     <div className="relative flex justify-center text-[10px] uppercase tracking-wider">
-                      <span className="bg-white dark:bg-gray-900 px-2 text-gray-400">Or use API Key</span>
+                      <span className="bg-white dark:bg-gray-900 px-2 text-gray-400">或使用 API Key</span>
                     </div>
                   </div>
                 )}

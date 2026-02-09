@@ -2,7 +2,7 @@ import { useCallback } from "react"
 import { useOpenFile } from "../../../hooks/useOpenFile"
 import { useProject } from "../../../state/ProjectContext"
 import { toDisplayPath } from "../../../utils/path"
-import { getStatusIcon, getStatusClasses } from "./utils"
+import { getStatusIcon, getStatusClasses, getToolLabel } from "./utils"
 
 interface ToolHeaderProps {
   tool: string
@@ -17,6 +17,7 @@ export function ToolHeader({ tool, status, toolName, filePath, isExpanded, onTog
   const openFile = useOpenFile()
   const { worktree } = useProject()
   const displayPath = filePath ? toDisplayPath(filePath, worktree) : ""
+  const toolLabel = getToolLabel(tool)
 
   const handleOpenPath = useCallback(
     (e: React.MouseEvent | React.KeyboardEvent) => {
@@ -42,12 +43,14 @@ export function ToolHeader({ tool, status, toolName, filePath, isExpanded, onTog
   return (
     <button
       onClick={onToggle}
+      title={tool}
+      data-tip={tool}
       className={`w-full flex items-center gap-2 px-3 py-1.5 text-left ${getStatusClasses(status)} hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
     >
       {getStatusIcon(status)}
       {showFileLink ? (
         <span className="text-xs font-medium flex-1">
-          {`${tool}: `}
+          {`${toolLabel}：`}
           <span
             role="button"
             tabIndex={0}

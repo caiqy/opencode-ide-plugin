@@ -36,7 +36,8 @@ export function OAuthSection({
   onManualCodeSubmit,
   onManualCodeCancel,
 }: OAuthSectionProps) {
-  const isWaiting = authStatus && (authStatus.startsWith("Waiting") || authStatus === "Initializing...")
+  const waitingForCodeStatus = "等待输入授权码…"
+  const isWaiting = authStatus && (authStatus.startsWith("等待") || authStatus === "初始化中…")
   const showManualCodeInput = manualCodeState?.providerId === providerId
 
   // Get instructions from either props or manualCodeState
@@ -47,10 +48,10 @@ export function OAuthSection({
       <div className="flex items-center gap-2">
         <button
           onClick={() => onOAuthLogin(providerId, oauthMethodIndex)}
-          disabled={!!authStatus && authStatus !== "Waiting for code..."}
+          disabled={!!authStatus && authStatus !== waitingForCodeStatus}
           className="px-3 py-1.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-md text-xs font-medium hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors disabled:opacity-50 shadow-sm"
         >
-          {methods[oauthMethodIndex].label || `Login with ${providerName}`}
+          {methods[oauthMethodIndex].label || `使用 ${providerName} 登录`}
         </button>
         {authStatus && !instructions && (
           <div className="flex items-center gap-2">
@@ -60,7 +61,7 @@ export function OAuthSection({
                 onClick={() => onCancel(providerId)}
                 className="px-2 py-1 text-xs border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
               >
-                Cancel
+                取消
               </button>
             )}
           </div>
@@ -78,7 +79,7 @@ export function OAuthSection({
               onClick={() => onCancel(providerId)}
               className="px-2 py-1 text-xs border border-blue-200 dark:border-blue-700 rounded hover:bg-blue-100 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-400"
             >
-              Cancel
+              取消
             </button>
           </div>
         </div>

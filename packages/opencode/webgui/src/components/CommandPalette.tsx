@@ -39,8 +39,8 @@ export function CommandPalette({
   const commands: Command[] = [
     {
       id: "new-session",
-      label: "New Session",
-      description: "Create a new conversation",
+      label: "新建会话",
+      description: "创建新会话",
       icon: "➕",
       action: () => {
         onNewSession()
@@ -50,8 +50,8 @@ export function CommandPalette({
     },
     {
       id: "settings",
-      label: "Settings",
-      description: "Open settings panel",
+      label: "设置",
+      description: "打开设置面板",
       icon: "⚙️",
       action: () => {
         onOpenSettings()
@@ -61,8 +61,8 @@ export function CommandPalette({
     },
     {
       id: "help",
-      label: "Keyboard Shortcuts",
-      description: "Show all keyboard shortcuts",
+      label: "键盘快捷键",
+      description: "查看所有快捷键",
       icon: "❓",
       action: () => {
         onShowHelp()
@@ -73,8 +73,8 @@ export function CommandPalette({
     // Add sessions
     ...sessions.map((session) => ({
       id: `session-${session.id}`,
-      label: session.title || "New Session",
-      description: `Switch to session`,
+      label: session.title || "新建会话",
+      description: "切换到会话",
       icon: "💬",
       action: () => {
         onSwitchSession(session.id)
@@ -172,22 +172,22 @@ export function CommandPalette({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Type a command or search sessions..."
+            placeholder="输入命令或搜索会话…"
             className="w-full border-0 bg-transparent text-base text-gray-900 placeholder-gray-500 outline-none dark:text-gray-100 dark:placeholder-gray-400"
             id="command-palette-title"
-            aria-label="Search commands and sessions"
+            aria-label="搜索命令和会话"
           />
         </div>
 
         {/* Commands List */}
         <div className="max-h-96 overflow-y-auto" ref={commandListRef}>
           {filteredCommands.length === 0 ? (
-            <div className="p-8 text-center text-gray-500 dark:text-gray-400">No results found for "{searchQuery}"</div>
+            <div className="p-8 text-center text-gray-500 dark:text-gray-400">未找到与“{searchQuery}”匹配的结果</div>
           ) : (
             Object.entries(commandsByCategory).map(([category, cmds]) => (
               <div key={category}>
                 <div className="bg-gray-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                  {category === "Action" ? "Actions" : "Recent Sessions"}
+                  {category === "Action" ? "操作" : "最近会话"}
                 </div>
                 {cmds.map((cmd) => (
                   <button
@@ -224,15 +224,15 @@ export function CommandPalette({
             <kbd className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-xs font-semibold dark:border-gray-600 dark:bg-gray-700">
               ↑↓
             </kbd>
-            Navigate
+            移动
             <kbd className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-xs font-semibold dark:border-gray-600 dark:bg-gray-700">
               Enter
             </kbd>
-            Select
+            选择
             <kbd className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-xs font-semibold dark:border-gray-600 dark:bg-gray-700">
               Esc
             </kbd>
-            Close
+            关闭
           </span>
         </div>
       </div>

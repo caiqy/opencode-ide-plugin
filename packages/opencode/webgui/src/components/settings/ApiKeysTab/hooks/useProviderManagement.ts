@@ -53,8 +53,8 @@ export function useProviderManagement({
       delete newApiKeys[providerToDelete]
       setApiKeys(newApiKeys)
     } catch (e) {
-      console.error("Failed to remove provider", e)
-      alert("Failed to remove provider")
+      console.error("移除提供方失败", e)
+      alert("移除提供方失败")
     } finally {
       setIsDeleting(false)
       setProviderToDelete(null)

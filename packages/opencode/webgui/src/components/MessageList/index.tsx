@@ -121,7 +121,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
           <div key={`${message.info.id}-summary-separator`} className="flex items-center my-4">
             <div className="flex-1 border-t border-dashed border-gray-300 dark:border-gray-700" />
             <span className="mx-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-              Conversation compacted here
+              会话已在此精简
             </span>
             <div className="flex-1 border-t border-dashed border-gray-300 dark:border-gray-700" />
           </div>,
@@ -174,10 +174,10 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
         isOpen={!!forkConfirm}
         onClose={() => setForkConfirm(null)}
         onConfirm={handleForkConfirm}
-        title="Fork Session"
-        message="Create a new session with messages up to this point? This will create a copy of the conversation history."
-        confirmText="Fork"
-        cancelText="Cancel"
+        title="从此处新建会话"
+        message="要基于截至此处的消息新建会话吗？这会复制当前对话历史。"
+        confirmText="新建"
+        cancelText="取消"
         variant="info"
         isLoading={isForking}
       />
@@ -189,32 +189,32 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
         onConfirm={handleRevertConfirm}
         title={
           revertAction?.type === "undo"
-            ? "Undo session changes"
+            ? "撤销会话变更"
             : revertAction?.type === "redo"
-              ? "Redo session changes"
+              ? "重做会话变更"
               : revertAction?.type === "restore"
-                ? "Restore all changes"
+                ? "恢复全部变更"
                 : ""
         }
         message={
           revertAction?.type === "undo"
-            ? "Undo messages and file changes after this message?"
+            ? "要撤销此消息之后的消息和文件变更吗？"
             : revertAction?.type === "redo"
-              ? "Redo the next undone messages and file changes?"
+              ? "要重做下一批已撤销的消息和文件变更吗？"
               : revertAction?.type === "restore"
-                ? "Restore all previously undone messages and file changes?"
+                ? "要恢复此前已撤销的全部消息和文件变更吗？"
                 : ""
         }
         confirmText={
           revertAction?.type === "undo"
-            ? "Undo"
+            ? "撤销"
             : revertAction?.type === "redo"
-              ? "Redo"
+              ? "重做"
               : revertAction?.type === "restore"
-                ? "Restore"
-                : "Confirm"
+                ? "恢复"
+                : "确认"
         }
-        cancelText="Cancel"
+        cancelText="取消"
         variant="warning"
         isLoading={isRevertBusy}
       />

@@ -1,5 +1,24 @@
 import type { ReactElement } from "react"
 
+const TOOL_LABELS: Record<string, string> = {
+  bash: "执行命令",
+  read: "查看",
+  write: "写入",
+  edit: "编辑",
+  multiedit: "批量编辑",
+  apply_patch: "文件补丁",
+  list: "浏览目录",
+  glob: "路径匹配",
+  grep: "文本查找",
+  webfetch: "抓取网页",
+  todoread: "查看任务列表",
+  todowrite: "更新任务列表",
+}
+
+export function getToolLabel(tool: string): string {
+  return TOOL_LABELS[tool] ?? tool
+}
+
 export function getLanguageFromFilename(filename?: string | unknown): string {
   if (typeof filename !== "string") return "text"
   const ext = filename.split(".").pop()?.toLowerCase()
@@ -99,9 +118,11 @@ export function getToolDisplayName(
   title: string | undefined,
   output: string | undefined,
 ): string {
+  const toolLabel = getToolLabel(tool)
+
   // If we have a title, use it with the tool name
   if (title) {
-    let display = `${tool}: ${title}`
+    let display = `${toolLabel}：${title}`
 
     // Special handling for todowrite/todoread to show completed/total
     if ((tool === "todowrite" || tool === "todoread") && output) {
@@ -110,8 +131,7 @@ export function getToolDisplayName(
         if (Array.isArray(todos)) {
           const completed = todos.filter((t: Todo) => t.status === "completed").length
           const total = todos.length
-          // Show only total if none completed, otherwise show completed/total
-          display = completed === 0 ? `${tool}: ${total} todos` : `${tool}: ${completed}/${total} todos`
+          display = completed === 0 ? `${toolLabel}：共 ${total}` : `${toolLabel}：已完成 ${completed}/${total}`
         }
       } catch {
         // If parsing fails, keep original title
@@ -127,26 +147,27 @@ export function getToolDisplayName(
   }
 
   // No title - build from input parameters
-  if (!input) return tool
+  if (!input) return toolLabel
 
   switch (tool) {
     case "list":
-      return input.path ? `${tool}: ${input.path}` : tool
+      return input.path ? `${toolLabel}：${input.path}` : toolLabel
     case "glob":
-      return input.pattern ? `${tool}: ${input.pattern}` : tool
+      return input.pattern ? `${toolLabel}：${input.pattern}` : toolLabel
     case "grep": {
-      let grepDisplay = tool
-      if (input.pattern) grepDisplay += `: ${input.pattern}`
+      let grepDisplay = toolLabel
+      if (input.pattern) grepDisplay += `：${input.pattern}`
       if (input.include) grepDisplay += ` (${input.include})`
       return grepDisplay
     }
     case "webfetch":
-      return input.url ? `${tool}: ${input.url}` : tool
+      return input.url ? `${toolLabel}：${input.url}` : toolLabel
     case "edit":
     case "multiedit":
     case "write":
-      return input.filePath ? `${tool}: ${input.filePath}` : tool
+    case "read":
+      return input.filePath ? `${toolLabel}：${input.filePath}` : toolLabel
     default:
-      return tool
+      return toolLabel
   }
 }

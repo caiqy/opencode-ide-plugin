@@ -73,8 +73,8 @@ describe("FooterPanels", () => {
   it("files changed 与 TODOs 面板应互斥显示", () => {
     render(<FooterPanels sessionID="s1" />)
 
-    const filesToggle = screen.getByRole("button", { name: /1 file changed/i })
-    const todosToggle = screen.getByRole("button", { name: /0\/1 TODOs/i })
+    const filesToggle = screen.getByRole("button", { name: /1\s*个文件变更/ })
+    const todosToggle = screen.getByRole("button", { name: /0\s*\/\s*1\s*任务列表/ })
 
     expect(screen.queryByTestId("files-panel")).not.toBeInTheDocument()
     expect(screen.queryByTestId("todos-panel")).not.toBeInTheDocument()

@@ -26,11 +26,11 @@ export function useSessionActions({ sessions, updateSessionTitle, deleteSession 
   const handleEditStart = (sessionId: string, currentTitle: string, e: React.MouseEvent) => {
     e.stopPropagation()
     setEditingSessionId(sessionId)
-    setEditingTitle(currentTitle || "New Session")
+    setEditingTitle(currentTitle || "新建会话")
   }
 
   const handleEditSave = async (sessionId: string) => {
-    if (editingTitle.trim() && editingTitle !== (sessions.find((s) => s.id === sessionId)?.title || "New Session")) {
+    if (editingTitle.trim() && editingTitle !== (sessions.find((s) => s.id === sessionId)?.title || "新建会话")) {
       await updateSessionTitle(sessionId, editingTitle.trim())
     }
     setEditingSessionId(null)

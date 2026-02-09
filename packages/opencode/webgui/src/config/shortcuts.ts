@@ -2,7 +2,7 @@ export interface ShortcutDefinition {
   id: string
   keys: string[]
   description: string
-  category: "General" | "Messages" | "Navigation"
+  category: "常规" | "消息" | "导航"
   handler: string
   modKey?: boolean
   shiftKey?: boolean
@@ -14,8 +14,8 @@ export const KEYBOARD_SHORTCUTS: ShortcutDefinition[] = [
   {
     id: "command-palette",
     keys: ["Cmd/Ctrl", "K"],
-    description: "Open command palette",
-    category: "General",
+    description: "打开命令面板",
+    category: "常规",
     handler: "onOpenCommandPalette",
     modKey: true,
     key: "k",
@@ -23,8 +23,8 @@ export const KEYBOARD_SHORTCUTS: ShortcutDefinition[] = [
   {
     id: "new-session",
     keys: ["Cmd/Ctrl", "N"],
-    description: "New session",
-    category: "General",
+    description: "新建会话",
+    category: "常规",
     handler: "onNewSession",
     modKey: true,
     key: "n",
@@ -32,8 +32,8 @@ export const KEYBOARD_SHORTCUTS: ShortcutDefinition[] = [
   {
     id: "settings",
     keys: ["Cmd/Ctrl", ","],
-    description: "Open settings",
-    category: "General",
+    description: "打开设置",
+    category: "常规",
     handler: "onOpenSettings",
     modKey: true,
     key: ",",
@@ -41,8 +41,8 @@ export const KEYBOARD_SHORTCUTS: ShortcutDefinition[] = [
   {
     id: "help",
     keys: ["?"],
-    description: "Show keyboard shortcuts",
-    category: "General",
+    description: "查看键盘快捷键",
+    category: "常规",
     handler: "onShowHelp",
     shiftKey: true,
     key: "?",
@@ -50,8 +50,8 @@ export const KEYBOARD_SHORTCUTS: ShortcutDefinition[] = [
   {
     id: "close-modal",
     keys: ["Escape"],
-    description: "Close modal/dialog",
-    category: "General",
+    description: "关闭弹窗或对话框",
+    category: "常规",
     handler: "onCloseModal",
     key: "Escape",
   },
@@ -60,8 +60,8 @@ export const KEYBOARD_SHORTCUTS: ShortcutDefinition[] = [
   {
     id: "send-message",
     keys: ["Enter"],
-    description: "Send message",
-    category: "Messages",
+    description: "发送消息",
+    category: "消息",
     handler: "onSendMessage",
     key: "Enter",
   },
@@ -70,8 +70,8 @@ export const KEYBOARD_SHORTCUTS: ShortcutDefinition[] = [
   {
     id: "toggle-session-list",
     keys: ["Cmd/Ctrl", "B"],
-    description: "Toggle session list",
-    category: "Navigation",
+    description: "切换会话列表",
+    category: "导航",
     handler: "onToggleSessionList",
     modKey: true,
     key: "b",

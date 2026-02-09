@@ -52,8 +52,8 @@ export function UsageDisplay({ usage }: UsageDisplayProps) {
       <button
         onClick={() => setShowDetails((v) => !v)}
         className="flex items-center gap-1.5 group whitespace-nowrap overflow-hidden"
-        title="Show usage details"
-        data-tip="Show usage details"
+        title="查看用量详情"
+        data-tip="查看用量详情"
       >
         <div className="w-[40px] h-2.5 bg-gray-100 dark:bg-gray-800 rounded overflow-hidden relative">
           <div className={`${color} h-3`} style={{ width: `${pct}%` }} />
@@ -67,38 +67,38 @@ export function UsageDisplay({ usage }: UsageDisplayProps) {
         <div className="modern-card absolute bottom-full right-0 mb-1 w-64 max-w-[calc(100vw-16px)] z-50 overflow-hidden ring-1 ring-black/5 p-2 text-gray-900 dark:text-gray-100">
           <div className="max-h-[calc(100vh-200px)] overflow-y-auto py-1 text-xs">
             <div className="flex items-center justify-between py-0.5">
-              <span>Context used</span>
+              <span>上下文已用</span>
               <span className="tabular-nums">
                 {formatK(usage.contextUsed)}/{formatK(usage.contextLimit)}
               </span>
             </div>
             <div className="flex items-center justify-between py-0.5">
-              <span>Total tokens</span>
+              <span>令牌总数</span>
               <span className="tabular-nums">{formatKM(usage.tokens)}</span>
             </div>
             <div className="flex items-center justify-between py-0.5">
-              <span>Total cost</span>
+              <span>总费用</span>
               <span className="tabular-nums">{formatCost(usage.cost)}</span>
             </div>
             <div className="my-1 h-px bg-gray-200 dark:bg-gray-700" />
             <div className="flex items-center justify-between py-0.5">
-              <span>Input tokens</span>
+              <span>输入令牌</span>
               <span className="tabular-nums">{formatK(usage.breakdown.input)}</span>
             </div>
             <div className="flex items-center justify-between py-0.5">
-              <span>Cache write</span>
+              <span>缓存写入</span>
               <span className="tabular-nums">{formatK(usage.breakdown.cacheWrite)}</span>
             </div>
             <div className="flex items-center justify-between py-0.5">
-              <span>Cache read</span>
+              <span>缓存读取</span>
               <span className="tabular-nums">{formatK(usage.breakdown.cacheRead)}</span>
             </div>
             <div className="flex items-center justify-between py-0.5">
-              <span>Output tokens</span>
+              <span>输出令牌</span>
               <span className="tabular-nums">{formatK(usage.breakdown.output)}</span>
             </div>
             <div className="flex items-center justify-between py-0.5">
-              <span>Reasoning tokens</span>
+              <span>推理令牌</span>
               <span className="tabular-nums">{formatK(usage.breakdown.reasoning)}</span>
             </div>
           </div>

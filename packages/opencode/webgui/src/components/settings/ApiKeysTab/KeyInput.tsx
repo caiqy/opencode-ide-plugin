@@ -13,14 +13,14 @@ export function KeyInput({ providerName, value, showKey, onValueChange, onToggle
         type={showKey ? "text" : "password"}
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
-        placeholder={`Enter ${providerName} API key`}
+        placeholder={`输入 ${providerName} API Key`}
         className="w-full pl-3 pr-8 py-1.5 border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-xs shadow-sm"
       />
       <button
         onClick={onToggleVisibility}
         className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
-        title={showKey ? "Hide" : "Show"}
-        data-tip={showKey ? "Hide" : "Show"}
+        title={showKey ? "隐藏" : "显示"}
+        data-tip={showKey ? "隐藏" : "显示"}
       >
         {showKey ? (
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

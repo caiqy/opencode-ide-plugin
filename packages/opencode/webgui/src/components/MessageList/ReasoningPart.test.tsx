@@ -21,7 +21,7 @@ describe("ReasoningPart", () => {
       </PartOpenProvider>,
     )
 
-    expect(screen.getByText("Thought for 1s")).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Thought for 1s" })).not.toBeInTheDocument()
+    expect(screen.getByText("思考了 1 秒")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "思考了 1 秒" })).not.toBeInTheDocument()
   })
 })

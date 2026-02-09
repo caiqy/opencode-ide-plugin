@@ -56,7 +56,7 @@ export function QuestionOptions({
       {/* Question text */}
       <div className="text-sm text-gray-800 dark:text-gray-200 mb-3">
         {question.question}
-        {isMultiple && <span className="text-gray-500 dark:text-gray-400 text-xs ml-2">(select all that apply)</span>}
+        {isMultiple && <span className="text-gray-500 dark:text-gray-400 text-xs ml-2">（可多选）</span>}
       </div>
 
       {/* Options list */}
@@ -162,7 +162,7 @@ export function QuestionOptions({
                         isCustomSelected ? "text-blue-700 dark:text-blue-300" : "text-gray-800 dark:text-gray-200",
                       )}
                     >
-                      Type your own answer
+                      输入自定义答案
                     </span>
                     {!isMultiple && isCustomSelected && customInput && (
                       <span className="text-green-600 dark:text-green-400 text-xs">✓</span>
@@ -181,12 +181,12 @@ export function QuestionOptions({
                   onChange={(e) => onCustomInputChange(e.target.value)}
                   onKeyDown={handleKeyDown}
                   onBlur={onFinishEditing}
-                  placeholder="Type your own answer..."
+                  placeholder="请输入自定义答案…"
                   className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none"
                   rows={2}
                 />
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                  Press Enter to confirm, Escape to cancel
+                  按 Enter 确认，按 Esc 取消
                 </p>
               </div>
             )}

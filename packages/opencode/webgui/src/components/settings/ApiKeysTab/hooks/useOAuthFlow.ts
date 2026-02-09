@@ -30,7 +30,7 @@ export function useOAuthFlow({
 
   const handleOAuthLogin = async (providerId: string, methodIndex: number) => {
     try {
-      setAuthStatus((prev) => ({ ...prev, [providerId]: "Initializing..." }))
+      setAuthStatus((prev) => ({ ...prev, [providerId]: "初始化中…" }))
       const { id, url, method, instructions } = await sdk.auth.start(providerId, methodIndex, {})
 
       if (instructions) {
@@ -46,16 +46,16 @@ export function useOAuthFlow({
       }
 
       if (method === "code") {
-        setAuthStatus((prev) => ({ ...prev, [providerId]: "Waiting for code..." }))
+        setAuthStatus((prev) => ({ ...prev, [providerId]: "等待输入授权码…" }))
         setManualCodeState({ providerId, id, instructions })
         setManualCodeInput("")
         return
       }
 
-      setAuthStatus((prev) => ({ ...prev, [providerId]: "Waiting for browser..." }))
+      setAuthStatus((prev) => ({ ...prev, [providerId]: "等待浏览器完成授权…" }))
       await sdk.auth.submit(id, "")
 
-      setAuthStatus((prev) => ({ ...prev, [providerId]: "Connected!" }))
+      setAuthStatus((prev) => ({ ...prev, [providerId]: "已连接！" }))
       if (!configuredProviders.includes(providerId)) {
         setConfiguredProviders([...configuredProviders, providerId])
       }
@@ -65,7 +65,7 @@ export function useOAuthFlow({
       setTimeout(() => setAuthStatus((prev) => ({ ...prev, [providerId]: "" })), 3000)
       markProvidersDirty()
     } catch (e) {
-      setAuthStatus((prev) => ({ ...prev, [providerId]: "Failed" }))
+      setAuthStatus((prev) => ({ ...prev, [providerId]: "失败" }))
       console.error(e)
     }
   }
@@ -88,10 +88,10 @@ export function useOAuthFlow({
 
     const { providerId, id } = manualCodeState
     try {
-      setAuthStatus((prev) => ({ ...prev, [providerId]: "Verifying code..." }))
+      setAuthStatus((prev) => ({ ...prev, [providerId]: "正在验证授权码…" }))
       await sdk.auth.submit(id, manualCodeInput)
 
-      setAuthStatus((prev) => ({ ...prev, [providerId]: "Connected!" }))
+      setAuthStatus((prev) => ({ ...prev, [providerId]: "已连接！" }))
       if (!configuredProviders.includes(providerId)) {
         setConfiguredProviders([...configuredProviders, providerId])
       }
@@ -103,8 +103,8 @@ export function useOAuthFlow({
       setTimeout(() => setAuthStatus((prev) => ({ ...prev, [providerId]: "" })), 3000)
       markProvidersDirty()
     } catch (e) {
-      console.error("Error submitting code:", e)
-      setAuthStatus((prev) => ({ ...prev, [providerId]: "Error submitting code" }))
+      console.error("提交授权码失败：", e)
+      setAuthStatus((prev) => ({ ...prev, [providerId]: "提交授权码失败" }))
     }
   }
 

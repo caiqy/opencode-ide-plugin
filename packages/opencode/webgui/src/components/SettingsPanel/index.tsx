@@ -88,7 +88,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         })
 
         if (configResponse.error) {
-          throw new Error("Failed to save config")
+          throw new Error("保存设置失败")
         }
 
         if (configResponse.data) {
@@ -111,7 +111,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       // Clear API keys after successful save
       setApiKeys({})
 
-      setSuccessMessage("Settings saved successfully")
+      setSuccessMessage("设置已保存")
       markProvidersDirty()
       setTimeout(() => {
         setSuccessMessage(null)
@@ -138,7 +138,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           <div className="flex-1 overflow-y-auto px-3 py-3">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
-                <div className="text-gray-500 dark:text-gray-400">Loading settings...</div>
+                <div className="text-gray-500 dark:text-gray-400">正在加载设置…</div>
               </div>
             ) : error ? (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3 text-sm text-red-800 dark:text-red-200">
@@ -190,10 +190,10 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         isOpen={showCloseConfirm}
         onClose={() => setShowCloseConfirm(false)}
         onConfirm={forceClose}
-        title="Unsaved Changes"
-        message="You have unsaved changes. Are you sure you want to close without saving?"
-        confirmText="Discard Changes"
-        cancelText="Keep Editing"
+        title="未保存的更改"
+        message="有未保存的更改。确定要直接关闭且不保存吗？"
+        confirmText="放弃更改"
+        cancelText="继续编辑"
         variant="warning"
       />
     </>
