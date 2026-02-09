@@ -10,7 +10,14 @@ interface VariantSelectorProps {
 
 const formatVariantName = (variant: string) => {
   const translated =
-    variant === "low" ? "低" : variant === "medium" ? "中" : variant === "high" ? "高" : undefined
+    variant === "low" ? "低" :
+    variant === "medium" ? "中" :
+    variant === "high" ? "高" :
+    variant === "none" ? "无" :
+    variant === "max" ? "最大" :
+    variant === "xhigh" ? "超高" :
+    undefined
+
   if (translated) return translated
   return variant.charAt(0).toUpperCase() + variant.slice(1)
 }
