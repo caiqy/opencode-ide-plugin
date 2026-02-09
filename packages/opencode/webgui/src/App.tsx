@@ -22,8 +22,18 @@ const isMac = typeof navigator !== "undefined" && navigator.platform.includes("M
 
 // Inner component that uses MessagesContext
 function AppInner({ connectionState }: { connectionState: ConnectionState }) {
-  const { currentSession, sessions, newVirtual, switchSession, isCreating, error, clearError, restoreSelections } =
-    useSession()
+  const {
+    currentSession,
+    sessions,
+    newVirtual,
+    switchSession,
+    isCreating,
+    error,
+    clearError,
+    restoreSelections,
+    selectionRestoreNotice,
+    clearSelectionRestoreNotice,
+  } = useSession()
   const { loadSessionMessages } = useMessages()
   const { showToast } = useToast()
   const compactHeaderRef = useRef<{ toggleSessionDropdown: () => void }>(null)
@@ -217,6 +227,16 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
       clearError()
     }
   }, [error, showToast, clearError])
+
+  useEffect(() => {
+    if (!selectionRestoreNotice) return
+    showToast(selectionRestoreNotice, {
+      title: "Selection restored",
+      variant: "warning",
+      duration: 5000,
+    })
+    clearSelectionRestoreNotice()
+  }, [selectionRestoreNotice, showToast, clearSelectionRestoreNotice])
 
   return (
     <div className="flex flex-col h-screen bg-white dark:bg-gray-950">

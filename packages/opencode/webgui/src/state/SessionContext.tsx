@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { sdk } from "../lib/api/sdkClient"
-import type { Session, FileDiff } from "@opencode-ai/sdk/client"
+import type { Session, FileDiff, Provider } from "@opencode-ai/sdk/client"
 import { eventEmitter } from "../lib/api/events"
+import { loadLastSelectionFromHost, saveLastSelectionToHost } from "./lastSelectionStore"
 
 /**
  * Session context state
@@ -53,6 +54,10 @@ interface SessionContextState {
   selectedVariant: string | undefined
   setSelectedVariant: (variant: string | undefined) => Promise<void>
 
+  // One-time notice when restored selection is auto-adjusted
+  selectionRestoreNotice: string | null
+  clearSelectionRestoreNotice: () => void
+
   // IDE bridge restore (does not persist to server)
   restoreSelections: (state: {
     providerId: string | null
@@ -81,6 +86,39 @@ interface SessionContextState {
 }
 
 const SessionContext = createContext<SessionContextState | null>(null)
+
+function hasModel(providers: Provider[], providerId: string | undefined, modelId: string | undefined): boolean {
+  if (!providerId || !modelId) return false
+  const provider = providers.find((item) => item.id === providerId)
+  if (!provider) return false
+  const models = provider.models as Record<string, unknown>
+  return Boolean(models[modelId])
+}
+
+function firstAvailableModel(providers: Provider[]): { providerId: string; modelId: string } | undefined {
+  for (const provider of providers) {
+    const models = provider.models as Record<string, unknown>
+    const firstModelId = Object.keys(models)[0]
+    if (!firstModelId) continue
+    return {
+      providerId: provider.id,
+      modelId: firstModelId,
+    }
+  }
+}
+
+function modelVariants(
+  providers: Provider[],
+  providerId: string | undefined,
+  modelId: string | undefined,
+): string[] | undefined {
+  if (!providerId || !modelId) return undefined
+  const provider = providers.find((item) => item.id === providerId)
+  if (!provider) return undefined
+  const model = (provider.models as Record<string, { variants?: Record<string, unknown> } | undefined>)[modelId]
+  if (!model?.variants) return undefined
+  return Object.keys(model.variants)
+}
 
 /**
  * Hook to access session context
@@ -170,6 +208,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
   // Variant selection state (per provider/model combo, key = "providerId/modelId")
   const [selectedVariant, setSelectedVariantState] = useState<string | undefined>()
   const [variantMap, setVariantMap] = useState<Record<string, string>>({})
+  const [selectionRestoreNotice, setSelectionRestoreNotice] = useState<string | null>(null)
+  const [selectionReadyForHostSync, setSelectionReadyForHostSync] = useState(false)
+
+  const clearSelectionRestoreNotice = useCallback(() => {
+    setSelectionRestoreNotice(null)
+  }, [])
 
   const isReasoning = currentSession?.id ? Boolean(reasoningMap[currentSession.id]) : false
   const isIdle = currentSession?.id ? !(busyMap[currentSession.id] ?? false) : true
@@ -194,15 +238,32 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   /**
    * Initialize state from server on mount
-   * Priority: server state > config > localStorage
+   * Priority: host last selection > kv/model > config > localStorage
    */
   useEffect(() => {
     const initializeState = async () => {
       try {
-        // Fetch preferences from kv.json and model.json (shared with CLI)
-        const [kvRes, modelRes] = await Promise.all([sdk.kv.get(), sdk.model.get()])
+        const [kvRes, modelRes, providersRes, configRes, hostSelection] = await Promise.all([
+          sdk.kv.get(),
+          sdk.model.get(),
+          sdk.config.providers(),
+          sdk.config.get(),
+          loadLastSelectionFromHost(),
+        ])
+
         const kv = kvRes.data ?? {}
         const modelPrefs = modelRes.data
+        const providers = providersRes.data?.providers ?? []
+        const recent = modelPrefs?.recent ?? []
+        const configModel = (() => {
+          if (!configRes.data?.model) return undefined
+          const parts = configRes.data.model.split("/")
+          if (parts.length !== 2) return undefined
+          return {
+            providerId: parts[0],
+            modelId: parts[1],
+          }
+        })()
 
         // Cache agent_model map from kv
         if (kv.webgui_agent_model) {
@@ -214,39 +275,58 @@ export function SessionProvider({ children }: SessionProviderProps) {
           setVariantMap(modelPrefs.variant as Record<string, string>)
         }
 
-        // Set agent (default to 'build' if not set)
-        const agent = kv.webgui_agent || "build"
+        // Set agent (host > kv > default)
+        const agent = hostSelection?.agent || kv.webgui_agent || "build"
         setSelectedAgentState(agent)
         localStorage.setItem("opencode_selected_agent", agent)
 
-        // Check if there's a per-agent model preference
         let providerId = kv.webgui_provider as string | undefined
         let modelId = kv.webgui_model as string | undefined
 
+        // Prefer per-agent model in kv when available
         if (kv.webgui_agent_model?.[agent]) {
           providerId = kv.webgui_agent_model[agent].provider_id
           modelId = kv.webgui_agent_model[agent].model_id
         }
 
-        // If no kv state, try recent list from model.json, then config fallback
+        // Host selection overrides kv when available
+        if (hostSelection?.providerId && hostSelection?.modelId) {
+          providerId = hostSelection.providerId
+          modelId = hostSelection.modelId
+        }
+
+        // Fallback candidates for empty selection
         if (!providerId || !modelId) {
-          const recent = modelPrefs?.recent ?? []
           if (recent.length > 0) {
             providerId = recent[0].providerID
             modelId = recent[0].modelID
           }
         }
 
-        if (!providerId || !modelId) {
-          const configResponse = await sdk.config.get()
+        if ((!providerId || !modelId) && configModel) {
+          providerId = configModel.providerId
+          modelId = configModel.modelId
+        }
 
-          if (configResponse.data?.model) {
-            const parts = configResponse.data.model.split("/")
-            if (parts.length === 2) {
-              providerId = parts[0]
-              modelId = parts[1]
-            }
-          }
+        // Validate selected model against currently available providers/models
+        let didFallbackModel = false
+        if (providers.length > 0 && !hasModel(providers, providerId, modelId)) {
+          const fallbackRecent = recent.find((item) => hasModel(providers, item.providerID, item.modelID))
+          const fallbackConfig =
+            configModel && hasModel(providers, configModel.providerId, configModel.modelId) ? configModel : undefined
+          const fallbackModel =
+            (fallbackRecent
+              ? {
+                  providerId: fallbackRecent.providerID,
+                  modelId: fallbackRecent.modelID,
+                }
+              : undefined) ||
+            fallbackConfig ||
+            firstAvailableModel(providers)
+
+          providerId = fallbackModel?.providerId
+          modelId = fallbackModel?.modelId
+          didFallbackModel = true
         }
 
         // Set model/provider if we have them
@@ -256,10 +336,27 @@ export function SessionProvider({ children }: SessionProviderProps) {
           localStorage.setItem("opencode_selected_provider", providerId)
           localStorage.setItem("opencode_selected_model", modelId)
 
-          // Compute initial variant for the selected model
-          if (modelPrefs?.variant) {
-            const modelKey = `${providerId}/${modelId}`
-            setSelectedVariantState((modelPrefs.variant as Record<string, string>)[modelKey])
+          // Priority for initial variant: host > model.json map
+          let initialVariant =
+            hostSelection?.variant ||
+            (modelPrefs?.variant
+              ? (modelPrefs.variant as Record<string, string>)[`${providerId}/${modelId}`]
+              : undefined)
+
+          // Validate variant if model variants are present
+          let didFallbackVariant = false
+          if (initialVariant) {
+            const variants = modelVariants(providers, providerId, modelId)
+            if (!variants || !variants.includes(initialVariant)) {
+              initialVariant = undefined
+              didFallbackVariant = true
+            }
+          }
+
+          setSelectedVariantState(initialVariant)
+
+          if (didFallbackModel || didFallbackVariant) {
+            setSelectionRestoreNotice("已恢复到当前可用配置")
           }
         }
       } catch (err) {
@@ -271,11 +368,26 @@ export function SessionProvider({ children }: SessionProviderProps) {
         if (savedProvider) setSelectedProviderId(savedProvider)
         if (savedModel) setSelectedModelId(savedModel)
         if (savedAgent) setSelectedAgentState(savedAgent)
+      } finally {
+        setSelectionReadyForHostSync(true)
       }
     }
 
     initializeState()
   }, [])
+
+  useEffect(() => {
+    if (!selectionReadyForHostSync) return
+
+    void saveLastSelectionToHost({
+      v: 1,
+      agent: selectedAgent ?? null,
+      providerId: selectedProviderId ?? null,
+      modelId: selectedModelId ?? null,
+      variant: selectedVariant ?? null,
+      updatedAt: Date.now(),
+    })
+  }, [selectionReadyForHostSync, selectedAgent, selectedProviderId, selectedModelId, selectedVariant])
 
   /**
    * Set selected model and persist to server + localStorage
@@ -447,7 +559,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         setSelectedAgentState(newAgent)
         localStorage.setItem("opencode_selected_agent", newAgent)
       }
-  },
+    },
     [selectedAgent, selectedProviderId, selectedModelId],
   )
 
@@ -1079,6 +1191,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setSelectedAgent,
     selectedVariant,
     setSelectedVariant,
+    selectionRestoreNotice,
+    clearSelectionRestoreNotice,
     restoreSelections,
     isVirtualSession,
     newVirtual,
