@@ -4,11 +4,13 @@
 @variant dark (&:is(.dark, .dark *));
 
 /*
- * VS Code Dark Modern / Light Modern color palette
+ * VS Code Dark+ / Explorer sidebar color palette
  * https://github.com/microsoft/vscode/blob/main/extensions/theme-defaults/themes/
+ * Dark-end grays match the classic Dark+ sidebar (#252526) rather than
+ * the darker Dark Modern (#181818).
  */
 @theme {
-  /* Gray: neutral (no blue tint) to match VS Code's pure gray */
+  /* Gray: neutral to match VS Code classic dark sidebar */
   --color-gray-50: #f8f8f8;
   --color-gray-100: #f3f3f3;
   --color-gray-200: #e5e5e5;
@@ -16,10 +18,10 @@
   --color-gray-400: #868686;
   --color-gray-500: #767676;
   --color-gray-600: #616161;
-  --color-gray-700: #3c3c3c;
-  --color-gray-800: #2b2b2b;
-  --color-gray-900: #1f1f1f;
-  --color-gray-950: #181818;
+  --color-gray-700: #454545;
+  --color-gray-800: #3c3c3c;
+  --color-gray-900: #333333;
+  --color-gray-950: #252526;
 
   /* Blue: VS Code accent (#0078D4 dark / #005FB8 light) */
   --color-blue-50: #e8f4fd;
@@ -67,9 +69,9 @@ body {
 
 .dark.tip-polyfill #oc-tip {
   color: #cccccc;
-  background: rgba(32, 32, 32, 0.98);
-  border: 1px solid #313131;
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.4);
+  background: rgba(37, 37, 38, 0.98);
+  border: 1px solid #3c3c3c;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
 }
 
 * {
