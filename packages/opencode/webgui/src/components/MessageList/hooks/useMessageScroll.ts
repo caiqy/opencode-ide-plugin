@@ -19,27 +19,23 @@ export function useMessageScroll(
   const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const scrollSignature = useMemo(() => {
-    const messagesSignature = sortedMessages
-      .map((message) => {
-        const partsSignature = message.parts
-          .map((part) => {
-            const base = `${part.id}:${part.type}`
-            const textValue = (part as { text?: string }).text
-            const length = typeof textValue === "string" ? textValue.length : 0
-            const toolState = (part as { state?: { status?: string; output?: string; metadata?: { output?: string } } })
-              .state
-            const status = typeof toolState?.status === "string" ? toolState.status : ""
-            const outputLength = typeof toolState?.output === "string" ? toolState.output.length : 0
-            const metadataOutputLength =
-              typeof toolState?.metadata?.output === "string" ? toolState.metadata.output.length : 0
-            return `${base}:${length}:${status}:${outputLength}:${metadataOutputLength}`
-          })
-          .join(",")
-        return `${message.info.id}:${message.parts.length}:${partsSignature}`
-      })
-      .join("|")
+    const lastMessage = sortedMessages.at(-1)
+    const lastMessageID = lastMessage?.info.id ?? ""
+    const lastPartsSignature =
+      lastMessage
+        ?.parts.map((part) => {
+          const base = `${part.id}:${part.type}`
+          const textValue = (part as { text?: string }).text
+          const textLength = typeof textValue === "string" ? textValue.length : 0
+          const toolState = (part as { state?: { status?: string; output?: string; metadata?: { output?: string } } }).state
+          const status = typeof toolState?.status === "string" ? toolState.status : ""
+          const outputLength = typeof toolState?.output === "string" ? toolState.output.length : 0
+          const metadataOutputLength = typeof toolState?.metadata?.output === "string" ? toolState.metadata.output.length : 0
+          return `${base}:${textLength}:${status}:${outputLength}:${metadataOutputLength}`
+        })
+        .join(",") ?? ""
     // Include idle and reasoning states so indicator appearance/disappearance triggers scroll
-    return `${messagesSignature}:idle=${isIdle}:think=${isReasoning}`
+    return `${sortedMessages.length}:${lastMessageID}:${lastMessage?.parts.length ?? 0}:${lastPartsSignature}:idle=${isIdle}:think=${isReasoning}`
   }, [sortedMessages, isIdle, isReasoning])
 
   const clearProgrammaticFlag = useCallback(() => {

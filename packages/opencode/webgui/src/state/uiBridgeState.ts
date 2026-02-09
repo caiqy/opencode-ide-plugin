@@ -20,11 +20,17 @@ const empty: UiBridgeState = {
   input: null,
 }
 
+const INPUT_SEND_DEBOUNCE_MS = 300
+
+type UiBridgeTimer = ReturnType<typeof setTimeout>
+
 const store = {
   state: empty,
   json: JSON.stringify(empty),
   listeners: new Set<(s: UiBridgeState) => void>(),
   enabled: false,
+  inputSendTimer: null as UiBridgeTimer | null,
+  pendingInputSend: null as UiBridgeState | null,
 }
 
 function emit(next: UiBridgeState) {
@@ -51,6 +57,31 @@ function send(next: UiBridgeState) {
   void ideBridge.setState(next)
 }
 
+function clearPendingInputSend() {
+  if (store.inputSendTimer) {
+    clearTimeout(store.inputSendTimer)
+    store.inputSendTimer = null
+  }
+  store.pendingInputSend = null
+}
+
+function flushPendingInputSend() {
+  const pending = store.pendingInputSend
+  if (!pending) return
+  clearPendingInputSend()
+  send(pending)
+}
+
+function hasNonInputChange(prev: UiBridgeState, next: UiBridgeState) {
+  return (
+    prev.sessionID !== next.sessionID ||
+    prev.providerId !== next.providerId ||
+    prev.modelId !== next.modelId ||
+    prev.agent !== next.agent ||
+    prev.variant !== next.variant
+  )
+}
+
 export function uiBridgeState(): UiBridgeState {
   return store.state
 }
@@ -74,6 +105,7 @@ export function uiBridgeHydrate(raw: unknown): UiBridgeState {
     input: typeof obj?.input === "string" ? obj.input : null,
   }
 
+  clearPendingInputSend()
   store.state = next
   store.json = encode(next)
   emit(next)
@@ -90,30 +122,76 @@ export function uiBridgeSubscribe(fn: (s: UiBridgeState) => void) {
   }
 }
 
+export function uiBridgeSubscribeSelector<T>(
+  selector: (s: UiBridgeState) => T,
+  onChange: (next: T) => void,
+  isEqual: (a: T, b: T) => boolean = Object.is,
+) {
+  let current = selector(store.state)
+
+  const listener = (nextState: UiBridgeState) => {
+    const next = selector(nextState)
+    if (isEqual(current, next)) return
+    current = next
+    onChange(next)
+  }
+
+  store.listeners.add(listener)
+  try {
+    onChange(current)
+  } catch {}
+
+  return () => {
+    store.listeners.delete(listener)
+  }
+}
+
 export function uiBridgeEnable() {
   if (store.enabled) return
   store.enabled = true
+  clearPendingInputSend()
   send(store.state)
 }
 
+export function uiBridgeFlush() {
+  flushPendingInputSend()
+}
+
 export function uiBridgeUpdate(patch: Partial<Omit<UiBridgeState, "v">>): UiBridgeState {
+  const prev = store.state
   const next: UiBridgeState = {
-    ...store.state,
+    ...prev,
     sessionID: sanitizeSession(
-      typeof patch.sessionID === "string" ? patch.sessionID : patch.sessionID === null ? null : store.state.sessionID,
+      typeof patch.sessionID === "string" ? patch.sessionID : patch.sessionID === null ? null : prev.sessionID,
     ),
-    providerId: typeof patch.providerId === "string" ? patch.providerId : patch.providerId === null ? null : store.state.providerId,
-    modelId: typeof patch.modelId === "string" ? patch.modelId : patch.modelId === null ? null : store.state.modelId,
-    agent: typeof patch.agent === "string" ? patch.agent : patch.agent === null ? null : store.state.agent,
-    variant: typeof patch.variant === "string" ? patch.variant : patch.variant === null ? null : store.state.variant,
-    input: typeof patch.input === "string" ? patch.input : patch.input === null ? null : store.state.input,
+    providerId: typeof patch.providerId === "string" ? patch.providerId : patch.providerId === null ? null : prev.providerId,
+    modelId: typeof patch.modelId === "string" ? patch.modelId : patch.modelId === null ? null : prev.modelId,
+    agent: typeof patch.agent === "string" ? patch.agent : patch.agent === null ? null : prev.agent,
+    variant: typeof patch.variant === "string" ? patch.variant : patch.variant === null ? null : prev.variant,
+    input: typeof patch.input === "string" ? patch.input : patch.input === null ? null : prev.input,
   }
 
   const json = encode(next)
   store.state = next
   if (json === store.json) return next
   store.json = json
-  send(next)
+
+  const nonInputChanged = hasNonInputChange(prev, next)
+  if (nonInputChanged) {
+    clearPendingInputSend()
+    send(next)
+  } else if (prev.input !== next.input) {
+    if (store.inputSendTimer) {
+      clearTimeout(store.inputSendTimer)
+    }
+    store.pendingInputSend = next
+    store.inputSendTimer = setTimeout(() => {
+      flushPendingInputSend()
+    }, INPUT_SEND_DEBOUNCE_MS)
+  } else {
+    send(next)
+  }
+
   emit(next)
   return next
 }

@@ -1,4 +1,3 @@
-import { useEffect } from "react"
 import { useMessages } from "../../state/MessagesContext"
 import { useSession } from "../../state/SessionContext"
 import { useUISettings } from "../../state/UISettingsContext"
@@ -19,30 +18,15 @@ interface MessageListProps {
 }
 
 export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
-  const { getMessagesBySession, messages, getQuestionsBySession } = useMessages()
+  const { getMessagesBySession, getQuestionsBySession } = useMessages()
   const { isIdle, isReasoning, currentSession } = useSession()
   const { autoExpandMessageParts } = useUISettings()
 
   // Get pending questions for current session
   const pendingQuestions = sessionID ? getQuestionsBySession(sessionID) : []
 
-  // Debug logging for isIdle state
-  useEffect(() => {
-    console.log("[MessageList] isIdle state changed:", isIdle)
-  }, [isIdle])
-
   // Get messages for current session
   const sessionMessages = sessionID ? getMessagesBySession(sessionID) : []
-
-  // Debug logging
-  useEffect(() => {
-    console.log("[MessageList] Debug info:", {
-      sessionID,
-      totalMessages: messages.length,
-      sessionMessages: sessionMessages.length,
-      messageSessionIDs: messages.map((m) => ({ id: m.info.id, sessionID: m.info.sessionID })),
-    })
-  }, [sessionID, messages, sessionMessages])
 
   // Sort messages by creation time
   const sortedMessages = [...sessionMessages].sort((a, b) => {

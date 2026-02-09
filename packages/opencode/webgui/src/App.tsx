@@ -16,9 +16,21 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts"
 import { ideBridge } from "./lib/ideBridge"
 import { extractPathsFromDrop } from "./lib/dnd"
 import { initKeyboardHandler, destroyKeyboardHandler } from "./lib/keyboardHandler"
-import { uiBridgeSubscribe, uiBridgeUpdate, type UiBridgeState } from "./state/uiBridgeState"
+import { uiBridgeSubscribeSelector, uiBridgeUpdate, type UiBridgeState } from "./state/uiBridgeState"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
+
+type BridgeSelections = Pick<UiBridgeState, "sessionID" | "providerId" | "modelId" | "agent" | "variant">
+
+function isBridgeSelectionsEqual(a: BridgeSelections, b: BridgeSelections) {
+  return (
+    a.sessionID === b.sessionID &&
+    a.providerId === b.providerId &&
+    a.modelId === b.modelId &&
+    a.agent === b.agent &&
+    a.variant === b.variant
+  )
+}
 
 // Inner component that uses MessagesContext
 function AppInner({ connectionState }: { connectionState: ConnectionState }) {
@@ -49,10 +61,24 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
-  const [bridge, setBridge] = useState<UiBridgeState | null>(null)
+  const [bridge, setBridge] = useState<BridgeSelections | null>(null)
   const restored = useRef({ session: false, selections: false })
 
-  useEffect(() => uiBridgeSubscribe((s) => setBridge(s)), [])
+  useEffect(
+    () =>
+      uiBridgeSubscribeSelector(
+        (s) => ({
+          sessionID: s.sessionID,
+          providerId: s.providerId,
+          modelId: s.modelId,
+          agent: s.agent,
+          variant: s.variant,
+        }),
+        setBridge,
+        isBridgeSelectionsEqual,
+      ),
+    [],
+  )
 
   useEffect(() => {
     if (restored.current.session) return
