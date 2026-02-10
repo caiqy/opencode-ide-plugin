@@ -21,6 +21,12 @@ export class WebviewManager {
   private communicationBridge?: CommunicationBridge
   private controller?: WebviewController
   private uiState: any
+  private loadGeneration = 0
+
+  /** Deadline for retrying SW InvalidState errors across full load() cycles (ms). */
+  private static readonly SW_LOAD_RETRY_DEADLINE_MS = 30_000
+  private static readonly SW_LOAD_RETRY_INITIAL_DELAY_MS = 500
+  private static readonly SW_LOAD_RETRY_MAX_DELAY_MS = 4_000
 
   /**
    * Create and configure a webview panel for the OpenCode UI
@@ -36,6 +42,9 @@ export class WebviewManager {
     if (this.panel) {
       this.panel.dispose()
     }
+
+    // Invalidate any in-flight loads tied to the previous panel
+    this.loadGeneration++
 
     // Create webview panel with proper configuration
     this.panel = vscode.window.createWebviewPanel(
@@ -72,6 +81,7 @@ export class WebviewManager {
     this.panel.onDidDispose(
       () => {
         logger.appendLine("Webview panel disposed")
+        this.loadGeneration++
         this.cleanup()
       },
       null,
@@ -138,21 +148,72 @@ export class WebviewManager {
         return
       }
 
+      const myGeneration = this.loadGeneration
+      const panel = this.panel
+
       this.connection = connection
       logger.appendLine(`Loading web UI with connection: port=${connection.port}, uiBase=${connection.uiBase}`)
 
-      // Delegate setup of bridge, DnD, file monitor, settings sync and HTML to shared controller
-      this.controller = new WebviewController({
-        webview: this.panel.webview,
-        context: this.context!,
-        settingsManager: this.settingsManager,
-        uiGetState: async () => this.uiState,
-        uiSetState: async (state) => {
-          this.uiState = state
-        },
-      })
-      // Load UI via controller
-      await this.controller.load(connection)
+      // Retry the full controller.load() cycle when it fails due to the
+      // transient Chromium SW InvalidState bug (microsoft/vscode#125993).
+      const loadDeadline = Date.now() + WebviewManager.SW_LOAD_RETRY_DEADLINE_MS
+      let loadDelay = WebviewManager.SW_LOAD_RETRY_INITIAL_DELAY_MS
+      let loadAttempt = 0
+
+      while (true) {
+        if (myGeneration !== this.loadGeneration) {
+          logger.appendLine("Web UI load cancelled (generation changed)")
+          return
+        }
+        loadAttempt++
+        try {
+          // Dispose previous controller attempt if any
+          if (this.controller) {
+            try {
+              this.controller.dispose()
+            } catch {}
+            this.controller = undefined
+          }
+          // Delegate setup of bridge, DnD, file monitor, settings sync and HTML to shared controller
+          this.controller = new WebviewController({
+            webview: panel.webview,
+            context: this.context!,
+            settingsManager: this.settingsManager,
+            uiGetState: async () => this.uiState,
+            uiSetState: async (state) => {
+              this.uiState = state
+            },
+          })
+          // Load UI via controller
+          await this.controller.load(connection)
+          if (loadAttempt > 1) {
+            logger.appendLine(`Web UI load succeeded on attempt ${loadAttempt}`)
+          }
+          break // success
+        } catch (error) {
+          const remaining = loadDeadline - Date.now()
+          if (!WebviewController.isServiceWorkerInvalidStateError(error) || remaining <= 0) {
+            throw error
+          }
+          const actualDelay = Math.min(loadDelay, remaining)
+          logger.appendLine(
+            `Web UI load failed (attempt ${loadAttempt}) due to SW InvalidState; ` +
+              `retrying in ${actualDelay}ms (${Math.round(remaining / 1000)}s remaining)`,
+          )
+          await new Promise((resolve) => setTimeout(resolve, actualDelay))
+          loadDelay = Math.min(loadDelay * 2, WebviewManager.SW_LOAD_RETRY_MAX_DELAY_MS)
+        }
+      }
+
+      // If panel was disposed/recreated while we were loading, avoid using stale refs.
+      if (myGeneration !== this.loadGeneration) {
+        logger.appendLine("Web UI load finished but panel generation changed; disposing controller")
+        try {
+          this.controller.dispose()
+        } catch {}
+        this.controller = undefined
+        return
+      }
 
       // Keep references for compatibility APIs (must be after load() which creates the bridge)
       this.communicationBridge = this.controller.getCommunicationBridge()

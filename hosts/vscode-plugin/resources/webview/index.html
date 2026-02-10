@@ -114,6 +114,16 @@
       const loading = document.getElementById("loading")
       const container = document.getElementById("webui-container")
       const status = document.getElementById("status")
+
+      // --- Iframe load retry with 30s deadline and exponential backoff ---
+      const IFRAME_RETRY_DEADLINE_MS = 30000
+      const IFRAME_RETRY_INITIAL_DELAY = 500
+      const IFRAME_RETRY_MAX_DELAY = 4000
+      let iframeRetryStart = Date.now()
+      let iframeRetryDelay = IFRAME_RETRY_INITIAL_DELAY
+      let iframeRetryCount = 0
+      let iframeRetryTimer = null
+
       function updateStatus(message) {
         if (status) status.textContent = message
       }
@@ -125,8 +135,40 @@
           message +
           '</div><button class="retry-button" onclick="location.reload()">Retry</button></div>'
       }
+
+      function retryIframeLoad() {
+        if (uiLoaded) return
+        var elapsed = Date.now() - iframeRetryStart
+        var remaining = IFRAME_RETRY_DEADLINE_MS - elapsed
+        if (remaining <= 0) {
+          // Deadline exceeded — show final error
+          showError(
+            "Failed to Load OpenCode UI",
+            "The web interface could not be loaded after multiple attempts. Please try reloading.",
+          )
+          window.vscode.postMessage({ type: "uiLoaded", success: false, error: "iframe retry deadline exceeded" })
+          return
+        }
+        iframeRetryCount++
+        var actualDelay = Math.min(iframeRetryDelay, remaining)
+        updateStatus("Retrying (" + iframeRetryCount + ")... " + Math.round(remaining / 1000) + "s remaining")
+        iframeRetryTimer = setTimeout(function () {
+          if (uiLoaded) return
+          try {
+            // Force iframe to reload by re-assigning its src
+            var currentSrc = iframe.src
+            iframe.src = ""
+            iframe.src = currentSrc
+          } catch (e) {
+            console.error("Failed to retry iframe load:", e)
+          }
+        }, actualDelay)
+        iframeRetryDelay = Math.min(iframeRetryDelay * 2, IFRAME_RETRY_MAX_DELAY)
+      }
+
       iframe.onload = function () {
         clearTimeout(loadTimeout)
+        if (iframeRetryTimer) clearTimeout(iframeRetryTimer)
         uiLoaded = true
         loading.style.display = "none"
         container.style.display = "block"
@@ -149,8 +191,9 @@
       }
       iframe.onerror = function () {
         clearTimeout(loadTimeout)
-        showError("Failed to Load OpenCode UI", "Could not load the web interface.")
-        window.vscode.postMessage({ type: "uiLoaded", success: false, error: "iframe load error" })
+        // Instead of showing a static error, retry within the 30s deadline
+        retryIframeLoad()
+        window.vscode.postMessage({ type: "uiLoadRetry", attempt: iframeRetryCount, error: "iframe load error" })
       }
       loadTimeout = setTimeout(() => {
         if (!uiLoaded) {

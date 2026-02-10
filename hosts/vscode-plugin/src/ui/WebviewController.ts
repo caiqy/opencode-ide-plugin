@@ -31,6 +31,7 @@ export class WebviewController {
   private bridgeSessionId: string | null = null
   private uiGetState?: () => Promise<any>
   private uiSetState?: (state: any) => Promise<void>
+  private disposed = false
 
   constructor(opts: WebviewControllerOptions) {
     this.webview = opts.webview
@@ -44,8 +45,66 @@ export class WebviewController {
     return this.communicationBridge
   }
 
+  /**
+   * Detect the well-known Chromium Service Worker InvalidState error that
+   * affects VS Code webviews (upstream: microsoft/vscode#125993).
+   * Exposed as static so callers can implement their own retry loops.
+   */
+  static isServiceWorkerInvalidStateError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error)
+    return (
+      message.includes("Could not register service worker") ||
+      message.includes("Failed to register a ServiceWorker") ||
+      message.toLowerCase().includes("document is in an invalid state")
+    )
+  }
+
+  /**
+   * Retry deadline for SW InvalidState errors (ms).
+   * Chromium's SW registration can stay broken for several seconds after rapid
+   * webview dispose/recreate cycles, so we keep retrying with exponential
+   * backoff until this deadline is reached.
+   */
+  private static readonly SW_RETRY_DEADLINE_MS = 30_000
+  private static readonly SW_RETRY_INITIAL_DELAY_MS = 200
+  private static readonly SW_RETRY_MAX_DELAY_MS = 3_000
+
+  private async setHtmlWithRetry(html: string): Promise<void> {
+    // When webviews are disposed/recreated rapidly (e.g. quick project switching),
+    // VS Code may throw a transient SW registration InvalidStateError during webview init.
+    // We retry with exponential backoff for up to 30 seconds to ride out the Chromium bug.
+    const deadline = Date.now() + WebviewController.SW_RETRY_DEADLINE_MS
+    let delay = WebviewController.SW_RETRY_INITIAL_DELAY_MS
+    let attempt = 0
+
+    while (true) {
+      if (this.disposed) return
+      attempt++
+      try {
+        this.webview.html = html
+        if (attempt > 1) {
+          logger.appendLine(`webview.html assignment succeeded on attempt ${attempt}`)
+        }
+        return
+      } catch (error) {
+        const remaining = deadline - Date.now()
+        if (!WebviewController.isServiceWorkerInvalidStateError(error) || remaining <= 0) {
+          throw error
+        }
+        const actualDelay = Math.min(delay, remaining)
+        logger.appendLine(
+          `webview.html assignment failed (attempt ${attempt}) due to transient SW InvalidState; ` +
+            `retrying in ${actualDelay}ms (${Math.round(remaining / 1000)}s remaining)`,
+        )
+        await new Promise((resolve) => setTimeout(resolve, actualDelay))
+        delay = Math.min(delay * 2, WebviewController.SW_RETRY_MAX_DELAY_MS)
+      }
+    }
+  }
+
   async load(connection: BackendConnection): Promise<void> {
     this.connection = connection
+    this.disposed = false
 
     try {
       // Initialize communication bridge
@@ -64,28 +123,26 @@ export class WebviewController {
       // NOTE: PathInserter is now set by container visibility (editor panel / sidebar).
 
       // Create bridge session with handlers from CommunicationBridge
-      const session = await bridgeServer.createSession(
-        {
-          openFile: (path) => this.communicationBridge!.handleOpenFile(path),
-          openUrl: (url) => this.communicationBridge!.handleOpenUrl(url),
-          reloadPath: (path) => this.communicationBridge!.handleReloadPath(path),
-          clipboardWrite: async (text) => {
-            await vscode.env.clipboard.writeText(text)
-          },
-          uiGetState: this.uiGetState,
-          uiSetState: this.uiSetState,
-          storageGet: async (keys: string[]) => {
-            const result: Record<string, string | undefined> = {}
-            for (const key of keys) {
-              result[key] = this.context.globalState.get<string>(key)
-            }
-            return result
-          },
-          storageSet: async (key: string, value: string) => {
-            await this.context.globalState.update(key, value)
-          },
+      const session = await bridgeServer.createSession({
+        openFile: (path) => this.communicationBridge!.handleOpenFile(path),
+        openUrl: (url) => this.communicationBridge!.handleOpenUrl(url),
+        reloadPath: (path) => this.communicationBridge!.handleReloadPath(path),
+        clipboardWrite: async (text) => {
+          await vscode.env.clipboard.writeText(text)
         },
-      )
+        uiGetState: this.uiGetState,
+        uiSetState: this.uiSetState,
+        storageGet: async (keys: string[]) => {
+          const result: Record<string, string | undefined> = {}
+          for (const key of keys) {
+            result[key] = this.context.globalState.get<string>(key)
+          }
+          return result
+        },
+        storageSet: async (key: string, value: string) => {
+          await this.context.globalState.update(key, value)
+        },
+      })
       this.bridgeSessionId = session.sessionId
 
       // Tell CommunicationBridge to route ideBridge messages through SSE
@@ -126,10 +183,16 @@ export class WebviewController {
       const bridgeOrigin = new URL(externalBridge.toString()).origin
 
       const html = await this.generateHtmlContent(iframeSrc, { uiOrigin, bridgeOrigin })
-      this.webview.html = html
+      await this.setHtmlWithRetry(html)
 
       // Message handling is now done entirely by CommunicationBridge
     } catch (error) {
+      // If we were disposed while loading (common during rapid project switching),
+      // treat as a cancellation and avoid surfacing an error toast.
+      if (this.disposed) {
+        logger.appendLine(`WebviewController.load cancelled (disposed during load): ${error}`)
+        return
+      }
       await errorHandler.handleWebviewLoadError(error instanceof Error ? error : new Error(String(error)), {
         connection,
       })
@@ -306,6 +369,7 @@ export class WebviewController {
   }
 
   dispose(): void {
+    this.disposed = true
     try {
       this.fileMonitor?.stopMonitoring()
     } catch {}

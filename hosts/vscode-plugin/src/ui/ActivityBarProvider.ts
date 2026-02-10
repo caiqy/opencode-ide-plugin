@@ -25,6 +25,7 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
     } catch {}
     this.controller = undefined
     this.view = undefined
+    this.loadGeneration++
   }
   private context: vscode.ExtensionContext
   private backendLauncher: BackendLauncher
@@ -34,6 +35,7 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
   private controller?: WebviewController
   private view?: vscode.WebviewView
   private uiState: any
+  private loadGeneration = 0
 
   constructor(context: vscode.ExtensionContext, backendLauncher: BackendLauncher, settingsManager: SettingsManager) {
     this.context = context
@@ -41,8 +43,15 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
     this.settingsManager = settingsManager
   }
 
+  /** Deadline for retrying SW InvalidState errors across full load() cycles (ms). */
+  private static readonly SW_LOAD_RETRY_DEADLINE_MS = 30_000
+  private static readonly SW_LOAD_RETRY_INITIAL_DELAY_MS = 500
+  private static readonly SW_LOAD_RETRY_MAX_DELAY_MS = 4_000
+
   async resolveWebviewView(webviewView: vscode.WebviewView): Promise<void> {
     logger.appendLine("resolveWebviewView called - initializing or reinitializing webview")
+
+    const myGeneration = ++this.loadGeneration
 
     // When webview is moved between sidebars, VS Code destroys the old webview
     // and calls resolveWebviewView with a new WebviewView instance.
@@ -61,6 +70,7 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
     // Listen for the webview being disposed (e.g., when moved or closed)
     webviewView.onDidDispose(() => {
       logger.appendLine("WebviewView disposed")
+      this.loadGeneration++
       const bridge = this.controller?.getCommunicationBridge()
       if (this.controller) {
         try {
@@ -105,6 +115,10 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
       },
       async (progress) => {
         try {
+          if (myGeneration !== this.loadGeneration) {
+            logger.appendLine("Webview resolve cancelled before start (generation changed)")
+            return
+          }
           // Reuse existing backend connection if available (e.g., when webview is moved between sidebars)
           if (!this.connection) {
             progress.report({ increment: 0, message: "Launching backend..." })
@@ -119,16 +133,67 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
           }
 
           progress.report({ increment: 50, message: "Loading web UI..." })
-          this.controller = new WebviewController({
-            webview: webviewView.webview,
-            context: this.context,
-            settingsManager: this.settingsManager,
-            uiGetState: async () => this.uiState,
-            uiSetState: async (state) => {
-              this.uiState = state
-            },
-          })
-          await this.controller.load(this.connection)
+
+          // Retry the full controller.load() cycle when it fails due to the
+          // transient Chromium SW InvalidState bug (microsoft/vscode#125993).
+          // setHtmlWithRetry handles inner retries; this outer loop covers
+          // failures that occur *before* the HTML assignment (e.g. during
+          // bridge/session setup that touches the webview).
+          const loadDeadline = Date.now() + ActivityBarProvider.SW_LOAD_RETRY_DEADLINE_MS
+          let loadDelay = ActivityBarProvider.SW_LOAD_RETRY_INITIAL_DELAY_MS
+          let loadAttempt = 0
+
+          while (true) {
+            if (myGeneration !== this.loadGeneration) {
+              logger.appendLine("Webview resolve cancelled before web UI load (generation changed)")
+              return
+            }
+            loadAttempt++
+            try {
+              // Dispose previous controller attempt if any
+              if (this.controller) {
+                try {
+                  this.controller.dispose()
+                } catch {}
+                this.controller = undefined
+              }
+              this.controller = new WebviewController({
+                webview: webviewView.webview,
+                context: this.context,
+                settingsManager: this.settingsManager,
+                uiGetState: async () => this.uiState,
+                uiSetState: async (state) => {
+                  this.uiState = state
+                },
+              })
+              await this.controller.load(this.connection)
+              if (loadAttempt > 1) {
+                logger.appendLine(`Webview load succeeded on attempt ${loadAttempt}`)
+              }
+              break // success
+            } catch (error) {
+              const remaining = loadDeadline - Date.now()
+              if (!WebviewController.isServiceWorkerInvalidStateError(error) || remaining <= 0) {
+                throw error
+              }
+              const actualDelay = Math.min(loadDelay, remaining)
+              logger.appendLine(
+                `Webview load failed (attempt ${loadAttempt}) due to SW InvalidState; ` +
+                  `retrying in ${actualDelay}ms (${Math.round(remaining / 1000)}s remaining)`,
+              )
+              await new Promise((resolve) => setTimeout(resolve, actualDelay))
+              loadDelay = Math.min(loadDelay * 2, ActivityBarProvider.SW_LOAD_RETRY_MAX_DELAY_MS)
+            }
+          }
+
+          if (myGeneration !== this.loadGeneration) {
+            logger.appendLine("Webview resolve finished but generation changed; disposing newly created controller")
+            try {
+              this.controller.dispose()
+            } catch {}
+            this.controller = undefined
+            return
+          }
 
           // Prefer routing commands to this view when visible
           if (webviewView.visible) {
@@ -141,6 +206,10 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
           progress.report({ increment: 100, message: "Ready!" })
           logger.appendLine("Webview initialization complete")
         } catch (error) {
+          if (myGeneration !== this.loadGeneration) {
+            logger.appendLine(`Webview resolve aborted (generation changed): ${error}`)
+            return
+          }
           await errorHandler.handleWebviewLoadError(error instanceof Error ? error : new Error(String(error)))
           throw error
         }
