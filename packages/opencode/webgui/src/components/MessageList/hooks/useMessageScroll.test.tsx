@@ -20,6 +20,30 @@ function TestHarness(props: { sessionID: string; sortedMessages: any[]; isIdle: 
   )
 }
 
+function TestHarnessWithScrollButton(props: {
+  sessionID: string
+  sortedMessages: any[]
+  isIdle: boolean
+  isReasoning: boolean
+}) {
+  const { messagesEndRef, messagesContainerRef, showScrollToBottom } = useMessageScroll(
+    props.sessionID,
+    props.sortedMessages,
+    props.isIdle,
+    props.isReasoning,
+  )
+
+  return (
+    <div data-testid="scroll-parent">
+      <div ref={messagesContainerRef}>
+        <div style={{ height: 200 }} />
+        <div ref={messagesEndRef} data-testid="scroll-anchor" />
+        <div data-testid="scroll-button-visible">{showScrollToBottom ? "1" : "0"}</div>
+      </div>
+    </div>
+  )
+}
+
 function setScrollMetrics(element: HTMLElement, scrollHeight: number, clientHeight: number, scrollTop: number) {
   Object.defineProperty(element, "scrollHeight", {
     configurable: true,
@@ -209,5 +233,28 @@ describe("useMessageScroll", () => {
     // 切换 session → 应重置，新内容应自动滚动
     rerender(<TestHarness sessionID="s2" sortedMessages={textMessage("b")} isIdle={false} isReasoning={false} />)
     expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
+  it("离开底部一点点也应显示滚动到底部按钮", () => {
+    const { getByTestId } = render(
+      <TestHarnessWithScrollButton
+        sessionID="s1"
+        sortedMessages={textMessage("a")}
+        isIdle={false}
+        isReasoning={false}
+      />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+
+    // 在底部
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+
+    // 离开底部 20px（仍在旧的 near-bottom 48px 阈值内，但用户此时应看到按钮）
+    setScrollMetrics(parent, 1000, 500, 480)
+    fireEvent.scroll(parent)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
   })
 })

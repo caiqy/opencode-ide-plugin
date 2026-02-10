@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useCallback } from "react"
+import { useEffect, useMemo, useRef, useCallback, useState } from "react"
 import type { Message } from "../../../state/MessagesContext"
 
 export function useMessageScroll(
@@ -17,6 +17,9 @@ export function useMessageScroll(
   const isProgrammaticScrollRef = useRef(false)
   // Safety timeout to clear the programmatic flag if scroll never reaches bottom
   const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Reactive state for "scroll to bottom" button visibility
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
 
   const scrollSignature = useMemo(() => {
     const lastMessage = sortedMessages.at(-1)
@@ -52,9 +55,14 @@ export function useMessageScroll(
     const container = messagesContainerRef.current?.parentElement as HTMLElement | null
     if (!container) return
     const distance = container.scrollHeight - container.clientHeight - container.scrollTop
-    const threshold = 48
-    const isNearBottom = distance <= threshold
+    const nearBottomThreshold = 48
+    const atBottomThreshold = 8
+    const isNearBottom = distance <= nearBottomThreshold
+    const isAtBottom = distance <= atBottomThreshold
     isUserAtBottomRef.current = isNearBottom
+
+    // Update reactive button visibility
+    setShowScrollToBottom(!isAtBottom)
 
     if (isProgrammaticScrollRef.current) {
       // Programmatic scroll reached bottom → clear the flag
@@ -65,7 +73,7 @@ export function useMessageScroll(
       // Not a programmatic scroll:
       // - If near bottom, user scrolled back → clear userScrolled
       // - If far from bottom AND already initialized, user scrolled away → set userScrolled
-      if (isNearBottom) {
+      if (isAtBottom) {
         userScrolledRef.current = false
       } else if (hasInitializedRef.current) {
         userScrolledRef.current = true
@@ -73,11 +81,25 @@ export function useMessageScroll(
     }
   }, [clearProgrammaticFlag])
 
+  // Manual scroll-to-bottom triggered by button click
+  const scrollToBottom = useCallback(() => {
+    const anchor = messagesEndRef.current
+    if (!anchor) return
+    userScrolledRef.current = false
+    isUserAtBottomRef.current = true
+    isProgrammaticScrollRef.current = true
+    if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current)
+    programmaticTimeoutRef.current = setTimeout(clearProgrammaticFlag, 1000)
+    anchor.scrollIntoView({ behavior: "smooth", block: "end" })
+    setShowScrollToBottom(false)
+  }, [clearProgrammaticFlag])
+
   // Reset scroll state on session change
   useEffect(() => {
     userScrolledRef.current = false
     isUserAtBottomRef.current = true
     hasInitializedRef.current = false
+    setShowScrollToBottom(false)
     clearProgrammaticFlag()
   }, [sessionID, clearProgrammaticFlag])
 
@@ -163,5 +185,5 @@ export function useMessageScroll(
     isUserAtBottomRef.current = true
   }, [scrollSignature, sessionID, clearProgrammaticFlag])
 
-  return { messagesEndRef, messagesContainerRef }
+  return { messagesEndRef, messagesContainerRef, showScrollToBottom, scrollToBottom }
 }

@@ -13,6 +13,8 @@ const TOOL_LABELS: Record<string, string> = {
   webfetch: "抓取网页",
   todoread: "查看任务列表",
   todowrite: "更新任务列表",
+  skill: "加载技能",
+  invalidTool: "无效工具调用",
 }
 
 export function getToolLabel(tool: string): string {
@@ -122,7 +124,15 @@ export function getToolDisplayName(
 
   // If we have a title, use it with the tool name
   if (title) {
-    let display = `${toolLabel}：${title}`
+    const normalizedTitle =
+      tool === "skill"
+        ? title
+            .replace(/^Loaded skill:\s*/i, "")
+            .replace(/^Loading skill:\s*/i, "")
+            .replace(/^加载技能[:：]\s*/, "")
+        : title
+
+    let display = `${toolLabel}：${normalizedTitle}`
 
     // Special handling for todowrite/todoread to show completed/total
     if ((tool === "todowrite" || tool === "todoread") && output) {

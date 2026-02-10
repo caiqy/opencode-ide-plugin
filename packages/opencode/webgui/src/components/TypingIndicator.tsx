@@ -18,6 +18,22 @@ export function TypingIndicator({ visible }: TypingIndicatorProps) {
   const { currentStatus } = useSession()
   const [seconds, setSeconds] = useState<number | null>(null)
 
+  // Elapsed seconds counter for "生成中..."
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    if (!visible) {
+      setElapsed(0)
+      return
+    }
+    // Start counting from 0 when visible becomes true
+    setElapsed(0)
+    const id = window.setInterval(() => {
+      setElapsed((prev) => prev + 1)
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [visible])
+
   useEffect(() => {
     if (currentStatus.type !== "retry") {
       setSeconds(null)
@@ -57,7 +73,7 @@ export function TypingIndicator({ visible }: TypingIndicatorProps) {
   return (
     <div className="mt-1 mb-3 space-y-1 min-h-[1rem]">
       {visible && (
-        <button className="relative inline-flex items-center gap-0.5 pr-4 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+        <button className="relative inline-flex items-center gap-1 pr-4 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
           <span className="leading-none">生成中</span>
           <div className="flex gap-0.5">
             <div
@@ -73,6 +89,7 @@ export function TypingIndicator({ visible }: TypingIndicatorProps) {
               style={{ animationDelay: "400ms", animationDuration: "1s" }}
             />
           </div>
+          {elapsed > 0 && <span className="leading-none tabular-nums">{elapsed} 秒</span>}
         </button>
       )}
 

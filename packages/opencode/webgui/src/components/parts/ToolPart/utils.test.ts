@@ -42,4 +42,10 @@ describe("getToolDisplayName", () => {
   it("未知工具保持原样", () => {
     expect(getToolDisplayName("some-tool", undefined, undefined, undefined)).toBe("some-tool")
   })
+
+  it("skill 工具应去掉英文 Loaded skill 前缀，避免中英文重复", () => {
+    expect(getToolDisplayName("skill", undefined, "Loaded skill: brainstorming", undefined)).toBe(
+      "加载技能：brainstorming",
+    )
+  })
 })

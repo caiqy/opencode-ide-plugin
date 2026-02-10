@@ -17,6 +17,9 @@ const PartOpenContext = createContext<PartOpenValue | undefined>(undefined)
 // Tools that use "auto-expand last, collapse previous" behavior
 const AUTO_EXPAND_TOOLS = new Set(["bash"])
 
+// Tools that should be collapsed by default (user can still click to expand)
+const COLLAPSED_BY_DEFAULT_TOOLS = new Set(["skill"])
+
 export function PartOpenProvider(props: { items: PartOpenItem[]; children: ReactNode; defaultExpanded?: boolean }) {
   const defaultExpanded = props.defaultExpanded ?? true
   const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map())
@@ -114,6 +117,14 @@ export function PartOpenProvider(props: { items: PartOpenItem[]; children: React
       // Auto-expand tools (bash): only the last one is expanded by default
       if (autoExpandToolIds.has(id)) {
         return id === lastAutoExpandToolId
+      }
+
+      // Collapsed-by-default tools (skill, invalidTool, etc.)
+      const toolItem = props.items.find((item) => item.id === id)
+      if (toolItem?.type === "tool") {
+        if (COLLAPSED_BY_DEFAULT_TOOLS.has(toolItem.tool) || toolItem.tool.startsWith("invalid")) {
+          return false
+        }
       }
 
       // Other tool items: follow defaultExpanded

@@ -10,6 +10,7 @@ import { QuestionPart } from "./Parts/QuestionPart"
 import { useMessageScroll } from "./hooks/useMessageScroll"
 import { useMessageActions } from "./hooks/useMessageActions"
 import { PartOpenProvider, type PartOpenItem } from "./PartOpenContext"
+import { ScrollToBottomButton } from "./ScrollToBottomButton"
 
 interface MessageListProps {
   sessionID?: string | null
@@ -31,7 +32,12 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
     return a.info.time.created - b.info.time.created
   })
 
-  const { messagesEndRef, messagesContainerRef } = useMessageScroll(sessionID, sortedMessages, isIdle, isReasoning)
+  const { messagesEndRef, messagesContainerRef, showScrollToBottom, scrollToBottom } = useMessageScroll(
+    sessionID,
+    sortedMessages,
+    isIdle,
+    isReasoning,
+  )
 
   const {
     forkConfirm,
@@ -140,7 +146,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
 
   return (
     <>
-      <div ref={messagesContainerRef} className="h-full">
+      <div ref={messagesContainerRef} className="min-h-full">
         <PartOpenProvider items={items}>
           <div className="space-y-2">
             {/* Revert banner (pinned to top of scroll area) */}
@@ -163,6 +169,9 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
             <div ref={messagesEndRef} />
           </div>
         </PartOpenProvider>
+
+        {/* Scroll to bottom button - sticky inside scroll container */}
+        <ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />
       </div>
 
       {/* Fork confirmation modal */}

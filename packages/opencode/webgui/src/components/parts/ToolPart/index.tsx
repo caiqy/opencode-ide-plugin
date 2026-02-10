@@ -108,9 +108,16 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     return <GenericOutput output={part.state.output!} />
   }
 
-  // apply_patch: extract content from input or output for display
-  const showApplyPatchContent =
-    part.tool === "apply_patch" && part.state.status === "completed" && Boolean(part.state.input?.patch)
+  // apply_patch: show patch content from current schema (patchText), fallback to legacy field (patch)
+  const applyPatchContent =
+    part.tool === "apply_patch"
+      ? typeof part.state.input?.patchText === "string" && part.state.input.patchText.length > 0
+        ? part.state.input.patchText
+        : typeof part.state.input?.patch === "string" && part.state.input.patch.length > 0
+          ? part.state.input.patch
+          : ""
+      : ""
+  const showApplyPatchContent = part.tool === "apply_patch" && Boolean(applyPatchContent)
 
   const isExpandable = !isHeaderOnlyTool
   const shouldShowExpandedContent = isExpandable && isExpanded
@@ -147,7 +154,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
           {showDiff && <EditTool diff={String(part.state.metadata?.diff)} />}
 
           {/* apply_patch: show patch content as additions */}
-          {showApplyPatchContent && <WriteTool content={String(part.state.input?.patch)} filePath={filePath || ""} />}
+          {showApplyPatchContent && <WriteTool content={applyPatchContent} filePath={filePath || ""} />}
 
           {/* Error */}
           {showError && <ErrorDisplay error={part.state.error!} />}
