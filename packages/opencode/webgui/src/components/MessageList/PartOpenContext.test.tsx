@@ -14,12 +14,14 @@ function View() {
       <div data-testid="t1">{open.isOpen("t1") ? "open" : "closed"}</div>
       <button onClick={() => open.setOpen("r1", false)}>close-r1</button>
       <button onClick={() => open.setOpen("r1", true)}>open-r1</button>
+      <button onClick={() => open.setOpen("r2", false)}>close-r2</button>
+      <button onClick={() => open.setOpen("r2", true)}>open-r2</button>
     </div>
   )
 }
 
 describe("PartOpenProvider", () => {
-  it("默认展开所有 thinking 和工具，并且不因 thinking 结束而自动折叠", async () => {
+  it("默认只展开最后一条 thinking，工具跟随 defaultExpanded", async () => {
     const { rerender } = render(
       <PartOpenProvider
         items={[
@@ -33,11 +35,12 @@ describe("PartOpenProvider", () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByTestId("r1")).toHaveTextContent("open")
+      expect(screen.getByTestId("r1")).toHaveTextContent("closed")
       expect(screen.getByTestId("r2")).toHaveTextContent("open")
       expect(screen.getByTestId("t1")).toHaveTextContent("open")
     })
 
+    // thinking 结束（添加 end 时间戳）不影响展开状态
     rerender(
       <PartOpenProvider
         items={[
@@ -51,13 +54,13 @@ describe("PartOpenProvider", () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByTestId("r1")).toHaveTextContent("open")
+      expect(screen.getByTestId("r1")).toHaveTextContent("closed")
       expect(screen.getByTestId("r2")).toHaveTextContent("open")
       expect(screen.getByTestId("t1")).toHaveTextContent("open")
     })
   })
 
-  it("用户手动折叠后保持折叠，新出现的项默认展开", async () => {
+  it("新 thinking 出现时自动折叠上一条，用户手动展开的保持", async () => {
     const user = userEvent.setup()
     const { rerender } = render(
       <PartOpenProvider
@@ -72,16 +75,17 @@ describe("PartOpenProvider", () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByTestId("r1")).toHaveTextContent("open")
+      expect(screen.getByTestId("r1")).toHaveTextContent("closed")
       expect(screen.getByTestId("r2")).toHaveTextContent("open")
       expect(screen.getByTestId("t1")).toHaveTextContent("open")
     })
 
-    await user.click(screen.getByRole("button", { name: "close-r1" }))
-    expect(screen.getByTestId("r1")).toHaveTextContent("closed")
+    // 用户手动展开 r1
+    await user.click(screen.getByRole("button", { name: "open-r1" }))
+    expect(screen.getByTestId("r1")).toHaveTextContent("open")
     expect(screen.getByTestId("r2")).toHaveTextContent("open")
-    expect(screen.getByTestId("t1")).toHaveTextContent("open")
 
+    // 新 thinking r3 出现 → r2 自动折叠，r1 保持用户手动展开
     rerender(
       <PartOpenProvider
         items={[
@@ -96,14 +100,38 @@ describe("PartOpenProvider", () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByTestId("r1")).toHaveTextContent("closed")
-      expect(screen.getByTestId("r2")).toHaveTextContent("open")
+      expect(screen.getByTestId("r1")).toHaveTextContent("open")
+      expect(screen.getByTestId("r2")).toHaveTextContent("closed")
       expect(screen.getByTestId("r3")).toHaveTextContent("open")
       expect(screen.getByTestId("t1")).toHaveTextContent("open")
     })
   })
 
-  it("当 defaultExpanded=false 时默认折叠，手动展开后保持展开", async () => {
+  it("用户手动折叠最后一条 thinking 后保持折叠", async () => {
+    const user = userEvent.setup()
+
+    render(
+      <PartOpenProvider
+        items={[
+          { type: "reasoning", id: "r1", text: "x" },
+          { type: "reasoning", id: "r2", text: "y" },
+          { type: "tool", id: "t1", tool: "read", status: "completed" },
+        ]}
+      >
+        <View />
+      </PartOpenProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId("r2")).toHaveTextContent("open")
+    })
+
+    // 用户手动折叠 r2（最后一条）
+    await user.click(screen.getByRole("button", { name: "close-r2" }))
+    expect(screen.getByTestId("r2")).toHaveTextContent("closed")
+  })
+
+  it("当 defaultExpanded=false 时，最后一条 thinking 仍然展开，工具默认折叠", async () => {
     const user = userEvent.setup()
 
     const { rerender } = render(
@@ -121,13 +149,15 @@ describe("PartOpenProvider", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("r1")).toHaveTextContent("closed")
-      expect(screen.getByTestId("r2")).toHaveTextContent("closed")
+      expect(screen.getByTestId("r2")).toHaveTextContent("open")
       expect(screen.getByTestId("t1")).toHaveTextContent("closed")
     })
 
+    // 用户手动展开 r1，保持展开
     await user.click(screen.getByRole("button", { name: "open-r1" }))
     expect(screen.getByTestId("r1")).toHaveTextContent("open")
 
+    // 新 thinking r3 出现
     rerender(
       <PartOpenProvider
         defaultExpanded={false}
@@ -145,7 +175,7 @@ describe("PartOpenProvider", () => {
     await waitFor(() => {
       expect(screen.getByTestId("r1")).toHaveTextContent("open")
       expect(screen.getByTestId("r2")).toHaveTextContent("closed")
-      expect(screen.getByTestId("r3")).toHaveTextContent("closed")
+      expect(screen.getByTestId("r3")).toHaveTextContent("open")
       expect(screen.getByTestId("t1")).toHaveTextContent("closed")
     })
   })
