@@ -91,7 +91,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     if (part.tool === "bash") {
       const bashOutput = String(part.state.metadata?.output || part.state.output || "")
       const command = part.state.input?.command as string | undefined
-      if (bashOutput || part.state.status === "running") {
+      if (bashOutput || command || part.state.status === "running") {
         return <BashTool command={command} output={bashOutput} />
       }
       return null
