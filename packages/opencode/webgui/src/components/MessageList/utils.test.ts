@@ -7,7 +7,7 @@ function part(type: WebguiPart["type"], id: string): WebguiPart {
 }
 
 describe("sortParts", () => {
-  it("按 reasoning → tool → text 排序", () => {
+  it("按 reasoning → text → tool 排序", () => {
     const input = [
       { part: part("text", "t1") },
       { part: part("reasoning", "r1") },
@@ -19,7 +19,7 @@ describe("sortParts", () => {
 
     const result = sortParts(input)
 
-    expect(result.map((item) => item.part.id)).toEqual(["r1", "r2", "x1", "x2", "t1", "t2"])
+    expect(result.map((item) => item.part.id)).toEqual(["r1", "r2", "t1", "t2", "x1", "x2"])
   })
 
   it("同类型保持原始相对顺序", () => {
@@ -34,6 +34,6 @@ describe("sortParts", () => {
 
     const result = sortParts(input)
 
-    expect(result.map((item) => item.part.id)).toEqual(["r1", "r2", "x1", "x2", "t1", "t2"])
+    expect(result.map((item) => item.part.id)).toEqual(["r1", "r2", "t1", "t2", "x1", "x2"])
   })
 })

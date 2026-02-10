@@ -22,15 +22,17 @@ export function useMessageScroll(
     const lastMessage = sortedMessages.at(-1)
     const lastMessageID = lastMessage?.info.id ?? ""
     const lastPartsSignature =
-      lastMessage
-        ?.parts.map((part) => {
+      lastMessage?.parts
+        .map((part) => {
           const base = `${part.id}:${part.type}`
           const textValue = (part as { text?: string }).text
           const textLength = typeof textValue === "string" ? textValue.length : 0
-          const toolState = (part as { state?: { status?: string; output?: string; metadata?: { output?: string } } }).state
+          const toolState = (part as { state?: { status?: string; output?: string; metadata?: { output?: string } } })
+            .state
           const status = typeof toolState?.status === "string" ? toolState.status : ""
           const outputLength = typeof toolState?.output === "string" ? toolState.output.length : 0
-          const metadataOutputLength = typeof toolState?.metadata?.output === "string" ? toolState.metadata.output.length : 0
+          const metadataOutputLength =
+            typeof toolState?.metadata?.output === "string" ? toolState.metadata.output.length : 0
           return `${base}:${textLength}:${status}:${outputLength}:${metadataOutputLength}`
         })
         .join(",") ?? ""
@@ -78,6 +80,21 @@ export function useMessageScroll(
     hasInitializedRef.current = false
     clearProgrammaticFlag()
   }, [sessionID, clearProgrammaticFlag])
+
+  // Reset scroll when a new user message appears (user just sent input)
+  const messageCount = sortedMessages.length
+  const prevMessageCountRef = useRef(messageCount)
+
+  useEffect(() => {
+    if (messageCount > prevMessageCountRef.current) {
+      const lastMsg = sortedMessages.at(-1)
+      if (lastMsg?.info.role === "user") {
+        userScrolledRef.current = false
+        isUserAtBottomRef.current = true
+      }
+    }
+    prevMessageCountRef.current = messageCount
+  }, [messageCount, sortedMessages])
 
   // Detect explicit user scroll-up gestures (wheel / touch)
   useEffect(() => {

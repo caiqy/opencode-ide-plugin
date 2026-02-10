@@ -228,7 +228,7 @@ export function TextPart({ part, isUser, attachedParts }: TextPartProps) {
     return (
       <div
         key={part.id}
-        className="inline-block modern-card px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-700 border-transparent dark:border-gray-600"
+        className="inline-block px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-blue-50 dark:bg-blue-900/20 border border-blue-400 dark:border-blue-600"
       >
         <div ref={ref} className="whitespace-pre-wrap" onCopy={handleCopy}>
           {mentions.length > 0 ? renderTextWithMentions(text, mentions) : text}

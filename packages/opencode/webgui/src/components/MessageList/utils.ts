@@ -2,7 +2,8 @@ import type { Message, Part, WebguiPart } from "../../state/MessagesContext"
 
 const PART_TYPE_PRIORITY: Record<string, number> = {
   reasoning: 0,
-  tool: 1,
+  text: 1,
+  tool: 2,
 }
 
 export function partPriority(type: string): number {
