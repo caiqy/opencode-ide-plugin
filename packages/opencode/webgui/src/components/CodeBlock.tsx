@@ -29,7 +29,7 @@ export function CodeBlock({ language, value, inline = false }: CodeBlockProps) {
   // Keep this inline-only branch before style computation so future edits do not regress the inline layout
   if (inline) {
     return (
-      <code className="bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-1.5 py-0.5 rounded text-sm font-mono">
+      <code className="bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-1.5 py-0.5 text-sm font-mono">
         {value}
       </code>
     )
@@ -56,7 +56,7 @@ export function CodeBlock({ language, value, inline = false }: CodeBlockProps) {
   }
 
   return (
-    <div className="relative my-3 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-950 border border-gray-200 dark:border-gray-700">
+    <div className="relative my-3 overflow-hidden bg-gray-100 dark:bg-gray-950 border border-gray-200 dark:border-gray-700">
       {/* Header with language badge and copy button */}
       <div className="flex items-center justify-between bg-gray-200 dark:bg-gray-900 px-3 py-1.5 border-b border-gray-300 dark:border-gray-700">
         {/* Clickable area for collapse/expand (left) */}

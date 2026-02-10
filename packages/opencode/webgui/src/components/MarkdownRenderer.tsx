@@ -174,7 +174,7 @@ const markdownComponents: Partial<Components> = {
   // Tables with borders and striped rows
   table: ({ children }) => (
     <div className="my-3 overflow-x-auto">
-      <table className={`min-w-full border ${styles.border} rounded-lg`}>{children}</table>
+      <table className={`min-w-full border ${styles.border}`}>{children}</table>
     </div>
   ),
   thead: ({ children }) => <thead className={styles.bgAlt}>{children}</thead>,
