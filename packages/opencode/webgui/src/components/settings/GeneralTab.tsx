@@ -1,6 +1,5 @@
 import type { Config } from "@opencode-ai/sdk/client"
 import { useProject } from "../../state/ProjectContext"
-import { useUISettings } from "../../state/UISettingsContext"
 
 interface GeneralTabProps {
   formData: Partial<Config>
@@ -9,7 +8,6 @@ interface GeneralTabProps {
 
 export function GeneralTab({ formData, setFormData }: GeneralTabProps) {
   const { worktree } = useProject()
-  const { autoExpandMessageParts, setAutoExpandMessageParts } = useUISettings()
 
   return (
     <div className="space-y-4">
@@ -42,42 +40,13 @@ export function GeneralTab({ formData, setFormData }: GeneralTabProps) {
         <label className="flex items-center space-x-2">
           <input
             type="checkbox"
-            checked={autoExpandMessageParts}
-            onChange={(e) => {
-              setAutoExpandMessageParts(e.target.checked).catch((error) => {
-                console.error("[GeneralTab] Failed to update auto-expand setting:", error)
-              })
-            }}
-            className="rounded border-gray-300 dark:border-gray-700"
-          />
-          <span className="text-sm text-gray-700 dark:text-gray-300">自动展开思考与工具调用</span>
-          <button
-            type="button"
-            aria-label="自动展开说明"
-            title="关闭后，思考/工具调用块默认折叠，但仍可手动展开。"
-            className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-500 dark:border-gray-600 dark:text-gray-400"
-          >
-            i
-          </button>
-        </label>
-        <p className="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400">
-          立即生效。开启后，思考/工具调用块默认展开，并会保持展开，除非手动折叠。
-        </p>
-      </div>
-
-      <div>
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
             checked={formData.snapshot ?? false}
             onChange={(e) => setFormData({ ...formData, snapshot: e.target.checked })}
             className="rounded border-gray-300 dark:border-gray-700"
           />
           <span className="text-sm text-gray-700 dark:text-gray-300">启用快照</span>
         </label>
-        <p className="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400">
-          在会话中记录文件状态快照
-        </p>
+        <p className="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400">在会话中记录文件状态快照</p>
       </div>
 
       <div>
@@ -99,9 +68,7 @@ export function GeneralTab({ formData, setFormData }: GeneralTabProps) {
         <div className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-xs font-mono text-gray-900 dark:text-gray-100 truncate">
           {worktree ?? "未知"}
         </div>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          OpenCode 服务器启动时所在的目录。
-        </p>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">OpenCode 服务器启动时所在的目录。</p>
       </div>
     </div>
   )

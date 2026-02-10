@@ -65,8 +65,13 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     Boolean(part.state.metadata?.diff)
   const showError = part.state.status === "error" && Boolean(part.state.error)
 
-  // read tool: no expand, header only
-  const isReadTool = part.tool === "read"
+  // Header-only tools: no expand
+  const isHeaderOnlyTool =
+    part.tool === "read" ||
+    part.tool === "glob" ||
+    part.tool === "list" ||
+    part.tool === "grep" ||
+    part.tool === "webfetch"
   // edit/write/apply_patch: only show content, no generic output
   const isContentOnlyTool =
     part.tool === "edit" || part.tool === "multiedit" || part.tool === "write" || part.tool === "apply_patch"
@@ -79,15 +84,20 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   }
 
   const renderOutput = () => {
-    if (!showOutput) return null
-
     // read/edit/write/apply_patch: skip generic output rendering
-    if (isReadTool || isContentOnlyTool) return null
+    if (isHeaderOnlyTool || isContentOnlyTool) return null
 
-    // Special rendering for bash tool with metadata.output
-    if (part.tool === "bash" && Boolean(part.state.metadata?.output)) {
-      return <BashTool output={String(part.state.metadata?.output)} />
+    // Bash tool: show output in real-time (running or completed)
+    if (part.tool === "bash") {
+      const bashOutput = String(part.state.metadata?.output || part.state.output || "")
+      const command = part.state.input?.command as string | undefined
+      if (bashOutput || part.state.status === "running") {
+        return <BashTool command={command} output={bashOutput} />
+      }
+      return null
     }
+
+    if (!showOutput) return null
 
     // Special rendering for todo tools
     if (part.tool === "todoread" || part.tool === "todowrite") {
@@ -102,7 +112,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const showApplyPatchContent =
     part.tool === "apply_patch" && part.state.status === "completed" && Boolean(part.state.input?.patch)
 
-  const isExpandable = !isReadTool
+  const isExpandable = !isHeaderOnlyTool
   const shouldShowExpandedContent = isExpandable && isExpanded
 
   return (
@@ -145,7 +155,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
       )}
 
       {/* read tool: only show error when present (no expand needed) */}
-      {isReadTool && showError && (
+      {isHeaderOnlyTool && showError && (
         <div className="border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
           <ErrorDisplay error={part.state.error!} />
         </div>

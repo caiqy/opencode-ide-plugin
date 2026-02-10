@@ -1,13 +1,16 @@
 interface BashToolProps {
+  command?: string
   output: string
 }
 
-export function BashTool({ output }: BashToolProps) {
+export function BashTool({ command, output }: BashToolProps) {
   return (
-    <div className="px-3 py-1.5 border-b border-gray-100 dark:border-gray-800">
-      <div className="text-[10px] uppercase font-semibold text-gray-500 dark:text-gray-400 mb-1">Output</div>
-      <div className="text-xs bg-white dark:bg-gray-900 rounded p-1.5 overflow-x-auto max-h-60 overflow-y-auto">
-        <pre className="font-mono text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{output}</pre>
+    <div className="px-3 py-1.5">
+      <div className="text-xs overflow-x-auto max-h-60 overflow-y-auto">
+        <pre className="font-mono whitespace-pre-wrap">
+          {command && <div className="text-gray-500 dark:text-gray-400 select-all">{`$ ${command}`}</div>}
+          <span className="text-gray-700 dark:text-gray-300">{output}</span>
+        </pre>
       </div>
     </div>
   )

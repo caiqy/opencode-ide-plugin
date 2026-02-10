@@ -1,6 +1,5 @@
 import { useMessages } from "../../state/MessagesContext"
 import { useSession } from "../../state/SessionContext"
-import { useUISettings } from "../../state/UISettingsContext"
 import { TypingIndicator } from "../TypingIndicator"
 import { ConfirmModal } from "../ConfirmModal"
 import { EmptyState } from "./EmptyState"
@@ -20,7 +19,6 @@ interface MessageListProps {
 export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
   const { getMessagesBySession, getQuestionsBySession } = useMessages()
   const { isIdle, isReasoning, currentSession } = useSession()
-  const { autoExpandMessageParts } = useUISettings()
 
   // Get pending questions for current session
   const pendingQuestions = sessionID ? getQuestionsBySession(sessionID) : []
@@ -120,9 +118,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
         rows.push(
           <div key={`${message.info.id}-summary-separator`} className="flex items-center my-4">
             <div className="flex-1 border-t border-dashed border-gray-300 dark:border-gray-700" />
-            <span className="mx-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-              会话已在此精简
-            </span>
+            <span className="mx-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">会话已在此精简</span>
             <div className="flex-1 border-t border-dashed border-gray-300 dark:border-gray-700" />
           </div>,
         )
@@ -145,7 +141,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
   return (
     <>
       <div ref={messagesContainerRef} className="h-full">
-        <PartOpenProvider items={items} defaultExpanded={autoExpandMessageParts}>
+        <PartOpenProvider items={items}>
           <div className="space-y-2">
             {/* Revert banner (pinned to top of scroll area) */}
             {currentSession?.revert?.messageID && (

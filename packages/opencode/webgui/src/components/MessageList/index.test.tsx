@@ -4,7 +4,6 @@ import { render, screen } from "@testing-library/react"
 const mocks = vi.hoisted(() => ({
   useMessages: vi.fn(),
   useSession: vi.fn(),
-  useUISettings: vi.fn(),
   useMessageScroll: vi.fn(),
   useMessageActions: vi.fn(),
 }))
@@ -15,10 +14,6 @@ vi.mock("../../state/MessagesContext", () => ({
 
 vi.mock("../../state/SessionContext", () => ({
   useSession: (...args: unknown[]) => mocks.useSession(...args),
-}))
-
-vi.mock("../../state/UISettingsContext", () => ({
-  useUISettings: (...args: unknown[]) => mocks.useUISettings(...args),
 }))
 
 vi.mock("./hooks/useMessageScroll", () => ({
@@ -78,7 +73,6 @@ describe("MessageList", () => {
       getQuestionsBySession: () => [],
     })
     mocks.useSession.mockReturnValue({ isIdle: true, isReasoning: false, currentSession: null })
-    mocks.useUISettings.mockReturnValue({ autoExpandMessageParts: false })
     mocks.useMessageScroll.mockReturnValue({
       messagesEndRef: { current: null },
       messagesContainerRef: { current: null },
