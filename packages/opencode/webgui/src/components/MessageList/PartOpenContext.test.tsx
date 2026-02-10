@@ -12,10 +12,14 @@ function View() {
       <div data-testid="r2">{open.isOpen("r2") ? "open" : "closed"}</div>
       <div data-testid="r3">{open.isOpen("r3") ? "open" : "closed"}</div>
       <div data-testid="t1">{open.isOpen("t1") ? "open" : "closed"}</div>
+      <div data-testid="b1">{open.isOpen("b1") ? "open" : "closed"}</div>
+      <div data-testid="b2">{open.isOpen("b2") ? "open" : "closed"}</div>
+      <div data-testid="b3">{open.isOpen("b3") ? "open" : "closed"}</div>
       <button onClick={() => open.setOpen("r1", false)}>close-r1</button>
       <button onClick={() => open.setOpen("r1", true)}>open-r1</button>
       <button onClick={() => open.setOpen("r2", false)}>close-r2</button>
       <button onClick={() => open.setOpen("r2", true)}>open-r2</button>
+      <button onClick={() => open.setOpen("b1", true)}>open-b1</button>
     </div>
   )
 }
@@ -177,6 +181,52 @@ describe("PartOpenProvider", () => {
       expect(screen.getByTestId("r2")).toHaveTextContent("closed")
       expect(screen.getByTestId("r3")).toHaveTextContent("open")
       expect(screen.getByTestId("t1")).toHaveTextContent("closed")
+    })
+  })
+
+  it("bash 工具只展开最后一个，新增时自动折叠上一个", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <PartOpenProvider
+        items={[
+          { type: "tool", id: "b1", tool: "bash", status: "completed" },
+          { type: "tool", id: "b2", tool: "bash", status: "running" },
+          { type: "tool", id: "t1", tool: "read", status: "completed" },
+        ]}
+      >
+        <View />
+      </PartOpenProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId("b1")).toHaveTextContent("closed")
+      expect(screen.getByTestId("b2")).toHaveTextContent("open")
+      expect(screen.getByTestId("t1")).toHaveTextContent("open")
+    })
+
+    // 用户手动展开 b1
+    await user.click(screen.getByRole("button", { name: "open-b1" }))
+    expect(screen.getByTestId("b1")).toHaveTextContent("open")
+
+    // 新 bash b3 出现 → b2 自动折叠，b1 保持用户手动展开
+    rerender(
+      <PartOpenProvider
+        items={[
+          { type: "tool", id: "b1", tool: "bash", status: "completed" },
+          { type: "tool", id: "b2", tool: "bash", status: "completed" },
+          { type: "tool", id: "b3", tool: "bash", status: "running" },
+          { type: "tool", id: "t1", tool: "read", status: "completed" },
+        ]}
+      >
+        <View />
+      </PartOpenProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId("b1")).toHaveTextContent("open")
+      expect(screen.getByTestId("b2")).toHaveTextContent("closed")
+      expect(screen.getByTestId("b3")).toHaveTextContent("open")
+      expect(screen.getByTestId("t1")).toHaveTextContent("open")
     })
   })
 })

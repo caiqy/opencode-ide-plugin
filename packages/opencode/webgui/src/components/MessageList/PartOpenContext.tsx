@@ -14,6 +14,9 @@ interface PartOpenValue {
 
 const PartOpenContext = createContext<PartOpenValue | undefined>(undefined)
 
+// Tools that use "auto-expand last, collapse previous" behavior
+const AUTO_EXPAND_TOOLS = new Set(["bash"])
+
 export function PartOpenProvider(props: { items: PartOpenItem[]; children: ReactNode; defaultExpanded?: boolean }) {
   const defaultExpanded = props.defaultExpanded ?? true
   const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map())
@@ -28,14 +31,33 @@ export function PartOpenProvider(props: { items: PartOpenItem[]; children: React
     return null
   }, [props.items])
 
+  // Find the last auto-expand tool ID (bash)
+  const lastAutoExpandToolId = useMemo(() => {
+    for (let i = props.items.length - 1; i >= 0; i--) {
+      const item = props.items[i]
+      if (item.type === "tool" && AUTO_EXPAND_TOOLS.has(item.tool)) return item.id
+    }
+    return null
+  }, [props.items])
+
   // Set of all reasoning IDs for quick lookup
   const reasoningIds = useMemo(
     () => new Set(props.items.filter((item) => item.type === "reasoning").map((item) => item.id)),
     [props.items],
   )
 
-  // Track previous last reasoning ID to auto-close it when a new one appears
+  // Set of all auto-expand tool IDs for quick lookup
+  const autoExpandToolIds = useMemo(
+    () =>
+      new Set(
+        props.items.filter((item) => item.type === "tool" && AUTO_EXPAND_TOOLS.has(item.tool)).map((item) => item.id),
+      ),
+    [props.items],
+  )
+
+  // Track previous last IDs to auto-close when new ones appear
   const prevLastReasoningIdRef = useRef<string | null>(lastReasoningId)
+  const prevLastAutoExpandToolIdRef = useRef<string | null>(lastAutoExpandToolId)
 
   useEffect(() => {
     setOverrides((prev) => {
@@ -50,10 +72,24 @@ export function PartOpenProvider(props: { items: PartOpenItem[]; children: React
       }
 
       // Auto-close previous last reasoning when a new one appears
-      const prevLast = prevLastReasoningIdRef.current
-      if (lastReasoningId && prevLast && lastReasoningId !== prevLast && itemIDs.has(prevLast)) {
-        if (next.get(prevLast) !== false) {
-          next.set(prevLast, false)
+      const prevLastReasoning = prevLastReasoningIdRef.current
+      if (
+        lastReasoningId &&
+        prevLastReasoning &&
+        lastReasoningId !== prevLastReasoning &&
+        itemIDs.has(prevLastReasoning)
+      ) {
+        if (next.get(prevLastReasoning) !== false) {
+          next.set(prevLastReasoning, false)
+          changed = true
+        }
+      }
+
+      // Auto-close previous last auto-expand tool when a new one appears
+      const prevLastTool = prevLastAutoExpandToolIdRef.current
+      if (lastAutoExpandToolId && prevLastTool && lastAutoExpandToolId !== prevLastTool && itemIDs.has(prevLastTool)) {
+        if (next.get(prevLastTool) !== false) {
+          next.set(prevLastTool, false)
           changed = true
         }
       }
@@ -62,7 +98,8 @@ export function PartOpenProvider(props: { items: PartOpenItem[]; children: React
     })
 
     prevLastReasoningIdRef.current = lastReasoningId
-  }, [itemIDs, lastReasoningId])
+    prevLastAutoExpandToolIdRef.current = lastAutoExpandToolId
+  }, [itemIDs, lastReasoningId, lastAutoExpandToolId])
 
   const isOpen = useCallback(
     (id: string) => {
@@ -74,10 +111,15 @@ export function PartOpenProvider(props: { items: PartOpenItem[]; children: React
         return id === lastReasoningId
       }
 
-      // Tool items: follow defaultExpanded
+      // Auto-expand tools (bash): only the last one is expanded by default
+      if (autoExpandToolIds.has(id)) {
+        return id === lastAutoExpandToolId
+      }
+
+      // Other tool items: follow defaultExpanded
       return defaultExpanded
     },
-    [overrides, defaultExpanded, reasoningIds, lastReasoningId],
+    [overrides, defaultExpanded, reasoningIds, lastReasoningId, autoExpandToolIds, lastAutoExpandToolId],
   )
 
   const setOpen = useCallback((id: string, open: boolean) => {
