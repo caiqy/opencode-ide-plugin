@@ -5,15 +5,11 @@ import { usePartOpen } from "../../MessageList/PartOpenContext"
 import { ToolHeader } from "./ToolHeader"
 import { PermissionBanner } from "./PermissionBanner"
 import { BashTool } from "./BashTool"
-import { ReadTool } from "./ReadTool"
 import { WriteTool } from "./WriteTool"
 import { EditTool } from "./EditTool"
 import { TodoTool } from "./TodoTool"
 import { GenericOutput } from "./GenericOutput"
-import { PatchInfo } from "./PatchInfo"
-import { ToolDetails } from "./ToolDetails"
 import { ErrorDisplay } from "./ErrorDisplay"
-import { TimingInfo } from "./TimingInfo"
 import { getToolDisplayName, getBorderColor } from "./utils"
 
 interface ToolPartProps {
@@ -63,8 +59,17 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const showOutput = part.state.status === "completed" && Boolean(part.state.output)
   const showWriteContent =
     part.tool === "write" && part.state.status === "completed" && Boolean(part.state.input?.content)
-  const showDiff = part.tool === "edit" && part.state.status === "completed" && Boolean(part.state.metadata?.diff)
+  const showDiff =
+    (part.tool === "edit" || part.tool === "multiedit") &&
+    part.state.status === "completed" &&
+    Boolean(part.state.metadata?.diff)
   const showError = part.state.status === "error" && Boolean(part.state.error)
+
+  // read tool: no expand, header only
+  const isReadTool = part.tool === "read"
+  // edit/write/apply_patch: only show content, no generic output
+  const isContentOnlyTool =
+    part.tool === "edit" || part.tool === "multiedit" || part.tool === "write" || part.tool === "apply_patch"
 
   const onRespond = async (reply: "once" | "always" | "reject") => {
     if (!permission) return
@@ -76,14 +81,12 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const renderOutput = () => {
     if (!showOutput) return null
 
+    // read/edit/write/apply_patch: skip generic output rendering
+    if (isReadTool || isContentOnlyTool) return null
+
     // Special rendering for bash tool with metadata.output
     if (part.tool === "bash" && Boolean(part.state.metadata?.output)) {
       return <BashTool output={String(part.state.metadata?.output)} />
-    }
-
-    // Special rendering for read tool with metadata.preview
-    if (part.tool === "read" && Boolean(part.state.metadata?.preview) && filePath) {
-      return <ReadTool preview={String(part.state.metadata?.preview)} filePath={filePath} />
     }
 
     // Special rendering for todo tools
@@ -95,9 +98,16 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     return <GenericOutput output={part.state.output!} />
   }
 
+  // apply_patch: extract content from input or output for display
+  const showApplyPatchContent =
+    part.tool === "apply_patch" && part.state.status === "completed" && Boolean(part.state.input?.patch)
+
+  const isExpandable = !isReadTool
+  const shouldShowExpandedContent = isExpandable && isExpanded
+
   return (
     <div
-      className={`my-0.5 border rounded-lg ${getBorderColor(part.state.status, Boolean(permission))} overflow-hidden bg-gray-50 dark:bg-gray-900`}
+      className={`my-0.5 border ${getBorderColor(part.state.status, Boolean(permission))} overflow-hidden bg-gray-50 dark:bg-gray-900`}
     >
       {/* Header */}
       <ToolHeader
@@ -106,16 +116,18 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
         toolName={toolName}
         filePath={filePath}
         isExpanded={isExpanded}
+        isExpandable={isExpandable}
         onToggle={() => open.toggle(part.id)}
+        time={part.state.time}
       />
 
       {/* Expanded content */}
-      {isExpanded && (
+      {shouldShowExpandedContent && (
         <div className="border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
           {/* Permission banner */}
           {permission && <PermissionBanner permission={permission} isResponding={isResponding} onRespond={onRespond} />}
 
-          {/* Output/Result */}
+          {/* Output/Result (bash, todo, generic — not read/edit/write/apply_patch) */}
           {renderOutput()}
 
           {/* Content preview for write tool */}
@@ -124,24 +136,18 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
           {/* Diff view for edit tool */}
           {showDiff && <EditTool diff={String(part.state.metadata?.diff)} />}
 
-          {/* Associated Patch (for write/edit tools) */}
-          {associatedPatch && (part.tool === "write" || part.tool === "edit") && sessionID && messageID && (
-            <PatchInfo
-              patch={associatedPatch}
-              sessionID={sessionID}
-              messageID={messageID}
-              onViewDiff={() => setShowDiffModal(true)}
-            />
-          )}
+          {/* apply_patch: show patch content as additions */}
+          {showApplyPatchContent && <WriteTool content={String(part.state.input?.patch)} filePath={filePath || ""} />}
 
           {/* Error */}
           {showError && <ErrorDisplay error={part.state.error!} />}
+        </div>
+      )}
 
-          {/* Details toggle (Input + Metadata) */}
-          <ToolDetails input={part.state.input} metadata={part.state.metadata} />
-
-          {/* Timing */}
-          {part.state.time && <TimingInfo time={part.state.time} />}
+      {/* read tool: only show error when present (no expand needed) */}
+      {isReadTool && showError && (
+        <div className="border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
+          <ErrorDisplay error={part.state.error!} />
         </div>
       )}
 

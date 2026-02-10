@@ -10,10 +10,25 @@ interface ToolHeaderProps {
   toolName: string
   filePath?: string
   isExpanded: boolean
+  isExpandable?: boolean
   onToggle: () => void
+  time?: { start: number; end?: number }
 }
 
-export function ToolHeader({ tool, status, toolName, filePath, isExpanded, onToggle }: ToolHeaderProps) {
+function getFileName(path: string): string {
+  return path.split(/[/\\]/).pop() || path
+}
+
+export function ToolHeader({
+  tool,
+  status,
+  toolName,
+  filePath,
+  isExpanded,
+  isExpandable = true,
+  onToggle,
+  time,
+}: ToolHeaderProps) {
   const openFile = useOpenFile()
   const { worktree } = useProject()
   const displayPath = filePath ? toDisplayPath(filePath, worktree) : ""
@@ -39,17 +54,22 @@ export function ToolHeader({ tool, status, toolName, filePath, isExpanded, onTog
   )
 
   const showFileLink = filePath && (tool === "read" || tool === "write" || tool === "edit" || tool === "multiedit")
+  const fileName = filePath ? getFileName(filePath) : ""
+
+  const durationText = time?.end && time.start ? `${((time.end - time.start) / 1000).toFixed(1)}s` : undefined
+
+  const Tag = isExpandable ? "button" : "div"
 
   return (
-    <button
-      onClick={onToggle}
+    <Tag
+      onClick={isExpandable ? onToggle : undefined}
       title={tool}
       data-tip={tool}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left ${getStatusClasses(status)} hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left ${getStatusClasses(status)} ${isExpandable ? "hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer" : ""} transition-colors`}
     >
       {getStatusIcon(status)}
       {showFileLink ? (
-        <span className="text-xs font-medium flex-1">
+        <span className="text-xs font-medium flex-1 min-w-0 truncate">
           {`${toolLabel}：`}
           <span
             role="button"
@@ -60,23 +80,28 @@ export function ToolHeader({ tool, status, toolName, filePath, isExpanded, onTog
             title={displayPath || filePath}
             data-tip={displayPath || filePath}
           >
-            {displayPath || filePath}
+            {fileName}
           </span>
         </span>
       ) : (
-        <span className="text-xs font-medium flex-1">{toolName}</span>
+        <span className="text-xs font-medium flex-1 min-w-0 truncate">{toolName}</span>
       )}
-      <svg
-        viewBox="0 0 24 24"
-        className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M9 5l7 7-7 7" />
-      </svg>
-    </button>
+      {durationText && (
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">{durationText}</span>
+      )}
+      {isExpandable && (
+        <svg
+          viewBox="0 0 24 24"
+          className={`w-3 h-3 flex-shrink-0 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M9 5l7 7-7 7" />
+        </svg>
+      )}
+    </Tag>
   )
 }

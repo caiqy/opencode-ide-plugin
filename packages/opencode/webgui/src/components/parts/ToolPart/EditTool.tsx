@@ -3,24 +3,47 @@ interface EditToolProps {
 }
 
 export function EditTool({ diff }: EditToolProps) {
+  // Filter to only show changed lines (additions, deletions, and hunk headers for context)
+  const lines = diff.split("\n")
+
   return (
-    <div className="px-3 py-1.5 border-b border-gray-100 dark:border-gray-800">
-      <div className="text-[10px] uppercase font-semibold text-gray-500 dark:text-gray-400 mb-1">Changes</div>
-      <div className="text-xs bg-white dark:bg-gray-900 rounded p-1.5 overflow-x-auto max-h-60 overflow-y-auto">
-        <pre className="font-mono text-[11px] whitespace-pre">
-          {diff.split("\n").map((line, i) => {
-            let className = "text-gray-700 dark:text-gray-300"
-            if (line.startsWith("+") && !line.startsWith("+++")) {
-              className = "text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800"
+    <div className="px-3 py-1.5">
+      <div className="text-xs overflow-x-auto max-h-60 overflow-y-auto">
+        <pre className="font-mono text-[11px] whitespace-pre leading-[1.6]">
+          {lines.map((line, i) => {
+            // Skip file-level headers (---, +++, diff, index lines)
+            if (
+              line.startsWith("---") ||
+              line.startsWith("+++") ||
+              line.startsWith("diff ") ||
+              line.startsWith("index ")
+            )
+              return null
+
+            if (line.startsWith("+")) {
+              return (
+                <div key={i} className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                  {line}
+                </div>
+              )
             }
-            if (line.startsWith("-") && !line.startsWith("---")) {
-              className = "text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-900"
+            if (line.startsWith("-")) {
+              return (
+                <div key={i} className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 opacity-70">
+                  {line}
+                </div>
+              )
             }
             if (line.startsWith("@@")) {
-              className = "text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800"
+              return (
+                <div key={i} className="text-gray-400 dark:text-gray-500 text-[10px] mt-1">
+                  {line}
+                </div>
+              )
             }
+            // Context lines (unchanged)
             return (
-              <div key={i} className={className}>
+              <div key={i} className="text-gray-500 dark:text-gray-500">
                 {line || " "}
               </div>
             )

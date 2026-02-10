@@ -1,17 +1,19 @@
-import { CodeBlock } from "../../CodeBlock"
-import { getLanguageFromFilename } from "./utils"
-
 interface WriteToolProps {
   content: string
   filePath: string
 }
 
-export function WriteTool({ content, filePath }: WriteToolProps) {
+export function WriteTool({ content }: WriteToolProps) {
   return (
-    <div className="px-3 py-1.5 border-b border-gray-100 dark:border-gray-800">
-      <div className="text-[10px] uppercase font-semibold text-gray-500 dark:text-gray-400 mb-1">Content</div>
-      <div className="text-xs bg-white dark:bg-gray-900 rounded p-1.5 overflow-x-auto max-h-60 overflow-y-auto">
-        <CodeBlock language={getLanguageFromFilename(filePath)} value={content} />
+    <div className="px-3 py-1.5">
+      <div className="text-xs overflow-x-auto max-h-60 overflow-y-auto">
+        <pre className="font-mono text-[11px] whitespace-pre leading-[1.6]">
+          {content.split("\n").map((line, i) => (
+            <div key={i} className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+              {`+${line}` || " "}
+            </div>
+          ))}
+        </pre>
       </div>
     </div>
   )
