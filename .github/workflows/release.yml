@@ -62,9 +62,14 @@ jobs:
               echo "prerelease=false" >> $GITHUB_OUTPUT
             fi
           fi
+          # version without leading 'v' for use as OPENCODE_VERSION
+          VER="$(grep -oP '"version":\s*"\K[^"]+' packages/opencode/package.json)"
+          echo "version_number=$VER" >> $GITHUB_OUTPUT
 
       - name: Build backend binaries
         run: ./hosts/scripts/build_opencode.sh
+        env:
+          OPENCODE_VERSION: ${{ steps.version.outputs.version_number }}
 
       - name: Install VSCode plugin dependencies (all)
         working-directory: hosts/vscode-plugin

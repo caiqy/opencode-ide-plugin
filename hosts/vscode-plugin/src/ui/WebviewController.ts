@@ -83,7 +83,7 @@ export class WebviewController {
           uiGetState: this.uiGetState,
           uiSetState: this.uiSetState,
         },
-        { guiOnly: this.isGuiOnly },
+        { guiOnly: this.isGuiOnly, minVersion: vscode.workspace.getConfiguration("opencode").get<string>("minVersion", "1.1.1") },
       )
       this.bridgeSessionId = session.sessionId
 

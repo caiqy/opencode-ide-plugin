@@ -1,0 +1,111 @@
+import { useEffect, useState, type ReactNode } from "react"
+import { ideBridge } from "../lib/ideBridge"
+import { serverBase } from "../lib/api/sdkClient"
+
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map(Number)
+  const pb = b.split(".").map(Number)
+  const len = Math.max(pa.length, pb.length)
+  for (let i = 0; i < len; i++) {
+    const na = pa[i] ?? 0
+    const nb = pb[i] ?? 0
+    if (na !== nb) return na - nb
+  }
+  return 0
+}
+
+type State =
+  | { status: "loading" }
+  | { status: "ok" }
+  | { status: "outdated"; installed: string; required: string }
+
+export function VersionGate({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<State>({ status: "loading" })
+
+  useEffect(() => {
+    // If no ideBridge installed, skip the gate entirely
+    if (!ideBridge.isInstalled()) {
+      setState({ status: "ok" })
+      return
+    }
+
+    let cancelled = false
+
+    const check = async () => {
+      const min = ideBridge.minVersion
+      if (!min) {
+        if (!cancelled) setState({ status: "ok" })
+        return
+      }
+
+      try {
+        const res = await fetch(`${serverBase}/global/health`)
+        if (!res.ok) {
+          if (!cancelled) setState({ status: "ok" })
+          return
+        }
+        const json = await res.json() as { healthy: boolean; version: string }
+        if (!json.version) {
+          if (!cancelled) setState({ status: "ok" })
+          return
+        }
+        if (compareVersions(json.version, min) < 0) {
+          if (!cancelled) setState({ status: "outdated", installed: json.version, required: min })
+        } else {
+          if (!cancelled) setState({ status: "ok" })
+        }
+      } catch {
+        if (!cancelled) setState({ status: "ok" })
+      }
+    }
+
+    // If minVersion is already available (reconnect scenario), check immediately
+    if (ideBridge.minVersion) {
+      check()
+      return () => { cancelled = true }
+    }
+
+    // Wait for the SSE "connected" event which populates minVersion
+    const listener = () => { check() }
+    window.addEventListener("opencode:idebridge-connected", listener, { once: true })
+
+    return () => {
+      cancelled = true
+      window.removeEventListener("opencode:idebridge-connected", listener)
+    }
+  }, [])
+
+  if (state.status === "loading") return null
+
+  if (state.status === "outdated") {
+    return (
+      <div className="flex items-center justify-center h-screen bg-white dark:bg-gray-950 p-8">
+        <div className="max-w-md w-full text-center space-y-6">
+          <div className="text-5xl">⚠️</div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            Incorrect OpenCode Version
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
+            The installed OpenCode server version is incompatible with this plugin.
+          </p>
+          <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-500 dark:text-gray-400">Minimum required</span>
+              <span className="font-mono font-semibold text-gray-900 dark:text-gray-100">{state.required}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500 dark:text-gray-400">Currently installed</span>
+              <span className="font-mono font-semibold text-red-600 dark:text-red-400">{state.installed}</span>
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Please update OpenCode to version <span className="font-mono font-semibold">{state.required}</span> or
+            later to continue.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return <>{children}</>
+}

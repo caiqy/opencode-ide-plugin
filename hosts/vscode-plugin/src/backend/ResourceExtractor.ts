@@ -9,15 +9,28 @@ import * as os from "os"
 export class ResourceExtractor {
   private static readonly STABLE_DIR = "opencode-bin"
   private static readonly STALE_PREFIX = "opencode-"
+  private static pending: Promise<string> | null = null
 
   /**
    * Extract the appropriate opencode binary for the current platform.
-   * Uses a deterministic path so the binary is reused across launches and
-   * only re-copied when the source file size changes (e.g. extension update).
+   * On the first call per extension host process the entire stable
+   * directory is deleted so the new bundled binary always replaces
+   * the old one.  Subsequent calls return the cached result.
    * @param extensionPath Path to the extension directory
    * @returns Promise resolving to the path of the extracted binary
    */
-  static async extractBinary(extensionPath: string): Promise<string> {
+  static extractBinary(extensionPath: string): Promise<string> {
+    if (this.pending) {
+      console.log("[ResourceExtractor] Skipping extraction, using cached binary promise")
+      return this.pending
+    }
+
+    console.log("[ResourceExtractor] Starting extraction")
+    this.pending = this.doExtract(extensionPath)
+    return this.pending
+  }
+
+  private static async doExtract(extensionPath: string): Promise<string> {
     const osType = this.detectOS()
     const arch = this.detectArchitecture()
 
@@ -30,15 +43,17 @@ export class ResourceExtractor {
     }
 
     const stableDir = path.join(os.tmpdir(), this.STABLE_DIR)
-    await fs.promises.mkdir(stableDir, { recursive: true })
-    const destPath = path.join(stableDir, binaryName)
 
-    try {
-      await fs.promises.copyFile(binaryPath, destPath)
-    } catch (e: any) {
-      // Binary may be in use – continue with existing copy
-      console.log(`[ResourceExtractor] Could not overwrite binary (may be in use): ${e?.code || e}`)
-    }
+    // Wipe the previous directory so a stale binary is never reused
+    console.log(`[ResourceExtractor] Deleting stable directory ${stableDir}`)
+    await fs.promises.rm(stableDir, { recursive: true, force: true })
+    console.log(`[ResourceExtractor] Deleted stable directory ${stableDir}`)
+    await fs.promises.mkdir(stableDir, { recursive: true })
+
+    const destPath = path.join(stableDir, binaryName)
+    console.log(`[ResourceExtractor] Writing binary to ${destPath}`)
+    await fs.promises.copyFile(binaryPath, destPath)
+    console.log(`[ResourceExtractor] Finished writing binary to ${destPath}`)
 
     if (osType !== "windows") {
       await this.makeExecutable(destPath)
@@ -47,6 +62,7 @@ export class ResourceExtractor {
     // Best-effort cleanup of stale random temp files from previous versions
     this.cleanupStaleTempFiles().catch(() => {})
 
+    console.log(`[ResourceExtractor] Extraction complete, binary at ${destPath}`)
     return destPath
   }
 

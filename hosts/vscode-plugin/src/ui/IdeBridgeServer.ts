@@ -16,6 +16,7 @@ export interface SessionHandlers {
 
 interface SessionMetadata {
   guiOnly?: boolean
+  minVersion?: string
 }
 
 interface Session {
@@ -177,7 +178,10 @@ class IdeBridgeServer {
 
     // Send initial connected event with optional metadata
     try {
-      const connected = session.metadata.guiOnly ? JSON.stringify({ customApi: false }) : "{}"
+      const data: Record<string, any> = {}
+      if (session.metadata.guiOnly) data.customApi = false
+      if (session.metadata.minVersion) data.minVersion = session.metadata.minVersion
+      const connected = JSON.stringify(data)
       res.write(`event: connected\ndata: ${connected}\n\n`)
     } catch (e) {
       logger.appendLine(`IdeBridgeServer failed to init SSE: ${e}`)

@@ -26,7 +26,11 @@ if errorlevel 1 (
 call :prepare_output_dir "%JETBRAINS_BIN_DIR%"
 call :prepare_output_dir "%VSCODE_BIN_DIR%"
 
-echo => Building opencode distribution
+if not defined OPENCODE_VERSION (
+  for /f "delims=" %%V in ('node -p "require('%OPENCODE_DIR:\=/%/package.json').version"') do set "OPENCODE_VERSION=%%V"
+)
+
+echo => Building opencode distribution (version %OPENCODE_VERSION%)
 pushd "%OPENCODE_DIR%"
 bun script/build.ts
 if errorlevel 1 (

@@ -18,6 +18,7 @@ const token = params.get("ideBridgeToken")
 class IdeBridge {
   ready = false
   customApi = true
+  minVersion: string | null = null
   private queue: Message[] = []
   private handlers: Set<Handler> = new Set()
   private pending = new Map<string, { resolve: (m: Message) => void; reject: (e: any) => void }>()
@@ -54,8 +55,14 @@ class IdeBridge {
         if (typeof data.customApi === "boolean") {
           this.customApi = data.customApi
         }
+        if (typeof data.minVersion === "string") {
+          this.minVersion = data.minVersion
+        }
       } catch {
       }
+      try {
+        window.dispatchEvent(new Event("opencode:idebridge-connected"))
+      } catch {}
     })
 
     this.eventSource.onopen = () => {

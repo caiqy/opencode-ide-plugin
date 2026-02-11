@@ -12,6 +12,7 @@ import { ProjectProvider } from "./state/ProjectContext.tsx"
 import { IdeBridgeProvider } from "./state/IdeBridgeContext"
 import { ProvidersProvider } from "./state/ProvidersContext"
 import { initGlobalDnD } from "./lib/dnd"
+import { VersionGate } from "./components/VersionGate"
 
 window.addEventListener(
   "opencode:ui-bridge-state",
@@ -30,17 +31,19 @@ initGlobalDnD()
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
-      <ProjectProvider>
-        <SessionProvider>
-          <ToastProvider>
-            <IdeBridgeProvider>
-              <ProvidersProvider>
-                <App />
-              </ProvidersProvider>
-            </IdeBridgeProvider>
-          </ToastProvider>
-        </SessionProvider>
-      </ProjectProvider>
+      <VersionGate>
+        <ProjectProvider>
+          <SessionProvider>
+            <ToastProvider>
+              <IdeBridgeProvider>
+                <ProvidersProvider>
+                  <App />
+                </ProvidersProvider>
+              </IdeBridgeProvider>
+            </ToastProvider>
+          </SessionProvider>
+        </ProjectProvider>
+      </VersionGate>
     </ErrorBoundary>
   </StrictMode>,
 )

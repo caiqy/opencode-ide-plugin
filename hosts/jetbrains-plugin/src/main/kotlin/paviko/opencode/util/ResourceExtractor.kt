@@ -9,39 +9,68 @@ object ResourceExtractor {
     private const val STABLE_DIR = "opencode-bin"
     private const val STALE_PREFIX = "opencode-"
     private val logger = Logger.getInstance(ResourceExtractor::class.java)
+    private val lock = Any()
+    @Volatile
+    private var cached: String? = null
 
     /**
      * Extracts a resource to a deterministic temporary location.
-     * Reuses the existing binary when the file size matches, and only
-     * re-copies after an extension update changes the bundled binary.
+     * On the first call per IDE session the entire stable directory is
+     * deleted so the new bundled binary always replaces the old one.
+     * Subsequent calls (e.g. from other project windows) return the
+     * cached path without re-extracting.
      * IMPORTANT: This method performs heavy I/O (file copy) and must NOT be called from EDT.
      */
     fun extractToTemp(resourcePath: String, targetName: String): String? {
         require(!ApplicationManager.getApplication().isDispatchThread) {
             "extractToTemp must not be called from EDT - it performs heavy file I/O operations"
         }
-        val stream: InputStream = javaClass.classLoader.getResourceAsStream(resourcePath) ?: return null
 
-        val stableDir = File(System.getProperty("java.io.tmpdir"), STABLE_DIR)
-        stableDir.mkdirs()
-        val dest = File(stableDir, targetName)
-
-        // Read resource into memory so we can check size before writing
-        val bytes = stream.use { it.readBytes() }
-
-        try {
-            dest.writeBytes(bytes)
-        } catch (e: Exception) {
-            // Binary may be in use – continue with existing copy
-            logger.info("Could not overwrite binary (may be in use): ${e.message}")
+        cached?.let {
+            logger.info("ResourceExtractor: skipping extraction, using cached binary at $it")
+            return it
         }
 
-        dest.setExecutable(true)
+        synchronized(lock) {
+            cached?.let {
+                logger.info("ResourceExtractor: skipping extraction inside lock, using cached binary at $it")
+                return it
+            }
 
-        // Best-effort cleanup of stale random temp dirs from previous versions
-        cleanupStaleTempDirs()
+            val stream: InputStream = javaClass.classLoader.getResourceAsStream(resourcePath) ?: return null
+            val bytes = stream.use { it.readBytes() }
 
-        return dest.absolutePath
+            val stableDir = File(System.getProperty("java.io.tmpdir"), STABLE_DIR)
+
+            // Wipe the previous directory so a stale binary is never reused
+            logger.info("ResourceExtractor: deleting stable directory $stableDir")
+            val deleted = if (stableDir.exists()) {
+                stableDir.deleteRecursively()
+            } else {
+                true
+            }
+            logger.info("ResourceExtractor: delete result for $stableDir = $deleted")
+            stableDir.mkdirs()
+
+            val dest = File(stableDir, targetName)
+            logger.info("ResourceExtractor: writing bundled binary to ${dest.absolutePath}")
+            runCatching {
+                dest.writeBytes(bytes)
+            }.onSuccess {
+                logger.info("ResourceExtractor: successfully wrote binary to ${dest.absolutePath}")
+            }.onFailure {
+                logger.warn("ResourceExtractor: failed writing binary to ${dest.absolutePath}", it)
+                throw it
+            }
+            dest.setExecutable(true)
+
+            // Best-effort cleanup of stale random temp dirs from previous versions
+            cleanupStaleTempDirs()
+
+            cached = dest.absolutePath
+            logger.info("ResourceExtractor: extraction complete, cached path ${cached}")
+            return cached
+        }
     }
 
     /**

@@ -42,6 +42,14 @@ object IdeBridge {
     @Volatile private var executor = Executors.newCachedThreadPool()
     private var keepaliveTimer: java.util.Timer? = null
 
+    private val minVersion: String by lazy {
+        try {
+            val props = java.util.Properties()
+            IdeBridge::class.java.getResourceAsStream("/opencode-build.properties")?.use { props.load(it) }
+            props.getProperty("opencode.min.version", "1.1.1")
+        } catch (_: Throwable) { "1.1.1" }
+    }
+
     @Synchronized
     fun start() {
         if (server != null) return
@@ -222,8 +230,11 @@ object IdeBridge {
         
         // Send initial connection event
         try {
+            val data = JsonObject().apply {
+                addProperty("minVersion", minVersion)
+            }
             val writer = OutputStreamWriter(exchange.responseBody)
-            writer.write("event: connected\ndata: {}\n\n")
+            writer.write("event: connected\ndata: ${gson.toJson(data)}\n\n")
             writer.flush()
         } catch (e: Exception) {
             synchronized(session.sseClients) {

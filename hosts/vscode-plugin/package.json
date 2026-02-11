@@ -172,6 +172,11 @@
           "type": "string",
           "default": "",
           "description": "Custom command to run in the terminal (optional)"
+        },
+        "opencode.minVersion": {
+          "type": "string",
+          "default": "1.1.1",
+          "description": "Minimum required OpenCode server version"
         }
       }
     }

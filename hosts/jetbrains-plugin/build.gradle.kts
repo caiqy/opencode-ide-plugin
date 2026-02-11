@@ -105,6 +105,14 @@ intellijPlatform {
 }
 
 tasks {
+    processResources {
+        val minVersion = project.findProperty("opencode.min.version")?.toString() ?: "1.1.1"
+        inputs.property("opencodeMinVersion", minVersion)
+        filesMatching("opencode-build.properties") {
+            expand("opencodeMinVersion" to minVersion)
+        }
+    }
+
     // Ensure no upper build bound is set in plugin.xml so the plugin stays compatible with newer IDEs
     patchPluginXml {
         // keep sinceBuild from pluginConfiguration, but expand upper bound to newer IDE builds
