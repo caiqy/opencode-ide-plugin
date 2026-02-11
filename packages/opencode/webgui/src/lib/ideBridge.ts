@@ -17,6 +17,7 @@ const token = params.get("ideBridgeToken")
 
 class IdeBridge {
   ready = false
+  customApi = true
   private queue: Message[] = []
   private handlers: Set<Handler> = new Set()
   private pending = new Map<string, { resolve: (m: Message) => void; reject: (e: any) => void }>()
@@ -49,8 +50,10 @@ class IdeBridge {
 
     this.eventSource.addEventListener("connected", (ev: MessageEvent) => {
       try {
-        // ignore payload (kept for compatibility)
-        JSON.parse(String(ev.data))
+        const data = JSON.parse(String(ev.data))
+        if (typeof data.customApi === "boolean") {
+          this.customApi = data.customApi
+        }
       } catch {
       }
     })

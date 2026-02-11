@@ -7,6 +7,7 @@ interface IdeBridgeState {
   openedFiles: string[]
   currentFile: string | null
   timestamp: number | null
+  customApi: boolean
 }
 
 const Ctx = createContext<IdeBridgeState | null>(null)
@@ -17,6 +18,10 @@ export function useIdeBridgeState() {
   return ctx
 }
 
+export function useCustomApi() {
+  return useIdeBridgeState().customApi
+}
+
 interface ProviderProps {
   children: ReactNode
 }
@@ -25,9 +30,14 @@ export function IdeBridgeProvider({ children }: ProviderProps) {
   const [openedFiles, setOpenedFiles] = useState<string[]>([])
   const [currentFile, setCurrentFile] = useState<string | null>(null)
   const [timestamp, setTimestamp] = useState<number | null>(null)
+  const [customApi, setCustomApi] = useState(true)
   const { worktree } = useProject()
 
   const rel = (p: string): string => toProjectRelative(p, worktree)
+
+  useEffect(() => {
+    setCustomApi(ideBridge.customApi)
+  }, [])
 
   useEffect(() => {
     const handler = (msg: any) => {
@@ -61,7 +71,7 @@ export function IdeBridgeProvider({ children }: ProviderProps) {
     return () => ideBridge.off(handler)
   }, [worktree])
 
-  const value = useMemo(() => ({ openedFiles, currentFile, timestamp }), [openedFiles, currentFile, timestamp])
+  const value = useMemo(() => ({ openedFiles, currentFile, timestamp, customApi }), [openedFiles, currentFile, timestamp, customApi])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

@@ -7,18 +7,13 @@
  * relative URLs are used — identical to the original behaviour.
  */
 
-import { createOpencodeClient, type Provider } from "@opencode-ai/sdk/client"
+import { createOpencodeClient } from "@opencode-ai/sdk/client"
 import { ideBridge } from "../ideBridge"
 
 export const serverBase: string =
   ((globalThis as any).__OPENCODE_SERVER_URL__ as string | undefined)?.replace(/\/$/, "") || ""
 
 const baseClient = createOpencodeClient({ baseUrl: serverBase || "/" })
-
-interface ProvidersResponse {
-  providers: Provider[]
-  default: Record<string, string>
-}
 
 interface ModelEntry {
   providerID: string
@@ -72,26 +67,6 @@ export const sdk = {
     get: baseClient.config.get.bind(baseClient.config),
     update: baseClient.config.update.bind(baseClient.config),
     providers: baseClient.config.providers.bind(baseClient.config),
-    allProviders: async () => {
-      try {
-        const response = await fetch(`${serverBase}/app/api/config/providers`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        })
-
-        if (!response.ok) {
-          return { error: { message: "Failed to load providers" }, data: null as ProvidersResponse | null }
-        }
-
-        const data = (await response.json()) as ProvidersResponse
-        return { data, error: null as { message: string } | null }
-      } catch (error) {
-        return {
-          error: { message: error instanceof Error ? error.message : "Unknown error" },
-          data: null as ProvidersResponse | null,
-        }
-      }
-    },
   },
   path: {
     get: async () => {

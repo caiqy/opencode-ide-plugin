@@ -1,15 +1,17 @@
 interface TabBarProps {
   activeTab: "general" | "api-keys" | "models" | "advanced"
   onTabChange: (tab: "general" | "api-keys" | "models" | "advanced") => void
+  hideApiKeys?: boolean
 }
 
-export function TabBar({ activeTab, onTabChange }: TabBarProps) {
-  const tabs: { id: typeof activeTab; label: string; icon: string }[] = [
+export function TabBar({ activeTab, onTabChange, hideApiKeys }: TabBarProps) {
+  const all: { id: typeof activeTab; label: string; icon: string }[] = [
     { id: "general", label: "General", icon: "⚙️" },
     { id: "api-keys", label: "API Keys", icon: "🔑" },
     { id: "models", label: "Models", icon: "🤖" },
     { id: "advanced", label: "Advanced", icon: "🔧" },
   ]
+  const tabs = hideApiKeys ? all.filter((t) => t.id !== "api-keys") : all
 
   return (
     <div className="border-b border-gray-200 dark:border-gray-800">

@@ -32,6 +32,7 @@ export class WebviewController {
   private connection?: BackendConnection
   private disposables: vscode.Disposable[] = []
   private bridgeSessionId: string | null = null
+  private isGuiOnly = false
   private uiGetState?: () => Promise<any>
   private uiSetState?: (state: any) => Promise<void>
 
@@ -66,6 +67,10 @@ export class WebviewController {
       // Make PathInserter aware of the active communication bridge
       // NOTE: PathInserter is now set by container visibility (editor panel / sidebar).
 
+      // Determine UI source: embedded webgui (gui-only) or remote server (standard)
+      // NOTE: resolveUiBaseUrl sets this.isGuiOnly — call it before createSession
+      const uiBaseUrl = await this.resolveUiBaseUrl(connection)
+
       // Create bridge session with handlers from CommunicationBridge
       const session = await bridgeServer.createSession(
         {
@@ -78,6 +83,7 @@ export class WebviewController {
           uiGetState: this.uiGetState,
           uiSetState: this.uiSetState,
         },
+        { guiOnly: this.isGuiOnly },
       )
       this.bridgeSessionId = session.sessionId
 
@@ -105,9 +111,6 @@ export class WebviewController {
       } catch (e) {
         logger.appendLine(`FileMonitor init failed: ${e}`)
       }
-
-      // Determine UI source: embedded webgui (gui-only) or remote server (standard)
-      const uiBaseUrl = await this.resolveUiBaseUrl(connection)
 
       // Use asExternalUri for Remote-SSH compatibility
       const externalUi = await vscode.env.asExternalUri(vscode.Uri.parse(uiBaseUrl))
@@ -252,6 +255,7 @@ export class WebviewController {
       const parsed = new URL(connection.uiBase)
       const serverRoot = parsed.origin
       logger.appendLine(`gui-only mode: serving embedded webgui, REST API at ${serverRoot}`)
+      this.isGuiOnly = true
       const base = await webguiServer.start(webguiDir, serverRoot)
       return `${base}/app`
     }

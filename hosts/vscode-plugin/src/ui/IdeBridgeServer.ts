@@ -14,10 +14,15 @@ export interface SessionHandlers {
   uiSetState?: (state: any) => Promise<void>
 }
 
+interface SessionMetadata {
+  guiOnly?: boolean
+}
+
 interface Session {
   id: string
   token: string
   handlers: SessionHandlers
+  metadata: SessionMetadata
   sseClients: Set<http.ServerResponse>
 }
 
@@ -75,7 +80,7 @@ class IdeBridgeServer {
     this.sessions.clear()
   }
 
-  async createSession(handlers: SessionHandlers): Promise<{ sessionId: string; baseUrl: string; token: string }> {
+  async createSession(handlers: SessionHandlers, metadata: SessionMetadata = {}): Promise<{ sessionId: string; baseUrl: string; token: string }> {
     await this.start() // ensure server is running
 
     const sessionId = crypto.randomUUID()
@@ -85,6 +90,7 @@ class IdeBridgeServer {
       id: sessionId,
       token,
       handlers,
+      metadata,
       sseClients: new Set(),
     })
 
@@ -169,9 +175,10 @@ class IdeBridgeServer {
 
     session.sseClients.add(res)
 
-    // Send initial connected event
+    // Send initial connected event with optional metadata
     try {
-      res.write("event: connected\ndata: {}\n\n")
+      const connected = session.metadata.guiOnly ? JSON.stringify({ customApi: false }) : "{}"
+      res.write(`event: connected\ndata: ${connected}\n\n`)
     } catch (e) {
       logger.appendLine(`IdeBridgeServer failed to init SSE: ${e}`)
     }

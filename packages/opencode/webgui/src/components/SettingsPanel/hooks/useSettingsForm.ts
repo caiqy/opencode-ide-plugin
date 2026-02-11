@@ -7,7 +7,7 @@ interface ProviderWithAuth extends Provider {
   authKey?: string
 }
 
-export function useSettingsForm(isOpen: boolean) {
+export function useSettingsForm(isOpen: boolean, customApi?: boolean) {
   const [formData, setFormData] = useState<Partial<Config>>({})
   const [originalFormData, setOriginalFormData] = useState<Partial<Config>>({})
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
@@ -42,7 +42,7 @@ export function useSettingsForm(isOpen: boolean) {
         }
 
         // Fetch providers
-        const providersRes = await sdk.config.allProviders()
+        const providersRes = await sdk.config.providers()
         if (providersRes.error) {
           throw new Error("Failed to load providers")
         }
@@ -50,9 +50,11 @@ export function useSettingsForm(isOpen: boolean) {
           setProviders(providersRes.data.providers.sort((a, b) => a.name.localeCompare(b.name)))
         }
 
-        // Fetch configured providers
-        const authList = await sdk.auth.list()
-        setConfiguredProviders(Object.keys(authList))
+        // Fetch configured providers (requires custom API)
+        if (customApi !== false) {
+          const authList = await sdk.auth.list()
+          setConfiguredProviders(Object.keys(authList))
+        }
 
         // Reset API keys to empty (they should be entered fresh)
         setApiKeys({})
@@ -64,7 +66,7 @@ export function useSettingsForm(isOpen: boolean) {
     }
 
     fetchData()
-  }, [isOpen])
+  }, [isOpen, customApi])
 
   return {
     formData,

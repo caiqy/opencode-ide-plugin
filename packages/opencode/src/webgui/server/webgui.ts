@@ -355,42 +355,6 @@ export const WebGuiRoute = new Hono()
       return c.json({ status: session.status, result: session.result })
     },
   )
-  .get(
-    "/config/providers",
-    describeRoute({
-      description: "List all providers",
-      operationId: "config.providers",
-      responses: {
-        200: {
-          description: "List of providers",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.object({
-                  providers: ModelsDev.Provider.array(),
-                  default: z.record(z.string(), z.string()),
-                }),
-              ),
-            },
-          },
-        },
-      },
-    }),
-    async (c) => {
-      // Get providers directly from updated cache after refresh
-      const database = await ModelsDev.get()
-      const activeProviders = await Provider.list()
-
-      // Merge active providers into the full list from database
-      // This ensures we have all available providers, but with updated info for active ones
-      const allProviders = { ...database, ...activeProviders }
-
-      return c.json({
-        providers: Object.values(allProviders),
-        default: mapValues(activeProviders, (item) => Provider.sort(Object.values(item.models))[0]?.id ?? ""),
-      })
-    },
-  )
   .post(
     "/session/:sessionID/retry",
     describeRoute({
