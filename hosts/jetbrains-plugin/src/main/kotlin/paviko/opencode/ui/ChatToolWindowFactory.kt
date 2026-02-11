@@ -18,6 +18,7 @@ import paviko.opencode.backendprocess.BackendLauncher
 import java.awt.BorderLayout
 import java.awt.Font
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.net.URI
 import java.net.URLEncoder
@@ -182,6 +183,18 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                     timeoutFuture.cancel(false)
                                     logger.info("Backend connection established at $appUrl")
 
+                                    // Detect gui-only mode: check if webgui-app is bundled as a resource
+                                    val isGuiOnly = javaClass.classLoader.getResource("webgui-app/index.html") != null
+                                    val uiBaseUrl = if (isGuiOnly) {
+                                        val webguiDir = extractWebguiResources()
+                                        val serverRoot = serverUri.let { "${it.scheme}://${it.host}:${it.port}" }
+                                        logger.info("gui-only mode: serving embedded webgui, REST API at $serverRoot")
+                                        val base = WebguiStaticServer.start(webguiDir, serverRoot)
+                                        "$base/app"
+                                    } else {
+                                        appUrl
+                                    }
+
                                     SwingUtilities.invokeLater {
                                         try {
                                             val client = JBCefApp.getInstance().createClient()
@@ -204,8 +217,8 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                             mainPanel.repaint()
 
                                             // Create bridge session and build URL with bridge params
-                                            val session = IdeBridge.createSession(project)
-                                            val baseUrl = withCacheBuster(appUrl, pluginVersion())
+                                            val session = IdeBridge.createSession(project, isGuiOnly)
+                                            val baseUrl = withCacheBuster(uiBaseUrl, pluginVersion())
                                             val urlWithBridge = buildString {
                                                 append(baseUrl)
                                                 append(if ('?' in baseUrl) '&' else '?')
@@ -255,5 +268,27 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         }
     }
 
+    /**
+     * Extract bundled webgui-app resources from the JAR/classpath to a temp directory.
+     * Uses webgui-app/file-list.txt (generated at build time) to enumerate files.
+     */
+    private fun extractWebguiResources(): String {
+        val dest = File(System.getProperty("java.io.tmpdir"), "opencode-webgui")
+        dest.deleteRecursively()
+        dest.mkdirs()
 
+        val listing = javaClass.classLoader.getResourceAsStream("webgui-app/file-list.txt")
+            ?.bufferedReader()?.readLines()?.filter { it.isNotBlank() }
+            ?: throw RuntimeException("webgui-app/file-list.txt not found in classpath")
+
+        for (rel in listing) {
+            val input = javaClass.classLoader.getResourceAsStream("webgui-app/$rel") ?: continue
+            val target = File(dest, rel)
+            target.parentFile.mkdirs()
+            input.use { src -> target.outputStream().use { out -> src.copyTo(out) } }
+        }
+
+        logger.info("Extracted ${listing.size} webgui files to ${dest.absolutePath}")
+        return dest.absolutePath
+    }
 }

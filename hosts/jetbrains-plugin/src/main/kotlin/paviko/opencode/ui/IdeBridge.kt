@@ -26,6 +26,7 @@ data class Session(
     val id: String,
     val token: String,
     val project: Project,
+    val guiOnly: Boolean = false,
     val sseClients: MutableSet<HttpExchange> = Collections.synchronizedSet(mutableSetOf())
 )
 
@@ -77,7 +78,7 @@ object IdeBridge {
         try { executor.shutdownNow() } catch (_: Throwable) {}
     }
 
-    fun createSession(project: Project): SessionInfo {
+    fun createSession(project: Project, guiOnly: Boolean = false): SessionInfo {
         start() // ensure server is running
         
         // Remove any existing session for this project
@@ -87,7 +88,7 @@ object IdeBridge {
         
         val sessionId = UUID.randomUUID().toString()
         val token = UUID.randomUUID().toString()
-        sessions[sessionId] = Session(sessionId, token, project)
+        sessions[sessionId] = Session(sessionId, token, project, guiOnly)
         projectToSession[project] = sessionId
         
         // Start keepalive timer if not running
@@ -232,6 +233,7 @@ object IdeBridge {
         try {
             val data = JsonObject().apply {
                 addProperty("minVersion", minVersion)
+                if (session.guiOnly) addProperty("customApi", false)
             }
             val writer = OutputStreamWriter(exchange.responseBody)
             writer.write("event: connected\ndata: ${gson.toJson(data)}\n\n")

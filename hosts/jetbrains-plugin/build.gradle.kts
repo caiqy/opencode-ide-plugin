@@ -7,6 +7,9 @@ plugins {
 group = "paviko.opencode"
 version = "26.2.8"
 
+val guiOnly = project.findProperty("guiOnly")?.toString()?.toBoolean() ?: false
+val webguiDist = project.findProperty("webguiDist")?.toString()
+
 repositories {
     mavenCentral()
     intellijPlatform {
@@ -111,17 +114,61 @@ tasks {
         filesMatching("opencode-build.properties") {
             expand("opencodeMinVersion" to minVersion)
         }
+
+        if (guiOnly) {
+            // Exclude bundled binaries for gui-only variant
+            exclude("bin/**")
+        }
+    }
+
+    // Copy webgui-dist into resources and generate file-list.txt for gui-only variant
+    if (guiOnly) {
+        val copyWebgui = register<Copy>("copyWebguiDist") {
+            val srcDir = if (webguiDist != null) file(webguiDist!!) else rootProject.rootDir.resolve("packages/opencode/webgui-dist")
+            from(srcDir)
+            into(layout.buildDirectory.dir("resources/main/webgui-app"))
+        }
+
+        val generateFileList = register("generateWebguiFileList") {
+            dependsOn(copyWebgui)
+            doLast {
+                val webguiDir = layout.buildDirectory.dir("resources/main/webgui-app").get().asFile
+                val files = webguiDir.walkTopDown()
+                    .filter { it.isFile && it.name != "file-list.txt" }
+                    .map { it.relativeTo(webguiDir).path }
+                    .sorted()
+                    .toList()
+                File(webguiDir, "file-list.txt").writeText(files.joinToString("\n") + "\n")
+                logger.lifecycle("Generated webgui-app/file-list.txt with ${files.size} entries")
+            }
+        }
+
+        named("processResources") {
+            dependsOn(generateFileList)
+        }
     }
 
     // Ensure no upper build bound is set in plugin.xml so the plugin stays compatible with newer IDEs
     patchPluginXml {
         // keep sinceBuild from pluginConfiguration, but expand upper bound to newer IDE builds
         untilBuild.set("261.*")
+
+        if (guiOnly) {
+            pluginId.set("paviko.opencode-ux-plus-gui-only")
+            pluginName.set("OpenCode UX+ GUI Only (unofficial)")
+        }
     }
 
     prepareSandbox {
         from(rootProject.rootDir.resolve("LICENSE")) {
             into("${intellijPlatform.projectName.get()}")
+        }
+    }
+
+    // Rename output archive for gui-only variant
+    if (guiOnly) {
+        named<Zip>("buildPlugin") {
+            archiveBaseName.set("opencode-plugin-gui-only")
         }
     }
 
