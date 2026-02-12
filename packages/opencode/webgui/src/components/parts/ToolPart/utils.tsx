@@ -11,9 +11,18 @@ const TOOL_LABELS: Record<string, string> = {
   glob: "路径匹配",
   grep: "文本查找",
   webfetch: "抓取网页",
+  websearch: "网页搜索",
+  codesearch: "代码搜索",
+  lsp: "语言服务器查询",
+  batch: "批量工具调用",
+  plan_enter: "进入计划模式",
+  plan_exit: "退出计划模式",
+  task: "委派子任务",
+  question: "提问",
   todoread: "查看任务列表",
   todowrite: "更新任务列表",
   skill: "加载技能",
+  invalid: "无效工具调用",
   invalidTool: "无效工具调用",
 }
 

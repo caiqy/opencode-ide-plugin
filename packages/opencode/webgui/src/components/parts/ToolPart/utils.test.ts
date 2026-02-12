@@ -39,6 +39,21 @@ describe("getToolDisplayName", () => {
     expect(getToolDisplayName("todowrite", undefined, "Update", output)).toBe("更新任务列表：共 2")
   })
 
+  it("task/question 工具调用应展示中文名", () => {
+    expect(getToolDisplayName("task", undefined, undefined, undefined)).toBe("委派子任务")
+    expect(getToolDisplayName("question", undefined, undefined, undefined)).toBe("提问")
+  })
+
+  it("应覆盖 webgui 其余工具调用中文名", () => {
+    expect(getToolDisplayName("websearch", undefined, undefined, undefined)).toBe("网页搜索")
+    expect(getToolDisplayName("codesearch", undefined, undefined, undefined)).toBe("代码搜索")
+    expect(getToolDisplayName("lsp", undefined, undefined, undefined)).toBe("语言服务器查询")
+    expect(getToolDisplayName("batch", undefined, undefined, undefined)).toBe("批量工具调用")
+    expect(getToolDisplayName("plan_enter", undefined, undefined, undefined)).toBe("进入计划模式")
+    expect(getToolDisplayName("plan_exit", undefined, undefined, undefined)).toBe("退出计划模式")
+    expect(getToolDisplayName("invalid", undefined, undefined, undefined)).toBe("无效工具调用")
+  })
+
   it("未知工具保持原样", () => {
     expect(getToolDisplayName("some-tool", undefined, undefined, undefined)).toBe("some-tool")
   })
