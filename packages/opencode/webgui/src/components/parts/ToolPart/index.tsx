@@ -55,6 +55,33 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
   const toolName = getToolDisplayName(part.tool, part.state.input, part.state.title, part.state.output)
   const filePath = (part.state.input?.filePath as string | undefined) || undefined
+  const patchFilePaths = useMemo(() => {
+    if (part.tool !== "apply_patch") return [] as string[]
+    const files = (
+      part.state.metadata as
+        | {
+            files?: Array<{ filePath?: string; movePath?: string }>
+          }
+        | undefined
+    )?.files
+    if (!Array.isArray(files)) return [] as string[]
+
+    const seen = new Set<string>()
+    const next: string[] = []
+    const add = (value?: string) => {
+      if (!value) return
+      if (seen.has(value)) return
+      seen.add(value)
+      next.push(value)
+    }
+
+    for (const item of files) {
+      add(item.filePath)
+      add(item.movePath)
+    }
+
+    return next
+  }, [part.tool, part.state.metadata])
 
   const showOutput = part.state.status === "completed" && Boolean(part.state.output)
   const showWriteContent =
@@ -132,6 +159,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
         status={part.state.status}
         toolName={toolName}
         filePath={filePath}
+        patchFilePaths={patchFilePaths}
         isExpanded={isExpanded}
         isExpandable={isExpandable}
         onToggle={() => open.toggle(part.id)}
@@ -140,7 +168,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
       {/* Expanded content */}
       {shouldShowExpandedContent && (
-        <div className="border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
+        <div className="border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 break-words [overflow-wrap:anywhere]">
           {/* Permission banner */}
           {permission && <PermissionBanner permission={permission} isResponding={isResponding} onRespond={onRespond} />}
 

@@ -204,7 +204,7 @@ const markdownComponents: Partial<Components> = {
 
 export function MarkdownRenderer({ children }: MarkdownRendererProps) {
   return (
-    <div className="markdown-content">
+    <div className="markdown-content break-words [overflow-wrap:anywhere]">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
         {children}
       </ReactMarkdown>

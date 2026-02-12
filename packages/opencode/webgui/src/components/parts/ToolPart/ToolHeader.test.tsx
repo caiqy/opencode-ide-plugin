@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest"
-import { render } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
+
+const mocks = vi.hoisted(() => ({
+  openFile: vi.fn(),
+}))
 
 vi.mock("../../../hooks/useOpenFile", () => {
   return {
-    useOpenFile: () => vi.fn(),
+    useOpenFile: () => mocks.openFile,
   }
 })
 
@@ -64,5 +68,30 @@ describe("ToolHeader", () => {
     expect(button).toHaveTextContent("编辑：")
     expect(button).toHaveTextContent("bar.ts")
     expect(button).toHaveTextContent("2.5s")
+  })
+
+  it("文件补丁标题栏仅显示文件名，点击文件名可定位", () => {
+    render(
+      <ToolHeader
+        tool={"apply_patch"}
+        status="completed"
+        toolName="文件补丁：Success. Updated the following files: src/a/very/deep/foo.ts"
+        isExpanded={false}
+        isExpandable={true}
+        onToggle={() => undefined}
+        {...({ patchFilePaths: ["src/a/very/deep/foo.ts", "src/b/bar.ts"] } as any)}
+      />,
+    )
+
+    expect(screen.getByText("文件补丁：")).toBeInTheDocument()
+    expect(screen.getByText("foo.ts")).toBeInTheDocument()
+    expect(screen.getByText("bar.ts")).toBeInTheDocument()
+    expect(screen.queryByText("src/a/very/deep/foo.ts")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText("foo.ts"))
+    expect(mocks.openFile).toHaveBeenCalledWith({
+      path: "src/a/very/deep/foo.ts",
+      display: "src/a/very/deep/foo.ts",
+    })
   })
 })

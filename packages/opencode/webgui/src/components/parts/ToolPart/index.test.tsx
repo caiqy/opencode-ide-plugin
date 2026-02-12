@@ -63,4 +63,25 @@ describe("ToolPart", () => {
     expect(screen.getByText("+*** Add File: hello.txt")).toBeInTheDocument()
     expect(screen.getByText("++hello")).toBeInTheDocument()
   })
+
+  it("工具展开区域默认开启长路径自动折行", () => {
+    const part = {
+      id: "p2",
+      type: "tool",
+      callID: "c2",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "pwd" },
+        output: "C:\\Users\\alice\\very\\long\\project\\src\\feature\\index.ts",
+      },
+    } as any
+
+    const { container } = render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+    const expanded = container.querySelector(".border-t")
+
+    expect(expanded).toBeTruthy()
+    expect(expanded).toHaveClass("break-words")
+    expect(expanded).toHaveClass("[overflow-wrap:anywhere]")
+  })
 })
