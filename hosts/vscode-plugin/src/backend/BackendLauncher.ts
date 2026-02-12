@@ -208,7 +208,7 @@ export class BackendLauncher {
    * @returns The binary name to be resolved via PATH
    */
   private resolveSystemBinary(): string {
-    const name = process.platform === "win32" ? "opencode.exe" : "opencode"
+    const name = "opencode"
     logger.appendLine(`Using system binary: ${name}`)
     return name
   }

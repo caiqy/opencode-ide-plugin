@@ -135,7 +135,7 @@ tasks {
                 val webguiDir = layout.buildDirectory.dir("resources/main/webgui-app").get().asFile
                 val files = webguiDir.walkTopDown()
                     .filter { it.isFile && it.name != "file-list.txt" }
-                    .map { it.relativeTo(webguiDir).path }
+                    .map { it.relativeTo(webguiDir).invariantSeparatorsPath }
                     .sorted()
                     .toList()
                 File(webguiDir, "file-list.txt").writeText(files.joinToString("\n") + "\n")

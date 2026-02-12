@@ -39,6 +39,7 @@ export class ResourceExtractor {
     const binaryPath = path.join(extensionPath, "resources", "bin", osType, arch, binaryName)
 
     if (!fs.existsSync(binaryPath)) {
+      console.log(`[ResourceExtractor] Binary not found for platform ${osType}/${arch} at ${binaryPath}`)
       throw new Error(`Binary not found for platform ${osType}/${arch} at ${binaryPath}`)
     }
 
@@ -46,24 +47,75 @@ export class ResourceExtractor {
 
     // Wipe the previous directory so a stale binary is never reused
     console.log(`[ResourceExtractor] Deleting stable directory ${stableDir}`)
-    await fs.promises.rm(stableDir, { recursive: true, force: true })
-    console.log(`[ResourceExtractor] Deleted stable directory ${stableDir}`)
-    await fs.promises.mkdir(stableDir, { recursive: true })
+    await this.runBestEffort(`delete stable directory ${stableDir}`, () =>
+      fs.promises.rm(stableDir, { recursive: true, force: true }),
+    )
+    await this.runBestEffort(`create stable directory ${stableDir}`, () =>
+      fs.promises.mkdir(stableDir, { recursive: true }),
+    )
 
     const destPath = path.join(stableDir, binaryName)
-    console.log(`[ResourceExtractor] Writing binary to ${destPath}`)
-    await fs.promises.copyFile(binaryPath, destPath)
-    console.log(`[ResourceExtractor] Finished writing binary to ${destPath}`)
+    const extractedPath = await this.copyWithFallback(binaryPath, destPath)
 
     if (osType !== "windows") {
-      await this.makeExecutable(destPath)
+      await this.makeExecutable(extractedPath)
     }
 
     // Best-effort cleanup of stale random temp files from previous versions
-    this.cleanupStaleTempFiles().catch(() => {})
+    this.cleanupStaleTempFiles().catch((error) => {
+      this.logFsError("cleanup stale temp files", error)
+    })
 
-    console.log(`[ResourceExtractor] Extraction complete, binary at ${destPath}`)
-    return destPath
+    console.log(`[ResourceExtractor] Extraction complete, binary at ${extractedPath}`)
+    return extractedPath
+  }
+
+  private static async copyWithFallback(binaryPath: string, destPath: string): Promise<string> {
+    console.log(`[ResourceExtractor] Writing binary to ${destPath}`)
+    const copied = await fs.promises
+      .copyFile(binaryPath, destPath)
+      .then(() => true)
+      .catch((error) => {
+        this.logFsError(`copy binary to ${destPath}`, error)
+        return false
+      })
+
+    if (copied) {
+      console.log(`[ResourceExtractor] Finished writing binary to ${destPath}`)
+      return destPath
+    }
+
+    const hasDest = await fs.promises
+      .access(destPath, fs.constants.F_OK)
+      .then(() => true)
+      .catch(() => false)
+
+    if (hasDest) {
+      console.log(`[ResourceExtractor] Continuing with existing extracted binary at ${destPath}`)
+      return destPath
+    }
+
+    console.log(`[ResourceExtractor] Continuing with bundled binary at ${binaryPath}`)
+    return binaryPath
+  }
+
+  private static async runBestEffort(label: string, op: () => Promise<unknown>): Promise<void> {
+    await op()
+      .then(() => {
+        console.log(`[ResourceExtractor] Completed ${label}`)
+      })
+      .catch((error) => {
+        this.logFsError(label, error)
+      })
+  }
+
+  private static logFsError(label: string, error: unknown): void {
+    console.log(`[ResourceExtractor] Could not ${label}: ${this.errorMessage(error)}`)
+  }
+
+  private static errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message
+    return String(error)
   }
 
   /**
@@ -131,10 +183,8 @@ export class ResourceExtractor {
    * @param filePath Path to the file to make executable
    */
   private static async makeExecutable(filePath: string): Promise<void> {
-    try {
-      await fs.promises.chmod(filePath, 0o755)
-    } catch (error) {
-      throw new Error(`Failed to make file executable: ${error}`)
-    }
+    await fs.promises.chmod(filePath, 0o755).catch((error) => {
+      this.logFsError(`make ${filePath} executable`, error)
+    })
   }
 }

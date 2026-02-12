@@ -274,21 +274,57 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
      */
     private fun extractWebguiResources(): String {
         val dest = File(System.getProperty("java.io.tmpdir"), "opencode-webgui")
-        dest.deleteRecursively()
-        dest.mkdirs()
-
-        val listing = javaClass.classLoader.getResourceAsStream("webgui-app/file-list.txt")
-            ?.bufferedReader()?.readLines()?.filter { it.isNotBlank() }
-            ?: throw RuntimeException("webgui-app/file-list.txt not found in classpath")
-
-        for (rel in listing) {
-            val input = javaClass.classLoader.getResourceAsStream("webgui-app/$rel") ?: continue
-            val target = File(dest, rel)
-            target.parentFile.mkdirs()
-            input.use { src -> target.outputStream().use { out -> src.copyTo(out) } }
+        runCatching {
+            val deleted = dest.deleteRecursively()
+            if (!deleted && dest.exists()) {
+                logger.warn("Could not fully delete webgui temp directory ${dest.absolutePath}, continuing")
+            }
+        }.onFailure {
+            logger.warn("Failed to delete webgui temp directory ${dest.absolutePath}, continuing", it)
         }
 
-        logger.info("Extracted ${listing.size} webgui files to ${dest.absolutePath}")
+        runCatching {
+            val created = dest.mkdirs()
+            if (!created && !dest.exists()) {
+                logger.warn("Could not create webgui temp directory ${dest.absolutePath}, continuing")
+            }
+        }.onFailure {
+            logger.warn("Failed to create webgui temp directory ${dest.absolutePath}, continuing", it)
+        }
+
+        val listing = javaClass.classLoader.getResourceAsStream("webgui-app/file-list.txt")
+            ?.bufferedReader()
+            ?.useLines { lines ->
+                lines
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .map { it.removePrefix("./").trimStart('/').replace('\\', '/') }
+                    .toList()
+            }
+            ?: throw RuntimeException("webgui-app/file-list.txt not found in classpath")
+
+        var copied = 0
+        for (rel in listing) {
+            val input = javaClass.classLoader.getResourceAsStream("webgui-app/$rel")
+            if (input == null) {
+                logger.warn("Missing bundled webgui resource webgui-app/$rel, skipping")
+                continue
+            }
+            val target = File(dest, rel)
+            runCatching {
+                val parent = target.parentFile
+                val parentCreated = parent.mkdirs()
+                if (!parentCreated && !parent.exists()) {
+                    logger.warn("Could not create parent directory ${parent.absolutePath} for $rel, continuing")
+                }
+                input.use { src -> target.outputStream().use { out -> src.copyTo(out) } }
+                copied++
+            }.onFailure {
+                logger.warn("Failed to extract webgui resource $rel to ${target.absolutePath}, continuing", it)
+            }
+        }
+
+        logger.info("Extracted $copied/${listing.size} webgui files to ${dest.absolutePath}")
         return dest.absolutePath
     }
 }

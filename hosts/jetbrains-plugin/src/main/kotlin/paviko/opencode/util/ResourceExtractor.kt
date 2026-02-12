@@ -4,6 +4,8 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import java.io.File
 import java.io.InputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 object ResourceExtractor {
     private const val STABLE_DIR = "opencode-bin"
@@ -44,25 +46,71 @@ object ResourceExtractor {
 
             // Wipe the previous directory so a stale binary is never reused
             logger.info("ResourceExtractor: deleting stable directory $stableDir")
-            val deleted = if (stableDir.exists()) {
-                stableDir.deleteRecursively()
-            } else {
-                true
+            runCatching {
+                val deleted = if (stableDir.exists()) {
+                    stableDir.deleteRecursively()
+                } else {
+                    true
+                }
+                logger.info("ResourceExtractor: delete result for $stableDir = $deleted")
+                if (!deleted) logger.warn("ResourceExtractor: could not fully delete $stableDir, continuing")
+            }.onFailure {
+                logger.warn("ResourceExtractor: failed deleting stable directory $stableDir, continuing", it)
             }
-            logger.info("ResourceExtractor: delete result for $stableDir = $deleted")
-            stableDir.mkdirs()
+
+            runCatching {
+                val created = stableDir.mkdirs()
+                if (!created && !stableDir.exists()) {
+                    logger.warn("ResourceExtractor: could not create stable directory $stableDir, continuing")
+                }
+            }.onFailure {
+                logger.warn("ResourceExtractor: failed creating stable directory $stableDir, continuing", it)
+            }
 
             val dest = File(stableDir, targetName)
+            val temp = File(stableDir, "$targetName.new")
             logger.info("ResourceExtractor: writing bundled binary to ${dest.absolutePath}")
-            runCatching {
-                dest.writeBytes(bytes)
+            val writeOk = runCatching {
+                temp.writeBytes(bytes)
+                runCatching {
+                    Files.move(
+                        temp.toPath(),
+                        dest.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE,
+                    )
+                }.recoverCatching {
+                    Files.move(
+                        temp.toPath(),
+                        dest.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING,
+                    )
+                }.getOrThrow()
             }.onSuccess {
                 logger.info("ResourceExtractor: successfully wrote binary to ${dest.absolutePath}")
             }.onFailure {
                 logger.warn("ResourceExtractor: failed writing binary to ${dest.absolutePath}", it)
-                throw it
+            }.isSuccess
+
+            if (!writeOk) {
+                runCatching {
+                    if (temp.exists()) temp.delete()
+                }
+
+                if (dest.exists() && dest.length() > 0L) {
+                    logger.warn("ResourceExtractor: continuing with existing binary at ${dest.absolutePath}")
+                } else {
+                    logger.warn("ResourceExtractor: no extracted binary available at ${dest.absolutePath}")
+                    return null
+                }
             }
-            dest.setExecutable(true)
+
+            runCatching {
+                val executable = dest.setExecutable(true)
+                if (!executable) logger.warn("ResourceExtractor: could not mark ${dest.absolutePath} as executable, continuing")
+            }.onFailure {
+                logger.warn("ResourceExtractor: failed setting executable flag for ${dest.absolutePath}, continuing", it)
+            }
 
             // Best-effort cleanup of stale random temp dirs from previous versions
             cleanupStaleTempDirs()

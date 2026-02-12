@@ -114,11 +114,14 @@ object WebguiStaticServer {
 
         // Check if file exists
         if (!file.exists() || file.isDirectory) {
-            // SPA fallback: serve index.html for non-asset paths
-            val index = File(rootDir, "index.html")
-            if (index.exists()) {
-                serveFile(exchange, index, true)
-                return
+            val leaf = relative.substringAfterLast('/')
+            val isSpaRoute = !leaf.contains('.')
+            if (isSpaRoute) {
+                val index = File(rootDir, "index.html")
+                if (index.exists()) {
+                    serveFile(exchange, index, true)
+                    return
+                }
             }
             exchange.sendResponseHeaders(404, -1)
             exchange.close()
