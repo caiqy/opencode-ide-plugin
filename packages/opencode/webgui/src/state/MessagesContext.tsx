@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react"
 import { useEventHandler, type EventEmitter, type ServerEvent } from "../lib/api/events"
 import type { Message, Part, WebguiPart, SDKMessage, QuestionRequest } from "../types/messages"
 import type { QuestionAnswer } from "@opencode-ai/sdk/v2/client"
@@ -103,6 +103,70 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const session = useSession()
   const setReasoning = session.setReasoning
   const setSessionIdle = session.setSessionIdle
+  const reasoningPartsBySessionRef = useRef<Map<string, Set<string>>>(new Map())
+
+  const updateReasoningFromPart = useCallback(
+    (part: Extract<Part, { type: "reasoning" }>) => {
+      const sessionID = part.sessionID
+      const current = new Set(reasoningPartsBySessionRef.current.get(sessionID) ?? [])
+      const ended = typeof part.time?.end === "number"
+
+      if (ended) {
+        current.delete(part.id)
+      } else {
+        current.add(part.id)
+      }
+
+      if (current.size > 0) {
+        reasoningPartsBySessionRef.current.set(sessionID, current)
+      } else {
+        reasoningPartsBySessionRef.current.delete(sessionID)
+      }
+
+      setReasoning(sessionID, current.size > 0)
+    },
+    [setReasoning],
+  )
+
+  const removeTrackedReasoningPart = useCallback(
+    (sessionID: string, partID: string) => {
+      const current = reasoningPartsBySessionRef.current.get(sessionID)
+      if (!current || !current.has(partID)) return
+
+      current.delete(partID)
+
+      if (current.size > 0) {
+        reasoningPartsBySessionRef.current.set(sessionID, current)
+      } else {
+        reasoningPartsBySessionRef.current.delete(sessionID)
+      }
+
+      setReasoning(sessionID, current.size > 0)
+    },
+    [setReasoning],
+  )
+
+  const syncSessionReasoningFromMessages = useCallback(
+    (sessionID: string, sessionMessages: Message[]) => {
+      const activeReasoningIDs = new Set<string>()
+      for (const message of sessionMessages) {
+        for (const part of message.parts) {
+          if (part.type !== "reasoning") continue
+          if (typeof part.time?.end === "number") continue
+          activeReasoningIDs.add(part.id)
+        }
+      }
+
+      if (activeReasoningIDs.size > 0) {
+        reasoningPartsBySessionRef.current.set(sessionID, activeReasoningIDs)
+      } else {
+        reasoningPartsBySessionRef.current.delete(sessionID)
+      }
+
+      setReasoning(sessionID, activeReasoningIDs.size > 0)
+    },
+    [setReasoning],
+  )
 
   // Add or update a message
   const addMessage = useCallback((message: Message) => {
@@ -283,15 +347,11 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         }
 
         if (part.type === "reasoning") {
-          //const time = (part as { time?: { end?: number } }).time
-          //const end = typeof time?.end === 'number'
-          setReasoning(part.sessionID, true)
-        } else {
-          setReasoning(part.sessionID, false)
+          updateReasoningFromPart(part)
         }
       }
     },
-    [addPart, setReasoning],
+    [addPart, updateReasoningFromPart],
   )
 
   // Listen to session.error events
@@ -330,10 +390,10 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         }
         console.log("[MessagesContext] Part removed:", partID)
         removePart(messageID, partID)
-        setReasoning(sessionID, false)
+        removeTrackedReasoningPart(sessionID, partID)
       }
     },
-    [removePart, setReasoning],
+    [removePart, removeTrackedReasoningPart],
   )
 
   // Load messages for a session
@@ -370,6 +430,8 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
             return [...filtered, ...loadedMessages]
           })
 
+          syncSessionReasoningFromMessages(sessionID, loadedMessages)
+
           const last = [...loadedMessages].sort((a, b) => a.info.time.created - b.info.time.created).at(-1)
           const completed = (last ? (last.info as any)?.time?.completed : 0) as unknown
           const isAssistant = last ? (last.info as any)?.role === "assistant" : false
@@ -380,7 +442,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         console.error("[MessagesContext] Failed to load messages:", err)
       }
     },
-    [setSessionIdle],
+    [setSessionIdle, syncSessionReasoningFromMessages],
   )
 
   // Permission events

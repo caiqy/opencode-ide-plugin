@@ -1135,6 +1135,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       }
       if (status.type === "idle") {
         setSessionIdle(sessionID, true)
+        setReasoning(sessionID, false)
       } else {
         setSessionIdle(sessionID, false)
       }

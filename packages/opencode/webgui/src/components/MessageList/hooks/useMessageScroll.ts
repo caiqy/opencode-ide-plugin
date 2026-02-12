@@ -11,6 +11,7 @@ export function useMessageScroll(
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const isUserAtBottomRef = useRef(true)
   const hasInitializedRef = useRef(false)
+  const lastScrollTopRef = useRef<number | null>(null)
   // Tracks user intent to scroll away (set by wheel/touch/scrollbar/keyboard)
   const userScrolledRef = useRef(false)
   // Flag: true while a programmatic smooth-scroll is in progress
@@ -54,6 +55,12 @@ export function useMessageScroll(
   const updateScrollState = useCallback(() => {
     const container = messagesContainerRef.current?.parentElement as HTMLElement | null
     if (!container) return
+
+    const currentScrollTop = container.scrollTop
+    const previousScrollTop = lastScrollTopRef.current
+    const movedUp = previousScrollTop !== null && currentScrollTop < previousScrollTop - 1
+    lastScrollTopRef.current = currentScrollTop
+
     const distance = container.scrollHeight - container.clientHeight - container.scrollTop
     const nearBottomThreshold = 48
     const atBottomThreshold = 8
@@ -75,30 +82,43 @@ export function useMessageScroll(
       // - If far from bottom AND already initialized, user scrolled away → set userScrolled
       if (isAtBottom) {
         userScrolledRef.current = false
-      } else if (hasInitializedRef.current) {
+      } else if (hasInitializedRef.current && movedUp) {
         userScrolledRef.current = true
       }
     }
   }, [clearProgrammaticFlag])
 
+  const performScrollToBottom = useCallback(
+    (behavior: ScrollBehavior) => {
+      const anchor = messagesEndRef.current
+      if (!anchor) return
+
+      isProgrammaticScrollRef.current = true
+      if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current)
+      const timeoutMs = behavior === "smooth" ? 1000 : 120
+      programmaticTimeoutRef.current = setTimeout(clearProgrammaticFlag, timeoutMs)
+
+      anchor.scrollIntoView({ behavior, block: "end" })
+      hasInitializedRef.current = true
+      isUserAtBottomRef.current = true
+      setShowScrollToBottom(false)
+    },
+    [clearProgrammaticFlag],
+  )
+
   // Manual scroll-to-bottom triggered by button click
   const scrollToBottom = useCallback(() => {
-    const anchor = messagesEndRef.current
-    if (!anchor) return
     userScrolledRef.current = false
     isUserAtBottomRef.current = true
-    isProgrammaticScrollRef.current = true
-    if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current)
-    programmaticTimeoutRef.current = setTimeout(clearProgrammaticFlag, 1000)
-    anchor.scrollIntoView({ behavior: "smooth", block: "end" })
-    setShowScrollToBottom(false)
-  }, [clearProgrammaticFlag])
+    performScrollToBottom("smooth")
+  }, [performScrollToBottom])
 
   // Reset scroll state on session change
   useEffect(() => {
     userScrolledRef.current = false
     isUserAtBottomRef.current = true
     hasInitializedRef.current = false
+    lastScrollTopRef.current = null
     setShowScrollToBottom(false)
     clearProgrammaticFlag()
   }, [sessionID, clearProgrammaticFlag])
@@ -167,23 +187,33 @@ export function useMessageScroll(
   }, [sessionID, updateScrollState])
 
   useEffect(() => {
+    const container = messagesContainerRef.current?.parentElement as HTMLElement | null
+    const content = messagesContainerRef.current
+    if (!container || !content) return
+    if (typeof ResizeObserver === "undefined") return
+
+    const observer = new ResizeObserver(() => {
+      updateScrollState()
+      if (userScrolledRef.current) return
+      performScrollToBottom("auto")
+    })
+
+    observer.observe(container)
+    observer.observe(content)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [sessionID, updateScrollState, performScrollToBottom])
+
+  useEffect(() => {
     const anchor = messagesEndRef.current
     if (!anchor) return
-    const shouldScroll = !userScrolledRef.current && (isUserAtBottomRef.current || !hasInitializedRef.current)
+    const shouldScroll = !userScrolledRef.current || !hasInitializedRef.current
     if (!shouldScroll) return
     const behavior: ScrollBehavior = hasInitializedRef.current ? "smooth" : "auto"
-    // Mark scroll events during the animation as programmatic so they
-    // don't accidentally set the userScrolled flag.
-    if (behavior === "smooth") {
-      isProgrammaticScrollRef.current = true
-      // Safety timeout: clear flag even if scroll never reaches bottom
-      if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current)
-      programmaticTimeoutRef.current = setTimeout(clearProgrammaticFlag, 1000)
-    }
-    anchor.scrollIntoView({ behavior, block: "end" })
-    hasInitializedRef.current = true
-    isUserAtBottomRef.current = true
-  }, [scrollSignature, sessionID, clearProgrammaticFlag])
+    performScrollToBottom(behavior)
+  }, [scrollSignature, sessionID, performScrollToBottom])
 
   return { messagesEndRef, messagesContainerRef, showScrollToBottom, scrollToBottom }
 }

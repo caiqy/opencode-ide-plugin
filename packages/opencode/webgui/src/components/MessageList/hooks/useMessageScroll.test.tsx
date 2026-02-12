@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { fireEvent, render } from "@testing-library/react"
+import { act, fireEvent, render } from "@testing-library/react"
 import { useMessageScroll } from "./useMessageScroll"
 
 function TestHarness(props: { sessionID: string; sortedMessages: any[]; isIdle: boolean; isReasoning: boolean }) {
@@ -80,18 +80,38 @@ function toolMessage(status: "pending" | "running" | "completed" | "error") {
 
 describe("useMessageScroll", () => {
   const scrollIntoView = vi.fn()
+  const originalResizeObserver = (globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver
+  let resizeObserverCallbacks: ResizeObserverCallback[] = []
+
+  const triggerResizeObservers = () => {
+    for (const callback of resizeObserverCallbacks) {
+      act(() => {
+        callback([], {} as ResizeObserver)
+      })
+    }
+  }
 
   beforeEach(() => {
     scrollIntoView.mockReset()
+    resizeObserverCallbacks = []
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       writable: true,
       value: scrollIntoView,
     })
+    ;(globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver = class ResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeObserverCallbacks.push(callback)
+      }
+      disconnect() {}
+      observe() {}
+      unobserve() {}
+    }
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    ;(globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver = originalResizeObserver
   })
 
   it("在底部时持续自动滚动，用户离开底部后停止自动滚动", () => {
@@ -256,5 +276,46 @@ describe("useMessageScroll", () => {
     setScrollMetrics(parent, 1000, 500, 480)
     fireEvent.scroll(parent)
     expect(getByTestId("scroll-button-visible").textContent).toBe("1")
+  })
+
+  it("内容自动展开导致高度增长但 scrollTop 未上移时，仍保持自动跟随", () => {
+    const { rerender, getByTestId } = render(
+      <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+
+    // 初始在底部
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    // 非用户滚动：内容自动展开后高度增长，但 scrollTop 不变
+    setScrollMetrics(parent, 1200, 500, 500)
+    fireEvent.scroll(parent)
+
+    // 新内容到达，仍应自动跟随到底部
+    rerender(<TestHarness sessionID="s1" sortedMessages={textMessage("ab")} isIdle={false} isReasoning={false} />)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
+  it("跟随模式下布局高度变化应立即补齐到底部", () => {
+    const { getByTestId } = render(
+      <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+
+    // 初始在底部
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    // 无新消息，仅布局变高（如自动展开）
+    setScrollMetrics(parent, 1300, 500, 500)
+    triggerResizeObservers()
+
+    // 跟随模式应在布局变化时立即补齐到底部
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
   })
 })
