@@ -299,3 +299,42 @@ describe("SessionContext migration", () => {
     })
   })
 })
+
+describe("SessionContext session 状态查询", () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
+    ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.config.providers as any).mockResolvedValue({ data: { providers: [] }, error: null })
+    ;(sdk.kv.get as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.kv.update as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.model.get as any).mockResolvedValue({ data: { recent: [], favorite: [], variant: {} }, error: null })
+    ;(sdk.model.update as any).mockResolvedValue({ data: {}, error: null })
+    ;(ideBridge.isInstalled as any).mockReturnValue(false)
+    ;(ideBridge.request as any).mockResolvedValue({ ok: true, result: {} })
+  })
+
+  it("暴露 isSessionIdle/isSessionReasoning，并可按 session 查询状态", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+    const ctx = () => result.current as any
+
+    expect(typeof ctx().isSessionIdle).toBe("function")
+    expect(typeof ctx().isSessionReasoning).toBe("function")
+
+    if (typeof ctx().isSessionIdle !== "function" || typeof ctx().isSessionReasoning !== "function") return
+
+    expect(ctx().isSessionIdle("missing")).toBe(true)
+    expect(ctx().isSessionReasoning("missing")).toBe(false)
+
+    await act(async () => {
+      ctx().setSessionIdle("s-child", false)
+      ctx().setReasoning("s-child", true)
+    })
+
+    await waitFor(() => {
+      expect(ctx().isSessionIdle("s-child")).toBe(false)
+      expect(ctx().isSessionReasoning("s-child")).toBe(true)
+    })
+  })
+})

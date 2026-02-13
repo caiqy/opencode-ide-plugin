@@ -1,4 +1,5 @@
 import { useCallback } from "react"
+import type { ReactNode } from "react"
 import { useOpenFile } from "../../../hooks/useOpenFile"
 import { useProject } from "../../../state/ProjectContext"
 import { toDisplayPath } from "../../../utils/path"
@@ -14,6 +15,7 @@ interface ToolHeaderProps {
   isExpandable?: boolean
   onToggle: () => void
   time?: { start: number; end?: number }
+  rightActions?: ReactNode
 }
 
 function getFileName(path: string): string {
@@ -30,6 +32,7 @@ export function ToolHeader({
   isExpandable = true,
   onToggle,
   time,
+  rightActions,
 }: ToolHeaderProps) {
   const openFile = useOpenFile()
   const { worktree } = useProject()
@@ -71,10 +74,21 @@ export function ToolHeader({
 
   const durationText = time?.end && time.start ? `${((time.end - time.start) / 1000).toFixed(1)}s` : undefined
 
-  const Tag = isExpandable ? "button" : "div"
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!isExpandable) return
+      if (e.key !== "Enter" && e.key !== " ") return
+      e.preventDefault()
+      onToggle()
+    },
+    [isExpandable, onToggle],
+  )
 
   return (
-    <Tag
+    <div
+      role={isExpandable ? "button" : undefined}
+      tabIndex={isExpandable ? 0 : undefined}
+      onKeyDown={onKeyDown}
       onClick={isExpandable ? onToggle : undefined}
       title={tool}
       data-tip={tool}
@@ -122,6 +136,17 @@ export function ToolHeader({
       {durationText && (
         <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">{durationText}</span>
       )}
+
+      {rightActions && (
+        <div
+          className="flex-shrink-0"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          {rightActions}
+        </div>
+      )}
+
       {isExpandable && (
         <svg
           viewBox="0 0 24 24"
@@ -135,6 +160,6 @@ export function ToolHeader({
           <path d="M9 5l7 7-7 7" />
         </svg>
       )}
-    </Tag>
+    </div>
   )
 }

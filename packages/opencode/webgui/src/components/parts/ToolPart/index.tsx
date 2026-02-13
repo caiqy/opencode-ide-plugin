@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react"
 import { DiffModal } from "../../DiffModal"
+import { IconButton } from "../../common"
 import { useMessages } from "../../../state/MessagesContext"
+import { useSubtaskDrawer } from "../../../state/SubtaskDrawerContext"
 import { usePartOpen } from "../../MessageList/PartOpenContext"
 import { ToolHeader } from "./ToolHeader"
 import { PermissionBanner } from "./PermissionBanner"
@@ -10,7 +12,7 @@ import { EditTool } from "./EditTool"
 import { TodoTool } from "./TodoTool"
 import { GenericOutput } from "./GenericOutput"
 import { ErrorDisplay } from "./ErrorDisplay"
-import { getToolDisplayName, getBorderColor } from "./utils"
+import { getToolDisplayName, getBorderColor, getToolLabel } from "./utils"
 
 interface ToolPartProps {
   part: {
@@ -48,7 +50,9 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const open = usePartOpen()
   const isExpanded = open.isOpen(part.id)
 
-  const { getPermissionForCall, respondPermission } = useMessages()
+  const { openSubtaskDrawer } = useSubtaskDrawer()
+
+  const { getPermissionForCall, getMessagesBySession, respondPermission } = useMessages()
   const permission = useMemo(() => {
     return sessionID ? getPermissionForCall(sessionID, part.callID) : undefined
   }, [getPermissionForCall, sessionID, part.callID])
@@ -149,6 +153,73 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const isExpandable = !isHeaderOnlyTool
   const shouldShowExpandedContent = isExpandable && isExpanded
 
+  const subtaskSessionId = useMemo(() => {
+    if (part.tool !== "task") return null
+    const raw = (part.state.metadata as any)?.sessionId ?? (part.state.metadata as any)?.sessionID
+    const value = typeof raw === "string" ? raw : raw ? String(raw) : ""
+    return value.length > 0 ? value : null
+  }, [part.tool, part.state.metadata])
+
+  const subtaskTitle = useMemo(() => {
+    if (part.tool !== "task") return null
+    if (typeof part.state.title === "string" && part.state.title.length > 0) return part.state.title
+    const desc = (part.state.input as any)?.description
+    return typeof desc === "string" && desc.length > 0 ? desc : null
+  }, [part.tool, part.state.title, part.state.input])
+
+  const taskProgressName = useMemo(() => {
+    if (part.tool !== "task") return null
+    if (!subtaskSessionId) return null
+
+    const toolParts = getMessagesBySession(subtaskSessionId)
+      .flatMap((message) => message.parts)
+      .filter((messagePart) => messagePart.type === "tool")
+
+    const currentTool = [...toolParts]
+      .reverse()
+      .find((toolPart) => toolPart.state?.status === "running" || toolPart.state?.status === "pending")
+
+    const currentLabel = currentTool
+      ? getToolLabel(currentTool.tool)
+      : part.state.status === "completed"
+        ? "已完成"
+        : "空闲"
+    const toolName = getToolLabel(part.tool)
+    const base = `${toolName}${subtaskTitle ? `：${subtaskTitle}` : ""}`
+    return `${base} [ ${toolParts.length} 工具调用 / ${currentLabel} ]`
+  }, [part.tool, part.state.status, subtaskSessionId, subtaskTitle, getMessagesBySession])
+
+  const headerToolName = taskProgressName ?? toolName
+
+  const rightActions = useMemo(() => {
+    if (!subtaskSessionId) return undefined
+    const parent = sessionID ? { sessionId: sessionID, messageId: messageID, partId: part.id } : null
+    return (
+      <IconButton
+        size="sm"
+        aria-label="查看子任务"
+        title="查看子任务"
+        onClick={() =>
+          openSubtaskDrawer({
+            sessionId: subtaskSessionId,
+            title: subtaskTitle,
+            parent,
+          })
+        }
+        icon={
+          <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M8 7h8m-8 4h6m-6 4h8M6 21h12a2 2 0 002-2V5a2 2 0 00-2-2H6a2 2 0 00-2 2v14a2 2 0 002 2z"
+            />
+          </svg>
+        }
+      />
+    )
+  }, [subtaskSessionId, subtaskTitle, sessionID, messageID, part.id, openSubtaskDrawer])
+
   return (
     <div
       className={`my-0.5 border ${getBorderColor(part.state.status, Boolean(permission))} overflow-hidden bg-gray-50 dark:bg-gray-900`}
@@ -157,13 +228,14 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
       <ToolHeader
         tool={part.tool}
         status={part.state.status}
-        toolName={toolName}
+        toolName={headerToolName}
         filePath={filePath}
         patchFilePaths={patchFilePaths}
         isExpanded={isExpanded}
         isExpandable={isExpandable}
         onToggle={() => open.toggle(part.id)}
         time={part.state.time}
+        rightActions={rightActions}
       />
 
       {/* Expanded content */}

@@ -12,6 +12,8 @@ import { CompactHeader } from "./components/CompactHeader"
 import { OfflineBanner } from "./components/OfflineBanner"
 import { CommandPalette } from "./components/CommandPalette"
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp"
+import { SubtaskDrawerProvider } from "./state/SubtaskDrawerContext"
+import { SubtaskDrawer } from "./components/SubtaskDrawer/SubtaskDrawer"
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts"
 import { ideBridge } from "./lib/ideBridge"
 import { extractPathsFromDrop } from "./lib/dnd"
@@ -379,7 +381,10 @@ function AppContent() {
 
   return (
     <MessagesProvider emitter={emitter}>
-      <AppInner connectionState={connectionState} />
+      <SubtaskDrawerProvider>
+        <AppInner connectionState={connectionState} />
+        <SubtaskDrawer />
+      </SubtaskDrawerProvider>
     </MessagesProvider>
   )
 }

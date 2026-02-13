@@ -9,9 +9,9 @@ import { cn } from "../../utils/classNames"
 
 interface MessageRowProps {
   message: Message
-  onFork: (messageId: string) => void
-  onRevert: (messageId: string) => void
-  revertBusy: boolean
+  onFork?: (messageId: string) => void
+  onRevert?: (messageId: string) => void
+  revertBusy?: boolean
   sessionID?: string
   isLast?: boolean
 }
@@ -84,8 +84,8 @@ export function MessageRow({ message, onFork, onRevert, revertBusy, sessionID, i
       {/* Action buttons (visible on hover) */}
       {isHovered && (isUser || hasTokens || canCopy) && (
         <ActionButtons
-          onFork={() => onFork(message.info.id)}
-          onRevert={() => onRevert(message.info.id)}
+          onFork={onFork ? () => onFork(message.info.id) : undefined}
+          onRevert={onRevert ? () => onRevert(message.info.id) : undefined}
           revertBusy={revertBusy}
           tokens={tokens}
           cost={cost}

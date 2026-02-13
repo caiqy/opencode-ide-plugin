@@ -33,9 +33,15 @@ interface SessionContextState {
   // Set a specific session's idle state
   setSessionIdle: (sessionId: string, isIdle: boolean) => void
 
+  // Idle state for arbitrary session (e.g. subagent session)
+  isSessionIdle: (sessionId: string) => boolean
+
   // Reasoning state per session
   isReasoning: boolean
   setReasoning: (sessionId: string, active: boolean) => void
+
+  // Reasoning state for arbitrary session (e.g. subagent session)
+  isSessionReasoning: (sessionId: string) => boolean
 
   // Session diff data (per session)
   sessionDiff: Record<string, FileDiff[]>
@@ -217,6 +223,22 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   const isReasoning = currentSession?.id ? Boolean(reasoningMap[currentSession.id]) : false
   const isIdle = currentSession?.id ? !(busyMap[currentSession.id] ?? false) : true
+
+  const isSessionIdle = useCallback(
+    (sessionId: string) => {
+      if (!sessionId) return true
+      return !(busyMap[sessionId] ?? false)
+    },
+    [busyMap],
+  )
+
+  const isSessionReasoning = useCallback(
+    (sessionId: string) => {
+      if (!sessionId) return false
+      return Boolean(reasoningMap[sessionId])
+    },
+    [reasoningMap],
+  )
   const currentStatus: SessionStatusInfo =
     currentSession?.id && statusMap[currentSession.id]
       ? statusMap[currentSession.id]
@@ -1181,8 +1203,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
     error,
     isIdle,
     setSessionIdle,
+    isSessionIdle,
     isReasoning,
     setReasoning,
+    isSessionReasoning,
     sessionDiff: sessionDiffMap,
     currentStatus,
     selectedProviderId,

@@ -49,6 +49,7 @@ describe("ToolHeader", () => {
   })
 
   it("可展开工具渲染为 button 并显示展开箭头和用时", () => {
+    const onToggle = vi.fn()
     const { container } = render(
       <ToolHeader
         tool="edit"
@@ -57,17 +58,19 @@ describe("ToolHeader", () => {
         filePath="src/bar.ts"
         isExpanded={false}
         isExpandable={true}
-        onToggle={() => undefined}
+        onToggle={onToggle}
         time={{ start: 1000, end: 3500 }}
       />,
     )
 
-    const button = container.querySelector("button")
-    expect(button).toBeTruthy()
-    if (!button) return
-    expect(button).toHaveTextContent("编辑：")
-    expect(button).toHaveTextContent("bar.ts")
-    expect(button).toHaveTextContent("2.5s")
+    const header = container.firstElementChild
+    expect(header).toBeTruthy()
+    if (!header) return
+    fireEvent.click(header)
+    expect(onToggle).toHaveBeenCalledTimes(1)
+    expect(header).toHaveTextContent("编辑：")
+    expect(header).toHaveTextContent("bar.ts")
+    expect(header).toHaveTextContent("2.5s")
   })
 
   it("文件补丁标题栏仅显示文件名，点击文件名可定位", () => {
@@ -93,5 +96,30 @@ describe("ToolHeader", () => {
       path: "src/a/very/deep/foo.ts",
       display: "src/a/very/deep/foo.ts",
     })
+  })
+
+  it("rightActions 点击不应触发展开", () => {
+    const onToggle = vi.fn()
+    const onAction = vi.fn()
+
+    render(
+      <ToolHeader
+        tool="task"
+        status="running"
+        toolName="委派子任务"
+        isExpanded={false}
+        isExpandable={true}
+        onToggle={onToggle}
+        rightActions={
+          <button type="button" onClick={onAction}>
+            查看子任务
+          </button>
+        }
+      />,
+    )
+
+    fireEvent.click(screen.getByText("查看子任务"))
+    expect(onAction).toHaveBeenCalledTimes(1)
+    expect(onToggle).toHaveBeenCalledTimes(0)
   })
 })
