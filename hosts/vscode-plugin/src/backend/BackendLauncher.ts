@@ -1,4 +1,6 @@
 import { ChildProcess, spawn } from "child_process"
+import { existsSync } from "fs"
+import { join } from "path"
 import * as vscode from "vscode"
 import { ResourceExtractor } from "./ResourceExtractor"
 import { ErrorCategory, errorHandler, ErrorSeverity } from "../utils/ErrorHandler"
@@ -47,11 +49,7 @@ export class BackendLauncher {
       if (options?.forceNew) {
         // Start an independent backend without touching the current shared one
         logger.appendLine(`Starting additional backend process: ${args.join(" ")}`)
-        const childProcess = spawn(args[0], args.slice(1), {
-          cwd,
-          stdio: ["pipe", "pipe", "pipe"],
-          env: { ...process.env },
-        })
+        const childProcess = this.spawnBackend(args, cwd)
 
         // Parse connection and set up error handling
         const connection = await this.parseConnectionInfo(childProcess)
@@ -65,11 +63,7 @@ export class BackendLauncher {
       // For shared backend: terminate any existing and start new
       this.terminate()
       logger.appendLine(`Starting backend process: ${args.join(" ")}`)
-      const childProcess = spawn(args[0], args.slice(1), {
-        cwd,
-        stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env },
-      })
+      const childProcess = this.spawnBackend(args, cwd)
 
       this.currentProcess = childProcess
 
@@ -137,11 +131,7 @@ export class BackendLauncher {
 
       const cwd = workspaceRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd()
 
-      const childProcess = spawn(args[0], args.slice(1), {
-        cwd,
-        stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env },
-      })
+      const childProcess = this.spawnBackend(args, cwd)
 
       this.currentProcess = childProcess
 
@@ -186,9 +176,10 @@ export class BackendLauncher {
     }
 
     // Resolve extension path dynamically (works for any extension ID)
-    const extPath = this.extensionPath
-      || vscode.extensions.getExtension("paviko.opencode-ux-plus")?.extensionPath
-      || vscode.extensions.getExtension("paviko.opencode-ux-plus-gui-only")?.extensionPath
+    const extPath =
+      this.extensionPath ||
+      vscode.extensions.getExtension("paviko.opencode-ux-plus")?.extensionPath ||
+      vscode.extensions.getExtension("paviko.opencode-ux-plus-gui-only")?.extensionPath
 
     // Try bundled binary first
     if (extPath) {
@@ -208,9 +199,34 @@ export class BackendLauncher {
    * @returns The binary name to be resolved via PATH
    */
   private resolveSystemBinary(): string {
+    if (process.platform === "win32") {
+      const candidates = this.getWindowsInstalledBinaryCandidates()
+      const match = candidates.find((item) => existsSync(item))
+      if (match) {
+        logger.appendLine(`Using Windows npm global binary: ${match}`)
+        return match
+      }
+    }
+
     const name = "opencode"
     logger.appendLine(`Using system binary: ${name}`)
     return name
+  }
+
+  private getWindowsInstalledBinaryCandidates(): string[] {
+    const list: (string | undefined)[] = [
+      process.env.npm_config_prefix ? join(process.env.npm_config_prefix, "opencode.cmd") : undefined,
+      process.env.APPDATA ? join(process.env.APPDATA, "npm", "opencode.cmd") : undefined,
+      process.env.USERPROFILE ? join(process.env.USERPROFILE, "AppData", "Roaming", "npm", "opencode.cmd") : undefined,
+      process.env.SCOOP ? join(process.env.SCOOP, "apps", "opencode", "current", "opencode.exe") : undefined,
+      process.env.USERPROFILE
+        ? join(process.env.USERPROFILE, "scoop", "apps", "opencode", "current", "opencode.exe")
+        : undefined,
+      process.env.USERPROFILE ? join(process.env.USERPROFILE, "scoop", "shims", "opencode.exe") : undefined,
+      "C:\\ProgramData\\chocolatey\\bin\\opencode.exe",
+      "C:\\ProgramData\\chocolatey\\bin\\opencode",
+    ]
+    return list.filter((item): item is string => Boolean(item && item.trim()))
   }
 
   /**
@@ -261,6 +277,34 @@ export class BackendLauncher {
       }
     }
     return args
+  }
+
+  private spawnBackend(args: string[], cwd: string): ChildProcess {
+    const shell = this.shouldUseWindowsShell(args[0])
+    if (shell) {
+      logger.appendLine(`Using Windows shell launch for command: ${args[0]}`)
+    }
+
+    return spawn(args[0], args.slice(1), {
+      cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env },
+      shell,
+      windowsHide: true,
+    })
+  }
+
+  private shouldUseWindowsShell(command: string): boolean {
+    if (process.platform !== "win32") {
+      return false
+    }
+
+    const value = command.trim().toLowerCase()
+    if (!value) {
+      return false
+    }
+
+    return value === "opencode" || value.endsWith(".cmd") || value.endsWith(".bat")
   }
 
   /**

@@ -32,6 +32,7 @@ export class WebviewController {
   private connection?: BackendConnection
   private disposables: vscode.Disposable[] = []
   private bridgeSessionId: string | null = null
+  private staticServerBase: string | null = null
   private isGuiOnly = false
   private uiGetState?: () => Promise<any>
   private uiSetState?: (state: any) => Promise<void>
@@ -257,9 +258,18 @@ export class WebviewController {
       logger.appendLine(`gui-only mode: serving embedded webgui, REST API at ${serverRoot}`)
       this.isGuiOnly = true
       const base = await webguiServer.start(webguiDir, serverRoot)
+      if (this.staticServerBase && this.staticServerBase !== base) {
+        webguiServer.stop(this.staticServerBase)
+      }
+      this.staticServerBase = base
       return `${base}/app`
     }
     // Standard mode: opencode server serves the webgui
+    this.isGuiOnly = false
+    if (this.staticServerBase) {
+      webguiServer.stop(this.staticServerBase)
+      this.staticServerBase = null
+    }
     return connection.uiBase
   }
 
@@ -342,6 +352,10 @@ export class WebviewController {
     if (this.bridgeSessionId) {
       bridgeServer.removeSession(this.bridgeSessionId)
       this.bridgeSessionId = null
+    }
+    if (this.staticServerBase) {
+      webguiServer.stop(this.staticServerBase)
+      this.staticServerBase = null
     }
     for (const d of this.disposables) {
       try {

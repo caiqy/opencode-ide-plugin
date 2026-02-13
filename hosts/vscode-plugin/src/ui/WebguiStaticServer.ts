@@ -28,53 +28,58 @@ const MIME: Record<string, string> = {
  * into index.html so the webgui can reach the opencode REST API.
  */
 class WebguiStaticServer {
-  private server: http.Server | null = null;
-  private port = 0;
-  private rootDir = "";
-  private serverUrl = "";
+  private instances = new Map<string, { server: http.Server; base: string }>();
 
   async start(rootDir: string, opencodeServerUrl: string): Promise<string> {
-    if (this.server) {
-      return `http://127.0.0.1:${this.port}`;
+    const root = path.resolve(rootDir);
+    const serverUrl = opencodeServerUrl.replace(/\/$/, "");
+    const key = `${root}|${serverUrl}`;
+    const existing = this.instances.get(key);
+    if (existing) {
+      return existing.base;
     }
 
-    this.rootDir = rootDir;
-    this.serverUrl = opencodeServerUrl.replace(/\/$/, "");
-
     return new Promise((resolve, reject) => {
-      this.server = http.createServer((req, res) => this.handle(req, res));
-      this.server.listen(0, "127.0.0.1", () => {
-        const addr = this.server!.address();
+      const server = http.createServer((req, res) => this.handle(req, res, root, serverUrl));
+      server.listen(0, "127.0.0.1", () => {
+        const addr = server.address();
         if (addr && typeof addr !== "string") {
-          this.port = addr.port;
-          const base = `http://127.0.0.1:${this.port}`;
-          logger.appendLine(`WebguiStaticServer started on ${base} serving ${rootDir}`);
+          const base = `http://127.0.0.1:${addr.port}`;
+          this.instances.set(key, { server, base });
+          logger.appendLine(`WebguiStaticServer started on ${base} serving ${root}`);
           resolve(base);
         } else {
+          server.close();
           reject(new Error("Failed to get server port"));
         }
       });
-      this.server.on("error", (e) => {
+      server.on("error", (e) => {
         logger.appendLine(`WebguiStaticServer error: ${e}`);
         reject(e);
       });
     });
   }
 
-  stop(): void {
-    this.server?.close();
-    this.server = null;
-    this.port = 0;
-  }
-
-  getBaseUrl(): string {
-    if (!this.server) {
-      return "";
+  stop(baseUrl?: string): void {
+    if (!baseUrl) {
+      for (const item of this.instances.values()) {
+        item.server.close();
+      }
+      this.instances.clear();
+      return;
     }
-    return `http://127.0.0.1:${this.port}`;
+
+    const normalized = baseUrl.replace(/\/$/, "");
+    const entry = Array.from(this.instances.entries()).find(([, value]) => value.base === normalized);
+    if (!entry) {
+      return;
+    }
+
+    entry[1].server.close();
+    this.instances.delete(entry[0]);
   }
 
-  private handle(req: http.IncomingMessage, res: http.ServerResponse): void {
+  private handle(req: http.IncomingMessage, res: http.ServerResponse, rootDir: string, serverUrl: string): void {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -85,7 +90,7 @@ class WebguiStaticServer {
       return;
     }
 
-    const url = new URL(req.url || "/", `http://127.0.0.1:${this.port}`);
+    const url = new URL(req.url || "/", "http://127.0.0.1");
     let pathname = decodeURIComponent(url.pathname);
 
     // Must start with /app/
@@ -107,10 +112,11 @@ class WebguiStaticServer {
       relative = "/index.html";
     }
 
-    const file = path.join(this.rootDir, relative);
+    const root = path.resolve(rootDir);
+    const file = path.resolve(root, `.${relative}`);
 
     // Prevent directory traversal
-    if (!file.startsWith(this.rootDir)) {
+    if (file !== root && !file.startsWith(`${root}${path.sep}`)) {
       res.writeHead(403);
       res.end("Forbidden");
       return;
@@ -119,9 +125,9 @@ class WebguiStaticServer {
     // Check if file exists
     if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
       // SPA fallback: serve index.html for non-asset paths
-      const index = path.join(this.rootDir, "index.html");
+      const index = path.join(root, "index.html");
       if (fs.existsSync(index)) {
-        this.serveFile(res, index, true);
+        this.serveFile(res, index, true, serverUrl);
         return;
       }
       res.writeHead(404);
@@ -129,17 +135,17 @@ class WebguiStaticServer {
       return;
     }
 
-    this.serveFile(res, file, path.basename(file) === "index.html");
+    this.serveFile(res, file, path.basename(file) === "index.html", serverUrl);
   }
 
-  private serveFile(res: http.ServerResponse, file: string, inject: boolean): void {
+  private serveFile(res: http.ServerResponse, file: string, inject: boolean, serverUrl: string): void {
     const ext = path.extname(file).toLowerCase();
     const mime = MIME[ext] || "application/octet-stream";
 
     if (inject && ext === ".html") {
       // Read, inject global, serve
       let html = fs.readFileSync(file, "utf-8");
-      const script = `<script>window.__OPENCODE_SERVER_URL__=${JSON.stringify(this.serverUrl)};</script>`;
+      const script = `<script>window.__OPENCODE_SERVER_URL__=${JSON.stringify(serverUrl)};</script>`;
       // Insert before the first <script tag so the global is available when app code runs
       const idx = html.indexOf("<script");
       if (idx !== -1) {

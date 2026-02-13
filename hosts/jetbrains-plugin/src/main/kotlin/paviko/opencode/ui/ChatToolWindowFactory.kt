@@ -91,6 +91,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         mainPanel.add(hideableLogs, BorderLayout.SOUTH)
 
         val procRef = AtomicReference<paviko.opencode.backendprocess.BackendProcess?>(null)
+        val staticServerBaseRef = AtomicReference<String?>(null)
         val connected = AtomicBoolean(false)
         val logLock = Any()
         val logBuffer = StringBuilder()
@@ -141,6 +142,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
             timeoutFuture.cancel(false)
             try { procRef.get()?.destroy() } catch (_: Throwable) {}
             try { procRef.get()?.inputStream?.close() } catch (_: Throwable) {}
+            try { staticServerBaseRef.get()?.let { WebguiStaticServer.stop(it) } } catch (_: Throwable) {}
         }
 
         AppExecutorUtil.getAppExecutorService().execute {
@@ -190,6 +192,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                         val serverRoot = serverUri.let { "${it.scheme}://${it.host}:${it.port}" }
                                         logger.info("gui-only mode: serving embedded webgui, REST API at $serverRoot")
                                         val base = WebguiStaticServer.start(webguiDir, serverRoot)
+                                        staticServerBaseRef.set(base)
                                         "$base/app"
                                     } else {
                                         appUrl

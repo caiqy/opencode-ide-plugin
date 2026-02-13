@@ -18,10 +18,8 @@ import java.util.concurrent.Executors
 object WebguiStaticServer {
     private val LOG = Logger.getInstance(WebguiStaticServer::class.java)
 
-    private var server: HttpServer? = null
-    private var port = 0
-    private var rootDir = ""
-    private var serverUrl = ""
+    private data class Instance(val server: HttpServer, val base: String)
+    private val instances = mutableMapOf<String, Instance>()
 
     private val MIME = mapOf(
         ".html" to "text/html; charset=utf-8",
@@ -44,30 +42,40 @@ object WebguiStaticServer {
 
     @Synchronized
     fun start(root: String, opencodeServerUrl: String): String {
-        if (server != null) return "http://127.0.0.1:$port"
+        val canonicalRoot = File(root).canonicalPath
+        val normalizedServerUrl = opencodeServerUrl.trimEnd('/')
+        val key = "$canonicalRoot|$normalizedServerUrl"
 
-        rootDir = root
-        serverUrl = opencodeServerUrl.trimEnd('/')
+        val existing = instances[key]
+        if (existing != null) return existing.base
 
-        server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
             executor = Executors.newCachedThreadPool()
-            createContext("/") { exchange -> handle(exchange) }
+            createContext("/") { exchange -> handle(exchange, canonicalRoot, normalizedServerUrl) }
             start()
         }
-        port = server!!.address.port
-        val base = "http://127.0.0.1:$port"
-        LOG.info("WebguiStaticServer started on $base serving $root")
+        val base = "http://127.0.0.1:${server.address.port}"
+        instances[key] = Instance(server, base)
+        LOG.info("WebguiStaticServer started on $base serving $canonicalRoot")
         return base
     }
 
     @Synchronized
     fun stop() {
-        server?.stop(0)
-        server = null
-        port = 0
+        val current = instances.values.toList()
+        instances.clear()
+        current.forEach { it.server.stop(0) }
     }
 
-    private fun handle(exchange: HttpExchange) {
+    @Synchronized
+    fun stop(baseUrl: String) {
+        val normalizedBase = baseUrl.trimEnd('/')
+        val target = instances.entries.firstOrNull { it.value.base == normalizedBase } ?: return
+        target.value.server.stop(0)
+        instances.remove(target.key)
+    }
+
+    private fun handle(exchange: HttpExchange, rootDir: String, serverUrl: String) {
         exchange.responseHeaders.apply {
             add("Access-Control-Allow-Origin", "*")
             add("Access-Control-Allow-Methods", "GET, OPTIONS")
@@ -104,9 +112,10 @@ object WebguiStaticServer {
         if (relative.isEmpty() || relative == "/") relative = "/index.html"
 
         val file = File(rootDir, relative).canonicalFile
+        val rootPath = rootDir
 
         // Prevent directory traversal
-        if (!file.path.startsWith(File(rootDir).canonicalPath)) {
+        if (file.path != rootPath && !file.path.startsWith("$rootPath${File.separator}")) {
             exchange.sendResponseHeaders(403, -1)
             exchange.close()
             return
@@ -119,7 +128,7 @@ object WebguiStaticServer {
             if (isSpaRoute) {
                 val index = File(rootDir, "index.html")
                 if (index.exists()) {
-                    serveFile(exchange, index, true)
+                    serveFile(exchange, index, true, serverUrl)
                     return
                 }
             }
@@ -128,10 +137,10 @@ object WebguiStaticServer {
             return
         }
 
-        serveFile(exchange, file, file.name == "index.html")
+        serveFile(exchange, file, file.name == "index.html", serverUrl)
     }
 
-    private fun serveFile(exchange: HttpExchange, file: File, inject: Boolean) {
+    private fun serveFile(exchange: HttpExchange, file: File, inject: Boolean, serverUrl: String) {
         val ext = file.extension.let { if (it.isNotEmpty()) ".$it" else "" }.lowercase()
         val mime = MIME[ext] ?: "application/octet-stream"
 
