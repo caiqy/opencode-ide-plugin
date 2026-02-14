@@ -1,6 +1,14 @@
 import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react"
 import { useEventHandler, type EventEmitter, type ServerEvent } from "../lib/api/events"
-import type { Message, Part, WebguiPart, SDKMessage, QuestionRequest } from "../types/messages"
+import {
+  isUserMessage,
+  type Message,
+  type Part,
+  type UserMessage,
+  type WebguiPart,
+  type SDKMessage,
+  type QuestionRequest,
+} from "../types/messages"
 import type { QuestionAnswer } from "@opencode-ai/sdk/v2/client"
 // PermissionRequest type based on new permission system (permission.asked event)
 interface PermissionRequest {
@@ -103,6 +111,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const session = useSession()
   const setReasoning = session.setReasoning
   const setSessionIdle = session.setSessionIdle
+  const restoreSelections = session.restoreSelections
   const reasoningPartsBySessionRef = useRef<Map<string, Set<string>>>(new Map())
 
   const updateReasoningFromPart = useCallback(
@@ -430,6 +439,22 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
             return [...filtered, ...loadedMessages]
           })
 
+          // 切换/打开历史会话时：自动恢复该会话最后一次 user 消息使用的 agent/model/variant
+          const lastUser = [...loadedMessages]
+            .filter((m) => isUserMessage(m.info))
+            .sort((a, b) => a.info.time.created - b.info.time.created)
+            .at(-1)
+
+          if (lastUser) {
+            const info = lastUser.info as UserMessage
+            restoreSelections({
+              providerId: info.model.providerID,
+              modelId: info.model.modelID,
+              agent: info.agent,
+              variant: info.variant ?? null,
+            })
+          }
+
           syncSessionReasoningFromMessages(sessionID, loadedMessages)
 
           const last = [...loadedMessages].sort((a, b) => a.info.time.created - b.info.time.created).at(-1)
@@ -442,7 +467,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         console.error("[MessagesContext] Failed to load messages:", err)
       }
     },
-    [setSessionIdle, syncSessionReasoningFromMessages],
+    [setSessionIdle, syncSessionReasoningFromMessages, restoreSelections],
   )
 
   // Permission events
