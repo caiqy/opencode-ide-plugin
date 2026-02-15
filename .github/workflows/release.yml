@@ -128,17 +128,10 @@ jobs:
 
       - name: Build webgui for gui-only variant
         run: |
+          # Use bun from repo root since this is a Bun workspace monorepo
           cd packages/opencode/webgui
-          if [ -f pnpm-lock.yaml ]; then
-            pnpm install --frozen-lockfile
-            pnpm run build
-          elif [ -f bun.lock ] || [ -f bun.lockb ]; then
-            bun install --frozen-lockfile
-            bun run build
-          else
-            npm ci
-            npm run build
-          fi
+          bun install --frozen-lockfile
+          bun run build
 
       - name: Package VSCode plugin (gui-only) from staging
         working-directory: hosts/vscode-plugin
@@ -191,11 +184,18 @@ jobs:
           # Clean up staging
           rm -rf "$STAGE_DIR"
 
-      - name: Build JetBrains plugin distribution
+      - name: Build JetBrains plugin distribution (standard)
         uses: gradle/gradle-build-action@v2
         with:
           gradle-version: 8.7
           arguments: buildPlugin
+          build-root-directory: hosts/jetbrains-plugin
+
+      - name: Build JetBrains plugin distribution (gui-only)
+        uses: gradle/gradle-build-action@v2
+        with:
+          gradle-version: 8.7
+          arguments: buildPlugin -PguiOnly=true -PwebguiDist=../../packages/opencode/webgui-dist
           build-root-directory: hosts/jetbrains-plugin
 
       - name: Prepare release artifacts
@@ -214,12 +214,12 @@ jobs:
               "release-artifacts/opencode-vscode-gui-only-${{ steps.version.outputs.version }}.vsix"
           fi
 
-          # Find and copy JetBrains plugin
-          find hosts/jetbrains-plugin/build/distributions -name "*.zip" -type f -exec cp {} release-artifacts/ \;
-          cd release-artifacts
-          for file in *.zip; do
-            if [ -f "$file" ]; then
-              mv "$file" "opencode-jetbrains-${{ steps.version.outputs.version }}.zip"
+          # Find and copy JetBrains plugins (both variants)
+          find hosts/jetbrains-plugin/build/distributions -name "*.zip" -type f | while read -r zipfile; do
+            if [[ "$(basename "$zipfile")" == *"gui-only"* ]]; then
+              cp "$zipfile" "release-artifacts/opencode-jetbrains-gui-only-${{ steps.version.outputs.version }}.zip"
+            else
+              cp "$zipfile" "release-artifacts/opencode-jetbrains-${{ steps.version.outputs.version }}.zip"
             fi
           done
 
@@ -240,7 +240,8 @@ jobs:
             This release includes:
             - **VSCode Extension (standard)**: `opencode-vscode-${{ steps.version.outputs.version }}.vsix` — bundles opencode binaries
             - **VSCode Extension (gui-only)**: `opencode-vscode-gui-only-${{ steps.version.outputs.version }}.vsix` — lightweight, uses system `opencode` binary
-            - **JetBrains Plugin**: `opencode-jetbrains-${{ steps.version.outputs.version }}.zip`
+            - **JetBrains Plugin (standard)**: `opencode-jetbrains-${{ steps.version.outputs.version }}.zip` — bundles opencode binaries
+            - **JetBrains Plugin (gui-only)**: `opencode-jetbrains-gui-only-${{ steps.version.outputs.version }}.zip` — lightweight, uses system `opencode` binary
 
             ### Installation Instructions
 
@@ -253,10 +254,16 @@ jobs:
             2. Download `opencode-vscode-gui-only-${{ steps.version.outputs.version }}.vsix`
             3. Install using: `code --install-extension opencode-vscode-gui-only-${{ steps.version.outputs.version }}.vsix`
 
-            #### JetBrains Plugin
+            #### JetBrains Plugin (standard — includes binaries)
             1. Download `opencode-jetbrains-${{ steps.version.outputs.version }}.zip`
             2. In your JetBrains IDE, go to Settings → Plugins → Install Plugin from Disk
             3. Select the downloaded zip file
+
+            #### JetBrains Plugin (gui-only — requires system opencode)
+            1. Ensure `opencode` is installed and available in your PATH
+            2. Download `opencode-jetbrains-gui-only-${{ steps.version.outputs.version }}.zip`
+            3. In your JetBrains IDE, go to Settings → Plugins → Install Plugin from Disk
+            4. Select the downloaded zip file
 
             ### What's Changed
             See the auto-generated release notes below for detailed changes.
@@ -293,9 +300,16 @@ jobs:
             echo "✗ VSCode extension (gui-only) missing"
           fi
 
-          # Check if JetBrains plugin exists
-          if ls ./test-artifacts/*.zip 1> /dev/null 2>&1; then
-            echo "✓ JetBrains plugin found"
+          # Check if JetBrains standard plugin exists
+          if ls ./test-artifacts/opencode-jetbrains-*.zip 1> /dev/null 2>&1 && ! ls ./test-artifacts/opencode-jetbrains-gui-only-*.zip 1> /dev/null 2>&1; then
+            echo "✓ JetBrains plugin (standard) found"
           else
-            echo "✗ JetBrains plugin missing"
+            echo "✗ JetBrains plugin (standard) missing"
+          fi
+
+          # Check if JetBrains gui-only plugin exists
+          if ls ./test-artifacts/opencode-jetbrains-gui-only-*.zip 1> /dev/null 2>&1; then
+            echo "✓ JetBrains plugin (gui-only) found"
+          else
+            echo "✗ JetBrains plugin (gui-only) missing"
           fi
