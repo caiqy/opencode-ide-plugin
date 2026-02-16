@@ -1,10 +1,8 @@
 import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react"
 import { useEventHandler, type EventEmitter, type ServerEvent } from "../lib/api/events"
 import {
-  isUserMessage,
   type Message,
   type Part,
-  type UserMessage,
   type WebguiPart,
   type SDKMessage,
   type QuestionRequest,
@@ -42,7 +40,7 @@ interface MessagesContextValue {
   removePart: (messageID: string, partID: string) => void
   clearMessages: () => void
   getMessagesBySession: (sessionID: string) => Message[]
-  loadSessionMessages: (sessionID: string) => Promise<void>
+  loadSessionMessages: (sessionID: string) => Promise<Message[] | null>
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   removeSessionErrors: (sessionID: string, afterTimestamp?: number) => void
   // permissions
@@ -111,7 +109,6 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const session = useSession()
   const setReasoning = session.setReasoning
   const setSessionIdle = session.setSessionIdle
-  const restoreSelections = session.restoreSelections
   const reasoningPartsBySessionRef = useRef<Map<string, Set<string>>>(new Map())
 
   const updateReasoningFromPart = useCallback(
@@ -411,7 +408,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       // Skip loading for virtual sessions (not yet persisted to server)
       if (sessionID.startsWith("virtual-")) {
         console.log("[MessagesContext] Skipping load for virtual session:", sessionID)
-        return
+        return null
       }
 
       console.log("[MessagesContext] Loading messages for session:", sessionID)
@@ -421,53 +418,47 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
 
         if (response.error) {
           console.error("[MessagesContext] Failed to load messages:", response.error)
-          return
+          return null
         }
 
-        if (response.data) {
-          console.log("[MessagesContext] Messages loaded:", response.data.length)
-          // SDK response is already in the correct format: Array<{ info: Message, parts: Array<Part> }>
-          // Cast needed because sdk.session.messages returns non-v2 types, but they're structurally identical
-          const loadedMessages = response.data as unknown as Message[]
+        const loadedMessages = (response.data ?? []) as unknown as Message[]
+        console.log("[MessagesContext] Messages loaded:", loadedMessages.length)
+        // SDK response is already in the correct format: Array<{ info: Message, parts: Array<Part> }>
+        // Cast needed because sdk.session.messages returns non-v2 types, but they're structurally identical
 
-          console.log("[MessagesContext] Loaded messages sample:", loadedMessages[0])
+        console.log("[MessagesContext] Loaded messages sample:", loadedMessages[0])
 
-          // Replace messages for this session only if we received any; otherwise keep existing local state
+        if (loadedMessages.length > 0) {
+          // Replace messages for this session with latest server data.
           setMessages((prev) => {
-            if (!loadedMessages || loadedMessages.length === 0) return prev
             const filtered = prev.filter((msg) => msg.info.sessionID !== sessionID)
             return [...filtered, ...loadedMessages]
           })
 
-          // 切换/打开历史会话时：自动恢复该会话最后一次 user 消息使用的 agent/model/variant
-          const lastUser = [...loadedMessages]
-            .filter((m) => isUserMessage(m.info))
-            .sort((a, b) => a.info.time.created - b.info.time.created)
-            .at(-1)
-
-          if (lastUser) {
-            const info = lastUser.info as UserMessage
-            restoreSelections({
-              providerId: info.model.providerID,
-              modelId: info.model.modelID,
-              agent: info.agent,
-              variant: info.variant ?? null,
-            })
-          }
-
           syncSessionReasoningFromMessages(sessionID, loadedMessages)
-
-          const last = [...loadedMessages].sort((a, b) => a.info.time.created - b.info.time.created).at(-1)
-          const completed = (last ? (last.info as any)?.time?.completed : 0) as unknown
-          const isAssistant = last ? (last.info as any)?.role === "assistant" : false
-          const busy = Boolean(last && isAssistant && (!completed || completed === 0))
-          setSessionIdle(sessionID, !busy)
         }
+
+        let last: Message | undefined
+        let lastCreated = -Infinity
+        for (const message of loadedMessages) {
+          const created = message.info.time.created
+          if (created <= lastCreated) continue
+          last = message
+          lastCreated = created
+        }
+
+        const completed = (last ? (last.info as any)?.time?.completed : 0) as unknown
+        const isAssistant = last ? (last.info as any)?.role === "assistant" : false
+        const busy = Boolean(last && isAssistant && (!completed || completed === 0))
+        setSessionIdle(sessionID, !busy)
+
+        return loadedMessages
       } catch (err) {
         console.error("[MessagesContext] Failed to load messages:", err)
+        return null
       }
     },
-    [setSessionIdle, syncSessionReasoningFromMessages, restoreSelections],
+    [setSessionIdle, syncSessionReasoningFromMessages],
   )
 
   // Permission events

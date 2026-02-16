@@ -587,7 +587,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   const restoreSelections = useCallback(
     (state: { providerId: string | null; modelId: string | null; agent: string | null; variant: string | null }) => {
-      if (typeof state.agent === "string" && state.agent !== selectedAgent) {
+      // 注意：该函数会被会话激活协调器（useSessionActivation）与 IDE bridge 恢复流程调用。
+      // 保持稳定引用有助于避免依赖变化导致的重复恢复。
+
+      if (typeof state.agent === "string") {
         setSelectedAgentState(state.agent)
         localStorage.setItem("opencode_selected_agent", state.agent)
       }
@@ -596,19 +599,32 @@ export function SessionProvider({ children }: SessionProviderProps) {
       const nextModel = typeof state.modelId === "string" ? state.modelId : undefined
       const hasModel = !!(nextProvider && nextModel)
 
-      if (hasModel && nextProvider !== selectedProviderId) {
+      if (hasModel && nextProvider && nextModel) {
         setSelectedProviderId(nextProvider)
-        if (nextProvider) localStorage.setItem("opencode_selected_provider", nextProvider)
-        if (!nextProvider) localStorage.removeItem("opencode_selected_provider")
-      }
-
-      if (hasModel && nextModel !== selectedModelId) {
         setSelectedModelId(nextModel)
-        if (nextModel) localStorage.setItem("opencode_selected_model", nextModel)
-        if (!nextModel) localStorage.removeItem("opencode_selected_model")
+        localStorage.setItem("opencode_selected_provider", nextProvider)
+        localStorage.setItem("opencode_selected_model", nextModel)
       }
 
-      if (typeof state.variant === "string") setSelectedVariantState(state.variant)
+      if (state.variant === null) {
+        // null 表示显式恢复为“默认”（即未选择）
+        setSelectedVariantState(undefined)
+
+        if (nextProvider && nextModel) {
+          const key = `${nextProvider}/${nextModel}`
+          setVariantMap((prev) => {
+            if (!(key in prev)) return prev
+            const next = { ...prev }
+            delete next[key]
+            return next
+          })
+        }
+        return
+      }
+
+      if (typeof state.variant === "string") {
+        setSelectedVariantState(state.variant)
+      }
 
       if (typeof state.variant === "string" && nextProvider && nextModel) {
         const key = `${nextProvider}/${nextModel}`
@@ -620,7 +636,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         })
       }
     },
-    [selectedAgent, selectedProviderId, selectedModelId],
+    [],
   )
 
   /**

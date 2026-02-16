@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState, useRef } from "react"
 import { useEventStream, useEventHandler, eventEmitter, type ServerEvent, type ConnectionState } from "./lib/api/events"
 import { useSessionEvents } from "./lib/api/useSessionEvents"
 import { useSession } from "./state/SessionContext"
-import { useMessages } from "./state/MessagesContext"
 import { useToast } from "./state/ToastContext"
 import { MessageInput } from "./components/MessageInput"
 import { MessageList } from "./components/MessageList"
@@ -18,7 +17,8 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts"
 import { ideBridge } from "./lib/ideBridge"
 import { extractPathsFromDrop } from "./lib/dnd"
 import { initKeyboardHandler, destroyKeyboardHandler } from "./lib/keyboardHandler"
-import { uiBridgeSubscribeSelector, uiBridgeUpdate, type UiBridgeState } from "./state/uiBridgeState"
+import { uiBridgeSubscribeSelector, type UiBridgeState } from "./state/uiBridgeState"
+import { useSessionActivation } from "./state/useSessionActivation"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 
@@ -48,7 +48,6 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     selectionRestoreNotice,
     clearSelectionRestoreNotice,
   } = useSession()
-  const { loadSessionMessages } = useMessages()
   const { showToast } = useToast()
   const compactHeaderRef = useRef<{ toggleSessionDropdown: () => void }>(null)
   const messageInputRef = useRef<{
@@ -65,6 +64,8 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
 
   const [bridge, setBridge] = useState<BridgeSelections | null>(null)
   const restored = useRef({ session: false, selections: false })
+
+  useSessionActivation()
 
   useEffect(
     () =>
@@ -86,8 +87,9 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     if (restored.current.session) return
     if (!bridge?.sessionID) return
     restored.current.session = true
+    if (bridge.sessionID === currentSession?.id) return
     void switchSession(bridge.sessionID)
-  }, [bridge?.sessionID, switchSession])
+  }, [bridge?.sessionID, currentSession?.id, switchSession])
 
   useEffect(() => {
     if (restored.current.selections) return
@@ -230,18 +232,14 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     }
   }, [])
 
-  // Load messages when session changes
+  // Focus message input when session changes
   useEffect(() => {
-    if (currentSession?.id) {
-      console.log("[App] Current session changed, loading messages:", currentSession.id)
-      loadSessionMessages(currentSession.id)
-      uiBridgeUpdate({ sessionID: currentSession.id })
-      // Focus message input when session changes
-      setTimeout(() => {
-        messageInputRef.current?.focus()
-      }, 100)
-    }
-  }, [currentSession?.id, loadSessionMessages])
+    if (!currentSession?.id) return
+    const timer = setTimeout(() => {
+      messageInputRef.current?.focus()
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [currentSession?.id])
 
   // Show toast for session context errors
   useEffect(() => {
