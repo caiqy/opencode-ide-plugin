@@ -45,9 +45,11 @@ describe("MessagesContext loadSessionMessages", () => {
     mocks.restoreSelections.mockReset()
     mocks.setReasoning.mockReset()
     mocks.setSessionIdle.mockReset()
+    ;(sdk.session.messages as any).mockReset()
+    api = null
   })
 
-  it("打开历史会话时应自动恢复该会话最后一次 user 的 agent/model/variant", async () => {
+  it("loadSessionMessages 只返回数据且不触发 restoreSelections", async () => {
     ;(sdk.session.messages as any).mockResolvedValue({
       error: null,
       data: [
@@ -69,14 +71,7 @@ describe("MessagesContext loadSessionMessages", () => {
             sessionID: "s1",
             role: "assistant",
             time: { created: 2, completed: 2 },
-            providerID: "openai",
-            modelID: "gpt-4.1",
             agent: "build",
-            cost: 0,
-            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-            parentID: "u1",
-            mode: "",
-            path: { cwd: "", root: "" },
           },
           parts: [],
         },
@@ -101,15 +96,50 @@ describe("MessagesContext loadSessionMessages", () => {
       </MessagesProvider>,
     )
 
+    let loaded: unknown
     await act(async () => {
-      await api!.loadSessionMessages("s1")
+      loaded = await api!.loadSessionMessages("s1")
     })
 
-    expect(mocks.restoreSelections).toHaveBeenCalledWith({
-      providerId: "anthropic",
-      modelId: "claude-4-sonnet",
-      agent: "plan",
-      variant: "high",
+    expect(mocks.restoreSelections).not.toHaveBeenCalled()
+    expect(Array.isArray(loaded)).toBe(true)
+    expect((loaded as Array<{ info: { id: string } }>).map((msg) => msg.info.id)).toEqual(["u1", "a1", "u2"])
+    expect((loaded as Array<unknown>).length).toBe(3)
+  })
+
+  it("当接口返回空数组时保留本地 session 消息且不触发 restoreSelections", async () => {
+    const localMessage = {
+      info: {
+        id: "local-u1",
+        sessionID: "s1",
+        role: "user",
+        time: { created: 1 },
+      },
+      parts: [],
+    }
+    ;(sdk.session.messages as any).mockResolvedValue({
+      error: null,
+      data: [],
     })
+
+    render(
+      <MessagesProvider>
+        <Capture />
+      </MessagesProvider>,
+    )
+
+    act(() => {
+      api!.setMessages([localMessage as any])
+    })
+
+    let loaded: unknown
+    await act(async () => {
+      loaded = await api!.loadSessionMessages("s1")
+    })
+
+    expect(loaded).toEqual([])
+    expect(mocks.restoreSelections).not.toHaveBeenCalled()
+    expect(api!.getMessagesBySession("s1").map((msg) => msg.info.id)).toEqual(["local-u1"])
+    expect(api!.getMessagesBySession("s1")).toHaveLength(1)
   })
 })

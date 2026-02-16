@@ -298,6 +298,56 @@ describe("SessionContext migration", () => {
       expect(payload.agent).toBe("build")
     })
   })
+
+  it("restoreSelections 传入 variant: null 时应清空当前 variant，并移除该模型的临时偏好", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe("openai")
+      expect(result.current.selectedModelId).toBe("gpt-4.1")
+      expect(result.current.selectedVariant).toBeUndefined()
+    })
+
+    await act(async () => {
+      await result.current.setSelectedVariant("medium")
+    })
+
+    await waitFor(() => {
+      expect(result.current.selectedVariant).toBe("medium")
+    })
+
+    await act(async () => {
+      result.current.restoreSelections({
+        providerId: "openai",
+        modelId: "gpt-4.1",
+        agent: "build",
+        variant: null,
+      })
+    })
+
+    await waitFor(() => {
+      expect(result.current.selectedVariant).toBeUndefined()
+    })
+
+    await act(async () => {
+      await result.current.setSelectedModel("anthropic", "claude-4-sonnet")
+    })
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe("anthropic")
+      expect(result.current.selectedModelId).toBe("claude-4-sonnet")
+    })
+
+    await act(async () => {
+      await result.current.setSelectedModel("openai", "gpt-4.1")
+    })
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe("openai")
+      expect(result.current.selectedModelId).toBe("gpt-4.1")
+      expect(result.current.selectedVariant).toBeUndefined()
+    })
+  })
 })
 
 describe("SessionContext session 状态查询", () => {
