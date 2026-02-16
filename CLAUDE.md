@@ -165,10 +165,22 @@ packages/opencode/webgui (Vite build)
 .\hosts\scripts\build_vscode.bat --production --skip-tests
 ```
 
+**Windows（仅本机测试：只打包 Windows 版二进制）：**
+
+```bat
+.\hosts\scripts\build_vscode.bat --production --skip-tests --single
+```
+
 **macOS / Linux：**
 
 ```bash
 ./hosts/scripts/build_vscode.sh --production --skip-tests
+```
+
+**macOS / Linux（仅本机测试：只打包当前平台二进制）：**
+
+```bash
+./hosts/scripts/build_vscode.sh --production --skip-tests --single
 ```
 
 可用参数：
@@ -177,6 +189,7 @@ packages/opencode/webgui (Vite build)
 - `--skip-binaries`：跳过后端二进制编译（已有二进制时使用）
 - `--skip-tests`：跳过测试
 - `--package-only`：仅打包 VSIX（跳过编译和二进制构建）
+- `--single`：只编译/复制当前平台后端二进制（适合本机打包测试；生成的 VSIX 不保证其他平台可用）
 
 ### 8.4 手动分步打包（适合只改了 webgui 的场景）
 

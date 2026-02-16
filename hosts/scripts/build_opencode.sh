@@ -36,7 +36,7 @@ prepare_output_dir() {
 echo "=> Building opencode distribution"
 (
   cd "$OPENCODE_DIR"
-  bun script/build.ts
+  bun script/build.ts "$@"
 )
 
 if [[ ! -d "$DIST_DIR" ]]; then

@@ -70,6 +70,7 @@ BUILD_TYPE="development"
 SKIP_BINARIES=false
 SKIP_TESTS=false
 PACKAGE_ONLY=false
+SINGLE_PLATFORM=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -89,6 +90,10 @@ while [[ $# -gt 0 ]]; do
             PACKAGE_ONLY=true
             shift
             ;;
+        --single)
+            SINGLE_PLATFORM=true
+            shift
+            ;;
         --help)
             echo "Usage: $0 [OPTIONS]"
             echo "Options:"
@@ -96,6 +101,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --skip-binaries   Skip building backend binaries"
             echo "  --skip-tests      Skip running tests"
             echo "  --package-only    Only create the .vsix package (skip compilation)"
+            echo "  --single          Build backend for current platform only"
             echo "  --help            Show this help message"
             exit 0
             ;;
@@ -152,7 +158,12 @@ fi
 
 if [ "$SKIP_BINARIES" = false ] && [ "$PACKAGE_ONLY" = false ]; then
     print_status "Building backend binaries..."
-    "$SCRIPT_DIR/build_opencode.sh"
+    if [ "$SINGLE_PLATFORM" = true ]; then
+        print_status "Single-platform backend build enabled (--single)"
+        "$SCRIPT_DIR/build_opencode.sh" --single
+    else
+        "$SCRIPT_DIR/build_opencode.sh"
+    fi
 fi
 
 if [ "$PACKAGE_ONLY" = false ]; then
@@ -185,13 +196,37 @@ if [ "$SKIP_TESTS" = false ] && [ "$PACKAGE_ONLY" = false ]; then
 fi
 
 print_status "Checking for required binaries..."
-BINARY_PATHS=(
-    "resources/bin/windows/amd64/opencode.exe"
-    "resources/bin/macos/amd64/opencode"
-    "resources/bin/macos/arm64/opencode"
-    "resources/bin/linux/amd64/opencode"
-    "resources/bin/linux/arm64/opencode"
-)
+if [ "$SINGLE_PLATFORM" = true ]; then
+    os_dir=""
+    arch_dir=""
+    uname_s="$(uname -s)"
+    uname_m="$(uname -m)"
+
+    case "$uname_s" in
+        Darwin) os_dir="macos" ;;
+        Linux) os_dir="linux" ;;
+    esac
+
+    case "$uname_m" in
+        x86_64|amd64) arch_dir="amd64" ;;
+        arm64|aarch64) arch_dir="arm64" ;;
+    esac
+
+    if [[ -n "$os_dir" && -n "$arch_dir" ]]; then
+        BINARY_PATHS=("resources/bin/$os_dir/$arch_dir/opencode")
+    else
+        print_warning "Unable to detect current platform for binary check; skipping binary presence checks."
+        BINARY_PATHS=()
+    fi
+else
+    BINARY_PATHS=(
+        "resources/bin/windows/amd64/opencode.exe"
+        "resources/bin/macos/amd64/opencode"
+        "resources/bin/macos/arm64/opencode"
+        "resources/bin/linux/amd64/opencode"
+        "resources/bin/linux/arm64/opencode"
+    )
+fi
 
 MISSING_BINARIES=false
 for binary_path in "${BINARY_PATHS[@]}"; do
@@ -202,8 +237,12 @@ for binary_path in "${BINARY_PATHS[@]}"; do
 done
 
 if [ "$MISSING_BINARIES" = true ]; then
-    print_warning "Some binaries are missing. The extension may not work on all platforms."
-    print_warning "Run '$SCRIPT_DIR/build_opencode.sh' from the root directory to build all binaries."
+    if [ "$SINGLE_PLATFORM" = true ]; then
+        print_warning "Current-platform binary is missing. The extension may not run on this machine."
+    else
+        print_warning "Some binaries are missing. The extension may not work on all platforms."
+        print_warning "Run '$SCRIPT_DIR/build_opencode.sh' from the root directory to build all binaries."
+    fi
 fi
 
 print_status "Creating VSCode extension package..."

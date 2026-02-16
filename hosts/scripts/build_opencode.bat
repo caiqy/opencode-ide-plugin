@@ -28,7 +28,7 @@ call :prepare_output_dir "%VSCODE_BIN_DIR%"
 
 echo => Building opencode distribution
 pushd "%OPENCODE_DIR%"
-bun script/build.ts
+bun script/build.ts %*
 if errorlevel 1 (
   popd
   exit /b 1

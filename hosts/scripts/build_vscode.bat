@@ -23,6 +23,7 @@ set "BUILD_TYPE=development"
 set "SKIP_BINARIES=false"
 set "SKIP_TESTS=false"
 set "PACKAGE_ONLY=false"
+set "SINGLE_PLATFORM=false"
 
 :parse_args
 if "%~1"=="" goto args_done
@@ -46,12 +47,24 @@ if "%~1"=="--package-only" (
     shift
     goto parse_args
 )
+if "%~1"=="--single" (
+    set "SINGLE_PLATFORM=true"
+    shift
+    goto parse_args
+)
+if "%~1"=="--windows-only" (
+    set "SINGLE_PLATFORM=true"
+    shift
+    goto parse_args
+)
 if "%~1"=="--help" (
     echo Usage: %0 [OPTIONS]
     echo   --production      Build for production (default: development)
     echo   --skip-binaries   Skip building backend binaries
     echo   --skip-tests      Skip running tests
     echo   --package-only    Only create the .vsix package (skip compilation)
+    echo   --single          Build backend for current platform only
+    echo   --windows-only    Alias for --single
     echo   --help            Show this help message
     exit /b 0
 )
@@ -96,7 +109,12 @@ if "%SKIP_BINARIES%"=="false" (
         echo [INFO] Building backend binaries...
         cd /d "%ROOT_DIR%"
         if exist "hosts\scripts\build_opencode.bat" (
-            call hosts\scripts\build_opencode.bat
+            if "%SINGLE_PLATFORM%"=="true" (
+                echo [INFO] Single-platform backend build enabled: --single
+                call hosts\scripts\build_opencode.bat --single
+            ) else (
+                call hosts\scripts\build_opencode.bat
+            )
         ) else (
             echo [ERROR] Backend build script not found at hosts\scripts\build_opencode.bat
             exit /b 1
@@ -130,29 +148,40 @@ if "%SKIP_TESTS%"=="false" (
 
 echo [INFO] Checking for required binaries...
 set "MISSING_BINARIES=false"
-if not exist "resources\bin\windows\amd64\opencode.exe" (
-    echo [WARN] Missing binary: resources\bin\windows\amd64\opencode.exe
-    set "MISSING_BINARIES=true"
-)
-if not exist "resources\bin\macos\amd64\opencode" (
-    echo [WARN] Missing binary: resources\bin\macos\amd64\opencode
-    set "MISSING_BINARIES=true"
-)
-if not exist "resources\bin\macos\arm64\opencode" (
-    echo [WARN] Missing binary: resources\bin\macos\arm64\opencode
-    set "MISSING_BINARIES=true"
-)
-if not exist "resources\bin\linux\amd64\opencode" (
-    echo [WARN] Missing binary: resources\bin\linux\amd64\opencode
-    set "MISSING_BINARIES=true"
-)
-if not exist "resources\bin\linux\arm64\opencode" (
-    echo [WARN] Missing binary: resources\bin\linux\arm64\opencode
-    set "MISSING_BINARIES=true"
+if "%SINGLE_PLATFORM%"=="true" (
+    if not exist "resources\bin\windows\amd64\opencode.exe" (
+        echo [WARN] Missing binary: resources\bin\windows\amd64\opencode.exe
+        set "MISSING_BINARIES=true"
+    )
+) else (
+    if not exist "resources\bin\windows\amd64\opencode.exe" (
+        echo [WARN] Missing binary: resources\bin\windows\amd64\opencode.exe
+        set "MISSING_BINARIES=true"
+    )
+    if not exist "resources\bin\macos\amd64\opencode" (
+        echo [WARN] Missing binary: resources\bin\macos\amd64\opencode
+        set "MISSING_BINARIES=true"
+    )
+    if not exist "resources\bin\macos\arm64\opencode" (
+        echo [WARN] Missing binary: resources\bin\macos\arm64\opencode
+        set "MISSING_BINARIES=true"
+    )
+    if not exist "resources\bin\linux\amd64\opencode" (
+        echo [WARN] Missing binary: resources\bin\linux\amd64\opencode
+        set "MISSING_BINARIES=true"
+    )
+    if not exist "resources\bin\linux\arm64\opencode" (
+        echo [WARN] Missing binary: resources\bin\linux\arm64\opencode
+        set "MISSING_BINARIES=true"
+    )
 )
 if "%MISSING_BINARIES%"=="true" (
-    echo [WARN] Some binaries are missing. The extension may not work on all platforms.
-    echo [WARN] Run 'hosts\scripts\build_opencode.bat' from the repository root to build all binaries.
+    if "%SINGLE_PLATFORM%"=="true" (
+        echo [WARN] Current-platform binary is missing. The extension may not run on this machine.
+    ) else (
+        echo [WARN] Some binaries are missing. The extension may not work on all platforms.
+        echo [WARN] Run 'hosts\scripts\build_opencode.bat' from the repository root to build all binaries.
+    )
 )
 
 echo [INFO] Creating VSCode extension package
