@@ -176,10 +176,7 @@ export class BackendLauncher {
     }
 
     // Resolve extension path dynamically (works for any extension ID)
-    const extPath =
-      this.extensionPath ||
-      vscode.extensions.getExtension("paviko.opencode-ux-plus")?.extensionPath ||
-      vscode.extensions.getExtension("paviko.opencode-ux-plus-gui-only")?.extensionPath
+    const extPath = this.extensionPath || vscode.extensions.getExtension("paviko.opencode-ux-plus")?.extensionPath
 
     // Try bundled binary first
     if (extPath) {

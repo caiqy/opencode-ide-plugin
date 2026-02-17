@@ -17,7 +17,6 @@ export interface SessionHandlers {
 }
 
 interface SessionMetadata {
-  guiOnly?: boolean
   minVersion?: string
 }
 
@@ -83,7 +82,10 @@ class IdeBridgeServer {
     this.sessions.clear()
   }
 
-  async createSession(handlers: SessionHandlers, metadata: SessionMetadata = {}): Promise<{ sessionId: string; baseUrl: string; token: string }> {
+  async createSession(
+    handlers: SessionHandlers,
+    metadata: SessionMetadata = {},
+  ): Promise<{ sessionId: string; baseUrl: string; token: string }> {
     await this.start() // ensure server is running
 
     const sessionId = crypto.randomUUID()
@@ -181,7 +183,6 @@ class IdeBridgeServer {
     // Send initial connected event with optional metadata
     try {
       const data: Record<string, any> = {}
-      if (session.metadata.guiOnly) data.customApi = false
       if (session.metadata.minVersion) data.minVersion = session.metadata.minVersion
       const connected = JSON.stringify(data)
       res.write(`event: connected\ndata: ${connected}\n\n`)

@@ -1,6 +1,4 @@
 import * as vscode from "vscode"
-import * as fs from "fs"
-import * as path from "path"
 import { BackendConnection } from "../backend/BackendLauncher"
 import { SettingsManager } from "../settings/SettingsManager"
 import { CommunicationBridge } from "./CommunicationBridge"
@@ -9,7 +7,6 @@ import { errorHandler } from "../utils/ErrorHandler"
 import { PathInserter } from "../utils/PathInserter"
 import { logger } from "../globals"
 import { bridgeServer } from "./IdeBridgeServer"
-import { webguiServer } from "./WebguiStaticServer"
 
 /**
  * Shared webview controller to manage common UI lifecycle and messaging
@@ -32,8 +29,6 @@ export class WebviewController {
   private connection?: BackendConnection
   private disposables: vscode.Disposable[] = []
   private bridgeSessionId: string | null = null
-  private staticServerBase: string | null = null
-  private isGuiOnly = false
   private uiGetState?: () => Promise<any>
   private uiSetState?: (state: any) => Promise<void>
   private disposed = false
@@ -127,10 +122,6 @@ export class WebviewController {
       // Make PathInserter aware of the active communication bridge
       // NOTE: PathInserter is now set by container visibility (editor panel / sidebar).
 
-      // Determine UI source: embedded webgui (gui-only) or remote server (standard)
-      // NOTE: resolveUiBaseUrl sets this.isGuiOnly — call it before createSession
-      const uiBaseUrl = await this.resolveUiBaseUrl(connection)
-
       // Create bridge session with handlers from CommunicationBridge
       const session = await bridgeServer.createSession(
         {
@@ -154,7 +145,6 @@ export class WebviewController {
           },
         },
         {
-          guiOnly: this.isGuiOnly,
           minVersion: vscode.workspace.getConfiguration("opencode").get<string>("minVersion", "1.1.1"),
         },
       )
@@ -186,7 +176,7 @@ export class WebviewController {
       }
 
       // Use asExternalUri for Remote-SSH compatibility
-      const externalUi = await vscode.env.asExternalUri(vscode.Uri.parse(uiBaseUrl))
+      const externalUi = await vscode.env.asExternalUri(vscode.Uri.parse(connection.uiBase))
       const externalBridge = await vscode.env.asExternalUri(vscode.Uri.parse(session.baseUrl))
 
       // Build iframe src with bridge params
@@ -315,42 +305,6 @@ export class WebviewController {
     }
   }
 
-  /**
-   * Resolve the base URL for the webgui iframe.
-   *
-   * gui-only mode: embedded webgui lives in resources/webgui-app/.  We start a
-   * local static HTTP server that serves those files under /app/ and injects
-   * `window.__OPENCODE_SERVER_URL__` so the webgui can reach the REST API on
-   * the opencode server.
-   *
-   * Standard mode: the opencode server serves both REST API and webgui, so we
-   * use connection.uiBase directly.
-   */
-  private async resolveUiBaseUrl(connection: BackendConnection): Promise<string> {
-    const webguiDir = path.join(this.context.extensionUri.fsPath, "resources", "webgui-app")
-    if (fs.existsSync(path.join(webguiDir, "index.html"))) {
-      // gui-only: derive REST API root from uiBase using URL parsing
-      // (uiBase may carry query params like ?v=26.2.8 from cache-busting)
-      const parsed = new URL(connection.uiBase)
-      const serverRoot = parsed.origin
-      logger.appendLine(`gui-only mode: serving embedded webgui, REST API at ${serverRoot}`)
-      this.isGuiOnly = true
-      const base = await webguiServer.start(webguiDir, serverRoot)
-      if (this.staticServerBase && this.staticServerBase !== base) {
-        webguiServer.stop(this.staticServerBase)
-      }
-      this.staticServerBase = base
-      return `${base}/app`
-    }
-    // Standard mode: opencode server serves the webgui
-    this.isGuiOnly = false
-    if (this.staticServerBase) {
-      webguiServer.stop(this.staticServerBase)
-      this.staticServerBase = null
-    }
-    return connection.uiBase
-  }
-
   private buildUiUrlWithMode(base: string): string {
     let uiMode = "Terminal"
     try {
@@ -431,10 +385,6 @@ export class WebviewController {
     if (this.bridgeSessionId) {
       bridgeServer.removeSession(this.bridgeSessionId)
       this.bridgeSessionId = null
-    }
-    if (this.staticServerBase) {
-      webguiServer.stop(this.staticServerBase)
-      this.staticServerBase = null
     }
     for (const d of this.disposables) {
       try {

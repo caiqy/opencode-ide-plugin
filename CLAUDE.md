@@ -197,7 +197,9 @@ packages/opencode/webgui (Vite build)
 
 ```bash
 # 1. 重编 opencode 二进制（含 webgui 嵌入），--single 只编译当前平台
-bun script/build.ts --single --skip-install
+#    必须设置 OPENCODE_VERSION，否则非 latest 分支会生成 0.0.0-xxx 预览版本号，
+#    导致插件 minVersion 检查失败（默认要求 >= 1.1.1）。
+OPENCODE_VERSION=$(node -p "require('./package.json').version") bun script/build.ts --single --skip-install
 # 工作目录：packages/opencode
 
 # 2. 复制新二进制到插件目录（以 Windows 为例）

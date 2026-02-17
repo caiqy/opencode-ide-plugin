@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { ideBridge } from "../lib/ideBridge"
-import { serverBase } from "../lib/api/sdkClient"
 
 function compareVersions(a: string, b: string): number {
   const pa = a.split(".").map(Number)
@@ -14,10 +13,7 @@ function compareVersions(a: string, b: string): number {
   return 0
 }
 
-type State =
-  | { status: "loading" }
-  | { status: "ok" }
-  | { status: "outdated"; installed: string; required: string }
+type State = { status: "loading" } | { status: "ok" } | { status: "outdated"; installed: string; required: string }
 
 export function VersionGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>({ status: "loading" })
@@ -39,12 +35,12 @@ export function VersionGate({ children }: { children: ReactNode }) {
       }
 
       try {
-        const res = await fetch(`${serverBase}/global/health`)
+        const res = await fetch("/global/health")
         if (!res.ok) {
           if (!cancelled) setState({ status: "ok" })
           return
         }
-        const json = await res.json() as { healthy: boolean; version: string }
+        const json = (await res.json()) as { healthy: boolean; version: string }
         if (!json.version) {
           if (!cancelled) setState({ status: "ok" })
           return
@@ -62,11 +58,15 @@ export function VersionGate({ children }: { children: ReactNode }) {
     // If minVersion is already available (reconnect scenario), check immediately
     if (ideBridge.minVersion) {
       check()
-      return () => { cancelled = true }
+      return () => {
+        cancelled = true
+      }
     }
 
     // Wait for the SSE "connected" event which populates minVersion
-    const listener = () => { check() }
+    const listener = () => {
+      check()
+    }
     window.addEventListener("opencode:idebridge-connected", listener, { once: true })
 
     return () => {
@@ -82,9 +82,7 @@ export function VersionGate({ children }: { children: ReactNode }) {
       <div className="flex items-center justify-center h-screen bg-white dark:bg-gray-950 p-8">
         <div className="max-w-md w-full text-center space-y-6">
           <div className="text-5xl">⚠️</div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            Incorrect OpenCode Version
-          </h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Incorrect OpenCode Version</h1>
           <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
             The installed OpenCode server version is incompatible with this plugin.
           </p>
@@ -99,8 +97,8 @@ export function VersionGate({ children }: { children: ReactNode }) {
             </div>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Please update OpenCode to version <span className="font-mono font-semibold">{state.required}</span> or
-            later to continue.
+            Please update OpenCode to version <span className="font-mono font-semibold">{state.required}</span> or later
+            to continue.
           </p>
         </div>
       </div>
