@@ -38,8 +38,7 @@ object BackendLauncher {
             "launchBackend must not be called from EDT - it performs heavy I/O operations"
         }
         val isWin = System.getProperty("os.name").lowercase().contains("win")
-        val binName = if (isWin) "opencode.exe" else "opencode"
-        val bin = findBundledBinary(binName) ?: binName // fallback to PATH
+        val bin = findBundledBinary(if (isWin) "opencode.exe" else "opencode") ?: "opencode" // fallback to PATH
 
         val settings = OpenCodeSettings.getInstance()
 

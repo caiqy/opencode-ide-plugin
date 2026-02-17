@@ -33,7 +33,10 @@ prepare_output_dir() {
   mkdir -p "$dir"
 }
 
-echo "=> Building opencode distribution"
+OPENCODE_VERSION="${OPENCODE_VERSION:-$(node -p "require('$OPENCODE_DIR/package.json').version")}"
+export OPENCODE_VERSION
+
+echo "=> Building opencode distribution (version $OPENCODE_VERSION)"
 (
   cd "$OPENCODE_DIR"
   bun script/build.ts "$@"

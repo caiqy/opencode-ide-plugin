@@ -50,3 +50,8 @@ npm-debug.log*
 
 # Include resources (binaries)
 !resources/**
+
+# Exclude gui-only build artifacts and config
+resources/webgui-app/**
+package.gui-only.json
+.vscodeignore.gui-only

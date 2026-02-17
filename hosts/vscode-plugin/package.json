@@ -2,7 +2,7 @@
   "name": "opencode-ux-plus",
   "displayName": "OpenCode UX+ (unofficial)",
   "description": "Unofficial OpenCode VSCode extension",
-  "version": "26.2.8",
+  "version": "26.2.15",
   "publisher": "paviko",
   "author": {
     "name": "paviko"
@@ -172,6 +172,11 @@
           "type": "string",
           "default": "",
           "description": "Custom command to run in the terminal (optional)"
+        },
+        "opencode.minVersion": {
+          "type": "string",
+          "default": "1.1.1",
+          "description": "Minimum required OpenCode server version"
         }
       }
     }
@@ -190,6 +195,7 @@
     "package:dev": "cd ../ && ./scripts/build-vscode.sh --skip-tests",
     "package:pre-release": "pnpm run compile:production && vsce package --pre-release --no-dependencies",
     "publish": "pnpm run compile:production && vsce publish --no-dependencies",
+    "publish:gui-only": "(cd ../../packages/opencode/webgui && (bun run build 2>/dev/null || npm run build)) && rm -rf resources/webgui-app && cp -r ../../packages/opencode/webgui-dist resources/webgui-app && mv resources/bin /tmp/opencode-bin-stash-$$ 2>/dev/null || true && cp package.json package.json.bak && cp .vscodeignore .vscodeignore.bak && node -e \"const fs=require('fs');function d(t,s){for(const k of Object.keys(s)){const a=s[k],b=t[k];Array.isArray(a)&&Array.isArray(b)?a.forEach((v,i)=>{i<b.length&&typeof v=='object'&&typeof b[i]=='object'?d(b[i],v):b[i]=v}):a&&typeof a=='object'&&!Array.isArray(a)&&b&&typeof b=='object'&&!Array.isArray(b)?d(b,a):t[k]=a}return t}const b=JSON.parse(fs.readFileSync('package.json'));const o=JSON.parse(fs.readFileSync('package.gui-only.json'));fs.writeFileSync('package.json',JSON.stringify(d(b,o),null,2))\" && cp .vscodeignore.gui-only .vscodeignore && vsce publish --no-dependencies; EXIT=$?; mv package.json.bak package.json 2>/dev/null || true; mv .vscodeignore.bak .vscodeignore 2>/dev/null || true; mv /tmp/opencode-bin-stash-$$/bin resources/bin 2>/dev/null || true; rm -rf resources/webgui-app /tmp/opencode-bin-stash-$$; exit $EXIT",
     "publish:pre-release": "pnpm run compile:production && vsce publish --pre-release --no-dependencies",
     "install:vsce": "npm install -g @vscode/vsce",
     "clean": "rimraf out *.vsix",

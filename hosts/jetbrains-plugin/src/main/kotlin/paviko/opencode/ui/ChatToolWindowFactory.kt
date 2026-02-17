@@ -18,6 +18,7 @@ import paviko.opencode.backendprocess.BackendLauncher
 import java.awt.BorderLayout
 import java.awt.Font
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.net.URI
 import java.net.URLEncoder
@@ -90,6 +91,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         mainPanel.add(hideableLogs, BorderLayout.SOUTH)
 
         val procRef = AtomicReference<paviko.opencode.backendprocess.BackendProcess?>(null)
+        val staticServerBaseRef = AtomicReference<String?>(null)
         val connected = AtomicBoolean(false)
         val logLock = Any()
         val logBuffer = StringBuilder()
@@ -140,6 +142,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
             timeoutFuture.cancel(false)
             try { procRef.get()?.destroy() } catch (_: Throwable) {}
             try { procRef.get()?.inputStream?.close() } catch (_: Throwable) {}
+            try { staticServerBaseRef.get()?.let { WebguiStaticServer.stop(it) } } catch (_: Throwable) {}
         }
 
         AppExecutorUtil.getAppExecutorService().execute {
@@ -182,6 +185,19 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                     timeoutFuture.cancel(false)
                                     logger.info("Backend connection established at $appUrl")
 
+                                    // Detect gui-only mode: check if webgui-app is bundled as a resource
+                                    val isGuiOnly = javaClass.classLoader.getResource("webgui-app/index.html") != null
+                                    val uiBaseUrl = if (isGuiOnly) {
+                                        val webguiDir = extractWebguiResources()
+                                        val serverRoot = serverUri.let { "${it.scheme}://${it.host}:${it.port}" }
+                                        logger.info("gui-only mode: serving embedded webgui, REST API at $serverRoot")
+                                        val base = WebguiStaticServer.start(webguiDir, serverRoot)
+                                        staticServerBaseRef.set(base)
+                                        "$base/app"
+                                    } else {
+                                        appUrl
+                                    }
+
                                     SwingUtilities.invokeLater {
                                         try {
                                             val client = JBCefApp.getInstance().createClient()
@@ -204,8 +220,8 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                             mainPanel.repaint()
 
                                             // Create bridge session and build URL with bridge params
-                                            val session = IdeBridge.createSession(project)
-                                            val baseUrl = withCacheBuster(appUrl, pluginVersion())
+                                            val session = IdeBridge.createSession(project, isGuiOnly)
+                                            val baseUrl = withCacheBuster(uiBaseUrl, pluginVersion())
                                             val urlWithBridge = buildString {
                                                 append(baseUrl)
                                                 append(if ('?' in baseUrl) '&' else '?')
@@ -255,5 +271,63 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         }
     }
 
+    /**
+     * Extract bundled webgui-app resources from the JAR/classpath to a temp directory.
+     * Uses webgui-app/file-list.txt (generated at build time) to enumerate files.
+     */
+    private fun extractWebguiResources(): String {
+        val dest = File(System.getProperty("java.io.tmpdir"), "opencode-webgui")
+        runCatching {
+            val deleted = dest.deleteRecursively()
+            if (!deleted && dest.exists()) {
+                logger.warn("Could not fully delete webgui temp directory ${dest.absolutePath}, continuing")
+            }
+        }.onFailure {
+            logger.warn("Failed to delete webgui temp directory ${dest.absolutePath}, continuing", it)
+        }
 
+        runCatching {
+            val created = dest.mkdirs()
+            if (!created && !dest.exists()) {
+                logger.warn("Could not create webgui temp directory ${dest.absolutePath}, continuing")
+            }
+        }.onFailure {
+            logger.warn("Failed to create webgui temp directory ${dest.absolutePath}, continuing", it)
+        }
+
+        val listing = javaClass.classLoader.getResourceAsStream("webgui-app/file-list.txt")
+            ?.bufferedReader()
+            ?.useLines { lines ->
+                lines
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .map { it.removePrefix("./").trimStart('/').replace('\\', '/') }
+                    .toList()
+            }
+            ?: throw RuntimeException("webgui-app/file-list.txt not found in classpath")
+
+        var copied = 0
+        for (rel in listing) {
+            val input = javaClass.classLoader.getResourceAsStream("webgui-app/$rel")
+            if (input == null) {
+                logger.warn("Missing bundled webgui resource webgui-app/$rel, skipping")
+                continue
+            }
+            val target = File(dest, rel)
+            runCatching {
+                val parent = target.parentFile
+                val parentCreated = parent.mkdirs()
+                if (!parentCreated && !parent.exists()) {
+                    logger.warn("Could not create parent directory ${parent.absolutePath} for $rel, continuing")
+                }
+                input.use { src -> target.outputStream().use { out -> src.copyTo(out) } }
+                copied++
+            }.onFailure {
+                logger.warn("Failed to extract webgui resource $rel to ${target.absolutePath}, continuing", it)
+            }
+        }
+
+        logger.info("Extracted $copied/${listing.size} webgui files to ${dest.absolutePath}")
+        return dest.absolutePath
+    }
 }

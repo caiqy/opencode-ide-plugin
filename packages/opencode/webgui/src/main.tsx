@@ -13,6 +13,7 @@ import { IdeBridgeProvider } from "./state/IdeBridgeContext"
 import { ProvidersProvider } from "./state/ProvidersContext"
 import { UISettingsProvider } from "./state/UISettingsContext"
 import { initGlobalDnD } from "./lib/dnd"
+import { VersionGate } from "./components/VersionGate"
 
 window.addEventListener(
   "opencode:ui-bridge-state",
@@ -31,19 +32,21 @@ initGlobalDnD()
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
-      <ProjectProvider>
-        <SessionProvider>
-          <ToastProvider>
-            <IdeBridgeProvider>
-              <ProvidersProvider>
-                <UISettingsProvider>
-                  <App />
-                </UISettingsProvider>
-              </ProvidersProvider>
-            </IdeBridgeProvider>
-          </ToastProvider>
-        </SessionProvider>
-      </ProjectProvider>
+      <VersionGate>
+        <ProjectProvider>
+          <SessionProvider>
+            <ToastProvider>
+              <IdeBridgeProvider>
+                <ProvidersProvider>
+                  <UISettingsProvider>
+                    <App />
+                  </UISettingsProvider>
+                </ProvidersProvider>
+              </IdeBridgeProvider>
+            </ToastProvider>
+          </SessionProvider>
+        </ProjectProvider>
+      </VersionGate>
     </ErrorBoundary>
   </StrictMode>,
 )

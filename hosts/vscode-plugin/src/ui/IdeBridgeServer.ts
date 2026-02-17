@@ -1,5 +1,8 @@
 import * as http from "http"
 import * as crypto from "crypto"
+import * as fs from "fs"
+import * as path from "path"
+import * as os from "os"
 import { logger } from "../globals"
 
 export interface SessionHandlers {
@@ -13,10 +16,16 @@ export interface SessionHandlers {
   storageSet?: (key: string, value: string) => Promise<void>
 }
 
+interface SessionMetadata {
+  guiOnly?: boolean
+  minVersion?: string
+}
+
 interface Session {
   id: string
   token: string
   handlers: SessionHandlers
+  metadata: SessionMetadata
   sseClients: Set<http.ServerResponse>
 }
 
@@ -74,7 +83,7 @@ class IdeBridgeServer {
     this.sessions.clear()
   }
 
-  async createSession(handlers: SessionHandlers): Promise<{ sessionId: string; baseUrl: string; token: string }> {
+  async createSession(handlers: SessionHandlers, metadata: SessionMetadata = {}): Promise<{ sessionId: string; baseUrl: string; token: string }> {
     await this.start() // ensure server is running
 
     const sessionId = crypto.randomUUID()
@@ -84,6 +93,7 @@ class IdeBridgeServer {
       id: sessionId,
       token,
       handlers,
+      metadata,
       sseClients: new Set(),
     })
 
@@ -168,9 +178,13 @@ class IdeBridgeServer {
 
     session.sseClients.add(res)
 
-    // Send initial connected event
+    // Send initial connected event with optional metadata
     try {
-      res.write("event: connected\ndata: {}\n\n")
+      const data: Record<string, any> = {}
+      if (session.metadata.guiOnly) data.customApi = false
+      if (session.metadata.minVersion) data.minVersion = session.metadata.minVersion
+      const connected = JSON.stringify(data)
+      res.write(`event: connected\ndata: ${connected}\n\n`)
     } catch (e) {
       logger.appendLine(`IdeBridgeServer failed to init SSE: ${e}`)
     }
@@ -251,6 +265,76 @@ class IdeBridgeServer {
           break
         }
 
+        case "kv.get": {
+          const file = path.join(this.statePath(), "kv.json")
+          try {
+            if (fs.existsSync(file)) {
+              this.replyWithPayload(session, id, JSON.parse(fs.readFileSync(file, "utf-8")))
+            } else {
+              this.replyWithPayload(session, id, {})
+            }
+          } catch {
+            this.replyWithPayload(session, id, {})
+          }
+          break
+        }
+
+        case "kv.update": {
+          const dir = this.statePath()
+          const file = path.join(dir, "kv.json")
+          let existing: Record<string, any> = {}
+          try {
+            if (fs.existsSync(file)) existing = JSON.parse(fs.readFileSync(file, "utf-8"))
+          } catch {}
+          const merged = { ...existing, ...(payload ?? {}) }
+          fs.mkdirSync(dir, { recursive: true })
+          fs.writeFileSync(file, JSON.stringify(merged, null, 2))
+          this.replyWithPayload(session, id, merged)
+          break
+        }
+
+        case "model.get": {
+          const file = path.join(this.statePath(), "model.json")
+          try {
+            if (fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, "utf-8"))
+              this.replyWithPayload(session, id, {
+                recent: Array.isArray(data.recent) ? data.recent : [],
+                favorite: Array.isArray(data.favorite) ? data.favorite : [],
+                variant: typeof data.variant === "object" && data.variant !== null ? data.variant : {},
+              })
+            } else {
+              this.replyWithPayload(session, id, { recent: [], favorite: [], variant: {} })
+            }
+          } catch {
+            this.replyWithPayload(session, id, { recent: [], favorite: [], variant: {} })
+          }
+          break
+        }
+
+        case "model.update": {
+          const dir = this.statePath()
+          const file = path.join(dir, "model.json")
+          let existing = { recent: [] as any[], favorite: [] as any[], variant: {} as Record<string, string> }
+          try {
+            if (fs.existsSync(file)) {
+              const data = JSON.parse(fs.readFileSync(file, "utf-8"))
+              existing = {
+                recent: Array.isArray(data.recent) ? data.recent : [],
+                favorite: Array.isArray(data.favorite) ? data.favorite : [],
+                variant: typeof data.variant === "object" && data.variant !== null ? data.variant : {},
+              }
+            }
+          } catch {}
+          if (payload?.recent !== undefined) existing.recent = payload.recent
+          if (payload?.favorite !== undefined) existing.favorite = payload.favorite
+          if (payload?.variant !== undefined) existing.variant = { ...existing.variant, ...payload.variant }
+          fs.mkdirSync(dir, { recursive: true })
+          fs.writeFileSync(file, JSON.stringify(existing))
+          this.replyWithPayload(session, id, existing)
+          break
+        }
+
         case "uiSetState": {
           if (!session.handlers.uiSetState) {
             this.replyError(session, id, "uiSetState not supported")
@@ -306,6 +390,23 @@ class IdeBridgeServer {
       res.writeHead(400)
     }
     res.end()
+  }
+
+  private statePath(): string {
+    return path.join(process.env.XDG_STATE_HOME || path.join(os.homedir(), ".local", "state"), "opencode")
+  }
+
+  private replyWithPayload(session: Session, id: string | undefined, payload: any): void {
+    if (!id) return
+    this.broadcastSSE(
+      session,
+      JSON.stringify({
+        replyTo: id,
+        ok: true,
+        payload,
+        timestamp: Date.now(),
+      }),
+    )
   }
 
   private replyOk(session: Session, id?: string): void {

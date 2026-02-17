@@ -1,6 +1,7 @@
 package paviko.opencode.ui
 
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.ApplicationManager
@@ -13,6 +14,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
+import java.io.File
 import java.io.OutputStreamWriter
 import java.net.InetSocketAddress
 import java.net.URLDecoder
@@ -24,6 +26,7 @@ data class Session(
     val id: String,
     val token: String,
     val project: Project,
+    val guiOnly: Boolean = false,
     val sseClients: MutableSet<HttpExchange> = Collections.synchronizedSet(mutableSetOf())
 )
 
@@ -39,6 +42,14 @@ object IdeBridge {
     private val projectToSession = ConcurrentHashMap<Project, String>()
     @Volatile private var executor = Executors.newCachedThreadPool()
     private var keepaliveTimer: java.util.Timer? = null
+
+    private val minVersion: String by lazy {
+        try {
+            val props = java.util.Properties()
+            IdeBridge::class.java.getResourceAsStream("/opencode-build.properties")?.use { props.load(it) }
+            props.getProperty("opencode.min.version", "1.1.1")
+        } catch (_: Throwable) { "1.1.1" }
+    }
 
     @Synchronized
     fun start() {
@@ -67,7 +78,7 @@ object IdeBridge {
         try { executor.shutdownNow() } catch (_: Throwable) {}
     }
 
-    fun createSession(project: Project): SessionInfo {
+    fun createSession(project: Project, guiOnly: Boolean = false): SessionInfo {
         start() // ensure server is running
         
         // Remove any existing session for this project
@@ -77,7 +88,7 @@ object IdeBridge {
         
         val sessionId = UUID.randomUUID().toString()
         val token = UUID.randomUUID().toString()
-        sessions[sessionId] = Session(sessionId, token, project)
+        sessions[sessionId] = Session(sessionId, token, project, guiOnly)
         projectToSession[project] = sessionId
         
         // Start keepalive timer if not running
@@ -220,8 +231,12 @@ object IdeBridge {
         
         // Send initial connection event
         try {
+            val data = JsonObject().apply {
+                addProperty("minVersion", minVersion)
+                if (session.guiOnly) addProperty("customApi", false)
+            }
             val writer = OutputStreamWriter(exchange.responseBody)
-            writer.write("event: connected\ndata: {}\n\n")
+            writer.write("event: connected\ndata: ${gson.toJson(data)}\n\n")
             writer.flush()
         } catch (e: Exception) {
             synchronized(session.sseClients) {
@@ -293,6 +308,74 @@ object IdeBridge {
                         replyError(session, id, "Missing path")
                     }
                 }
+                "kv.get" -> {
+                    val file = File(statePath, "kv.json")
+                    val data = try {
+                        if (file.exists()) gson.fromJson(file.readText(), JsonObject::class.java) ?: JsonObject()
+                        else JsonObject()
+                    } catch (_: Throwable) { JsonObject() }
+                    replyWithPayload(session, id, data)
+                }
+
+                "kv.update" -> {
+                    val file = File(statePath, "kv.json")
+                    val existing = try {
+                        if (file.exists()) gson.fromJson(file.readText(), JsonObject::class.java) ?: JsonObject()
+                        else JsonObject()
+                    } catch (_: Throwable) { JsonObject() }
+                    payload?.entrySet()?.forEach { (k, v) -> existing.add(k, v) }
+                    statePath.mkdirs()
+                    file.writeText(gson.toJson(existing))
+                    replyWithPayload(session, id, existing)
+                }
+
+                "model.get" -> {
+                    val file = File(statePath, "model.json")
+                    val data = try {
+                        if (file.exists()) {
+                            val raw = gson.fromJson(file.readText(), JsonObject::class.java) ?: JsonObject()
+                            JsonObject().apply {
+                                add("recent", if (raw.has("recent") && raw.get("recent").isJsonArray) raw.getAsJsonArray("recent") else JsonArray())
+                                add("favorite", if (raw.has("favorite") && raw.get("favorite").isJsonArray) raw.getAsJsonArray("favorite") else JsonArray())
+                                add("variant", if (raw.has("variant") && raw.get("variant").isJsonObject) raw.getAsJsonObject("variant") else JsonObject())
+                            }
+                        } else {
+                            JsonObject().apply {
+                                add("recent", JsonArray())
+                                add("favorite", JsonArray())
+                                add("variant", JsonObject())
+                            }
+                        }
+                    } catch (_: Throwable) {
+                        JsonObject().apply {
+                            add("recent", JsonArray())
+                            add("favorite", JsonArray())
+                            add("variant", JsonObject())
+                        }
+                    }
+                    replyWithPayload(session, id, data)
+                }
+
+                "model.update" -> {
+                    val file = File(statePath, "model.json")
+                    val existing = try {
+                        if (file.exists()) gson.fromJson(file.readText(), JsonObject::class.java) ?: JsonObject()
+                        else JsonObject()
+                    } catch (_: Throwable) { JsonObject() }
+                    if (!existing.has("recent") || !existing.get("recent").isJsonArray) existing.add("recent", JsonArray())
+                    if (!existing.has("favorite") || !existing.get("favorite").isJsonArray) existing.add("favorite", JsonArray())
+                    if (!existing.has("variant") || !existing.get("variant").isJsonObject) existing.add("variant", JsonObject())
+                    if (payload?.has("recent") == true) existing.add("recent", payload.get("recent"))
+                    if (payload?.has("favorite") == true) existing.add("favorite", payload.get("favorite"))
+                    if (payload?.has("variant") == true) {
+                        val current = existing.getAsJsonObject("variant")
+                        payload.getAsJsonObject("variant").entrySet().forEach { (k, v) -> current.add(k, v) }
+                    }
+                    statePath.mkdirs()
+                    file.writeText(gson.toJson(existing))
+                    replyWithPayload(session, id, existing)
+                }
+
                 else -> replyError(session, id, "Unknown type: $type")
             }
 
@@ -302,6 +385,23 @@ object IdeBridge {
             exchange.sendResponseHeaders(400, -1)
         }
         exchange.close()
+    }
+
+    private val statePath: File
+        get() = File(
+            System.getenv("XDG_STATE_HOME") ?: "${System.getProperty("user.home")}/.local/state",
+            "opencode"
+        )
+
+    private fun replyWithPayload(session: Session, id: String?, payload: Any) {
+        if (id == null) return
+        val msg = JsonObject().apply {
+            addProperty("replyTo", id)
+            addProperty("ok", true)
+            add("payload", gson.toJsonTree(payload))
+            addProperty("timestamp", System.currentTimeMillis())
+        }
+        broadcastSSE(session, gson.toJson(msg))
     }
 
     private fun replyOk(session: Session, id: String?) {

@@ -6,6 +6,7 @@ import { ApiKeysTab } from "../settings/ApiKeysTab"
 import { ModelsTab } from "../settings/ModelsTab"
 import { AdvancedTab } from "../settings/AdvancedTab"
 import { useProviders } from "../../state/ProvidersContext.tsx"
+import { useCustomApi } from "../../state/IdeBridgeContext"
 import { useSettingsForm } from "./hooks/useSettingsForm"
 import { useUnsavedChanges } from "./hooks/useUnsavedChanges"
 import { TabBar } from "./TabBar"
@@ -24,6 +25,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const { markProvidersDirty } = useProviders()
+  const customApi = useCustomApi()
 
   const {
     formData,
@@ -39,7 +41,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     setConfiguredProviders,
     isLoading,
     error,
-  } = useSettingsForm(isOpen)
+  } = useSettingsForm(isOpen, customApi)
 
   const { hasUnsavedChanges, showCloseConfirm, setShowCloseConfirm } = useUnsavedChanges(
     formData,
@@ -98,18 +100,20 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         }
       }
 
-      // Save API keys
-      const apiKeyEntries = Object.entries(apiKeys).filter(([_, key]) => key && key.trim())
+      // Save API keys (only when custom API is available)
+      if (customApi) {
+        const apiKeyEntries = Object.entries(apiKeys).filter(([_, key]) => key && key.trim())
 
-      for (const [providerID, key] of apiKeyEntries) {
-        await sdk.auth.set(providerID, {
-          type: "api",
-          key: key.trim(),
-        })
+        for (const [providerID, key] of apiKeyEntries) {
+          await sdk.auth.set(providerID, {
+            type: "api",
+            key: key.trim(),
+          })
+        }
+
+        // Clear API keys after successful save
+        setApiKeys({})
       }
-
-      // Clear API keys after successful save
-      setApiKeys({})
 
       setSuccessMessage("设置已保存")
       markProvidersDirty()
@@ -132,7 +136,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         <div className="modern-card w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col shadow-2xl">
           <SettingsHeader onClose={handleClose} />
 
-          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          <TabBar activeTab={activeTab} onTabChange={setActiveTab} hideApiKeys={!customApi} />
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto px-3 py-3">
@@ -148,7 +152,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               <>
                 {activeTab === "general" && <GeneralTab formData={formData} setFormData={setFormData} />}
 
-                {activeTab === "api-keys" && (
+                {customApi && activeTab === "api-keys" && (
                   <ApiKeysTab
                     providers={providers}
                     configuredProviders={configuredProviders}

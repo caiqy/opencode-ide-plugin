@@ -5,6 +5,11 @@ All notable changes to the OpenCode VSCode extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec2.0.0.html).
 
+### [26.2.15] - 2026-02-15
+
+- Update OpenCode to v1.2.1
+- Release new variant of plugin with GUI only, without packaged OpenCode binaries, uses OpenCode from PATH or OPENCODE_BIN
+
 ### [26.2.8] - 2026-02-08
 
 - Favorites models

@@ -1,5 +1,6 @@
 import { useSession } from "../../state/SessionContext"
 import { useCallback } from "react"
+import { useCustomApi } from "../../state/IdeBridgeContext"
 import type { SessionErrorPart as SessionErrorPartType } from "../../types/messages"
 
 interface SessionErrorPartProps {
@@ -8,6 +9,7 @@ interface SessionErrorPartProps {
 
 export function SessionErrorPart({ part }: SessionErrorPartProps) {
   const { currentSession, retrySession, isIdle } = useSession()
+  const customApi = useCustomApi()
 
   const handleRetry = useCallback(() => {
     if (currentSession?.id) {
@@ -46,7 +48,7 @@ export function SessionErrorPart({ part }: SessionErrorPartProps) {
           </div>
         </div>
 
-        {isIdle && (
+        {isIdle && customApi && (
           <button
             onClick={handleRetry}
             className="shrink-0 flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium bg-white dark:bg-white/5 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shadow-sm"

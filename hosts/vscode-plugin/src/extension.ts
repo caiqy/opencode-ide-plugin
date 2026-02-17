@@ -83,8 +83,8 @@ class OpenCodeExtension {
     const settingsDisposable = this.settingsManager.initialize()
     this.context?.subscriptions.push(settingsDisposable)
 
-    // Initialize backend launcher
-    this.backendLauncher = new BackendLauncher()
+    // Initialize backend launcher (pass extension path for binary resolution)
+    this.backendLauncher = new BackendLauncher(this.context!.extensionUri.fsPath)
 
     // Initialize webview manager
     this.webviewManager = new WebviewManager()
