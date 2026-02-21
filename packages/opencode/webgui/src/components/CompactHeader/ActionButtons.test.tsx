@@ -13,6 +13,7 @@ describe("CompactHeader/ActionButtons", () => {
         onOpenCommandPalette={vi.fn()}
         onOpenSettings={vi.fn()}
         onNewSession={vi.fn()}
+        onToggleHistory={vi.fn()}
         isCreatingSession={false}
         isShared={false}
         isSharing={false}
@@ -21,6 +22,7 @@ describe("CompactHeader/ActionButtons", () => {
     )
 
     expect(screen.getByTitle("新建会话（Cmd/Ctrl+N）")).toBeInTheDocument()
+    expect(screen.getByTitle("历史会话")).toBeInTheDocument()
     expect(screen.getByTitle("更多选项")).toBeInTheDocument()
   })
 
@@ -34,6 +36,7 @@ describe("CompactHeader/ActionButtons", () => {
         onOpenCommandPalette={vi.fn()}
         onOpenSettings={vi.fn()}
         onNewSession={vi.fn()}
+        onToggleHistory={vi.fn()}
         isCreatingSession={false}
         isShared={false}
         isSharing={false}
@@ -59,6 +62,7 @@ describe("CompactHeader/ActionButtons", () => {
         onOpenCommandPalette={vi.fn()}
         onOpenSettings={vi.fn()}
         onNewSession={vi.fn()}
+        onToggleHistory={vi.fn()}
         isCreatingSession={false}
         isShared={true}
         isSharing={false}

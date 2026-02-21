@@ -19,6 +19,7 @@ import { extractPathsFromDrop } from "./lib/dnd"
 import { initKeyboardHandler, destroyKeyboardHandler } from "./lib/keyboardHandler"
 import { uiBridgeSubscribeSelector, type UiBridgeState } from "./state/uiBridgeState"
 import { useSessionActivation } from "./state/useSessionActivation"
+import { useTabStore } from "./state/tabStore"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 
@@ -48,6 +49,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     selectionRestoreNotice,
     clearSelectionRestoreNotice,
   } = useSession()
+  const tabStore = useTabStore()
   const { showToast } = useToast()
   const compactHeaderRef = useRef<{ toggleSessionDropdown: () => void }>(null)
   const messageInputRef = useRef<{
@@ -64,6 +66,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
 
   const [bridge, setBridge] = useState<BridgeSelections | null>(null)
   const restored = useRef({ session: false, selections: false })
+  const prevSessionId = useRef<string | null>(null)
 
   useSessionActivation()
 
@@ -87,9 +90,10 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     if (restored.current.session) return
     if (!bridge?.sessionID) return
     restored.current.session = true
+    tabStore.openTab(bridge.sessionID)
     if (bridge.sessionID === currentSession?.id) return
     void switchSession(bridge.sessionID)
-  }, [bridge?.sessionID, currentSession?.id, switchSession])
+  }, [bridge?.sessionID, currentSession?.id, switchSession, tabStore])
 
   useEffect(() => {
     if (restored.current.selections) return
@@ -106,8 +110,18 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   }, [bridge, restoreSelections])
 
   const handleNewSession = useCallback(() => {
-    newVirtual()
-  }, [newVirtual])
+    const v = newVirtual()
+    tabStore.openTab(v.id)
+  }, [newVirtual, tabStore])
+
+  useEffect(() => {
+    const prev = prevSessionId.current
+    const next = currentSession?.id || null
+    if (prev && next && prev !== next && prev.startsWith("virtual-") && !next.startsWith("virtual-")) {
+      tabStore.replaceTab(prev, next)
+    }
+    prevSessionId.current = next
+  }, [currentSession?.id, tabStore])
 
   const handleToggleSessionList = useCallback(() => {
     compactHeaderRef.current?.toggleSessionDropdown()

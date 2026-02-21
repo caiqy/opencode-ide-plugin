@@ -44,6 +44,7 @@ type ActionsMock = {
 const mocks = vi.hoisted(() => ({
   useTheme: vi.fn(),
   useSession: vi.fn(),
+  useTabStore: vi.fn(),
   useSessionDropdown: vi.fn(),
   useSessionActions: vi.fn(),
   useToast: vi.fn(),
@@ -62,6 +63,10 @@ vi.mock("../../state/SessionContext", async () => {
     useSession: (...args: unknown[]) => mocks.useSession(...args),
   }
 })
+
+vi.mock("../../state/tabStore", () => ({
+  useTabStore: (...args: unknown[]) => mocks.useTabStore(...args),
+}))
 
 vi.mock("./hooks/useSessionDropdown", () => ({
   useSessionDropdown: (...args: unknown[]) => mocks.useSessionDropdown(...args),
@@ -85,6 +90,10 @@ vi.mock("./StatusIndicator", () => ({
 
 vi.mock("./SessionDropdown", () => ({
   SessionDropdown: () => null,
+}))
+
+vi.mock("./TabBar", () => ({
+  TabBar: () => null,
 }))
 
 vi.mock("../../lib/api/sdkClient", () => ({
@@ -165,6 +174,20 @@ describe("CompactHeader", () => {
       switchSession: vi.fn(),
       updateSessionTitle: vi.fn(),
       deleteSession: vi.fn(),
+    })
+
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["s1"],
+      activeTab: "s1",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
     })
 
     mocks.useSessionDropdown.mockReturnValue(createBaseDropdownMock())

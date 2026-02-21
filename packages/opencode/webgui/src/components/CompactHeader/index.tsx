@@ -1,7 +1,7 @@
-import { useState, forwardRef, useImperativeHandle, useCallback } from "react"
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useCallback } from "react"
 import type { ConnectionState } from "../../lib/api/events"
 import { useTheme } from "../../state/ThemeContext"
-import { useSession, isDefaultTitle } from "../../state/SessionContext"
+import { useSession } from "../../state/SessionContext"
 import { ConfirmModal } from "../ConfirmModal"
 import { SettingsPanel } from "../SettingsPanel"
 import { useSessionDropdown } from "./hooks/useSessionDropdown"
@@ -9,8 +9,10 @@ import { useSessionActions } from "./hooks/useSessionActions"
 import { StatusIndicator } from "./StatusIndicator"
 import { ActionButtons } from "./ActionButtons"
 import { SessionDropdown } from "./SessionDropdown"
+import { TabBar } from "./TabBar"
 import { sdk } from "../../lib/api/sdkClient"
 import { useToast } from "../../state/ToastContext"
+import { useTabStore } from "../../state/tabStore"
 
 interface CompactHeaderProps {
   connectionState: ConnectionState
@@ -28,11 +30,13 @@ const CompactHeader = forwardRef<
   const { theme, toggleTheme } = useTheme()
   const { currentSession, setCurrentSession, sessions, setSessions, switchSession, updateSessionTitle, deleteSession } =
     useSession()
+  const tabStore = useTabStore()
   const toast = useToast()
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   const [sharingSessionId, setSharingSessionId] = useState<string | null>(null)
+  const prevSessionId = useRef<string | null>(null)
 
   const isShared = !!currentSession?.share?.url
 
@@ -124,10 +128,115 @@ const CompactHeader = forwardRef<
     [dropdown.toggleDropdown],
   )
 
-  const handleSessionSelect = async (sessionId: string) => {
-    await switchSession(sessionId)
-    dropdown.closeDropdown()
-  }
+  const handleSessionSelect = useCallback(
+    async (sessionId: string) => {
+      tabStore.openTab(sessionId)
+      await switchSession(sessionId)
+      dropdown.closeDropdown()
+    },
+    [dropdown, switchSession, tabStore],
+  )
+
+  const handleTabActivate = useCallback(
+    async (sessionId: string) => {
+      tabStore.setActiveTab(sessionId)
+      await switchSession(sessionId)
+    },
+    [switchSession, tabStore],
+  )
+
+  const handleTabClose = useCallback(
+    async (sessionId: string) => {
+      const idx = tabStore.openTabs.indexOf(sessionId)
+      if (idx < 0) return
+
+      const openTabs = tabStore.openTabs.filter((id) => id !== sessionId)
+      const activeTab =
+        tabStore.activeTab === sessionId
+          ? openTabs.length === 0
+            ? ""
+            : openTabs[Math.min(idx, openTabs.length - 1)]
+          : tabStore.activeTab
+
+      tabStore.closeTab(sessionId)
+
+      if (activeTab) {
+        await switchSession(activeTab)
+        return
+      }
+
+      onNewSession()
+    },
+    [onNewSession, switchSession, tabStore],
+  )
+
+  const handleCloseOtherTabs = useCallback(
+    async (sessionId: string) => {
+      tabStore.closeOtherTabs(sessionId)
+      await switchSession(sessionId)
+    },
+    [switchSession, tabStore],
+  )
+
+  const handleCloseTabsToRight = useCallback(
+    async (sessionId: string) => {
+      const idx = tabStore.openTabs.indexOf(sessionId)
+      if (idx < 0) return
+      const openTabs = tabStore.openTabs.slice(0, idx + 1)
+      const activeTab = openTabs.includes(tabStore.activeTab) ? tabStore.activeTab : sessionId
+
+      tabStore.closeTabsToRight(sessionId)
+      await switchSession(activeTab)
+    },
+    [switchSession, tabStore],
+  )
+
+  const handleTabDelete = useCallback(
+    (sessionId: string) => {
+      actions.setDeleteConfirm(sessionId)
+    },
+    [actions],
+  )
+
+  const handleToggleShareTab = useCallback(
+    async (sessionId: string) => {
+      const session = sessions.find((s) => s.id === sessionId)
+      if (!session) return
+
+      setSharingSessionId(sessionId)
+      const sessionIsShared = !!session.share?.url
+
+      if (sessionIsShared) {
+        const res = await sdk.session.unshare({ path: { id: sessionId } })
+        if (res.data) {
+          setSessions(sessions.map((s) => (s.id === sessionId ? res.data! : s)))
+          if (currentSession?.id === sessionId) {
+            setCurrentSession(res.data)
+          }
+          toast.showToast("已取消分享会话", { variant: "success" })
+        } else {
+          toast.showToast("取消分享会话失败", { variant: "error" })
+        }
+      } else {
+        const res = await sdk.session.share({ path: { id: sessionId } })
+        if (res.data) {
+          setSessions(sessions.map((s) => (s.id === sessionId ? res.data! : s)))
+          if (currentSession?.id === sessionId) {
+            setCurrentSession(res.data)
+          }
+          if (res.data.share?.url) {
+            await navigator.clipboard.writeText(res.data.share.url)
+            toast.showToast("分享链接已复制到剪贴板", { variant: "success" })
+          }
+        } else {
+          toast.showToast("分享会话失败", { variant: "error" })
+        }
+      }
+
+      setSharingSessionId(null)
+    },
+    [currentSession?.id, sessions, setCurrentSession, setSessions, toast],
+  )
 
   const handleDeleteConfirm = () => {
     actions.handleDeleteConfirm(actions.deleteConfirm, dropdown.selectedSessions, () => {
@@ -145,30 +254,78 @@ const CompactHeader = forwardRef<
     dropdown.setIsDropdownOpen(false)
   }
 
-  const currentTitle = currentSession?.title || "新建会话"
-  const truncatedTitle = currentTitle.length > 30 ? currentTitle.slice(0, 30) + "..." : currentTitle
-  const currentHasDefaultTitle = isDefaultTitle(currentTitle)
+  useEffect(() => {
+    if (!tabStore.loaded) return
+    if (tabStore.openTabs.length > 0) return
+
+    if (currentSession?.id) {
+      tabStore.openTab(currentSession.id)
+      return
+    }
+
+    onNewSession()
+  }, [currentSession?.id, onNewSession, tabStore])
+
+  useEffect(() => {
+    if (!tabStore.loaded) return
+    if (!currentSession?.id) return
+    if (tabStore.openTabs.includes(currentSession.id)) return
+    tabStore.openTab(currentSession.id)
+  }, [currentSession?.id, tabStore])
+
+  useEffect(() => {
+    const prev = prevSessionId.current
+    const next = currentSession?.id || null
+    if (prev && next && prev !== next && prev.startsWith("virtual-") && !next.startsWith("virtual-")) {
+      tabStore.replaceTab(prev, next)
+    }
+    prevSessionId.current = next
+  }, [currentSession?.id, tabStore])
 
   return (
     <>
       <header className="h-9 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex items-center justify-between px-2 flex-shrink-0 relative">
-        {/* Left: Session dropdown */}
-        <div className="flex items-center gap-1.5" ref={dropdown.dropdownRef}>
-          <button
-            onClick={dropdown.toggleDropdown}
-            className={`flex items-center gap-1 text-sm hover:text-gray-900 dark:hover:text-gray-100 ${
-              currentHasDefaultTitle ? "text-gray-500 dark:text-gray-500 italic" : "text-gray-700 dark:text-gray-300"
-            }`}
-            title={currentTitle}
-            data-tip={currentTitle}
-          >
-            <span>{currentSession ? truncatedTitle : "暂无会话"}</span>
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+        <TabBar
+          openTabs={tabStore.openTabs}
+          activeTab={tabStore.activeTab}
+          onActivate={(id) => {
+            void handleTabActivate(id)
+          }}
+          onClose={(id) => {
+            void handleTabClose(id)
+          }}
+          onReorder={tabStore.reorderTabs}
+          onCloseOtherTabs={(id) => {
+            void handleCloseOtherTabs(id)
+          }}
+          onCloseTabsToRight={(id) => {
+            void handleCloseTabsToRight(id)
+          }}
+          onRename={(id, title) => {
+            void updateSessionTitle(id, title)
+          }}
+          onDelete={handleTabDelete}
+          onToggleShare={(id) => {
+            void handleToggleShareTab(id)
+          }}
+        />
 
-          {/* Dropdown menu */}
+        {/* Right: Connection status, theme toggle, and new session button */}
+        <div className="flex items-center gap-1" ref={dropdown.dropdownRef}>
+          <StatusIndicator connectionState={connectionState} />
+          <ActionButtons
+            theme={theme}
+            toggleTheme={toggleTheme}
+            onOpenCommandPalette={onOpenCommandPalette}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+            onNewSession={onNewSession}
+            onToggleHistory={dropdown.toggleDropdown}
+            isCreatingSession={isCreatingSession}
+            isShared={isShared}
+            isSharing={isSharing}
+            onToggleShare={handleToggleShare}
+          />
+
           <SessionDropdown
             sessions={sessions}
             currentSessionId={currentSession?.id}
@@ -198,22 +355,6 @@ const CompactHeader = forwardRef<
             onCheckboxChange={dropdown.handleSessionCheckboxChange}
             onKeyDown={(e) => dropdown.handleKeyDown(e, handleSessionSelect)}
             onToggleShare={handleToggleShareSession}
-          />
-        </div>
-
-        {/* Right: Connection status, theme toggle, and new session button */}
-        <div className="flex items-center gap-1">
-          <StatusIndicator connectionState={connectionState} />
-          <ActionButtons
-            theme={theme}
-            toggleTheme={toggleTheme}
-            onOpenCommandPalette={onOpenCommandPalette}
-            onOpenSettings={() => setIsSettingsOpen(true)}
-            onNewSession={onNewSession}
-            isCreatingSession={isCreatingSession}
-            isShared={isShared}
-            isSharing={isSharing}
-            onToggleShare={handleToggleShare}
           />
         </div>
       </header>
