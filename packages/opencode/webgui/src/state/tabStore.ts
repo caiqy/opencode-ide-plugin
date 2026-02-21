@@ -141,6 +141,7 @@ export function useTabStore() {
 
   const setActiveTab = useCallback(
     (sessionId: string) => {
+      if (!ref.current.openTabs.includes(sessionId)) return
       save({
         openTabs: ref.current.openTabs,
         activeTab: sessionId,
@@ -172,6 +173,15 @@ export function useTabStore() {
     (oldId: string, newId: string) => {
       const index = ref.current.openTabs.indexOf(oldId)
       if (index < 0) return
+      if (oldId === newId) return
+
+      if (ref.current.openTabs.includes(newId)) {
+        save({
+          openTabs: ref.current.openTabs.filter((id) => id !== oldId),
+          activeTab: ref.current.activeTab === oldId ? newId : ref.current.activeTab,
+        })
+        return
+      }
 
       save({
         openTabs: ref.current.openTabs.map((id, i) => (i === index ? newId : id)),

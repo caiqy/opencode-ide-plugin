@@ -16,12 +16,16 @@ import { sdk } from "../lib/api/sdkClient"
 import { useTabStore } from "./tabStore"
 
 const key = "webgui_tabs"
+type KvGetResult = Awaited<ReturnType<typeof sdk.kv.get>>
+type KvUpdateResult = Awaited<ReturnType<typeof sdk.kv.update>>
 
 describe("useTabStore", () => {
   beforeEach(() => {
+    const get = vi.mocked(sdk.kv.get)
+    const update = vi.mocked(sdk.kv.update)
     vi.resetAllMocks()
-    ;(sdk.kv.get as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.kv.update as any).mockResolvedValue({ data: {}, error: null })
+    get.mockResolvedValue({ data: {}, error: null } satisfies KvGetResult)
+    update.mockResolvedValue({ data: {}, error: null } satisfies KvUpdateResult)
   })
 
   afterEach(() => {
@@ -29,7 +33,7 @@ describe("useTabStore", () => {
   })
 
   it("loads persisted tabs on mount", async () => {
-    ;(sdk.kv.get as any).mockResolvedValue({
+    vi.mocked(sdk.kv.get).mockResolvedValue({
       data: {
         [key]: {
           openTabs: ["s1", "s2"],
@@ -37,7 +41,7 @@ describe("useTabStore", () => {
         },
       },
       error: null,
-    })
+    } satisfies KvGetResult)
 
     const { result } = renderHook(() => useTabStore())
 
@@ -53,7 +57,7 @@ describe("useTabStore", () => {
   })
 
   it("falls back to empty state when persisted data is invalid", async () => {
-    ;(sdk.kv.get as any).mockResolvedValue({
+    vi.mocked(sdk.kv.get).mockResolvedValue({
       data: {
         [key]: {
           openTabs: ["s1", 2],
@@ -61,7 +65,7 @@ describe("useTabStore", () => {
         },
       },
       error: null,
-    })
+    } as KvGetResult)
 
     const { result } = renderHook(() => useTabStore())
 
@@ -185,6 +189,22 @@ describe("useTabStore", () => {
     expect(result.current.activeTab).toBe("s1")
   })
 
+  it("setActiveTab ignores ids that are not open", async () => {
+    const { result } = renderHook(() => useTabStore())
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    act(() => {
+      result.current.openTab("s1")
+      result.current.setActiveTab("missing")
+    })
+
+    expect(result.current.openTabs).toEqual(["s1"])
+    expect(result.current.activeTab).toBe("s1")
+  })
+
   it("replaceTab keeps position and updates active when needed", async () => {
     const { result } = renderHook(() => useTabStore())
 
@@ -207,6 +227,24 @@ describe("useTabStore", () => {
     })
 
     expect(result.current.activeTab).toBe("s1-real")
+  })
+
+  it("replaceTab removes old id when new id already exists", async () => {
+    const { result } = renderHook(() => useTabStore())
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    act(() => {
+      result.current.openTab("old")
+      result.current.openTab("new")
+      result.current.setActiveTab("old")
+      result.current.replaceTab("old", "new")
+    })
+
+    expect(result.current.openTabs).toEqual(["new"])
+    expect(result.current.activeTab).toBe("new")
   })
 
   it("closeOtherTabs and closeTabsToRight keep the right tabs", async () => {
@@ -248,7 +286,7 @@ describe("useTabStore", () => {
       result.current.openTab("s2")
       result.current.openTab("s3")
     })
-    ;(sdk.kv.update as any).mockClear()
+    vi.mocked(sdk.kv.update).mockClear()
 
     act(() => {
       result.current.reorderTabs(2, 0)
