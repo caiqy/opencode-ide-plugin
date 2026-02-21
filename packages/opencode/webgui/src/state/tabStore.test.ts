@@ -21,8 +21,8 @@ type KvUpdateResult = Awaited<ReturnType<typeof sdk.kv.update>>
 
 describe("useTabStore", () => {
   beforeEach(() => {
-    const get = vi.mocked(sdk.kv.get)
-    const update = vi.mocked(sdk.kv.update)
+    const get = sdk.kv.get as ReturnType<typeof vi.fn>
+    const update = sdk.kv.update as ReturnType<typeof vi.fn>
     vi.resetAllMocks()
     get.mockResolvedValue({ data: {}, error: null } satisfies KvGetResult)
     update.mockResolvedValue({ data: {}, error: null } satisfies KvUpdateResult)
@@ -33,7 +33,7 @@ describe("useTabStore", () => {
   })
 
   it("loads persisted tabs on mount", async () => {
-    vi.mocked(sdk.kv.get).mockResolvedValue({
+    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         [key]: {
           openTabs: ["s1", "s2"],
@@ -57,7 +57,7 @@ describe("useTabStore", () => {
   })
 
   it("falls back to empty state when persisted data is invalid", async () => {
-    vi.mocked(sdk.kv.get).mockResolvedValue({
+    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         [key]: {
           openTabs: ["s1", 2],
@@ -286,7 +286,7 @@ describe("useTabStore", () => {
       result.current.openTab("s2")
       result.current.openTab("s3")
     })
-    vi.mocked(sdk.kv.update).mockClear()
+    ;(sdk.kv.update as ReturnType<typeof vi.fn>).mockClear()
 
     act(() => {
       result.current.reorderTabs(2, 0)
