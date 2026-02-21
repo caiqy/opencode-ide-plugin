@@ -87,6 +87,47 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     return next
   }, [part.tool, part.state.metadata])
 
+  const lineRange = useMemo(() => {
+    if (part.tool !== "read") return undefined
+
+    const output = part.state.output || ""
+    const isCompleted = part.state.status === "completed"
+
+    if (isCompleted) {
+      if (output.includes("<type>directory</type>")) return undefined
+
+      const contentMatch = output.match(/<content>\n?([\s\S]*?)\n?<\/content>/)
+      if (contentMatch) {
+        const lines = contentMatch[1].trim().split("\n")
+        let firstLineMatch = null
+        for (let i = 0; i < lines.length; i++) {
+          const match = lines[i]?.match(/^(\d+):/)
+          if (match) {
+            firstLineMatch = match
+            break
+          }
+        }
+        let lastLineMatch = null
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const match = lines[i]?.match(/^(\d+):/)
+          if (match) {
+            lastLineMatch = match
+            break
+          }
+        }
+
+        if (firstLineMatch && lastLineMatch) {
+          return `(${firstLineMatch[1]}-${lastLineMatch[1]} 行)`
+        }
+      }
+      return undefined
+    }
+
+    const offset = Number(part.state.input?.offset) || 1
+    const limit = Number(part.state.input?.limit) || 2000
+    return `(${offset}-${offset + limit - 1} 行)`
+  }, [part.tool, part.state.input, part.state.output, part.state.status])
+
   const showOutput = part.state.status === "completed" && Boolean(part.state.output)
   const showWriteContent =
     part.tool === "write" && part.state.status === "completed" && Boolean(part.state.input?.content)
@@ -236,6 +277,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
         onToggle={() => open.toggle(part.id)}
         time={part.state.time}
         rightActions={rightActions}
+        lineRange={lineRange}
       />
 
       {/* Expanded content */}

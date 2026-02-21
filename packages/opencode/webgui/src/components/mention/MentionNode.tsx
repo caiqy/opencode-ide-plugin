@@ -189,7 +189,9 @@ function MentionComponent({ metadata }: MentionComponentProps) {
     }
   }
 
-  const clickableClasses = isFileLike ? "cursor-pointer transition-colors hover:underline decoration-dotted" : ""
+  const clickableClasses = isFileLike
+    ? "cursor-pointer transition-colors hover:underline underline-offset-[3px] decoration-solid"
+    : ""
 
   return (
     <span

@@ -78,7 +78,7 @@ export function PatchPart({ part, sessionID, messageID }: PatchPartProps) {
                   if (e.key !== "Enter" && e.key !== " ") return
                   handleOpenSingle(e)
                 }}
-                className="underline decoration-dotted cursor-pointer hover:opacity-80"
+                className="underline underline-offset-[3px] decoration-solid cursor-pointer hover:opacity-80"
                 title={single.display}
                 data-tip={single.display}
               >
@@ -133,7 +133,7 @@ export function PatchPart({ part, sessionID, messageID }: PatchPartProps) {
                         if (e.key !== "Enter" && e.key !== " ") return
                         open(entry)
                       }}
-                      className="font-mono text-gray-700 dark:text-gray-300 underline decoration-dotted cursor-pointer hover:opacity-80"
+                      className="font-mono text-gray-700 dark:text-gray-300 underline underline-offset-[3px] decoration-solid cursor-pointer hover:opacity-80"
                       title={entry.display}
                       data-tip={entry.display}
                     >

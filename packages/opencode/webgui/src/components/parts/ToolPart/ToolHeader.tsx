@@ -16,6 +16,7 @@ interface ToolHeaderProps {
   onToggle: () => void
   time?: { start: number; end?: number }
   rightActions?: ReactNode
+  lineRange?: string
 }
 
 function getFileName(path: string): string {
@@ -33,6 +34,7 @@ export function ToolHeader({
   onToggle,
   time,
   rightActions,
+  lineRange,
 }: ToolHeaderProps) {
   const openFile = useOpenFile()
   const { worktree } = useProject()
@@ -99,17 +101,20 @@ export function ToolHeader({
         <span className="text-xs font-medium flex-1 min-w-0 truncate">
           {`${toolLabel}：`}
           {showFileLink && filePath ? (
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(e) => handleOpenPath(filePath, e)}
-              onKeyDown={(e) => handlePathKeyDown(filePath, e)}
-              className="underline decoration-dotted cursor-pointer hover:opacity-80"
-              title={displayPath || filePath}
-              data-tip={displayPath || filePath}
-            >
-              {fileName}
-            </span>
+            <>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => handleOpenPath(filePath, e)}
+                onKeyDown={(e) => handlePathKeyDown(filePath, e)}
+                className="underline underline-offset-[3px] decoration-solid cursor-pointer hover:opacity-80"
+                title={displayPath || filePath}
+                data-tip={displayPath || filePath}
+              >
+                {fileName}
+              </span>
+              {lineRange && <span className="text-gray-500 dark:text-gray-400 ml-1.5 font-normal">{lineRange}</span>}
+            </>
           ) : null}
           {showPatchFileLinks
             ? normalizedPatchPaths.map((path, index) => (
@@ -120,7 +125,7 @@ export function ToolHeader({
                     tabIndex={0}
                     onClick={(e) => handleOpenPath(path, e)}
                     onKeyDown={(e) => handlePathKeyDown(path, e)}
-                    className="underline decoration-dotted cursor-pointer hover:opacity-80"
+                    className="underline underline-offset-[3px] decoration-solid cursor-pointer hover:opacity-80"
                     title={resolveDisplayPath(path)}
                     data-tip={resolveDisplayPath(path)}
                   >
@@ -138,11 +143,7 @@ export function ToolHeader({
       )}
 
       {rightActions && (
-        <div
-          className="flex-shrink-0"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-        >
+        <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
           {rightActions}
         </div>
       )}
