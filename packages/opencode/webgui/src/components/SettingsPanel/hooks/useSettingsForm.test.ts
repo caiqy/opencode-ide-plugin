@@ -6,7 +6,7 @@ vi.mock("../../../lib/api/sdkClient", () => {
     sdk: {
       config: {
         get: vi.fn(),
-        allProviders: vi.fn(),
+        providers: vi.fn(),
       },
       auth: {
         list: vi.fn(),
@@ -25,7 +25,7 @@ describe("useSettingsForm migration", () => {
 
   it("settings form loads providers from provider.list all[]", async () => {
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.config.allProviders as any).mockResolvedValue({
+    ;(sdk.config.providers as any).mockResolvedValue({
       data: {
         providers: [
           { id: "zeta", name: "Zeta", models: {}, source: {}, options: {} },
@@ -46,7 +46,7 @@ describe("useSettingsForm migration", () => {
 
   it("configuredProviders derived from connected[] compatibility mapping", async () => {
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.config.allProviders as any).mockResolvedValue({
+    ;(sdk.config.providers as any).mockResolvedValue({
       data: { providers: [], default: {} },
       error: null,
     })

@@ -20,6 +20,10 @@ vi.mock("../../state/ProvidersContext.tsx", () => ({
   }),
 }))
 
+vi.mock("../../state/IdeBridgeContext", () => ({
+  useCustomApi: () => true,
+}))
+
 import { SettingsPanel } from "./index"
 
 describe("SettingsPanel", () => {
