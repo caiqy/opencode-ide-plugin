@@ -1,0 +1,217 @@
+import { useCallback, useEffect, useRef, useState } from "react"
+import { sdk } from "../lib/api/sdkClient"
+
+const key = "webgui_tabs"
+const delay = 500
+
+type TabState = {
+  openTabs: string[]
+  activeTab: string
+}
+
+const empty: TabState = {
+  openTabs: [],
+  activeTab: "",
+}
+
+function parse(input: unknown) {
+  if (!input || typeof input !== "object") return null
+  if (!Array.isArray((input as { openTabs?: unknown }).openTabs)) return null
+  if (!(input as { openTabs: unknown[] }).openTabs.every((id) => typeof id === "string")) return null
+  if (typeof (input as { activeTab?: unknown }).activeTab !== "string") return null
+
+  return {
+    openTabs: (input as { openTabs: string[] }).openTabs,
+    activeTab: (input as { activeTab: string }).activeTab,
+  }
+}
+
+function store(next: TabState) {
+  void sdk.kv
+    .update({
+      body: {
+        [key]: next,
+      },
+    })
+    .catch(() => {})
+}
+
+export function useTabStore() {
+  const [state, setState] = useState(empty)
+  const [loaded, setLoaded] = useState(false)
+  const ref = useRef(state)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const save = useCallback((next: TabState) => {
+    ref.current = next
+    setState(next)
+    store(next)
+  }, [])
+
+  const saveDebounced = useCallback((next: TabState) => {
+    ref.current = next
+    setState(next)
+    if (timer.current) {
+      clearTimeout(timer.current)
+    }
+    timer.current = setTimeout(() => {
+      store(ref.current)
+      timer.current = null
+    }, delay)
+  }, [])
+
+  useEffect(() => {
+    let live = true
+    void sdk.kv
+      .get()
+      .then((res) => {
+        if (!live) return
+        const next = parse(res.data?.[key])
+        if (next) {
+          ref.current = next
+          setState(next)
+        }
+        setLoaded(true)
+      })
+      .catch(() => {
+        if (!live) return
+        setLoaded(true)
+      })
+
+    return () => {
+      live = false
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) {
+        clearTimeout(timer.current)
+      }
+    }
+  }, [])
+
+  const openTab = useCallback(
+    (sessionId: string) => {
+      const next = {
+        openTabs: ref.current.openTabs.includes(sessionId)
+          ? ref.current.openTabs
+          : [...ref.current.openTabs, sessionId],
+        activeTab: sessionId,
+      }
+      save(next)
+    },
+    [save],
+  )
+
+  const closeTab = useCallback(
+    (sessionId: string) => {
+      const index = ref.current.openTabs.indexOf(sessionId)
+      if (index < 0) return
+
+      const openTabs = ref.current.openTabs.filter((id) => id !== sessionId)
+      const activeTab =
+        ref.current.activeTab === sessionId
+          ? openTabs.length === 0
+            ? ""
+            : openTabs[Math.min(index, openTabs.length - 1)]
+          : ref.current.activeTab
+
+      save({
+        openTabs,
+        activeTab,
+      })
+    },
+    [save],
+  )
+
+  const removeTab = useCallback(
+    (sessionId: string) => {
+      if (!ref.current.openTabs.includes(sessionId)) return
+      save({
+        openTabs: ref.current.openTabs.filter((id) => id !== sessionId),
+        activeTab: ref.current.activeTab,
+      })
+    },
+    [save],
+  )
+
+  const setActiveTab = useCallback(
+    (sessionId: string) => {
+      save({
+        openTabs: ref.current.openTabs,
+        activeTab: sessionId,
+      })
+    },
+    [save],
+  )
+
+  const reorderTabs = useCallback(
+    (from: number, to: number) => {
+      if (from === to) return
+      if (from < 0 || to < 0) return
+      if (from >= ref.current.openTabs.length || to >= ref.current.openTabs.length) return
+
+      const openTabs = [...ref.current.openTabs]
+      const moved = openTabs[from]
+      openTabs.splice(from, 1)
+      openTabs.splice(to, 0, moved)
+
+      saveDebounced({
+        openTabs,
+        activeTab: ref.current.activeTab,
+      })
+    },
+    [saveDebounced],
+  )
+
+  const replaceTab = useCallback(
+    (oldId: string, newId: string) => {
+      const index = ref.current.openTabs.indexOf(oldId)
+      if (index < 0) return
+
+      save({
+        openTabs: ref.current.openTabs.map((id, i) => (i === index ? newId : id)),
+        activeTab: ref.current.activeTab === oldId ? newId : ref.current.activeTab,
+      })
+    },
+    [save],
+  )
+
+  const closeOtherTabs = useCallback(
+    (keepId: string) => {
+      if (!ref.current.openTabs.includes(keepId)) return
+      save({
+        openTabs: [keepId],
+        activeTab: keepId,
+      })
+    },
+    [save],
+  )
+
+  const closeTabsToRight = useCallback(
+    (id: string) => {
+      const index = ref.current.openTabs.indexOf(id)
+      if (index < 0) return
+      save({
+        openTabs: ref.current.openTabs.slice(0, index + 1),
+        activeTab: ref.current.activeTab,
+      })
+    },
+    [save],
+  )
+
+  return {
+    openTabs: state.openTabs,
+    activeTab: state.activeTab,
+    loaded,
+    openTab,
+    closeTab,
+    removeTab,
+    setActiveTab,
+    reorderTabs,
+    replaceTab,
+    closeOtherTabs,
+    closeTabsToRight,
+  }
+}
