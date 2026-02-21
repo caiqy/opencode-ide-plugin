@@ -115,6 +115,27 @@ const allTargets: {
     arch: "x64",
   },
   {
+    os: "linux",
+    arch: "x64",
+    avx2: false,
+  },
+  {
+    os: "linux",
+    arch: "arm64",
+    abi: "musl",
+  },
+  {
+    os: "linux",
+    arch: "x64",
+    abi: "musl",
+  },
+  {
+    os: "linux",
+    arch: "x64",
+    abi: "musl",
+    avx2: false,
+  },
+  {
     os: "darwin",
     arch: "arm64",
   },
@@ -123,8 +144,18 @@ const allTargets: {
     arch: "x64",
   },
   {
+    os: "darwin",
+    arch: "x64",
+    avx2: false,
+  },
+  {
     os: "win32",
     arch: "x64",
+  },
+  {
+    os: "win32",
+    arch: "x64",
+    avx2: false,
   },
 ]
 
@@ -186,7 +217,6 @@ for (const item of targets) {
     compile: {
       autoloadBunfig: false,
       autoloadDotenv: false,
-      //@ts-ignore (bun types aren't up to date)
       autoloadTsconfig: true,
       autoloadPackageJson: true,
       target: name.replace(pkg.name, "bun") as any,
@@ -229,7 +259,7 @@ if (Script.release) {
       await $`zip -r ../../${key}.zip *`.cwd(`dist/${key}/bin`)
     }
   }
-  await $`gh release upload v${Script.version} ./dist/*.zip ./dist/*.tar.gz --clobber`
+  await $`gh release upload v${Script.version} ./dist/*.zip ./dist/*.tar.gz --clobber --repo ${process.env.GH_REPO}`
 }
 
 export { binaries }
