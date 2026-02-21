@@ -128,9 +128,12 @@ export function useTabStore() {
   const removeTab = useCallback(
     (sessionId: string) => {
       if (!ref.current.openTabs.includes(sessionId)) return
+      const openTabs = ref.current.openTabs.filter((id) => id !== sessionId)
+      const activeTab =
+        ref.current.activeTab === sessionId ? openTabs[openTabs.length - 1] || "" : ref.current.activeTab
       save({
-        openTabs: ref.current.openTabs.filter((id) => id !== sessionId),
-        activeTab: ref.current.activeTab,
+        openTabs,
+        activeTab,
       })
     },
     [save],
@@ -193,9 +196,11 @@ export function useTabStore() {
     (id: string) => {
       const index = ref.current.openTabs.indexOf(id)
       if (index < 0) return
+      const openTabs = ref.current.openTabs.slice(0, index + 1)
+      const activeTab = openTabs.includes(ref.current.activeTab) ? ref.current.activeTab : id
       save({
-        openTabs: ref.current.openTabs.slice(0, index + 1),
-        activeTab: ref.current.activeTab,
+        openTabs,
+        activeTab,
       })
     },
     [save],

@@ -151,7 +151,7 @@ describe("useTabStore", () => {
     expect(result.current.activeTab).toBe("s2")
   })
 
-  it("removeTab removes silently without switching active", async () => {
+  it("removeTab switches active to last remaining tab when active is removed", async () => {
     const { result } = renderHook(() => useTabStore())
 
     await waitFor(() => {
@@ -165,7 +165,7 @@ describe("useTabStore", () => {
     })
 
     expect(result.current.openTabs).toEqual(["s1"])
-    expect(result.current.activeTab).toBe("s2")
+    expect(result.current.activeTab).toBe("s1")
   })
 
   it("setActiveTab persists active tab without reordering", async () => {
@@ -224,7 +224,7 @@ describe("useTabStore", () => {
     })
 
     expect(result.current.openTabs).toEqual(["s1", "s2"])
-    expect(result.current.activeTab).toBe("s3")
+    expect(result.current.activeTab).toBe("s2")
 
     act(() => {
       result.current.closeOtherTabs("s2")
