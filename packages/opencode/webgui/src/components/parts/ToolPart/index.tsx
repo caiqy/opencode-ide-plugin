@@ -94,7 +94,8 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     const isCompleted = part.state.status === "completed"
 
     if (isCompleted) {
-      if (output.includes("<type>directory</type>")) return undefined
+      const type = output.match(/<type>\s*([^<]+?)\s*<\/type>/)?.[1]
+      if (type === "directory") return undefined
 
       const contentMatch = output.match(/<content>\n?([\s\S]*?)\n?<\/content>/)
       if (contentMatch) {

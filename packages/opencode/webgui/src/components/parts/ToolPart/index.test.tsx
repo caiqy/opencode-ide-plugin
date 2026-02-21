@@ -165,4 +165,25 @@ describe("ToolPart", () => {
 
     expect(screen.getByText("委派子任务：Demo Task [ 2 工具调用 / 已完成 ]")).toBeInTheDocument()
   })
+
+  it("read 文件输出包含 type 文本片段时仍显示行号范围", () => {
+    const part = {
+      id: "p5",
+      type: "tool",
+      callID: "c5",
+      tool: "read",
+      state: {
+        status: "completed",
+        input: { filePath: "/tmp/a.ts" },
+        output:
+          '<path>/tmp/a.ts</path>\n<type>file</type>\n<content>\n1: const x = "<type>directory</type>"\n2: export {}\n\n(End of file - total 2 lines)\n</content>',
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("查看：")).toBeInTheDocument()
+    expect(screen.getByText("a.ts")).toBeInTheDocument()
+    expect(screen.getByText("(1-2 行)")).toBeInTheDocument()
+  })
 })
