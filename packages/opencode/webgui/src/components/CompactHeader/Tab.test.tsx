@@ -41,4 +41,52 @@ describe("CompactHeader/Tab", () => {
     const { container } = render(<Tab {...props({ isBusy: true })} />)
     expect(container.querySelector(".bg-yellow-500")).toBeTruthy()
   })
+
+  it("enters edit mode when isRenaming becomes true", () => {
+    const p = props({ title: "old title", isRenaming: false })
+    const { rerender } = render(<Tab {...p} />)
+
+    expect(screen.queryByDisplayValue("old title")).not.toBeInTheDocument()
+
+    rerender(<Tab {...p} isRenaming />)
+
+    expect(screen.getByDisplayValue("old title")).toBeInTheDocument()
+  })
+
+  it("trims title and signals rename complete on save", () => {
+    const p = props({ title: "old title", onRenameComplete: vi.fn() })
+    render(<Tab {...p} />)
+
+    fireEvent.doubleClick(screen.getByTitle("old title"))
+    const input = screen.getByDisplayValue("old title")
+    fireEvent.change(input, { target: { value: "  new title  " } })
+    fireEvent.keyDown(input, { key: "Enter" })
+
+    expect(p.onRenameComplete).toHaveBeenCalledTimes(1)
+    expect(p.onRename).toHaveBeenCalledWith("new title")
+  })
+
+  it("does not rename when trimmed title is empty", () => {
+    const p = props({ title: "old title", onRenameComplete: vi.fn() })
+    render(<Tab {...p} />)
+
+    fireEvent.doubleClick(screen.getByTitle("old title"))
+    const input = screen.getByDisplayValue("old title")
+    fireEvent.change(input, { target: { value: "   " } })
+    fireEvent.keyDown(input, { key: "Enter" })
+
+    expect(p.onRenameComplete).toHaveBeenCalledTimes(1)
+    expect(p.onRename).not.toHaveBeenCalled()
+  })
+
+  it("signals rename complete when canceling edit", () => {
+    const p = props({ title: "old title", onRenameComplete: vi.fn() })
+    render(<Tab {...p} />)
+
+    fireEvent.doubleClick(screen.getByTitle("old title"))
+    fireEvent.keyDown(screen.getByDisplayValue("old title"), { key: "Escape" })
+
+    expect(p.onRenameComplete).toHaveBeenCalledTimes(1)
+    expect(p.onRename).not.toHaveBeenCalled()
+  })
 })

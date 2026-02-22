@@ -282,6 +282,16 @@ const CompactHeader = forwardRef<
     prevSessionId.current = next
   }, [currentSession?.id, tabStore])
 
+  useEffect(() => {
+    if (!tabStore.loaded) return
+    const ids = new Set(sessions.map((s) => s.id))
+    for (const tabId of tabStore.openTabs) {
+      if (!tabId.startsWith("virtual-") && !ids.has(tabId)) {
+        tabStore.removeTab(tabId)
+      }
+    }
+  }, [sessions, tabStore.loaded])
+
   return (
     <>
       <header className="h-9 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex items-center justify-between px-2 flex-shrink-0 relative">

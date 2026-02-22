@@ -61,6 +61,27 @@ describe("useTabStore", () => {
     expect(sdk.kv.get).toHaveBeenCalledTimes(1)
   })
 
+  it("normalizes persisted active tab when id is missing", async () => {
+    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        [key]: {
+          openTabs: ["s1", "s2"],
+          activeTab: "missing",
+        },
+      },
+      error: null,
+    } satisfies KvGetResult)
+
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    expect(result.current.openTabs).toEqual(["s1", "s2"])
+    expect(result.current.activeTab).toBe("s2")
+  })
+
   it("falls back to empty state when persisted data is invalid", async () => {
     ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {

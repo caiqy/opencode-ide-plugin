@@ -75,8 +75,15 @@ function useTabStoreInternal() {
       .get()
       .then((res) => {
         if (!live) return
-        const next = parse(res.data?.[key])
-        if (next) {
+        const data = parse(res.data?.[key])
+        if (data) {
+          const tabs = data.openTabs
+          const active = data.activeTab
+          const validActive = tabs.includes(active) ? active : tabs[tabs.length - 1] || ""
+          const next = {
+            openTabs: tabs,
+            activeTab: validActive,
+          }
           ref.current = next
           setState(next)
         }

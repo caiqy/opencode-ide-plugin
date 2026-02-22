@@ -84,4 +84,15 @@ describe("CompactHeader/TabBar", () => {
     expect(openSpy).not.toHaveBeenCalled()
     openSpy.mockRestore()
   })
+
+  it("starts inline rename from context menu action", () => {
+    const p = props()
+    render(<TabBar {...p} />)
+
+    fireEvent.contextMenu(screen.getByTitle("会话 1"), { clientX: 24, clientY: 28 })
+    fireEvent.click(screen.getByRole("button", { name: "重命名" }))
+
+    expect(screen.getByDisplayValue("会话 1")).toBeInTheDocument()
+    expect(p.onRename).not.toHaveBeenCalled()
+  })
 })

@@ -17,6 +17,8 @@ interface TabProps {
   onDrop: (e: React.DragEvent) => void
   onDragEnd: () => void
   isDragOver: "left" | "right" | null
+  isRenaming?: boolean
+  onRenameComplete?: () => void
 }
 
 export function Tab({
@@ -34,6 +36,8 @@ export function Tab({
   onDrop,
   onDragEnd,
   isDragOver,
+  isRenaming,
+  onRenameComplete,
 }: TabProps) {
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(title)
@@ -54,22 +58,34 @@ export function Tab({
     setEditValue(title)
   }, [title, editing])
 
+  const startEdit = useCallback(() => {
+    setEditValue(title)
+    setEditing(true)
+  }, [title])
+
+  useEffect(() => {
+    if (!isRenaming) return
+    startEdit()
+  }, [isRenaming, startEdit])
+
   const saveEdit = useCallback(() => {
+    const trimmed = editValue.trim()
     setEditing(false)
-    if (editValue !== title) {
-      onRename(editValue)
+    onRenameComplete?.()
+    if (trimmed && trimmed !== displayTitle) {
+      onRename(trimmed)
     }
-  }, [editValue, onRename, title])
+  }, [displayTitle, editValue, onRename, onRenameComplete])
 
   const cancelEdit = useCallback(() => {
     setEditValue(title)
     setEditing(false)
-  }, [title])
+    onRenameComplete?.()
+  }, [onRenameComplete, title])
 
   const handleDoubleClick = useCallback(() => {
-    setEditValue(title)
-    setEditing(true)
-  }, [title])
+    startEdit()
+  }, [startEdit])
 
   const handleClick = useCallback(() => {
     if (editing) return

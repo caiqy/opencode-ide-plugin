@@ -242,4 +242,56 @@ describe("CompactHeader", () => {
       expect(showToast).toHaveBeenCalledWith("分享链接已复制到剪贴板", { variant: "success" })
     })
   })
+
+  it("removes open tabs when backing session is deleted", () => {
+    const removeTab = vi.fn()
+    const sessions = [{ id: "s1", title: "测试会话" }]
+    mocks.useSession.mockImplementation(() => ({
+      currentSession: { id: "s1", title: "测试会话" },
+      setCurrentSession: vi.fn(),
+      sessions,
+      setSessions: vi.fn(),
+      switchSession: vi.fn(),
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+    }))
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["s1", "s2", "virtual-1"],
+      activeTab: "s1",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab,
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+    })
+
+    const view = render(
+      <CompactHeader
+        connectionState={"connected" as any}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    expect(removeTab).toHaveBeenCalledWith("s2")
+    expect(removeTab).not.toHaveBeenCalledWith("virtual-1")
+
+    removeTab.mockClear()
+    sessions.push({ id: "s2", title: "会话 2" })
+    view.rerender(
+      <CompactHeader
+        connectionState={"connected" as any}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    expect(removeTab).not.toHaveBeenCalled()
+  })
 })

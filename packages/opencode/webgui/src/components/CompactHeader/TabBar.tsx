@@ -43,6 +43,7 @@ export function TabBar({
   const [left, setLeft] = useState(false)
   const [right, setRight] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<Menu | null>(null)
+  const [renamingTabId, setRenamingTabId] = useState<string | null>(null)
 
   const map = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions])
 
@@ -149,6 +150,8 @@ export function TabBar({
               onDrop={(e) => onDrop(e, idx)}
               onDragEnd={onDragEnd}
               isDragOver={isDragOver}
+              isRenaming={renamingTabId === id}
+              onRenameComplete={() => setRenamingTabId(null)}
             />
           )
         })}
@@ -169,8 +172,8 @@ export function TabBar({
           onCloseOtherTabs={() => onCloseOtherTabs(ctxMenu.sessionId)}
           onCloseTabsToRight={() => onCloseTabsToRight(ctxMenu.sessionId)}
           onRename={() => {
-            const title = map.get(ctxMenu.sessionId)?.title || ""
-            onRename(ctxMenu.sessionId, title)
+            setRenamingTabId(ctxMenu.sessionId)
+            setCtxMenu(null)
           }}
           onDelete={() => onDelete(ctxMenu.sessionId)}
           onToggleShare={() => onToggleShare(ctxMenu.sessionId)}
