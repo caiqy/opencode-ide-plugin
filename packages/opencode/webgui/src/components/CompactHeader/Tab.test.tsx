@@ -38,7 +38,9 @@ describe("CompactHeader/Tab", () => {
     render(<Tab {...props({ isActive: false })} />)
 
     const close = screen.getByRole("button", { name: "关闭标签" })
+    expect(close.className).toContain("z-20")
     expect(close.className).toContain("opacity-60")
+    expect(close.className).not.toContain("opacity-0")
   })
 
   it("renders long title without ellipsis truncation class", () => {
