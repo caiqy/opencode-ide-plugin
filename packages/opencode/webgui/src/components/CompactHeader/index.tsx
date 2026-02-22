@@ -28,8 +28,16 @@ const CompactHeader = forwardRef<
   CompactHeaderProps
 >(({ connectionState, onNewSession, isCreatingSession, onOpenCommandPalette }, ref) => {
   const { theme, toggleTheme } = useTheme()
-  const { currentSession, setCurrentSession, sessions, setSessions, switchSession, updateSessionTitle, deleteSession } =
-    useSession()
+  const {
+    currentSession,
+    setCurrentSession,
+    sessions,
+    setSessions,
+    switchSession,
+    updateSessionTitle,
+    deleteSession,
+    isLoading,
+  } = useSession()
   const tabStore = useTabStore()
   const toast = useToast()
 
@@ -37,6 +45,8 @@ const CompactHeader = forwardRef<
   const [isSharing, setIsSharing] = useState(false)
   const [sharingSessionId, setSharingSessionId] = useState<string | null>(null)
   const prevSessionId = useRef<string | null>(null)
+  const sessionsEverLoaded = useRef(false)
+  if (isLoading) sessionsEverLoaded.current = true
 
   const isShared = !!currentSession?.share?.url
 
@@ -283,14 +293,14 @@ const CompactHeader = forwardRef<
   }, [currentSession?.id, tabStore])
 
   useEffect(() => {
-    if (!tabStore.loaded) return
+    if (!tabStore.loaded || !sessionsEverLoaded.current || isLoading) return
     const ids = new Set(sessions.map((s) => s.id))
     for (const tabId of tabStore.openTabs) {
       if (!tabId.startsWith("virtual-") && !ids.has(tabId)) {
         tabStore.removeTab(tabId)
       }
     }
-  }, [sessions, tabStore.loaded])
+  }, [sessions, tabStore.loaded, isLoading])
 
   return (
     <>

@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import type { ConnectionState } from "../../lib/api/events"
 
 type DropdownMock = {
   dropdownRef: { current: HTMLDivElement | null }
   toggleDropdown: ReturnType<typeof vi.fn>
   closeDropdown: ReturnType<typeof vi.fn>
-  filteredSessions: any[]
+  filteredSessions: unknown[]
   isDropdownOpen: boolean
   isSelectMode: boolean
   selectedSessions: Set<string>
@@ -57,7 +58,7 @@ vi.mock("../../state/ThemeContext", () => ({
 }))
 
 vi.mock("../../state/SessionContext", async () => {
-  const actual = await vi.importActual<any>("../../state/SessionContext")
+  const actual = await vi.importActual<Record<string, unknown>>("../../state/SessionContext")
   return {
     ...actual,
     useSession: (...args: unknown[]) => mocks.useSession(...args),
@@ -174,6 +175,7 @@ describe("CompactHeader", () => {
       switchSession: vi.fn(),
       updateSessionTitle: vi.fn(),
       deleteSession: vi.fn(),
+      isLoading: false,
     })
 
     mocks.useTabStore.mockReturnValue({
@@ -246,6 +248,7 @@ describe("CompactHeader", () => {
   it("removes open tabs when backing session is deleted", () => {
     const removeTab = vi.fn()
     const sessions = [{ id: "s1", title: "测试会话" }]
+    let isLoading = true
     mocks.useSession.mockImplementation(() => ({
       currentSession: { id: "s1", title: "测试会话" },
       setCurrentSession: vi.fn(),
@@ -254,6 +257,7 @@ describe("CompactHeader", () => {
       switchSession: vi.fn(),
       updateSessionTitle: vi.fn(),
       deleteSession: vi.fn(),
+      isLoading,
     }))
     mocks.useTabStore.mockReturnValue({
       openTabs: ["s1", "s2", "virtual-1"],
@@ -269,28 +273,27 @@ describe("CompactHeader", () => {
       closeTabsToRight: vi.fn(),
     })
 
-    const view = render(
-      <CompactHeader
-        connectionState={"connected" as any}
-        onNewSession={vi.fn()}
-        isCreatingSession={false}
-        onOpenCommandPalette={vi.fn()}
-      />,
-    )
+    const props = {
+      connectionState: "connected" as ConnectionState,
+      onNewSession: vi.fn(),
+      isCreatingSession: false,
+      onOpenCommandPalette: vi.fn(),
+    }
+
+    // First render with isLoading=true so sessionsEverLoaded becomes true
+    const view = render(<CompactHeader {...props} />)
+    expect(removeTab).not.toHaveBeenCalled()
+
+    // Simulate loading complete — cleanup should now run and remove s2
+    isLoading = false
+    view.rerender(<CompactHeader {...props} />)
 
     expect(removeTab).toHaveBeenCalledWith("s2")
     expect(removeTab).not.toHaveBeenCalledWith("virtual-1")
 
     removeTab.mockClear()
     sessions.push({ id: "s2", title: "会话 2" })
-    view.rerender(
-      <CompactHeader
-        connectionState={"connected" as any}
-        onNewSession={vi.fn()}
-        isCreatingSession={false}
-        onOpenCommandPalette={vi.fn()}
-      />,
-    )
+    view.rerender(<CompactHeader {...props} />)
 
     expect(removeTab).not.toHaveBeenCalled()
   })
