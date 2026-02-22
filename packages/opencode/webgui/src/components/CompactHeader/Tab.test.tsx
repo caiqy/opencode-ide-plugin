@@ -34,6 +34,28 @@ describe("CompactHeader/Tab", () => {
     expect(tab.className).toContain("flex-[1_1_150px]")
   })
 
+  it("applies flat bright background and blue bottom border when active", () => {
+    render(<Tab {...props({ isActive: true })} />)
+
+    const tab = screen.getByTitle("新建会话 1")
+    expect(tab.className).toContain("bg-white")
+    expect(tab.className).toContain("border-b-blue-500")
+    expect(tab.className).not.toContain("rounded")
+    expect(tab.className).not.toContain("border-x")
+    expect(tab.className).not.toContain("border-t")
+  })
+
+  it("applies light background and transparent bottom border when inactive", () => {
+    render(<Tab {...props({ isActive: false })} />)
+
+    const tab = screen.getByTitle("新建会话 1")
+    expect(tab.className).toContain("bg-gray-100/50")
+    expect(tab.className).toContain("border-b-transparent")
+    expect(tab.className).not.toContain("rounded")
+    expect(tab.className).not.toContain("border-x")
+    expect(tab.className).not.toContain("border-t")
+  })
+
   it("keeps inactive close button visible by default", () => {
     render(<Tab {...props({ isActive: false })} />)
 
@@ -54,7 +76,7 @@ describe("CompactHeader/Tab", () => {
 
     const fade = container.querySelector("span[aria-hidden='true']")
     expect(fade?.className).toContain("pointer-events-none")
-    expect(fade?.className).toContain("from-gray-50/70")
+    expect(fade?.className).toContain("from-gray-100/50")
     expect(fade?.className).not.toContain("from-white")
   })
 
