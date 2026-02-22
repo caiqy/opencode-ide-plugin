@@ -14,3 +14,5 @@ export const CONNECTION_TOOLTIPS: Record<string, string> = {
   disconnected: "未连接",
   error: "连接错误",
 }
+
+export const TAB_WIDTH_CLASS = "min-w-[72px] max-w-[180px] flex-[1_1_150px]"

@@ -4,6 +4,7 @@ import { ideBridge } from "../../lib/ideBridge"
 import { useSession } from "../../state/SessionContext"
 import { Tab } from "./Tab"
 import { TabContextMenu } from "./TabContextMenu"
+import { TAB_WIDTH_CLASS } from "./utils"
 
 interface TabBarProps {
   openTabs: string[]
@@ -154,11 +155,7 @@ export function TabBar({
             dragOverIdx === idx && dragIdx !== null && dragIdx !== idx ? (dragIdx > idx ? "left" : "right") : null
 
           return (
-            <div
-              key={id}
-              ref={(node) => setTab(id, node)}
-              className="h-full min-w-[72px] max-w-[180px] flex-[1_1_150px]"
-            >
+            <div key={id} ref={(node) => setTab(id, node)} className={`h-full ${TAB_WIDTH_CLASS}`}>
               <Tab
                 sessionId={id}
                 title={session?.title || ""}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { isDefaultTitle } from "../../state/SessionContext"
+import { TAB_WIDTH_CLASS } from "./utils"
 
 interface TabProps {
   sessionId: string
@@ -133,7 +134,7 @@ export function Tab({
   }, [onDragEnd])
 
   const classes = [
-    "group h-full min-w-[72px] max-w-[180px] flex-[1_1_150px]",
+    `group h-full ${TAB_WIDTH_CLASS}`,
     "flex items-center gap-1.5 px-2 border-b-2 rounded-t-md select-none",
     "cursor-pointer",
     isActive
@@ -198,7 +199,7 @@ export function Tab({
             className={`pointer-events-none absolute right-0 top-0 h-full w-6 bg-gradient-to-l ${
               isActive
                 ? "from-white dark:from-gray-900"
-                : "from-white dark:from-gray-950 group-hover:from-gray-100 dark:group-hover:from-gray-800"
+                : "from-gray-50/70 dark:from-gray-900/40 group-hover:from-gray-100 dark:group-hover:from-gray-800"
             } to-transparent`}
           />
         </span>

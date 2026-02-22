@@ -54,6 +54,8 @@ describe("CompactHeader/Tab", () => {
 
     const fade = container.querySelector("span[aria-hidden='true']")
     expect(fade?.className).toContain("pointer-events-none")
+    expect(fade?.className).toContain("from-gray-50/70")
+    expect(fade?.className).not.toContain("from-white")
   })
 
   it("keeps active close button above edge overlays", () => {
