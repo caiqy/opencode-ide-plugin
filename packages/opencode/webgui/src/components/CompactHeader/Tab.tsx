@@ -135,11 +135,11 @@ export function Tab({
 
   const classes = [
     `group h-full ${TAB_WIDTH_CLASS}`,
-    "flex items-center gap-1.5 px-2 border-b-2 rounded-t-md select-none",
+    "flex items-center gap-1.5 px-2 select-none",
     "cursor-pointer",
     isActive
-      ? "border-x border-t border-gray-300 dark:border-gray-700 border-b-blue-500 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
-      : "border-x border-t border-gray-200/70 dark:border-gray-700/60 border-b-transparent bg-gray-50/70 dark:bg-gray-900/40 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800",
+      ? "border-b-2 border-b-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+      : "border-b-2 border-b-transparent bg-gray-100/50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-400 hover:bg-gray-200/50 dark:hover:bg-gray-800/50",
     dragging ? "opacity-50" : "",
     isDragOver === "left" ? "border-l-2 border-l-blue-500" : "",
     isDragOver === "right" ? "border-r-2 border-r-blue-500" : "",
@@ -198,8 +198,8 @@ export function Tab({
             aria-hidden
             className={`pointer-events-none absolute right-0 top-0 h-full w-6 bg-gradient-to-l ${
               isActive
-                ? "from-white dark:from-gray-900"
-                : "from-gray-50/70 dark:from-gray-900/40 group-hover:from-gray-100 dark:group-hover:from-gray-800"
+                ? "from-white dark:from-gray-800"
+                : "from-gray-100/50 dark:from-gray-900/50 group-hover:from-gray-200/50 dark:group-hover:from-gray-800/50"
             } to-transparent`}
           />
         </span>
