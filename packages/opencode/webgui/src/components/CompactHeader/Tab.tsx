@@ -133,12 +133,12 @@ export function Tab({
   }, [onDragEnd])
 
   const classes = [
-    "group h-full min-w-[100px] max-w-[180px] flex-[1_1_150px]",
-    "flex items-center gap-1.5 px-2 border-b-2 select-none",
+    "group h-full min-w-[72px] max-w-[180px] flex-[1_1_150px]",
+    "flex items-center gap-1.5 px-2 border-b-2 rounded-t-md select-none",
     "cursor-pointer",
     isActive
-      ? "border-b-2 border-blue-500 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-      : "border-b-2 border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800",
+      ? "border-x border-t border-gray-300 dark:border-gray-700 border-b-blue-500 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
+      : "border-x border-t border-gray-200/70 dark:border-gray-700/60 border-b-transparent bg-gray-50/70 dark:bg-gray-900/40 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800",
     dragging ? "opacity-50" : "",
     isDragOver === "left" ? "border-l-2 border-l-blue-500" : "",
     isDragOver === "right" ? "border-r-2 border-r-blue-500" : "",
@@ -206,7 +206,7 @@ export function Tab({
 
       <button
         onClick={handleClose}
-        className={`relative z-20 w-4 h-4 flex-shrink-0 transition-opacity ${isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+        className={`relative z-20 w-4 h-4 flex-shrink-0 transition-opacity ${isActive ? "opacity-100" : "opacity-60 hover:opacity-100"}`}
         aria-label="关闭标签"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
