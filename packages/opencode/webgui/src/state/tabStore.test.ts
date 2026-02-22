@@ -367,4 +367,39 @@ describe("useTabStore", () => {
       },
     })
   })
+
+  it("flushes pending reorder persistence on unmount", async () => {
+    const { result, unmount } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    vi.useFakeTimers()
+
+    act(() => {
+      result.current.openTab("s1")
+      result.current.openTab("s2")
+      result.current.openTab("s3")
+    })
+    ;(sdk.kv.update as ReturnType<typeof vi.fn>).mockClear()
+
+    act(() => {
+      result.current.reorderTabs(2, 0)
+    })
+
+    expect(sdk.kv.update).toHaveBeenCalledTimes(0)
+
+    unmount()
+
+    expect(sdk.kv.update).toHaveBeenCalledTimes(1)
+    expect(sdk.kv.update).toHaveBeenCalledWith({
+      body: {
+        [key]: {
+          openTabs: ["s3", "s1", "s2"],
+          activeTab: "s3",
+        },
+      },
+    })
+  })
 })

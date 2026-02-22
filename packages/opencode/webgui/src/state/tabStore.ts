@@ -102,7 +102,9 @@ function useTabStoreInternal() {
   useEffect(() => {
     return () => {
       if (timer.current) {
+        store(ref.current)
         clearTimeout(timer.current)
+        timer.current = null
       }
     }
   }, [])

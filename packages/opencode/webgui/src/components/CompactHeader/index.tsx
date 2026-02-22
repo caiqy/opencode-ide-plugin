@@ -140,19 +140,32 @@ const CompactHeader = forwardRef<
 
   const handleSessionSelect = useCallback(
     async (sessionId: string) => {
+      const prev = tabStore.activeTab
+      const existed = tabStore.openTabs.includes(sessionId)
       tabStore.openTab(sessionId)
       await switchSession(sessionId)
-      dropdown.closeDropdown()
+        .then(() => {
+          dropdown.closeDropdown()
+        })
+        .catch(() => {
+          if (!existed) tabStore.removeTab(sessionId)
+          if (prev && prev !== sessionId) tabStore.setActiveTab(prev)
+          toast.showToast("切换会话失败", { variant: "error" })
+        })
     },
-    [dropdown, switchSession, tabStore],
+    [dropdown, switchSession, tabStore, toast],
   )
 
   const handleTabActivate = useCallback(
     async (sessionId: string) => {
+      const prev = tabStore.activeTab
       tabStore.setActiveTab(sessionId)
-      await switchSession(sessionId)
+      await switchSession(sessionId).catch(() => {
+        if (prev && prev !== sessionId) tabStore.setActiveTab(prev)
+        toast.showToast("切换会话失败", { variant: "error" })
+      })
     },
-    [switchSession, tabStore],
+    [switchSession, tabStore, toast],
   )
 
   const handleTabClose = useCallback(
@@ -300,7 +313,7 @@ const CompactHeader = forwardRef<
         tabStore.removeTab(tabId)
       }
     }
-  }, [sessions, tabStore.loaded, isLoading])
+  }, [sessions, tabStore.loaded, tabStore.openTabs, tabStore.removeTab, isLoading])
 
   return (
     <>

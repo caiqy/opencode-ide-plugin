@@ -133,7 +133,7 @@ export function Tab({
   }, [onDragEnd])
 
   const classes = [
-    "group h-full min-w-[120px] max-w-[200px] flex-shrink-0",
+    "group h-full min-w-[60px] max-w-[220px] flex-[1_1_160px]",
     "flex items-center gap-1.5 px-2 border-b-2 select-none",
     "cursor-pointer",
     isActive
@@ -196,7 +196,7 @@ export function Tab({
 
       <button
         onClick={handleClose}
-        className={`w-4 h-4 flex-shrink-0 transition-opacity ${isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+        className={`relative z-20 w-4 h-4 flex-shrink-0 transition-opacity ${isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
         aria-label="关闭标签"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

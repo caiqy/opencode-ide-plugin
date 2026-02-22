@@ -25,6 +25,22 @@ function props(overrides: Partial<React.ComponentProps<typeof Tab>> = {}) {
 }
 
 describe("CompactHeader/Tab", () => {
+  it("uses browser-like dynamic width with half minimum width", () => {
+    render(<Tab {...props()} />)
+
+    const tab = screen.getByTitle("新建会话 1")
+    expect(tab.className).toContain("min-w-[60px]")
+    expect(tab.className).toContain("flex-[1_1_160px]")
+  })
+
+  it("keeps active close button above edge overlays", () => {
+    render(<Tab {...props({ isActive: true })} />)
+
+    const close = screen.getByRole("button", { name: "关闭标签" })
+    expect(close.className).toContain("opacity-100")
+    expect(close.className).toContain("z-20")
+  })
+
   it("double click enters edit mode and saves renamed title", () => {
     const p = props({ title: "old title" })
     render(<Tab {...p} />)

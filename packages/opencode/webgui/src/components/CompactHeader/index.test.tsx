@@ -203,7 +203,7 @@ describe("CompactHeader", () => {
 
     render(
       <CompactHeader
-        connectionState={"connected" as any}
+        connectionState={"connected" as ConnectionState}
         onNewSession={vi.fn()}
         isCreatingSession={false}
         onOpenCommandPalette={vi.fn()}
@@ -229,7 +229,7 @@ describe("CompactHeader", () => {
 
     render(
       <CompactHeader
-        connectionState={"connected" as any}
+        connectionState={"connected" as ConnectionState}
         onNewSession={vi.fn()}
         isCreatingSession={false}
         onOpenCommandPalette={vi.fn()}
@@ -296,5 +296,58 @@ describe("CompactHeader", () => {
     view.rerender(<CompactHeader {...props} />)
 
     expect(removeTab).not.toHaveBeenCalled()
+  })
+
+  it("cleans orphan tabs when openTabs changes even if sessions reference is unchanged", () => {
+    const removeTab = vi.fn()
+    const sessions = [{ id: "s1", title: "测试会话" }]
+    let isLoading = true
+    const state = {
+      openTabs: ["s1"],
+    }
+
+    mocks.useSession.mockImplementation(() => ({
+      currentSession: { id: "s1", title: "测试会话" },
+      setCurrentSession: vi.fn(),
+      sessions,
+      setSessions: vi.fn(),
+      switchSession: vi.fn(),
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading,
+    }))
+
+    mocks.useTabStore.mockImplementation(() => ({
+      openTabs: state.openTabs,
+      activeTab: "s1",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab,
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+    }))
+
+    const props = {
+      connectionState: "connected" as ConnectionState,
+      onNewSession: vi.fn(),
+      isCreatingSession: false,
+      onOpenCommandPalette: vi.fn(),
+    }
+
+    const view = render(<CompactHeader {...props} />)
+    expect(removeTab).not.toHaveBeenCalled()
+
+    isLoading = false
+    view.rerender(<CompactHeader {...props} />)
+    expect(removeTab).not.toHaveBeenCalled()
+
+    state.openTabs = ["s1", "s2"]
+    view.rerender(<CompactHeader {...props} />)
+
+    expect(removeTab).toHaveBeenCalledWith("s2")
   })
 })

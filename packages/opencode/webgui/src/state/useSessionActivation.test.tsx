@@ -159,6 +159,10 @@ describe("useSessionActivation", () => {
       expect(sessionApi).toBeTruthy()
     })
 
+    await waitFor(() => {
+      expect(sessionApi!.sessions.length).toBeGreaterThan(0)
+    })
+
     await act(async () => {
       await sessionApi!.switchSession("s1")
     })
@@ -211,6 +215,10 @@ describe("useSessionActivation", () => {
 
     await waitFor(() => {
       expect(sessionApi).toBeTruthy()
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.sessions.length).toBe(2)
     })
 
     await act(async () => {
