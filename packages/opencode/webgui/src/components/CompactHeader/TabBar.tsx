@@ -44,6 +44,7 @@ export function TabBar({
   const [right, setRight] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<Menu | null>(null)
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null)
+  const tabs = useRef(new Map<string, HTMLDivElement>())
 
   const map = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions])
 
@@ -73,6 +74,25 @@ export function TabBar({
       observer.disconnect()
     }
   }, [checkScroll, openTabs])
+
+  const setTab = useCallback((id: string, node: HTMLDivElement | null) => {
+    if (node) {
+      tabs.current.set(id, node)
+      return
+    }
+    tabs.current.delete(id)
+  }, [])
+
+  useEffect(() => {
+    if (!activeTab) return
+    const node = tabs.current.get(activeTab)
+    if (!node || typeof node.scrollIntoView !== "function") return
+    node.scrollIntoView({
+      inline: "nearest",
+      block: "nearest",
+      behavior: "smooth",
+    })
+  }, [activeTab])
 
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     const el = ref.current
@@ -134,25 +154,30 @@ export function TabBar({
             dragOverIdx === idx && dragIdx !== null && dragIdx !== idx ? (dragIdx > idx ? "left" : "right") : null
 
           return (
-            <Tab
+            <div
               key={id}
-              sessionId={id}
-              title={session?.title || ""}
-              isActive={id === activeTab}
-              isBusy={!isSessionIdle(id)}
-              isReasoning={isSessionReasoning(id)}
-              onActivate={() => onActivate(id)}
-              onClose={() => onClose(id)}
-              onRename={(title) => onRename(id, title)}
-              onContextMenu={(x, y) => setCtxMenu({ x, y, sessionId: id })}
-              onDragStart={() => setDragIdx(idx)}
-              onDragOver={(e) => onDragOver(e, idx)}
-              onDrop={(e) => onDrop(e, idx)}
-              onDragEnd={onDragEnd}
-              isDragOver={isDragOver}
-              isRenaming={renamingTabId === id}
-              onRenameComplete={() => setRenamingTabId(null)}
-            />
+              ref={(node) => setTab(id, node)}
+              className="h-full min-w-[100px] max-w-[150px] flex-[1_1_150px]"
+            >
+              <Tab
+                sessionId={id}
+                title={session?.title || ""}
+                isActive={id === activeTab}
+                isBusy={!isSessionIdle(id)}
+                isReasoning={isSessionReasoning(id)}
+                onActivate={() => onActivate(id)}
+                onClose={() => onClose(id)}
+                onRename={(title) => onRename(id, title)}
+                onContextMenu={(x, y) => setCtxMenu({ x, y, sessionId: id })}
+                onDragStart={() => setDragIdx(idx)}
+                onDragOver={(e) => onDragOver(e, idx)}
+                onDrop={(e) => onDrop(e, idx)}
+                onDragEnd={onDragEnd}
+                isDragOver={isDragOver}
+                isRenaming={renamingTabId === id}
+                onRenameComplete={() => setRenamingTabId(null)}
+              />
+            </div>
           )
         })}
       </div>

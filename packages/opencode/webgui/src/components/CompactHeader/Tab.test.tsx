@@ -25,12 +25,13 @@ function props(overrides: Partial<React.ComponentProps<typeof Tab>> = {}) {
 }
 
 describe("CompactHeader/Tab", () => {
-  it("uses browser-like dynamic width with half minimum width", () => {
+  it("uses browser-like dynamic width constraints", () => {
     render(<Tab {...props()} />)
 
     const tab = screen.getByTitle("新建会话 1")
-    expect(tab.className).toContain("min-w-[60px]")
-    expect(tab.className).toContain("flex-[1_1_160px]")
+    expect(tab.className).toContain("min-w-[100px]")
+    expect(tab.className).toContain("max-w-[150px]")
+    expect(tab.className).toContain("flex-[1_1_150px]")
   })
 
   it("keeps active close button above edge overlays", () => {

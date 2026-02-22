@@ -42,7 +42,17 @@ function props(overrides: Partial<React.ComponentProps<typeof TabBar>> = {}) {
 }
 
 describe("CompactHeader/TabBar", () => {
+  const scroll = vi.fn(function (this: HTMLElement) {
+    return this
+  })
+
   beforeEach(() => {
+    scroll.mockClear()
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: scroll,
+    })
     mocks.isInstalled.mockReturnValue(true)
     mocks.send.mockReset()
     mocks.useSession.mockReturnValue({
@@ -94,5 +104,20 @@ describe("CompactHeader/TabBar", () => {
 
     expect(screen.getByDisplayValue("会话 1")).toBeInTheDocument()
     expect(p.onRename).not.toHaveBeenCalled()
+  })
+
+  it("scrolls active tab into view when activeTab changes", () => {
+    const p = props()
+    const view = render(<TabBar {...p} />)
+    const node = screen.getByTitle("会话 2")
+
+    view.rerender(<TabBar {...props({ activeTab: "s2" })} />)
+
+    expect(scroll).toHaveBeenCalledWith({
+      inline: "nearest",
+      block: "nearest",
+      behavior: "smooth",
+    })
+    expect(scroll.mock.contexts.some((el) => el instanceof HTMLElement && el.contains(node))).toBe(true)
   })
 })

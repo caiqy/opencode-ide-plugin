@@ -129,6 +129,44 @@ describe("useTabStore", () => {
     })
   })
 
+  it("openTab keeps at most six tabs and evicts oldest non-incoming", async () => {
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    act(() => {
+      result.current.openTab("s1")
+      result.current.openTab("s2")
+      result.current.openTab("s3")
+      result.current.openTab("s4")
+      result.current.openTab("s5")
+      result.current.openTab("s6")
+      result.current.openTab("s7")
+    })
+
+    expect(result.current.openTabs).toEqual(["s2", "s3", "s4", "s5", "s6", "s7"])
+    expect(result.current.activeTab).toBe("s7")
+  })
+
+  it("openTab keeps only one virtual tab", async () => {
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    act(() => {
+      result.current.openTab("s1")
+      result.current.openTab("virtual-temp")
+      result.current.openTab("virtual-next")
+    })
+
+    expect(result.current.openTabs).toEqual(["s1", "virtual-temp"])
+    expect(result.current.activeTab).toBe("virtual-temp")
+  })
+
   it("closeTab switches active to right neighbor or left when rightmost", async () => {
     const { result } = renderHook(() => useTabStore(), { wrapper })
 

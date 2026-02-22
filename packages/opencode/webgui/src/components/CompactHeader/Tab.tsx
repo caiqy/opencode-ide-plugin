@@ -133,7 +133,7 @@ export function Tab({
   }, [onDragEnd])
 
   const classes = [
-    "group h-full min-w-[60px] max-w-[220px] flex-[1_1_160px]",
+    "group h-full min-w-[100px] max-w-[150px] flex-[1_1_150px]",
     "flex items-center gap-1.5 px-2 border-b-2 select-none",
     "cursor-pointer",
     isActive

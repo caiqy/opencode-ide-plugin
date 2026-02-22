@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react"
 import { sdk } from "../lib/api/sdkClient"
+import { isVirtualTab, openVirtualUnique, openWithPolicy } from "./tabPolicy"
 
 const key = "webgui_tabs"
 const delay = 500
@@ -111,12 +112,9 @@ function useTabStoreInternal() {
 
   const openTab = useCallback(
     (sessionId: string) => {
-      const next = {
-        openTabs: ref.current.openTabs.includes(sessionId)
-          ? ref.current.openTabs
-          : [...ref.current.openTabs, sessionId],
-        activeTab: sessionId,
-      }
+      const next = isVirtualTab(sessionId)
+        ? openVirtualUnique(ref.current, sessionId)
+        : openWithPolicy(ref.current, sessionId)
       save(next)
     },
     [save],
