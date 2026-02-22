@@ -157,7 +157,7 @@ export function TabBar({
             <div
               key={id}
               ref={(node) => setTab(id, node)}
-              className="h-full min-w-[100px] max-w-[150px] flex-[1_1_150px]"
+              className="h-full min-w-[100px] max-w-[180px] flex-[1_1_150px]"
             >
               <Tab
                 sessionId={id}

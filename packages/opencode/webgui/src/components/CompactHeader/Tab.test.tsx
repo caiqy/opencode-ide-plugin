@@ -30,8 +30,21 @@ describe("CompactHeader/Tab", () => {
 
     const tab = screen.getByTitle("新建会话 1")
     expect(tab.className).toContain("min-w-[100px]")
-    expect(tab.className).toContain("max-w-[150px]")
+    expect(tab.className).toContain("max-w-[180px]")
     expect(tab.className).toContain("flex-[1_1_150px]")
+  })
+
+  it("renders long title without ellipsis truncation class", () => {
+    const p = props({ title: "这是一个非常非常非常长的标题用于测试渐隐行为" })
+    const { container } = render(<Tab {...p} />)
+
+    const title = screen.getByText(p.title)
+    expect(title.className).toContain("overflow-hidden")
+    expect(title.className).toContain("whitespace-nowrap")
+    expect(title.className).not.toContain("truncate")
+
+    const fade = container.querySelector("span[aria-hidden='true']")
+    expect(fade?.className).toContain("pointer-events-none")
   })
 
   it("keeps active close button above edge overlays", () => {

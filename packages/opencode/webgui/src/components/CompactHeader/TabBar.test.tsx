@@ -120,4 +120,14 @@ describe("CompactHeader/TabBar", () => {
     })
     expect(scroll.mock.contexts.some((el) => el instanceof HTMLElement && el.contains(node))).toBe(true)
   })
+
+  it("keeps wrapper width constraints aligned with tab max width", () => {
+    render(<TabBar {...props()} />)
+
+    const tab = screen.getByTitle("会话 1")
+    const wrapper = tab.parentElement
+    expect(wrapper?.className).toContain("min-w-[100px]")
+    expect(wrapper?.className).toContain("max-w-[180px]")
+    expect(wrapper?.className).toContain("flex-[1_1_150px]")
+  })
 })
