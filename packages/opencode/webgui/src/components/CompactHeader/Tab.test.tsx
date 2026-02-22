@@ -29,9 +29,16 @@ describe("CompactHeader/Tab", () => {
     render(<Tab {...props()} />)
 
     const tab = screen.getByTitle("新建会话 1")
-    expect(tab.className).toContain("min-w-[100px]")
+    expect(tab.className).toContain("min-w-[72px]")
     expect(tab.className).toContain("max-w-[180px]")
     expect(tab.className).toContain("flex-[1_1_150px]")
+  })
+
+  it("keeps inactive close button visible by default", () => {
+    render(<Tab {...props({ isActive: false })} />)
+
+    const close = screen.getByRole("button", { name: "关闭标签" })
+    expect(close.className).toContain("opacity-60")
   })
 
   it("renders long title without ellipsis truncation class", () => {

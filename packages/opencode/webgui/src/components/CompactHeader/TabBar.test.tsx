@@ -126,7 +126,7 @@ describe("CompactHeader/TabBar", () => {
 
     const tab = screen.getByTitle("会话 1")
     const wrapper = tab.parentElement
-    expect(wrapper?.className).toContain("min-w-[100px]")
+    expect(wrapper?.className).toContain("min-w-[72px]")
     expect(wrapper?.className).toContain("max-w-[180px]")
     expect(wrapper?.className).toContain("flex-[1_1_150px]")
   })
