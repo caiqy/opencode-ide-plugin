@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { sdk } from "../lib/api/sdkClient"
 
 const key = "webgui_tabs"
@@ -36,7 +45,7 @@ function store(next: TabState) {
     .catch(() => {})
 }
 
-export function useTabStore() {
+function useTabStoreInternal() {
   const [state, setState] = useState(empty)
   const [loaded, setLoaded] = useState(false)
   const ref = useRef(state)
@@ -229,4 +238,21 @@ export function useTabStore() {
     closeOtherTabs,
     closeTabsToRight,
   }
+}
+
+type TabStore = ReturnType<typeof useTabStoreInternal>
+
+const TabStoreContext = createContext<TabStore | null>(null)
+
+export function TabStoreProvider({ children }: { children: ReactNode }) {
+  const store = useTabStoreInternal()
+  return createElement(TabStoreContext.Provider, { value: store }, children)
+}
+
+export function useTabStore() {
+  const store = useContext(TabStoreContext)
+  if (!store) {
+    throw new Error("useTabStore must be used within a TabStoreProvider")
+  }
+  return store
 }

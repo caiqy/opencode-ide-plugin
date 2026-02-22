@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { createElement, type ReactNode } from "react"
 
 vi.mock("../lib/api/sdkClient", () => {
   return {
@@ -13,11 +14,15 @@ vi.mock("../lib/api/sdkClient", () => {
 })
 
 import { sdk } from "../lib/api/sdkClient"
-import { useTabStore } from "./tabStore"
+import { TabStoreProvider, useTabStore } from "./tabStore"
 
 const key = "webgui_tabs"
 type KvGetResult = Awaited<ReturnType<typeof sdk.kv.get>>
 type KvUpdateResult = Awaited<ReturnType<typeof sdk.kv.update>>
+
+function wrapper({ children }: { children: ReactNode }) {
+  return createElement(TabStoreProvider, null, children)
+}
 
 describe("useTabStore", () => {
   beforeEach(() => {
@@ -43,7 +48,7 @@ describe("useTabStore", () => {
       error: null,
     } satisfies KvGetResult)
 
-    const { result } = renderHook(() => useTabStore())
+    const { result } = renderHook(() => useTabStore(), { wrapper })
 
     expect(result.current.loaded).toBe(false)
 
@@ -67,7 +72,7 @@ describe("useTabStore", () => {
       error: null,
     } as KvGetResult)
 
-    const { result } = renderHook(() => useTabStore())
+    const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)
@@ -78,7 +83,7 @@ describe("useTabStore", () => {
   })
 
   it("openTab appends new tabs and activates existing tabs", async () => {
-    const { result } = renderHook(() => useTabStore())
+    const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)
@@ -104,7 +109,7 @@ describe("useTabStore", () => {
   })
 
   it("closeTab switches active to right neighbor or left when rightmost", async () => {
-    const { result } = renderHook(() => useTabStore())
+    const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)
@@ -137,7 +142,7 @@ describe("useTabStore", () => {
   })
 
   it("closeTab keeps active tab when closing a different tab", async () => {
-    const { result } = renderHook(() => useTabStore())
+    const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)
@@ -156,7 +161,7 @@ describe("useTabStore", () => {
   })
 
   it("removeTab switches active to last remaining tab when active is removed", async () => {
-    const { result } = renderHook(() => useTabStore())
+    const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)
@@ -173,7 +178,7 @@ describe("useTabStore", () => {
   })
 
   it("setActiveTab persists active tab without reordering", async () => {
-    const { result } = renderHook(() => useTabStore())
+    const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)
@@ -190,7 +195,7 @@ describe("useTabStore", () => {
   })
 
   it("setActiveTab ignores ids that are not open", async () => {
-    const { result } = renderHook(() => useTabStore())
+    const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)
@@ -206,7 +211,7 @@ describe("useTabStore", () => {
   })
 
   it("replaceTab keeps position and updates active when needed", async () => {
-    const { result } = renderHook(() => useTabStore())
+    const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)
@@ -230,7 +235,7 @@ describe("useTabStore", () => {
   })
 
   it("replaceTab removes old id when new id already exists", async () => {
-    const { result } = renderHook(() => useTabStore())
+    const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)
@@ -248,7 +253,7 @@ describe("useTabStore", () => {
   })
 
   it("closeOtherTabs and closeTabsToRight keep the right tabs", async () => {
-    const { result } = renderHook(() => useTabStore())
+    const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)
@@ -272,8 +277,33 @@ describe("useTabStore", () => {
     expect(result.current.activeTab).toBe("s2")
   })
 
+  it("shares one store instance across multiple consumers", async () => {
+    const { result } = renderHook(
+      () => {
+        const first = useTabStore()
+        const second = useTabStore()
+        return { first, second }
+      },
+      { wrapper },
+    )
+
+    await waitFor(() => {
+      expect(result.current.first.loaded).toBe(true)
+      expect(result.current.second.loaded).toBe(true)
+    })
+
+    expect(sdk.kv.get).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      result.current.first.openTab("shared")
+    })
+
+    expect(result.current.second.openTabs).toEqual(["shared"])
+    expect(result.current.second.activeTab).toBe("shared")
+  })
+
   it("reorderTabs updates order and persists with 500ms debounce", async () => {
-    const { result } = renderHook(() => useTabStore())
+    const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)

@@ -14,6 +14,7 @@ import { ProvidersProvider } from "./state/ProvidersContext"
 import { UISettingsProvider } from "./state/UISettingsContext"
 import { initGlobalDnD } from "./lib/dnd"
 import { VersionGate } from "./components/VersionGate"
+import { TabStoreProvider } from "./state/tabStore"
 
 window.addEventListener(
   "opencode:ui-bridge-state",
@@ -35,15 +36,17 @@ createRoot(document.getElementById("root")!).render(
       <VersionGate>
         <ProjectProvider>
           <SessionProvider>
-            <ToastProvider>
-              <IdeBridgeProvider>
-                <ProvidersProvider>
-                  <UISettingsProvider>
-                    <App />
-                  </UISettingsProvider>
-                </ProvidersProvider>
-              </IdeBridgeProvider>
-            </ToastProvider>
+            <TabStoreProvider>
+              <ToastProvider>
+                <IdeBridgeProvider>
+                  <ProvidersProvider>
+                    <UISettingsProvider>
+                      <App />
+                    </UISettingsProvider>
+                  </ProvidersProvider>
+                </IdeBridgeProvider>
+              </ToastProvider>
+            </TabStoreProvider>
           </SessionProvider>
         </ProjectProvider>
       </VersionGate>
