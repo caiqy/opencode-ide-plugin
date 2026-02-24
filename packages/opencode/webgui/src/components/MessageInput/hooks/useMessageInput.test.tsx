@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => {
     setMessages: vi.fn(),
     command: vi.fn(async (_input: unknown) => ({ data: {}, error: null })),
     prompt: vi.fn(async (_input: unknown) => ({ data: {}, error: null })),
+    abort: vi.fn(async (_input: unknown) => ({ data: true, error: null })),
+    getQuestionsBySession: vi.fn(() => []),
+    rejectQuestion: vi.fn(async (_requestID: string) => true),
     uiBridgeMoveDraft: vi.fn(),
   }
 })
@@ -34,7 +37,7 @@ vi.mock("../../../lib/api/sdkClient", () => {
       session: {
         command: (input: unknown) => mocks.command(input),
         prompt: (input: unknown) => mocks.prompt(input),
-        abort: vi.fn(async () => ({ data: true, error: null })),
+        abort: (input: unknown) => mocks.abort(input),
         summarize: vi.fn(async () => ({ data: true, error: null })),
       },
     },
@@ -62,6 +65,8 @@ vi.mock("../../../state/MessagesContext", () => {
     useMessages: () => ({
       addMessage: mocks.addMessage,
       setMessages: mocks.setMessages,
+      getQuestionsBySession: mocks.getQuestionsBySession,
+      rejectQuestion: mocks.rejectQuestion,
     }),
   }
 })
@@ -88,6 +93,9 @@ describe("useMessageInput", () => {
     mocks.materializeSession.mockResolvedValue({ id: "s-real" })
     mocks.command.mockResolvedValue({ data: {}, error: null })
     mocks.prompt.mockResolvedValue({ data: {}, error: null })
+    mocks.abort.mockResolvedValue({ data: true, error: null })
+    mocks.getQuestionsBySession.mockReturnValue([])
+    mocks.rejectQuestion.mockResolvedValue(true)
   })
 
   it("virtual 会话 materialize 后应迁移草稿到真实会话", async () => {
@@ -192,5 +200,45 @@ describe("useMessageInput", () => {
     )
     expect(mocks.command).not.toHaveBeenCalled()
     expect(mocks.uiBridgeMoveDraft).toHaveBeenCalledWith("virtual-1", "s-real")
+  })
+
+  it("Stop 时 reject 部分失败也会继续 abort", async () => {
+    mocks.getQuestionsBySession.mockReturnValue([{ id: "q1" }, { id: "q2" }, { id: "q3" }] as any)
+    mocks.rejectQuestion
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockRejectedValueOnce(new Error("reject fail"))
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-1",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "x" }]),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.handleAbort()
+    })
+
+    expect(mocks.rejectQuestion).toHaveBeenCalledTimes(3)
+    expect(mocks.rejectQuestion).toHaveBeenNthCalledWith(1, "q1")
+    expect(mocks.rejectQuestion).toHaveBeenNthCalledWith(2, "q2")
+    expect(mocks.rejectQuestion).toHaveBeenNthCalledWith(3, "q3")
+    expect(mocks.abort).toHaveBeenCalledWith({ path: { id: "s-1" } })
+    expect(mocks.abort).toHaveBeenCalledTimes(1)
   })
 })
