@@ -16,3 +16,6 @@ export const CONNECTION_TOOLTIPS: Record<string, string> = {
 }
 
 export const TAB_WIDTH_CLASS = "min-w-[72px] max-w-[180px] flex-[1_1_150px]"
+export const TAB_TEXT_INACTIVE = "text-gray-700 dark:text-gray-300"
+export const TAB_TEXT_INACTIVE_DEFAULT = "text-gray-500 dark:text-gray-400"
+export const HEADER_RIGHT_GAP = "ml-2"

@@ -46,9 +46,19 @@ describe("CompactHeader/Tab", () => {
     const tab = screen.getByTitle("新建会话 1")
     expect(tab.className).toContain("bg-gray-100/50")
     expect(tab.className).toContain("border-b-transparent")
+    expect(tab.className).toContain("text-gray-700")
+    expect(tab.className).toContain("dark:text-gray-300")
     expect(tab.className).not.toContain("rounded")
     expect(tab.className).not.toContain("border-x")
     expect(tab.className).not.toContain("border-t")
+  })
+
+  it("uses brighter default-title fallback colors", () => {
+    render(<Tab {...props({ isActive: false, title: "New session - 2025-10-31T11:44:37.671Z" })} />)
+
+    const title = screen.getByText("New session - 2025-10-31T11:44:37.671Z")
+    expect(title.className).toContain("text-gray-500")
+    expect(title.className).toContain("dark:text-gray-400")
   })
 
   it("keeps inactive close button visible by default", () => {

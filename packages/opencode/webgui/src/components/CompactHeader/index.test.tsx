@@ -350,4 +350,18 @@ describe("CompactHeader", () => {
 
     expect(removeTab).toHaveBeenCalledWith("s2")
   })
+
+  it("adds left gap between tab area and right status/actions area", () => {
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    const right = screen.getByTestId("compact-header-right")
+    expect(right.className).toContain("ml-2")
+  })
 })

@@ -10,6 +10,7 @@ import { StatusIndicator } from "./StatusIndicator"
 import { ActionButtons } from "./ActionButtons"
 import { SessionDropdown } from "./SessionDropdown"
 import { TabBar } from "./TabBar"
+import { HEADER_RIGHT_GAP } from "./utils"
 import { sdk } from "../../lib/api/sdkClient"
 import { useToast } from "../../state/ToastContext"
 import { useTabStore } from "../../state/tabStore"
@@ -344,7 +345,11 @@ const CompactHeader = forwardRef<
         />
 
         {/* Right: Connection status, theme toggle, and new session button */}
-        <div className="flex items-center gap-1" ref={dropdown.dropdownRef}>
+        <div
+          className={`flex items-center gap-1 ${HEADER_RIGHT_GAP}`}
+          data-testid="compact-header-right"
+          ref={dropdown.dropdownRef}
+        >
           <StatusIndicator connectionState={connectionState} />
           <ActionButtons
             theme={theme}

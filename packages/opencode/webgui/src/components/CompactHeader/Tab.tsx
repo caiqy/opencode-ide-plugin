@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { isDefaultTitle } from "../../state/SessionContext"
-import { TAB_WIDTH_CLASS } from "./utils"
+import { TAB_TEXT_INACTIVE, TAB_TEXT_INACTIVE_DEFAULT, TAB_WIDTH_CLASS } from "./utils"
 
 interface TabProps {
   title: string
@@ -113,7 +113,7 @@ export function Tab({
     "cursor-pointer",
     isActive
       ? "border-b-2 border-b-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-      : "border-b-2 border-b-transparent bg-gray-100/50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-400 hover:bg-gray-200/50 dark:hover:bg-gray-800/50",
+      : `border-b-2 border-b-transparent bg-gray-100/50 dark:bg-gray-900/50 ${TAB_TEXT_INACTIVE} hover:bg-gray-200/50 dark:hover:bg-gray-800/50`,
     isDragOver === "left" ? "border-l-2 border-l-blue-500" : "",
     isDragOver === "right" ? "border-r-2 border-r-blue-500" : "",
   ]
@@ -158,7 +158,7 @@ export function Tab({
       ) : (
         <span className="relative min-w-0 flex-1">
           <span
-            className={`block overflow-hidden whitespace-nowrap text-xs ${hasDefaultTitle ? "italic text-gray-400 dark:text-gray-500" : ""}`}
+            className={`block overflow-hidden whitespace-nowrap text-xs ${hasDefaultTitle ? `italic ${TAB_TEXT_INACTIVE_DEFAULT}` : ""}`}
           >
             {displayTitle}
           </span>
