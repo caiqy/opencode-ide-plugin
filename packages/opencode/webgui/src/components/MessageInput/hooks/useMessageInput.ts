@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback } from "react"
 import { $getRoot, $createParagraphNode, $createTextNode, type LexicalEditor } from "lexical"
 import { sdk } from "../../../lib/api/sdkClient"
 import { useSession } from "../../../state/SessionContext"
@@ -32,7 +32,6 @@ export function useMessageInput({
   onMessageSent,
   onError,
 }: UseMessageInputOptions) {
-  const [isSending, setIsSending] = useState(false)
   const [failedMap, setFailedMap] = useState<Record<string, string>>({})
   const { showToast } = useToast()
   const { setSessionIdle, isVirtualSession, materializeSession } = useSession()
@@ -53,15 +52,9 @@ export function useMessageInput({
     })
   }, [])
 
-  // Reset isSending when session changes
-  useEffect(() => {
-    setIsSending(false)
-  }, [sessionID])
-
   const handleSubmit = useCallback(async () => {
     if (!sessionID || isEmpty) return
 
-    setIsSending(true)
     setSessionIdle(sessionID, false)
 
     let savedMessage = ""
@@ -77,13 +70,11 @@ export function useMessageInput({
       const isCommand = trimmedMessage.startsWith("/")
 
       if (isVirtualSession) {
-        console.log("[MessageInput] Materializing virtual session before sending message...")
         const realSession = await materializeSession()
         if (!realSession) {
           throw new Error("Failed to create session")
         }
         actualSessionID = realSession.id
-        console.log("[MessageInput] Virtual session materialized:", actualSessionID)
       }
 
       if (actualSessionID !== sessionID) {
@@ -205,8 +196,6 @@ export function useMessageInput({
 
       onError?.(error)
       setSessionIdle(actualSessionID, true)
-    } finally {
-      setIsSending(false)
     }
   }, [
     sessionID,
@@ -251,7 +240,6 @@ export function useMessageInput({
     try {
       await sdk.session.abort({ path: { id: sessionID } })
       setSessionIdle(sessionID, true)
-      setIsSending(false)
       setTimeout(() => {
         editor.focus()
       }, 0)
@@ -334,7 +322,6 @@ export function useMessageInput({
   )
 
   return {
-    isSending,
     lastFailedMessage,
     handleSubmit,
     handleRetry,

@@ -79,7 +79,6 @@ vi.mock("./hooks/useMessageParts", () => {
 vi.mock("./hooks/useMessageInput", () => {
   return {
     useMessageInput: () => ({
-      isSending: false,
       lastFailedMessage: null,
       handleSubmit: vi.fn(),
       handleRetry: vi.fn(),

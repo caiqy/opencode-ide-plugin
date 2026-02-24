@@ -14,7 +14,6 @@ export function insertPlainWithMentionsImpl(
   plain: string,
   options?: { replace?: boolean },
 ) {
-  if (!plain) return
   editor.update(() => {
     if (options?.replace) {
       const root = $getRoot()
@@ -23,6 +22,7 @@ export function insertPlainWithMentionsImpl(
       root.append(paragraph)
       paragraph.select()
     }
+    if (!plain) return
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
     const nodes: any[] = []

@@ -7,6 +7,7 @@ export type UiBridgeState = {
   modelId: string | null
   agent: string | null
   variant: string | null
+  // TODO: prune orphaned drafts when sessions are deleted to prevent unbounded growth
   drafts: Record<string, string>
 }
 
@@ -51,10 +52,9 @@ function omitDraft(drafts: Record<string, string>, id: string) {
 }
 
 function patchDraft(drafts: Record<string, string>, id: string, value: string) {
-  const text = value.length > 0 ? value : ""
-  if (!text) return omitDraft(drafts, id)
-  if (drafts[id] === text) return drafts
-  return { ...drafts, [id]: text }
+  if (!value) return omitDraft(drafts, id)
+  if (drafts[id] === value) return drafts
+  return { ...drafts, [id]: value }
 }
 
 function parseDrafts(input: unknown) {
@@ -62,9 +62,8 @@ function parseDrafts(input: unknown) {
   return Object.entries(input as Record<string, unknown>).reduce(
     (acc, [id, value]) => {
       if (!id || typeof value !== "string") return acc
-      const text = value
-      if (!text) return acc
-      acc[id] = text
+      if (!value) return acc
+      acc[id] = value
       return acc
     },
     {} as Record<string, string>,
@@ -138,7 +137,7 @@ export function uiBridgeState(): UiBridgeState {
 }
 
 export function uiBridgeHydrate(raw: unknown): UiBridgeState {
-  const obj = raw && typeof raw === "object" ? (raw as any) : null
+  const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null
 
   const sessionID = sanitizeSession(
     typeof obj?.sessionID === "string" ? obj.sessionID : typeof obj?.sessionId === "string" ? obj.sessionId : null,
