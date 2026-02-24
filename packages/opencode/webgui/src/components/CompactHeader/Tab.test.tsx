@@ -6,7 +6,6 @@ import { Tab } from "./Tab"
 
 function props(overrides: Partial<React.ComponentProps<typeof Tab>> = {}) {
   return {
-    sessionId: "s1",
     title: "新建会话 1",
     isActive: false,
     isBusy: false,
@@ -15,10 +14,6 @@ function props(overrides: Partial<React.ComponentProps<typeof Tab>> = {}) {
     onClose: vi.fn(),
     onRename: vi.fn(),
     onContextMenu: vi.fn(),
-    onDragStart: vi.fn(),
-    onDragOver: vi.fn(),
-    onDrop: vi.fn(),
-    onDragEnd: vi.fn(),
     isDragOver: null,
     ...overrides,
   }
@@ -86,6 +81,12 @@ describe("CompactHeader/Tab", () => {
     const close = screen.getByRole("button", { name: "关闭标签" })
     expect(close.className).toContain("opacity-100")
     expect(close.className).toContain("z-20")
+  })
+
+  it("does not set draggable attribute", () => {
+    render(<Tab {...props()} />)
+
+    expect(screen.getByTitle("新建会话 1").hasAttribute("draggable")).toBe(false)
   })
 
   it("double click enters edit mode and saves renamed title", () => {

@@ -4,7 +4,6 @@ import { isDefaultTitle } from "../../state/SessionContext"
 import { TAB_WIDTH_CLASS } from "./utils"
 
 interface TabProps {
-  sessionId: string
   title: string
   isActive: boolean
   isBusy: boolean
@@ -13,17 +12,12 @@ interface TabProps {
   onClose: () => void
   onRename: (title: string) => void
   onContextMenu: (x: number, y: number) => void
-  onDragStart: (e: React.DragEvent) => void
-  onDragOver: (e: React.DragEvent) => void
-  onDrop: (e: React.DragEvent) => void
-  onDragEnd: () => void
   isDragOver: "left" | "right" | null
   isRenaming?: boolean
   onRenameComplete?: () => void
 }
 
 export function Tab({
-  sessionId,
   title,
   isActive,
   isBusy,
@@ -32,17 +26,12 @@ export function Tab({
   onClose,
   onRename,
   onContextMenu,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
   isDragOver,
   isRenaming,
   onRenameComplete,
 }: TabProps) {
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(title)
-  const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const displayTitle = title || "新建会话"
@@ -118,21 +107,6 @@ export function Tab({
     [onContextMenu],
   )
 
-  const handleDragStart = useCallback(
-    (e: React.DragEvent) => {
-      e.dataTransfer.effectAllowed = "move"
-      e.dataTransfer.setData("text/plain", sessionId)
-      onDragStart(e)
-      setDragging(true)
-    },
-    [onDragStart, sessionId],
-  )
-
-  const handleDragEnd = useCallback(() => {
-    setDragging(false)
-    onDragEnd()
-  }, [onDragEnd])
-
   const classes = [
     `group h-full ${TAB_WIDTH_CLASS}`,
     "flex items-center gap-1.5 px-2 select-none",
@@ -140,7 +114,6 @@ export function Tab({
     isActive
       ? "border-b-2 border-b-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
       : "border-b-2 border-b-transparent bg-gray-100/50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-400 hover:bg-gray-200/50 dark:hover:bg-gray-800/50",
-    dragging ? "opacity-50" : "",
     isDragOver === "left" ? "border-l-2 border-l-blue-500" : "",
     isDragOver === "right" ? "border-r-2 border-r-blue-500" : "",
   ]
@@ -153,15 +126,10 @@ export function Tab({
       tabIndex={0}
       className={classes}
       title={displayTitle}
-      draggable={!editing}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
-      onDragStart={handleDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={handleDragEnd}
     >
       {(isBusy || isReasoning) && (
         <span

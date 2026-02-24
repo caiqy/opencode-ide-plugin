@@ -65,19 +65,63 @@ describe("CompactHeader/TabBar", () => {
     })
   })
 
-  it("drop reorders tabs using drag indices", () => {
+  it("reorders tabs when pointer drag ends outside tab wrappers", () => {
     const p = props()
     render(<TabBar {...p} />)
 
     const from = screen.getByTitle("会话 1")
     const to = screen.getByTitle("会话 2")
-    const data = { effectAllowed: "", dropEffect: "", setData: vi.fn() }
 
-    fireEvent.dragStart(from, { dataTransfer: data })
-    fireEvent.dragOver(to, { dataTransfer: data })
-    fireEvent.drop(to, { dataTransfer: data })
+    fireEvent.pointerDown(from, { pointerId: 1, button: 0, clientX: 20, clientY: 12 })
+    fireEvent.pointerMove(from, { pointerId: 1, clientX: 40, clientY: 12 })
+    fireEvent.pointerEnter(to, { pointerId: 1, clientX: 180, clientY: 12 })
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 260, clientY: 12 })
 
     expect(p.onReorder).toHaveBeenCalledWith(0, 1)
+  })
+
+  it("does not reorder when pointer movement stays below threshold", () => {
+    const p = props()
+    render(<TabBar {...p} />)
+
+    const from = screen.getByTitle("会话 1")
+
+    fireEvent.pointerDown(from, { pointerId: 2, button: 0, clientX: 20, clientY: 12 })
+    fireEvent.pointerMove(from, { pointerId: 2, clientX: 23, clientY: 12 })
+    fireEvent.pointerUp(from, { pointerId: 2, clientX: 23, clientY: 12 })
+
+    expect(p.onReorder).not.toHaveBeenCalled()
+  })
+
+  it("cancels pointer dragging on pointercancel", () => {
+    const p = props()
+    render(<TabBar {...p} />)
+
+    const from = screen.getByTitle("会话 1")
+    const to = screen.getByTitle("会话 2")
+
+    fireEvent.pointerDown(from, { pointerId: 3, button: 0, clientX: 20, clientY: 12 })
+    fireEvent.pointerMove(from, { pointerId: 3, clientX: 40, clientY: 12 })
+    fireEvent.pointerEnter(to, { pointerId: 3, clientX: 180, clientY: 12 })
+    fireEvent.pointerCancel(window, { pointerId: 3 })
+    fireEvent.pointerUp(to, { pointerId: 3, clientX: 180, clientY: 12 })
+
+    expect(p.onReorder).not.toHaveBeenCalled()
+  })
+
+  it("does not start drag reorder from close button", () => {
+    const p = props()
+    render(<TabBar {...p} />)
+
+    const [close] = screen.getAllByRole("button", { name: "关闭标签" })
+    const to = screen.getByTitle("会话 2")
+
+    fireEvent.pointerDown(close, { pointerId: 4, button: 0, clientX: 20, clientY: 12 })
+    fireEvent.pointerMove(close, { pointerId: 4, clientX: 60, clientY: 12 })
+    fireEvent.pointerEnter(to, { pointerId: 4, clientX: 180, clientY: 12 })
+    fireEvent.pointerUp(window, { pointerId: 4, clientX: 180, clientY: 12 })
+
+    expect(p.onReorder).not.toHaveBeenCalled()
   })
 
   it("opens share url through ide bridge when available", () => {

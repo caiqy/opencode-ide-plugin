@@ -25,6 +25,17 @@ type Menu = {
   sessionId: string
 }
 
+type Drag = {
+  pointerId: number
+  from: number
+  to: number
+  startX: number
+  startY: number
+  active: boolean
+}
+
+const dragThreshold = 6
+
 export function TabBar({
   openTabs,
   activeTab,
@@ -39,13 +50,17 @@ export function TabBar({
 }: TabBarProps) {
   const { sessions, isSessionIdle, isSessionReasoning } = useSession()
   const ref = useRef<HTMLDivElement>(null)
-  const [dragIdx, setDragIdx] = useState<number | null>(null)
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+  const [drag, setDrag] = useState<Drag | null>(null)
   const [left, setLeft] = useState(false)
   const [right, setRight] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<Menu | null>(null)
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null)
   const tabs = useRef(new Map<string, HTMLDivElement>())
+  const dragRef = useRef<Drag | null>(null)
+
+  useEffect(() => {
+    dragRef.current = drag
+  }, [drag])
 
   const map = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions])
 
@@ -103,28 +118,71 @@ export function TabBar({
     el.scrollLeft += e.deltaY
   }, [])
 
-  const onDragOver = useCallback((e: React.DragEvent, idx: number) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = "move"
-    setDragOverIdx(idx)
+  const onPointerDown = useCallback((e: React.PointerEvent, idx: number) => {
+    if (e.button !== 0) return
+    if (!(e.target instanceof HTMLElement)) return
+    if (e.target.closest("button, input, textarea, [contenteditable='true']")) return
+    setDrag({
+      pointerId: e.pointerId,
+      from: idx,
+      to: idx,
+      startX: e.clientX,
+      startY: e.clientY,
+      active: false,
+    })
   }, [])
 
-  const onDrop = useCallback(
-    (e: React.DragEvent, to: number) => {
+  const onPointerMove = useCallback((e: React.PointerEvent, idx: number) => {
+    setDrag((cur) => {
+      if (!cur || cur.pointerId !== e.pointerId) return cur
+      const dist = Math.hypot(e.clientX - cur.startX, e.clientY - cur.startY)
+      const active = cur.active || dist >= dragThreshold
+      if (!active) return cur
       e.preventDefault()
-      if (dragIdx !== null && dragIdx !== to) {
-        onReorder(dragIdx, to)
+      if (cur.to === idx && cur.active === active) return cur
+      return {
+        ...cur,
+        to: idx,
+        active,
       }
-      setDragIdx(null)
-      setDragOverIdx(null)
-    },
-    [dragIdx, onReorder],
-  )
-
-  const onDragEnd = useCallback(() => {
-    setDragIdx(null)
-    setDragOverIdx(null)
+    })
   }, [])
+
+  const onPointerEnter = useCallback((e: React.PointerEvent, idx: number) => {
+    setDrag((cur) => {
+      if (!cur || cur.pointerId !== e.pointerId || !cur.active) return cur
+      if (cur.to === idx) return cur
+      return {
+        ...cur,
+        to: idx,
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    const onUp = (e: PointerEvent) => {
+      const cur = dragRef.current
+      if (!cur || cur.pointerId !== e.pointerId) return
+      if (cur.active && cur.from !== cur.to) {
+        onReorder(cur.from, cur.to)
+      }
+      setDrag(null)
+    }
+    const onCancel = (e: PointerEvent) => {
+      const cur = dragRef.current
+      if (!cur || cur.pointerId !== e.pointerId) return
+      setDrag(null)
+    }
+    const onBlur = () => setDrag(null)
+    window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onCancel)
+    window.addEventListener("blur", onBlur)
+    return () => {
+      window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onCancel)
+      window.removeEventListener("blur", onBlur)
+    }
+  }, [onReorder])
 
   const onOpenShareLink = useCallback(() => {
     if (!ctxMenu) return
@@ -152,12 +210,18 @@ export function TabBar({
         {openTabs.map((id, idx) => {
           const session = map.get(id)
           const isDragOver =
-            dragOverIdx === idx && dragIdx !== null && dragIdx !== idx ? (dragIdx > idx ? "left" : "right") : null
+            drag && drag.active && drag.to === idx && drag.from !== idx ? (drag.from > idx ? "left" : "right") : null
 
           return (
-            <div key={id} ref={(node) => setTab(id, node)} className={`h-full ${TAB_WIDTH_CLASS}`}>
+            <div
+              key={id}
+              ref={(node) => setTab(id, node)}
+              className={`h-full ${TAB_WIDTH_CLASS}`}
+              onPointerDown={(e) => onPointerDown(e, idx)}
+              onPointerMove={(e) => onPointerMove(e, idx)}
+              onPointerEnter={(e) => onPointerEnter(e, idx)}
+            >
               <Tab
-                sessionId={id}
                 title={session?.title || ""}
                 isActive={id === activeTab}
                 isBusy={!isSessionIdle(id)}
@@ -166,10 +230,6 @@ export function TabBar({
                 onClose={() => onClose(id)}
                 onRename={(title) => onRename(id, title)}
                 onContextMenu={(x, y) => setCtxMenu({ x, y, sessionId: id })}
-                onDragStart={() => setDragIdx(idx)}
-                onDragOver={(e) => onDragOver(e, idx)}
-                onDrop={(e) => onDrop(e, idx)}
-                onDragEnd={onDragEnd}
                 isDragOver={isDragOver}
                 isRenaming={renamingTabId === id}
                 onRenameComplete={() => setRenamingTabId(null)}
