@@ -260,6 +260,7 @@ export function useMessageInput({
         variant: "error",
         duration: 6000,
       })
+      setSessionIdle(sessionID, true)
     }
   }, [sessionID, setSessionIdle, showToast, editor, getQuestionsBySession, rejectQuestion])
 

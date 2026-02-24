@@ -55,9 +55,9 @@ export function QuestionOptions({
   return (
     <div className="px-3 py-2">
       {/* Question text */}
-      <div className="text-sm text-gray-800 dark:text-gray-200 mb-3">
+      <div className="text-sm text-gray-800 dark:text-gray-200 mb-3 [&_.markdown-content>*:last-child]:mb-0">
         <MarkdownRenderer>{question.question}</MarkdownRenderer>
-        {isMultiple && <span className="text-gray-500 dark:text-gray-400 text-xs ml-2">（可多选）</span>}
+        {isMultiple && <span className="text-gray-500 dark:text-gray-400 text-xs">（可多选）</span>}
       </div>
 
       {/* Options list */}
@@ -186,9 +186,7 @@ export function QuestionOptions({
                   className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none"
                   rows={2}
                 />
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                  按 Enter 确认，按 Esc 取消
-                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">按 Enter 确认，按 Esc 取消</p>
               </div>
             )}
 

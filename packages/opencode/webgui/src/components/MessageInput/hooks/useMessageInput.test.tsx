@@ -207,6 +207,8 @@ describe("useMessageInput", () => {
     mocks.rejectQuestion
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false)
+      // 防御性测试：rejectQuestion 内部有 try/catch 不会实际抛出，
+      // 但 Promise.allSettled 仍应安全处理 rejected 状态
       .mockRejectedValueOnce(new Error("reject fail"))
 
     const editor = {
@@ -240,5 +242,71 @@ describe("useMessageInput", () => {
     expect(mocks.rejectQuestion).toHaveBeenNthCalledWith(3, "q3")
     expect(mocks.abort).toHaveBeenCalledWith({ path: { id: "s-1" } })
     expect(mocks.abort).toHaveBeenCalledTimes(1)
+  })
+
+  it("0 条 pending question 时直接 abort", async () => {
+    mocks.getQuestionsBySession.mockReturnValue([])
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-2",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "x" }]),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.handleAbort()
+    })
+
+    expect(mocks.rejectQuestion).not.toHaveBeenCalled()
+    expect(mocks.abort).toHaveBeenCalledWith({ path: { id: "s-2" } })
+    expect(mocks.abort).toHaveBeenCalledTimes(1)
+    expect(mocks.setSessionIdle).toHaveBeenCalledWith("s-2", true)
+  })
+
+  it("abort 失败时仍恢复 sessionIdle 状态", async () => {
+    mocks.abort.mockRejectedValueOnce(new Error("network error"))
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-3",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "x" }]),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.handleAbort()
+    })
+
+    expect(mocks.setSessionIdle).toHaveBeenCalledWith("s-3", true)
+    expect(mocks.showToast).toHaveBeenCalledTimes(1)
   })
 })

@@ -8,6 +8,7 @@ import { ideBridge } from "../lib/ideBridge"
 
 interface MarkdownRendererProps {
   children: string
+  inline?: boolean
 }
 
 // Common className patterns for consistency and maintainability
@@ -202,7 +203,38 @@ const markdownComponents: Partial<Components> = {
   del: ({ children }) => <del className={`line-through ${styles.textDim}`}>{children}</del>,
 }
 
-export function MarkdownRenderer({ children }: MarkdownRendererProps) {
+const inlineComponents: Partial<Components> = {
+  ...markdownComponents,
+  p: ({ children }) => <span>{children}</span>,
+  h1: ({ children }) => <span className={`font-bold ${styles.text}`}>{children}</span>,
+  h2: ({ children }) => <span className={`font-bold ${styles.text}`}>{children}</span>,
+  h3: ({ children }) => <span className={`font-bold ${styles.text}`}>{children}</span>,
+  h4: ({ children }) => <span className={`font-bold ${styles.text}`}>{children}</span>,
+  h5: ({ children }) => <span className={`font-bold ${styles.text}`}>{children}</span>,
+  h6: ({ children }) => <span className={`font-bold ${styles.text}`}>{children}</span>,
+  ul: ({ children }) => <span>{children}</span>,
+  ol: ({ children }) => <span>{children}</span>,
+  li: ({ children }) => <span className={`${styles.text} before:content-['•_']`}>{children}</span>,
+  blockquote: ({ children }) => <span className={`italic ${styles.textMuted}`}>{children}</span>,
+  hr: () => <span className="mx-1">—</span>,
+  table: ({ children }) => <span>{children}</span>,
+  thead: ({ children }) => <span>{children}</span>,
+  tbody: ({ children }) => <span>{children}</span>,
+  tr: ({ children }) => <span>{children}</span>,
+  th: ({ children }) => <span className={`font-bold ${styles.text}`}>{children} </span>,
+  td: ({ children }) => <span className={styles.text}>{children} </span>,
+}
+
+export function MarkdownRenderer({ children, inline }: MarkdownRendererProps) {
+  if (inline) {
+    return (
+      <span className="markdown-content inline break-words [overflow-wrap:anywhere]">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={inlineComponents}>
+          {children}
+        </ReactMarkdown>
+      </span>
+    )
+  }
   return (
     <div className="markdown-content break-words [overflow-wrap:anywhere]">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
