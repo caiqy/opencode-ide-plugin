@@ -7,6 +7,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
+import { composerLocked, sessionLoading } from "./session-composer-loading"
 
 export function createSessionComposerBlocked() {
   const params = useParams()
@@ -50,6 +51,7 @@ export function createSessionComposerState() {
     dock: todos().length > 0,
     closing: false,
     opening: false,
+    settled: {} as Record<string, boolean>,
   })
 
   const permissionResponding = createMemo(() => {
@@ -142,8 +144,31 @@ export function createSessionComposerState() {
     cancelAnimationFrame(raf)
   })
 
+  const syncing = createMemo(() => {
+    const id = params.id
+    if (!id) return false
+    return sync.session.history.loading(id)
+  })
+
+  createEffect(() => {
+    const id = params.id
+    if (!id) return
+    if (store.settled[id]) return
+    if (syncing() || sync.data.message[id] !== undefined) {
+      setStore("settled", id, true)
+    }
+  })
+
+  const loading = createMemo(() => {
+    const id = params.id
+    return sessionLoading(id, sync.data.message, syncing(), !!store.settled[id ?? ""])
+  })
+  const locked = createMemo(() => composerLocked(blocked(), loading()))
+
   return {
     blocked,
+    loading,
+    locked,
     questionRequest,
     permissionRequest,
     permissionResponding,

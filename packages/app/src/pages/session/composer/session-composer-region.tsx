@@ -43,6 +43,15 @@ export function SessionComposerRegion(props: {
     setSessionHandoff(sessionKey(), { prompt: previewPrompt() })
   })
 
+  let el: HTMLDivElement | undefined
+  createEffect(() => {
+    if (!props.state.loading()) return
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement)) return
+    if (!el?.contains(active)) return
+    active.blur()
+  })
+
   return (
     <div
       ref={props.setPromptDockRef}
@@ -106,11 +115,16 @@ export function SessionComposerRegion(props: {
               </div>
             </Show>
             <div
+              ref={el}
+              aria-busy={props.state.loading() ? "true" : "false"}
+              aria-disabled={props.state.loading() ? "true" : "false"}
+              inert={props.state.loading() ? true : undefined}
               classList={{
                 "relative z-10": true,
                 "transition-[margin] duration-[400ms] ease-out": true,
                 "-mt-9": props.state.dock() && !props.state.closing(),
                 "mt-0": !props.state.dock() || props.state.closing(),
+                "pointer-events-none opacity-50": props.state.loading(),
               }}
             >
               <PromptInput
@@ -118,6 +132,7 @@ export function SessionComposerRegion(props: {
                 newSessionWorktree={props.newSessionWorktree}
                 onNewSessionWorktreeReset={props.onNewSessionWorktreeReset}
                 onSubmit={props.onSubmit}
+                locked={props.state.locked()}
               />
             </div>
           </Show>

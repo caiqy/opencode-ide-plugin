@@ -59,6 +59,7 @@ interface PromptInputProps {
   newSessionWorktree?: string
   onNewSessionWorktreeReset?: () => void
   onSubmit?: () => void
+  locked?: boolean
 }
 
 const EXAMPLES = [
@@ -897,6 +898,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     newSessionWorktree: () => props.newSessionWorktree,
     onNewSessionWorktreeReset: props.onNewSessionWorktreeReset,
     onSubmit: props.onSubmit,
+    locked: () => !!props.locked,
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {

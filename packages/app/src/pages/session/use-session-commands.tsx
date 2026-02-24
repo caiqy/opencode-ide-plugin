@@ -25,6 +25,7 @@ export type SessionCommandContext = {
   navigateMessageByOffset: (offset: number) => void
   setActiveMessage: (message: UserMessage | undefined) => void
   focusInput: () => void
+  locked: () => boolean
 }
 
 const withCategory = (category: string) => {
@@ -87,6 +88,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const navigateMessageByOffset = actions.navigateMessageByOffset
   const setActiveMessage = actions.setActiveMessage
   const focusInput = actions.focusInput
+  const locked = actions.locked
 
   const sessionCommand = withCategory(language.t("command.category.session"))
   const fileCommand = withCategory(language.t("command.category.file"))
@@ -185,6 +187,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       id: "input.focus",
       title: language.t("command.input.focus"),
       keybind: "ctrl+l",
+      disabled: locked(),
       onSelect: () => focusInput(),
     }),
     terminalCommand({
@@ -225,6 +228,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       description: language.t("command.model.choose.description"),
       keybind: "mod+'",
       slash: "model",
+      disabled: locked(),
       onSelect: () => dialog.show(() => <DialogSelectModel />),
     }),
     mcpCommand({
@@ -241,6 +245,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       description: language.t("command.agent.cycle.description"),
       keybind: "mod+.",
       slash: "agent",
+      disabled: locked(),
       onSelect: () => local.agent.move(1),
     }),
     agentCommand({
@@ -248,6 +253,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       title: language.t("command.agent.cycle.reverse"),
       description: language.t("command.agent.cycle.reverse.description"),
       keybind: "shift+mod+.",
+      disabled: locked(),
       onSelect: () => local.agent.move(-1),
     }),
     modelCommand({
@@ -255,6 +261,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       title: language.t("command.model.variant.cycle"),
       description: language.t("command.model.variant.cycle.description"),
       keybind: "shift+mod+d",
+      disabled: locked(),
       onSelect: () => {
         local.model.variant.cycle()
       },

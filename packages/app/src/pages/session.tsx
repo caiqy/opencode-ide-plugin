@@ -397,7 +397,7 @@ export default function Page() {
     }
 
     if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
-      if (composer.blocked()) return
+      if (composer.locked()) return
       inputRef?.focus()
     }
   }
@@ -442,6 +442,7 @@ export default function Page() {
     navigateMessageByOffset,
     setActiveMessage,
     focusInput,
+    locked: composer.locked,
   })
 
   const openReviewFile = createOpenReviewFile({
