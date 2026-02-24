@@ -1,4 +1,5 @@
 import { cn } from "../../../../utils/classNames"
+import { MarkdownRenderer } from "../../../MarkdownRenderer"
 import type { QuestionInfo } from "@opencode-ai/sdk/v2/client"
 
 interface QuestionOptionsProps {
@@ -55,7 +56,7 @@ export function QuestionOptions({
     <div className="px-3 py-2">
       {/* Question text */}
       <div className="text-sm text-gray-800 dark:text-gray-200 mb-3">
-        {question.question}
+        <MarkdownRenderer>{question.question}</MarkdownRenderer>
         {isMultiple && <span className="text-gray-500 dark:text-gray-400 text-xs ml-2">（可多选）</span>}
       </div>
 

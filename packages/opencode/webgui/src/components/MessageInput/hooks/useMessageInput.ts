@@ -36,7 +36,7 @@ export function useMessageInput({
   const [failedMap, setFailedMap] = useState<Record<string, string>>({})
   const { showToast } = useToast()
   const { setSessionIdle, isVirtualSession, materializeSession } = useSession()
-  const { addMessage, setMessages } = useMessages()
+  const { addMessage, setMessages, getQuestionsBySession, rejectQuestion } = useMessages()
 
   const lastFailedMessage = sessionID ? (failedMap[sessionID] ?? null) : null
 
@@ -249,6 +249,15 @@ export function useMessageInput({
     if (!sessionID) return
     if (sessionID.startsWith("virtual-")) return
     try {
+      const result = await Promise.allSettled(getQuestionsBySession(sessionID).map((item) => rejectQuestion(item.id)))
+
+      if (result.some((item) => item.status === "rejected")) {
+        console.warn("[MessageInput] Failed to reject question before abort")
+      }
+      if (result.some((item) => item.status === "fulfilled" && item.value === false)) {
+        console.warn("[MessageInput] Question reject returned false before abort")
+      }
+
       await sdk.session.abort({ path: { id: sessionID } })
       setSessionIdle(sessionID, true)
       setIsSending(false)
@@ -264,7 +273,7 @@ export function useMessageInput({
         duration: 6000,
       })
     }
-  }, [sessionID, setSessionIdle, showToast, editor])
+  }, [sessionID, setSessionIdle, showToast, editor, getQuestionsBySession, rejectQuestion])
 
   const handleCompact = useCallback(
     async (closeModal: () => void) => {
