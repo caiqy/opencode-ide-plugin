@@ -56,4 +56,20 @@ describe("MessageActions", () => {
     const stop = screen.getByTitle("停止生成")
     expect(stop).toHaveAttribute("data-tip", "停止生成")
   })
+
+  it("生成中精简按钮应禁用", () => {
+    render(
+      <MessageActions
+        isIdle={false}
+        isButtonDisabled={false}
+        isCompactDisabled={true}
+        onSubmit={vi.fn()}
+        onAbort={vi.fn()}
+        onCompactClick={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTitle("精简会话历史")).toBeDisabled()
+    expect(screen.getByTitle("停止生成")).toBeInTheDocument()
+  })
 })

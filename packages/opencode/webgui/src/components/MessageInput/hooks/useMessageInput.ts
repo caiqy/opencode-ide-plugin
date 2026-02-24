@@ -5,6 +5,7 @@ import { useSession } from "../../../state/SessionContext"
 import { useToast } from "../../../state/ToastContext"
 import { useMessages } from "../../../state/MessagesContext"
 import { createOptimisticUserMessage, removeOptimisticMessages } from "../../../lib/messagesStore"
+import { uiBridgeMoveDraft } from "../../../state/uiBridgeState"
 
 interface UseMessageInputOptions {
   sessionID: string | null
@@ -86,6 +87,7 @@ export function useMessageInput({
       }
 
       if (actualSessionID !== sessionID) {
+        uiBridgeMoveDraft(sessionID, actualSessionID)
         setSessionIdle(actualSessionID, false)
         setSessionIdle(sessionID, true)
       }

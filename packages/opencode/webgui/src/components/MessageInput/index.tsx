@@ -20,7 +20,7 @@ import { useDragDrop } from "./hooks/useDragDrop"
 import { useEditorKeyboard } from "./hooks/useEditorKeyboard"
 import { useMessageParts } from "./hooks/useMessageParts"
 import { insertPlainWithMentionsImpl } from "./utils"
-import { uiBridgeSubscribe, uiBridgeUpdate } from "../../state/uiBridgeState"
+import { uiBridgeDraft, uiBridgeSubscribeDraft, uiBridgeUpdateDraft } from "../../state/uiBridgeState"
 
 interface MessageInputProps {
   sessionID: string | null
@@ -80,17 +80,21 @@ const MessageInputInner = forwardRef<
   // Providers state for variants computation
   const [providers, setProviders] = useState<Provider[]>([])
 
-  const [isRestoring, setIsRestoring] = useState(false)
-  const restored = useRef(false)
+  const restoring = useRef(false)
+  const draft = useRef("")
 
-  const handleEditorChange = useCallback((editorState: EditorState) => {
-    editorState.read(() => {
-      const root = $getRoot()
-      const textContent = root.getTextContent()
-      setIsEmpty(textContent.trim().length === 0)
-      if (!isRestoring) uiBridgeUpdate({ input: textContent })
-    })
-  }, [isRestoring])
+  const handleEditorChange = useCallback(
+    (editorState: EditorState) => {
+      editorState.read(() => {
+        const root = $getRoot()
+        const textContent = root.getTextContent()
+        setIsEmpty(textContent.trim().length === 0)
+        draft.current = textContent
+        if (!restoring.current && sessionID) uiBridgeUpdateDraft(sessionID, textContent)
+      })
+    },
+    [sessionID],
+  )
 
   const resolveToAbsolutePath = useCallback(
     (path: string | undefined): string => {
@@ -129,9 +133,21 @@ const MessageInputInner = forwardRef<
     [],
   )
 
+  const restore = useCallback(
+    (value: string) => {
+      restoring.current = true
+      draft.current = value
+      insertPlainWithMentionsImpl(editor, parseWithRange, value, { replace: true })
+      queueMicrotask(() => {
+        restoring.current = false
+      })
+    },
+    [editor, parseWithRange],
+  )
+
   const { extractMessageParts } = useMessageParts({ editor, resolveToAbsolutePath })
 
-  const { isSending, lastFailedMessage, handleSubmit, handleRetry, handleAbort, handleCompact } = useMessageInput({
+  const { lastFailedMessage, handleSubmit, handleRetry, handleAbort, handleCompact } = useMessageInput({
     sessionID,
     editor,
     isEmpty,
@@ -150,17 +166,14 @@ const MessageInputInner = forwardRef<
 
   useEditorKeyboard({ editor, contentEditableRef, parseWithRange, onSubmit: handleSubmit })
 
-  // Restore input from IDE bridge state
+  // Restore and subscribe to session-scoped draft (handles late host hydrate)
   useEffect(() => {
-    return uiBridgeSubscribe((s) => {
-      if (restored.current) return
-      if (!s.input) return
-      restored.current = true
-      setIsRestoring(true)
-      insertPlainWithMentionsImpl(editor, parseWithRange, s.input, { replace: true })
-      setTimeout(() => setIsRestoring(false), 0)
+    restore(uiBridgeDraft(sessionID))
+    return uiBridgeSubscribeDraft(sessionID, (value) => {
+      if (value === draft.current) return
+      restore(value)
     })
-  }, [editor, parseWithRange])
+  }, [restore, sessionID])
 
   // Expose methods to parent
   useImperativeHandle(
@@ -248,10 +261,12 @@ const MessageInputInner = forwardRef<
     [editor, worktree, parseWithRange],
   )
 
-  // Disable/enable editor based on isSending state
+  const busy = !isIdle
+
+  // Disable/enable editor based on session busy state
   useEffect(() => {
-    editor.setEditable(!isSending)
-  }, [editor, isSending])
+    editor.setEditable(!busy)
+  }, [editor, busy])
 
   // Load providers for variant computation
   useEffect(() => {
@@ -313,15 +328,10 @@ const MessageInputInner = forwardRef<
     }
   }, [providers, selectedProviderId, selectedModelId])
 
-  const isDisabled = isSending
-  const isButtonDisabled = isDisabled || isEmpty
+  const isDisabled = busy
+  const isButtonDisabled = busy || isEmpty
   const isCompactDisabled =
-    isSending ||
-    isCompacting ||
-    !sessionID ||
-    sessionID.startsWith("virtual-") ||
-    !selectedProviderId ||
-    !selectedModelId
+    busy || isCompacting || !sessionID || sessionID.startsWith("virtual-") || !selectedProviderId || !selectedModelId
 
   const handleCompactWithModal = useCallback(async () => {
     setIsCompacting(true)
