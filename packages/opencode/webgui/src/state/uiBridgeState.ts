@@ -1,23 +1,27 @@
 import { ideBridge } from "../lib/ideBridge"
 
 export type UiBridgeState = {
-  v: 2
+  v: 3
   sessionID: string | null
   providerId: string | null
   modelId: string | null
   agent: string | null
   variant: string | null
+  openTabs: string[]
+  activeTab: string
   // TODO: prune orphaned drafts when sessions are deleted to prevent unbounded growth
   drafts: Record<string, string>
 }
 
 const empty: UiBridgeState = {
-  v: 2,
+  v: 3,
   sessionID: null,
   providerId: null,
   modelId: null,
   agent: null,
   variant: null,
+  openTabs: [],
+  activeTab: "",
   drafts: {},
 }
 
@@ -76,6 +80,16 @@ function sanitizeSession(sessionID: string | null): string | null {
   return sessionID
 }
 
+function parseTabs(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  return input.filter((id): id is string => typeof id === "string" && !id.startsWith("virtual-"))
+}
+
+function sanitizeActiveTab(openTabs: string[], activeTab: unknown): string {
+  if (typeof activeTab === "string" && openTabs.includes(activeTab)) return activeTab
+  return openTabs[openTabs.length - 1] || ""
+}
+
 function encode(next: UiBridgeState) {
   return JSON.stringify(next)
 }
@@ -107,7 +121,9 @@ function hasNonDraftChange(prev: UiBridgeState, next: UiBridgeState) {
     prev.providerId !== next.providerId ||
     prev.modelId !== next.modelId ||
     prev.agent !== next.agent ||
-    prev.variant !== next.variant
+    prev.variant !== next.variant ||
+    prev.openTabs !== next.openTabs ||
+    prev.activeTab !== next.activeTab
   )
 }
 
@@ -151,8 +167,11 @@ export function uiBridgeHydrate(raw: unknown): UiBridgeState {
     return drafts
   })()
 
+  const openTabs = parseTabs(obj?.openTabs)
+  const activeTab = sanitizeActiveTab(openTabs, obj?.activeTab)
+
   const next: UiBridgeState = {
-    v: 2,
+    v: 3,
     sessionID,
     providerId:
       typeof obj?.providerId === "string"
@@ -163,6 +182,8 @@ export function uiBridgeHydrate(raw: unknown): UiBridgeState {
     modelId: typeof obj?.modelId === "string" ? obj.modelId : typeof obj?.modelID === "string" ? obj.modelID : null,
     agent: typeof obj?.agent === "string" ? obj.agent : null,
     variant: typeof obj?.variant === "string" ? obj.variant : null,
+    openTabs,
+    activeTab,
     drafts: nextDrafts,
   }
 
@@ -225,6 +246,15 @@ export function uiBridgeUpdate(patch: Partial<Omit<UiBridgeState, "v">>): UiBrid
   )
   const parsedDrafts = patch.drafts ? parseDrafts(patch.drafts) : prev.drafts
   const nextDrafts = migrateLegacyDraft(parsedDrafts, nextSessionID)
+  const nextOpenTabs = Array.isArray(patch.openTabs)
+    ? patch.openTabs.filter((id): id is string => typeof id === "string" && !id.startsWith("virtual-"))
+    : prev.openTabs
+  const nextActiveTab =
+    typeof patch.activeTab === "string"
+      ? nextOpenTabs.includes(patch.activeTab)
+        ? patch.activeTab
+        : nextOpenTabs[nextOpenTabs.length - 1] || ""
+      : prev.activeTab
   const next: UiBridgeState = {
     ...prev,
     sessionID: nextSessionID,
@@ -233,6 +263,8 @@ export function uiBridgeUpdate(patch: Partial<Omit<UiBridgeState, "v">>): UiBrid
     modelId: typeof patch.modelId === "string" ? patch.modelId : patch.modelId === null ? null : prev.modelId,
     agent: typeof patch.agent === "string" ? patch.agent : patch.agent === null ? null : prev.agent,
     variant: typeof patch.variant === "string" ? patch.variant : patch.variant === null ? null : prev.variant,
+    openTabs: nextOpenTabs,
+    activeTab: nextActiveTab,
     drafts: nextDrafts,
   }
 

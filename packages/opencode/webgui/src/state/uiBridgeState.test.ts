@@ -198,4 +198,49 @@ describe("uiBridgeSubscribeSelector", () => {
     uiBridgeStateModule.uiBridgeMoveDraft("missing", "s2")
     expect(uiBridgeStateModule.uiBridgeDraft("s2")).toBe("b")
   })
+
+  it("hydrates v3 openTabs and activeTab", () => {
+    const state = uiBridgeStateModule.uiBridgeHydrate({
+      sessionID: "s1",
+      openTabs: ["s1", "s2"],
+      activeTab: "s2",
+    })
+    expect(state.openTabs).toEqual(["s1", "s2"])
+    expect(state.activeTab).toBe("s2")
+  })
+
+  it("falls back to empty tabs when hydrating v2 payload", () => {
+    const state = uiBridgeStateModule.uiBridgeHydrate({
+      sessionID: "s1",
+    })
+    expect(state.openTabs).toEqual([])
+    expect(state.activeTab).toBe("")
+  })
+
+  it("filters virtual tabs during hydrate", () => {
+    const state = uiBridgeStateModule.uiBridgeHydrate({
+      openTabs: ["s1", "virtual-temp", "s2"],
+      activeTab: "virtual-temp",
+    })
+    expect(state.openTabs).toEqual(["s1", "s2"])
+    expect(state.activeTab).toBe("s2")
+  })
+
+  it("normalizes invalid openTabs entries", () => {
+    const state = uiBridgeStateModule.uiBridgeHydrate({
+      openTabs: ["s1", 42, null, "s2"],
+      activeTab: "s1",
+    })
+    expect(state.openTabs).toEqual(["s1", "s2"])
+    expect(state.activeTab).toBe("s1")
+  })
+
+  it("falls back activeTab when not in openTabs", () => {
+    const state = uiBridgeStateModule.uiBridgeHydrate({
+      openTabs: ["s1", "s2"],
+      activeTab: "missing",
+    })
+    expect(state.openTabs).toEqual(["s1", "s2"])
+    expect(state.activeTab).toBe("s2")
+  })
 })
