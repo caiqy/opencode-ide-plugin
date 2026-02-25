@@ -57,7 +57,8 @@ export function SubtaskDrawer() {
     return false
   }, [parent, getMessagesBySession])
 
-  const currentToolLabel = toolStats.currentToolLabel === "空闲" && isParentCompleted ? "已完成" : toolStats.currentToolLabel
+  const currentToolLabel =
+    toolStats.currentToolLabel === "空闲" && isParentCompleted ? "已完成" : toolStats.currentToolLabel
 
   const headerSummary = useMemo(() => {
     const toolName = getToolLabel("task")
@@ -83,7 +84,7 @@ export function SubtaskDrawer() {
 
   if (!isOpen || !sessionId) return null
 
-  const DEFAULT_WIDTH = 520
+  const DEFAULT_WIDTH = Math.floor(window.innerWidth * 0.9)
   const MIN_WIDTH = 360
 
   return (
@@ -125,10 +126,7 @@ function ResizableDrawer({
   const [width, setWidth] = useState(defaultWidth)
   const drag = useRef<{ x: number; w: number } | null>(null)
 
-  const clamp = useCallback(
-    (next: number) => Math.min(window.innerWidth * 0.9, Math.max(minWidth, next)),
-    [minWidth],
-  )
+  const clamp = useCallback((next: number) => Math.min(window.innerWidth * 0.9, Math.max(minWidth, next)), [minWidth])
 
   const onMove = useCallback(
     (e: PointerEvent) => {

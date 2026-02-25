@@ -4,9 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => {
   return {
     closeSubtaskDrawer: vi.fn(),
-    loadSessionMessages: vi.fn<
-      (sessionId: string) => Promise<void>
-    >(),
+    loadSessionMessages: vi.fn<(sessionId: string) => Promise<void>>(),
     getMessagesBySession: vi.fn<(sessionId: string) => Array<any>>(),
     state: {
       isOpen: true,
@@ -140,34 +138,37 @@ describe("SubtaskDrawer", () => {
     expect(screen.queryByTestId("subtask-drawer-backdrop")).not.toBeInTheDocument()
   })
 
-  it("默认宽度应为 520px", () => {
+  it("默认宽度应为 90vw", () => {
     render(<SubtaskDrawer />)
     const dialog = screen.getByRole("dialog", { name: "子任务" })
-    expect(dialog).toHaveStyle({ width: "520px" })
+    const expected = Math.floor(window.innerWidth * 0.9)
+    expect(dialog).toHaveStyle({ width: `${expected}px` })
   })
 
   it("左边缘向左拖拽后应变宽", () => {
     render(<SubtaskDrawer />)
     const handle = screen.getByTestId("subtask-drawer-resize-handle")
-    const dialog = screen.getByRole("dialog", { name: "子任务" })
+    const dialog = screen.getByRole("dialog", { name: "子任务" }) as HTMLElement
+    const initial = parseFloat(dialog.style.width)
 
     fireEvent.pointerDown(handle, { button: 0, clientX: 900 })
     fireEvent.pointerMove(document, { clientX: 820 })
     fireEvent.pointerUp(document)
 
-    expect(parseFloat((dialog as HTMLElement).style.width)).toBeGreaterThan(520)
+    expect(parseFloat(dialog.style.width)).toBeGreaterThan(initial)
   })
 
   it("左边缘向右拖拽后应变窄", () => {
     render(<SubtaskDrawer />)
     const handle = screen.getByTestId("subtask-drawer-resize-handle")
-    const dialog = screen.getByRole("dialog", { name: "子任务" })
+    const dialog = screen.getByRole("dialog", { name: "子任务" }) as HTMLElement
+    const initial = parseFloat(dialog.style.width)
 
     fireEvent.pointerDown(handle, { button: 0, clientX: 900 })
     fireEvent.pointerMove(document, { clientX: 980 })
     fireEvent.pointerUp(document)
 
-    expect(parseFloat((dialog as HTMLElement).style.width)).toBeLessThan(520)
+    expect(parseFloat(dialog.style.width)).toBeLessThan(initial)
   })
 
   it("宽度不应小于 360px", () => {
