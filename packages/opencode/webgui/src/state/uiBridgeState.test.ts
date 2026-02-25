@@ -182,29 +182,6 @@ describe("uiBridgeState", () => {
     })
   })
 
-  describe("uiBridgeMoveDraft", () => {
-    it("keeps target draft and removes source draft", () => {
-      uiBridgeStateModule.uiBridgeHydrate({ sessionID: "s1" })
-      uiBridgeStateModule.uiBridgeUpdateDraft("s1", "source")
-      uiBridgeStateModule.uiBridgeUpdateDraft("s2", "target")
-
-      uiBridgeStateModule.uiBridgeMoveDraft("s1", "s2")
-
-      expect(uiBridgeStateModule.uiBridgeDraft("s1")).toBe("")
-      expect(uiBridgeStateModule.uiBridgeDraft("s2")).toBe("target")
-    })
-
-    it("在 from===to 或 source 缺失时不应变更", () => {
-      uiBridgeStateModule.uiBridgeHydrate({ sessionID: "s1", drafts: { s1: "a", s2: "b" } })
-
-      uiBridgeStateModule.uiBridgeMoveDraft("s1", "s1")
-      expect(uiBridgeStateModule.uiBridgeDraft("s1")).toBe("a")
-
-      uiBridgeStateModule.uiBridgeMoveDraft("missing", "s2")
-      expect(uiBridgeStateModule.uiBridgeDraft("s2")).toBe("b")
-    })
-  })
-
   describe("uiBridgeHydrate tabs", () => {
     it("hydrates v3 openTabs and activeTab", () => {
       const state = uiBridgeStateModule.uiBridgeHydrate({
@@ -279,6 +256,35 @@ describe("uiBridgeState", () => {
       uiBridgeStateModule.uiBridgeUpdate({ openTabs: ["s1"], activeTab: "s1" })
       expect(setState).toHaveBeenCalledTimes(1)
       vi.useRealTimers()
+    })
+  })
+
+  describe("draftSessionId", () => {
+    it("hydrate reads draftSessionId", () => {
+      const state = uiBridgeStateModule.uiBridgeHydrate({ draftSessionId: "s-draft" })
+      expect(state.draftSessionId).toBe("s-draft")
+    })
+
+    it("hydrate defaults draftSessionId to null for non-string", () => {
+      const state = uiBridgeStateModule.uiBridgeHydrate({ draftSessionId: 42 })
+      expect(state.draftSessionId).toBeNull()
+    })
+
+    it("uiBridgeUpdateDraftSessionId sets value", () => {
+      uiBridgeStateModule.uiBridgeHydrate({})
+      uiBridgeStateModule.uiBridgeUpdateDraftSessionId("s-next")
+      expect(uiBridgeStateModule.uiBridgeState().draftSessionId).toBe("s-next")
+    })
+
+    it("uiBridgeUpdateDraftSessionId(null) clears value", () => {
+      uiBridgeStateModule.uiBridgeHydrate({ draftSessionId: "s-draft" })
+      uiBridgeStateModule.uiBridgeUpdateDraftSessionId(null)
+      expect(uiBridgeStateModule.uiBridgeState().draftSessionId).toBeNull()
+    })
+
+    it("uiBridgeDraftSessionId returns current value", () => {
+      uiBridgeStateModule.uiBridgeHydrate({ draftSessionId: "s-read" })
+      expect(uiBridgeStateModule.uiBridgeDraftSessionId()).toBe("s-read")
     })
   })
 

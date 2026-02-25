@@ -350,6 +350,54 @@ describe("SessionContext migration", () => {
   })
 })
 
+describe("SessionContext virtual API removed", () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
+    ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.config.providers as any).mockResolvedValue({ data: { providers: [] }, error: null })
+    ;(sdk.kv.get as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.kv.update as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.model.get as any).mockResolvedValue({ data: { recent: [], favorite: [], variant: {} }, error: null })
+    ;(sdk.model.update as any).mockResolvedValue({ data: {}, error: null })
+    ;(ideBridge.isInstalled as any).mockReturnValue(false)
+    ;(ideBridge.request as any).mockResolvedValue({ ok: true, result: {} })
+  })
+
+  it("context does not expose newVirtual", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+    expect((result.current as any).newVirtual).toBeUndefined()
+  })
+
+  it("context does not expose materializeSession", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+    expect((result.current as any).materializeSession).toBeUndefined()
+  })
+
+  it("context does not expose isVirtualSession", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+    expect((result.current as any).isVirtualSession).toBeUndefined()
+  })
+
+  it("currentSession initializes as null", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+    expect(result.current.currentSession).toBeNull()
+  })
+})
+
 describe("SessionContext session 状态查询", () => {
   beforeEach(() => {
     vi.resetAllMocks()

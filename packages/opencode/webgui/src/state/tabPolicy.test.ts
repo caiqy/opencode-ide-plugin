@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { openVirtualUnique, openWithPolicy } from "./tabPolicy"
+import { openWithPolicy } from "./tabPolicy"
 
 describe("tabPolicy", () => {
   it("open existing activates without reordering", () => {
@@ -54,42 +54,16 @@ describe("tabPolicy", () => {
     expect(next.activeTab).toBe("s8")
   })
 
-  it("openVirtualUnique reuses existing virtual", () => {
-    const next = openVirtualUnique(
+  it("opens prefixed ids as normal tabs", () => {
+    const next = openWithPolicy(
       {
-        openTabs: ["s1", "virtual-temp", "s2"],
-        activeTab: "s2",
+        openTabs: ["s1", "virtual-temp"],
+        activeTab: "virtual-temp",
       },
       "virtual-next",
     )
 
-    expect(next.openTabs).toEqual(["s1", "virtual-temp", "s2"])
-    expect(next.activeTab).toBe("virtual-temp")
-  })
-
-  it("open first virtual appends and activates", () => {
-    const next = openVirtualUnique(
-      {
-        openTabs: ["s1", "s2"],
-        activeTab: "s2",
-      },
-      "virtual-first",
-    )
-
-    expect(next.openTabs).toEqual(["s1", "s2", "virtual-first"])
-    expect(next.activeTab).toBe("virtual-first")
-  })
-
-  it("openVirtualUnique falls back when id is not virtual", () => {
-    const next = openVirtualUnique(
-      {
-        openTabs: ["virtual-temp", "s1"],
-        activeTab: "s1",
-      },
-      "s2",
-    )
-
-    expect(next.openTabs).toEqual(["virtual-temp", "s1", "s2"])
-    expect(next.activeTab).toBe("s2")
+    expect(next.openTabs).toEqual(["s1", "virtual-temp", "virtual-next"])
+    expect(next.activeTab).toBe("virtual-next")
   })
 })

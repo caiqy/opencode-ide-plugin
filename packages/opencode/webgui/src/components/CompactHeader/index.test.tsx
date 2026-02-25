@@ -51,6 +51,10 @@ const mocks = vi.hoisted(() => ({
   useToast: vi.fn(),
   sdkShare: vi.fn(),
   sdkUnshare: vi.fn(),
+  tabBarProps: null as null | {
+    onCloseOtherTabs: (id: string) => void
+    onCloseTabsToRight: (id: string) => void
+  },
 }))
 
 vi.mock("../../state/ThemeContext", () => ({
@@ -94,7 +98,10 @@ vi.mock("./SessionDropdown", () => ({
 }))
 
 vi.mock("./TabBar", () => ({
-  TabBar: () => null,
+  TabBar: (props: { onCloseOtherTabs: (id: string) => void; onCloseTabsToRight: (id: string) => void }) => {
+    mocks.tabBarProps = props
+    return null
+  },
 }))
 
 vi.mock("../../lib/api/sdkClient", () => ({
@@ -162,6 +169,7 @@ function createBaseActionsMock(): ActionsMock {
 
 describe("CompactHeader", () => {
   beforeEach(() => {
+    mocks.tabBarProps = null
     mocks.sdkShare.mockResolvedValue({ data: null })
     mocks.sdkUnshare.mockResolvedValue({ data: null })
 
@@ -353,6 +361,301 @@ describe("CompactHeader", () => {
     view.rerender(<CompactHeader {...props} />)
 
     expect(pruneTabs).toHaveBeenCalledWith(new Set(["s1"]))
+  })
+
+  it("switches to restored activeTab when currentSession is null", () => {
+    const switchSession = vi.fn().mockResolvedValue(undefined)
+    const openTab = vi.fn()
+
+    mocks.useSession.mockReturnValue({
+      currentSession: null,
+      setCurrentSession: vi.fn(),
+      sessions: [],
+      setSessions: vi.fn(),
+      switchSession,
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading: false,
+    })
+
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["s1", "s2"],
+      activeTab: "s2",
+      loaded: true,
+      openTab,
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    expect(switchSession).toHaveBeenCalledWith("s2")
+    expect(openTab).not.toHaveBeenCalled()
+  })
+
+  it("does not reopen current session tab when already open", () => {
+    const openTab = vi.fn()
+
+    mocks.useSession.mockReturnValue({
+      currentSession: { id: "s1", title: "会话 1" },
+      setCurrentSession: vi.fn(),
+      sessions: [],
+      setSessions: vi.fn(),
+      switchSession: vi.fn().mockResolvedValue(undefined),
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading: false,
+    })
+
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["s1", "s2"],
+      activeTab: "s1",
+      loaded: true,
+      openTab,
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    expect(openTab).not.toHaveBeenCalledWith("s1")
+  })
+
+  it("falls back to onNewSession when restored activeTab switch fails", async () => {
+    const switchSession = vi.fn().mockRejectedValue(new Error("not found"))
+    const onNewSession = vi.fn()
+
+    mocks.useSession.mockReturnValue({
+      currentSession: { id: "virtual-123", title: "" },
+      setCurrentSession: vi.fn(),
+      sessions: [],
+      setSessions: vi.fn(),
+      switchSession,
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading: false,
+    })
+
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["deleted-session"],
+      activeTab: "deleted-session",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={onNewSession}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(onNewSession).toHaveBeenCalled()
+    })
+  })
+
+  it("close other tabs 切换失败时显示错误 toast 而不是抛错", async () => {
+    const switchSession = vi.fn().mockRejectedValue(new Error("boom"))
+    const showToast = vi.fn()
+
+    mocks.useSession.mockReturnValue({
+      currentSession: { id: "s1", title: "测试会话" },
+      setCurrentSession: vi.fn(),
+      sessions: [],
+      setSessions: vi.fn(),
+      switchSession,
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading: false,
+    })
+    mocks.useToast.mockReturnValue({ showToast })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    if (!mocks.tabBarProps) throw new Error("tab bar props not captured")
+    mocks.tabBarProps.onCloseOtherTabs("s1")
+    await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith("切换会话失败", { variant: "error" })
+    })
+  })
+
+  it("close tabs to right 切换失败时显示错误 toast 而不是抛错", async () => {
+    const switchSession = vi.fn().mockRejectedValue(new Error("boom"))
+    const showToast = vi.fn()
+
+    mocks.useSession.mockReturnValue({
+      currentSession: { id: "s2", title: "测试会话 2" },
+      setCurrentSession: vi.fn(),
+      sessions: [],
+      setSessions: vi.fn(),
+      switchSession,
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading: false,
+    })
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["s1", "s2"],
+      activeTab: "s2",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    })
+    mocks.useToast.mockReturnValue({ showToast })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    if (!mocks.tabBarProps) throw new Error("tab bar props not captured")
+    mocks.tabBarProps.onCloseTabsToRight("s1")
+    await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith("切换会话失败", { variant: "error" })
+    })
+  })
+
+  it("activeTab 为空时会触发 onNewSession", async () => {
+    const switchSession = vi.fn().mockResolvedValue(undefined)
+    const onNewSession = vi.fn()
+
+    mocks.useSession.mockReturnValue({
+      currentSession: null,
+      setCurrentSession: vi.fn(),
+      sessions: [],
+      setSessions: vi.fn(),
+      switchSession,
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading: false,
+    })
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["s1"],
+      activeTab: "",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={onNewSession}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(onNewSession).toHaveBeenCalled()
+    })
+    expect(switchSession).not.toHaveBeenCalled()
+  })
+
+  it("close other tabs 会尝试切换到保留会话", () => {
+    const switchSession = vi.fn().mockResolvedValue(undefined)
+    const showToast = vi.fn()
+
+    mocks.useSession.mockReturnValue({
+      currentSession: { id: "s1", title: "会话 1" },
+      setCurrentSession: vi.fn(),
+      sessions: [],
+      setSessions: vi.fn(),
+      switchSession,
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading: false,
+    })
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["s1", "s2"],
+      activeTab: "s2",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    })
+    mocks.useToast.mockReturnValue({ showToast })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    if (!mocks.tabBarProps) throw new Error("tab bar props not captured")
+    mocks.tabBarProps.onCloseOtherTabs("s1")
+    expect(switchSession).toHaveBeenCalledWith("s1")
+    expect(showToast).not.toHaveBeenCalled()
   })
 
   it("adds left gap between tab area and right status/actions area", () => {

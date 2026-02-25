@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react"
 import { sdk } from "../lib/api/sdkClient"
-import { isVirtualTab, openVirtualUnique, openWithPolicy } from "./tabPolicy"
+import { openWithPolicy } from "./tabPolicy"
 import { uiBridgeTabs, uiBridgeUpdateTabs } from "./uiBridgeState"
 
 const key = "webgui_tabs"
@@ -126,9 +126,7 @@ function useTabStoreInternal() {
 
   const openTab = useCallback(
     (sessionId: string) => {
-      const next = isVirtualTab(sessionId)
-        ? openVirtualUnique(ref.current, sessionId)
-        : openWithPolicy(ref.current, sessionId)
+      const next = openWithPolicy(ref.current, sessionId)
       save(next)
     },
     [save],
@@ -248,7 +246,7 @@ function useTabStoreInternal() {
 
   const pruneTabs = useCallback(
     (validIds: Set<string>) => {
-      const openTabs = ref.current.openTabs.filter((id) => isVirtualTab(id) || validIds.has(id))
+      const openTabs = ref.current.openTabs.filter((id) => validIds.has(id))
       if (openTabs.length === ref.current.openTabs.length) return
       const activeTab = openTabs.includes(ref.current.activeTab)
         ? ref.current.activeTab

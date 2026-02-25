@@ -72,13 +72,8 @@ interface SessionContextState {
     variant: string | null
   }) => void
 
-  // Virtual session tracking
-  isVirtualSession: boolean
-
   // Actions
-  newVirtual: () => Session
   createSession: (options?: { title?: string }) => Promise<Session | null>
-  materializeSession: () => Promise<Session | null>
   loadSessions: () => Promise<void>
   switchSession: (sessionId: string) => Promise<void>
   updateSessionTitle: (sessionId: string, title: string) => Promise<boolean>
@@ -144,21 +139,6 @@ interface SessionProviderProps {
 }
 
 /**
- * Helper function to create a virtual session object
- */
-function createVirtualSession(): Session {
-  const now = Date.now()
-  return {
-    id: `virtual-${now}`,
-    title: "",
-    time: {
-      created: now,
-      updated: now,
-    },
-  } as Session
-}
-
-/**
  * Check if a session title is a default auto-generated title
  * Matches pattern: "New session - 2025-10-31T11:44:37.671Z" or "Child session - ..."
  */
@@ -178,8 +158,7 @@ function isSubagentSession(session: Session): boolean {
  * Manages the current active session state and provides session-related actions.
  */
 export function SessionProvider({ children }: SessionProviderProps) {
-  const [currentSession, setCurrentSession] = useState<Session | null>(() => createVirtualSession())
-  const [isVirtualSession, setIsVirtualSession] = useState(true)
+  const [currentSession, setCurrentSession] = useState<Session | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [isCreating, setIsCreating] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -715,7 +694,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
       if (response.data) {
         console.log("[SessionContext] Session created:", response.data.id)
         setCurrentSession(response.data)
-        setIsVirtualSession(false)
         // Don't add to sessions list here - let the session.created event handler do it
         // This prevents duplicate sessions in the list
         setIsCreating(false)
@@ -735,40 +713,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
   }, [])
 
   /**
-   * Start a new virtual session (not persisted until first message)
-   */
-  const newVirtual = useCallback(() => {
-    const v = createVirtualSession()
-    setCurrentSession(v)
-    setIsVirtualSession(true)
-    return v
-  }, [])
-
-  /**
-   * Materialize a virtual session into a real session
-   * This is called when the user sends their first message
-   */
-  const materializeSession = useCallback(async () => {
-    if (!isVirtualSession) {
-      console.log("[SessionContext] Session is already materialized")
-      return currentSession
-    }
-
-    console.log("[SessionContext] Materializing virtual session...")
-
-    // Create a real session
-    const realSession = await createSession()
-
-    if (realSession) {
-      console.log("[SessionContext] Virtual session materialized:", realSession.id)
-      return realSession
-    }
-
-    console.error("[SessionContext] Failed to materialize virtual session")
-    return null
-  }, [isVirtualSession, currentSession, createSession])
-
-  /**
    * Switch to a different session
    */
   const switchSession = useCallback(
@@ -778,16 +722,16 @@ export function SessionProvider({ children }: SessionProviderProps) {
       const session = sessions.find((s) => s.id === sessionId)
       if (session) {
         setCurrentSession(session)
-        setIsVirtualSession(false)
-      } else {
-        console.warn("[SessionContext] Session not found in local list, fetching...")
-        // If not in local list, fetch it
-        const response = await sdk.session.get({ path: { id: sessionId } })
-        if (response.data) {
-          setCurrentSession(response.data)
-          setIsVirtualSession(false)
-        }
+        return
       }
+      console.warn("[SessionContext] Session not found in local list, fetching...")
+      // If not in local list, fetch it
+      const response = await sdk.session.get({ path: { id: sessionId } })
+      if (response.data) {
+        setCurrentSession(response.data)
+        return
+      }
+      throw new Error(`Session ${sessionId} not found`)
     },
     [sessions],
   )
@@ -869,9 +813,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
         setSessions((prev) => prev.filter((s) => s.id !== sessionId))
         setReasoning(sessionId, false)
 
-        // If deleting current session, switch to another
+        // If deleting current session, clear it
         if (currentSession?.id === sessionId) {
-          newVirtual()
+          setCurrentSession(null)
         }
 
         return true
@@ -882,7 +826,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         return false
       }
     },
-    [currentSession, sessions, setReasoning, newVirtual],
+    [currentSession, sessions, setReasoning],
   )
 
   /**
@@ -915,7 +859,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
         // This prevents duplicate sessions in the list
         // Switch to forked session
         setCurrentSession(response.data)
-        setIsVirtualSession(false)
         return response.data
       }
 
@@ -1078,7 +1021,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   // Load session diff when current session changes
   useEffect(() => {
     const sessionId = currentSession?.id
-    if (!sessionId || isVirtualSession) return
+    if (!sessionId) return
 
     const controller = new AbortController()
     const fetchDiff = async () => {
@@ -1097,7 +1040,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
     fetchDiff()
     return () => controller.abort()
-  }, [currentSession?.id, isVirtualSession])
+  }, [currentSession?.id])
 
   // Listen for session events from SSE
   useEffect(() => {
@@ -1159,7 +1102,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         })
         const isCurrent = currentSession?.id === deletedId
         if (isCurrent) {
-          newVirtual()
+          setCurrentSession(null)
         }
         setReasoning(deletedId, false)
       }
@@ -1207,7 +1150,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       unsubscribeStatus()
       unsubscribeDiff()
     }
-  }, [currentSession?.id, setReasoning, setSessionIdle, newVirtual])
+  }, [currentSession?.id, setReasoning, setSessionIdle])
 
   const value: SessionContextState = {
     currentSession,
@@ -1235,10 +1178,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     selectionRestoreNotice,
     clearSelectionRestoreNotice,
     restoreSelections,
-    isVirtualSession,
-    newVirtual,
     createSession,
-    materializeSession,
     loadSessions,
     switchSession,
     updateSessionTitle,

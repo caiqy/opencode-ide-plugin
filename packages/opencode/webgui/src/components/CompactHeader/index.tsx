@@ -45,14 +45,14 @@ const CompactHeader = forwardRef<
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   const [sharingSessionId, setSharingSessionId] = useState<string | null>(null)
-  const prevSessionId = useRef<string | null>(null)
   const sessionsEverLoaded = useRef(false)
+  const restoring = useRef(false)
   if (isLoading) sessionsEverLoaded.current = true
 
   const isShared = !!currentSession?.share?.url
 
   const handleToggleShare = useCallback(async () => {
-    if (!currentSession || currentSession.id.startsWith("virtual-")) return
+    if (!currentSession) return
 
     setIsSharing(true)
     if (isShared) {
@@ -185,21 +185,25 @@ const CompactHeader = forwardRef<
       tabStore.closeTab(sessionId)
 
       if (activeTab) {
-        await switchSession(activeTab)
+        await switchSession(activeTab).catch(() => {
+          toast.showToast("切换会话失败", { variant: "error" })
+        })
         return
       }
 
       onNewSession()
     },
-    [onNewSession, switchSession, tabStore],
+    [onNewSession, switchSession, tabStore, toast],
   )
 
   const handleCloseOtherTabs = useCallback(
     async (sessionId: string) => {
       tabStore.closeOtherTabs(sessionId)
-      await switchSession(sessionId)
+      await switchSession(sessionId).catch(() => {
+        toast.showToast("切换会话失败", { variant: "error" })
+      })
     },
-    [switchSession, tabStore],
+    [switchSession, tabStore, toast],
   )
 
   const handleCloseTabsToRight = useCallback(
@@ -210,9 +214,11 @@ const CompactHeader = forwardRef<
       const activeTab = openTabs.includes(tabStore.activeTab) ? tabStore.activeTab : sessionId
 
       tabStore.closeTabsToRight(sessionId)
-      await switchSession(activeTab)
+      await switchSession(activeTab).catch(() => {
+        toast.showToast("切换会话失败", { variant: "error" })
+      })
     },
-    [switchSession, tabStore],
+    [switchSession, tabStore, toast],
   )
 
   const handleTabDelete = useCallback(
@@ -279,8 +285,29 @@ const CompactHeader = forwardRef<
   }
 
   useEffect(() => {
+    let aborted = false
     if (!tabStore.loaded) return
-    if (tabStore.openTabs.length > 0) return
+    if (tabStore.openTabs.length > 0) {
+      if (!tabStore.activeTab) {
+        onNewSession()
+        return () => {
+          aborted = true
+        }
+      }
+      if (currentSession?.id !== tabStore.activeTab && !restoring.current) {
+        restoring.current = true
+        void switchSession(tabStore.activeTab)
+          .catch(() => {
+            if (!aborted) onNewSession()
+          })
+          .finally(() => {
+            restoring.current = false
+          })
+      }
+      return () => {
+        aborted = true
+      }
+    }
 
     if (currentSession?.id) {
       tabStore.openTab(currentSession.id)
@@ -288,23 +315,22 @@ const CompactHeader = forwardRef<
     }
 
     onNewSession()
-  }, [currentSession?.id, onNewSession, tabStore])
+  }, [
+    currentSession?.id,
+    onNewSession,
+    switchSession,
+    tabStore.loaded,
+    tabStore.openTabs,
+    tabStore.activeTab,
+    tabStore.openTab,
+  ])
 
   useEffect(() => {
     if (!tabStore.loaded) return
     if (!currentSession?.id) return
     if (tabStore.openTabs.includes(currentSession.id)) return
     tabStore.openTab(currentSession.id)
-  }, [currentSession?.id, tabStore])
-
-  useEffect(() => {
-    const prev = prevSessionId.current
-    const next = currentSession?.id || null
-    if (prev && next && prev !== next && prev.startsWith("virtual-") && !next.startsWith("virtual-")) {
-      tabStore.replaceTab(prev, next)
-    }
-    prevSessionId.current = next
-  }, [currentSession?.id, tabStore])
+  }, [currentSession?.id, tabStore.loaded, tabStore.openTabs, tabStore.openTab])
 
   useEffect(() => {
     if (!tabStore.loaded || !sessionsEverLoaded.current || isLoading) return

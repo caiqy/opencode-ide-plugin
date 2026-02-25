@@ -156,7 +156,7 @@ describe("useTabStore", () => {
     expect(result.current.activeTab).toBe("s7")
   })
 
-  it("openTab keeps only one virtual tab", async () => {
+  it("openTab treats prefixed ids as normal tabs", async () => {
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
@@ -169,8 +169,8 @@ describe("useTabStore", () => {
       result.current.openTab("virtual-next")
     })
 
-    expect(result.current.openTabs).toEqual(["s1", "virtual-temp"])
-    expect(result.current.activeTab).toBe("virtual-temp")
+    expect(result.current.openTabs).toEqual(["s1", "virtual-temp", "virtual-next"])
+    expect(result.current.activeTab).toBe("virtual-next")
   })
 
   it("closeTab switches active to right neighbor or left when rightmost", async () => {
@@ -553,7 +553,7 @@ describe("useTabStore", () => {
     expect(result.current.activeTab).toBe("s3")
   })
 
-  it("pruneTabs preserves virtual tabs", async () => {
+  it("pruneTabs removes tabs not in validIds", async () => {
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
@@ -569,8 +569,8 @@ describe("useTabStore", () => {
       result.current.pruneTabs(new Set<string>())
     })
 
-    expect(result.current.openTabs).toEqual(["virtual-new"])
-    expect(result.current.activeTab).toBe("virtual-new")
+    expect(result.current.openTabs).toEqual([])
+    expect(result.current.activeTab).toBe("")
   })
 
   it("pruneTabs is a no-op when all tabs are valid", async () => {

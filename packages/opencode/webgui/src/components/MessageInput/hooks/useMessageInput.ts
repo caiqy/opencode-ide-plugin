@@ -5,7 +5,7 @@ import { useSession } from "../../../state/SessionContext"
 import { useToast } from "../../../state/ToastContext"
 import { useMessages } from "../../../state/MessagesContext"
 import { createOptimisticUserMessage, removeOptimisticMessages } from "../../../lib/messagesStore"
-import { uiBridgeMoveDraft } from "../../../state/uiBridgeState"
+import { uiBridgeDraftSessionId, uiBridgeUpdateDraftSessionId } from "../../../state/uiBridgeState"
 
 interface UseMessageInputOptions {
   sessionID: string | null
@@ -34,7 +34,7 @@ export function useMessageInput({
 }: UseMessageInputOptions) {
   const [failedMap, setFailedMap] = useState<Record<string, string>>({})
   const { showToast } = useToast()
-  const { setSessionIdle, isVirtualSession, materializeSession } = useSession()
+  const { setSessionIdle } = useSession()
   const { addMessage, setMessages, getQuestionsBySession, rejectQuestion } = useMessages()
 
   const lastFailedMessage = sessionID ? (failedMap[sessionID] ?? null) : null
@@ -63,25 +63,9 @@ export function useMessageInput({
       savedMessage = root.getTextContent()
     })
 
-    let actualSessionID = sessionID
-
     try {
       const trimmedMessage = savedMessage.trim()
       const isCommand = trimmedMessage.startsWith("/")
-
-      if (isVirtualSession) {
-        const realSession = await materializeSession()
-        if (!realSession) {
-          throw new Error("Failed to create session")
-        }
-        actualSessionID = realSession.id
-      }
-
-      if (actualSessionID !== sessionID) {
-        uiBridgeMoveDraft(sessionID, actualSessionID)
-        setSessionIdle(actualSessionID, false)
-        setSessionIdle(sessionID, true)
-      }
 
       editor.update(() => {
         const root = $getRoot()
@@ -90,12 +74,12 @@ export function useMessageInput({
         root.append(paragraph)
       })
 
-      setFailed(actualSessionID, null)
+      setFailed(sessionID, null)
       onMessageSent?.()
 
       // Optimistic update: show user message immediately without waiting for SSE
       if (!isCommand) {
-        addMessage(createOptimisticUserMessage(actualSessionID, trimmedMessage))
+        addMessage(createOptimisticUserMessage(sessionID, trimmedMessage))
       }
 
       setTimeout(() => {
@@ -124,7 +108,7 @@ export function useMessageInput({
         }
 
         const response = await sdk.session.command({
-          path: { id: actualSessionID },
+          path: { id: sessionID },
           body: requestBody,
         })
 
@@ -163,7 +147,7 @@ export function useMessageInput({
         }
 
         const response = await sdk.session.prompt({
-          path: { id: actualSessionID },
+          path: { id: sessionID },
           body: requestBody,
         })
 
@@ -178,15 +162,19 @@ export function useMessageInput({
           throw new Error(errorMsg)
         }
       }
+
+      if (uiBridgeDraftSessionId() === sessionID) {
+        uiBridgeUpdateDraftSessionId(null)
+      }
     } catch (err) {
       const error = err instanceof Error ? err : new Error("Failed to send message")
       console.error("[MessageInput] Failed to send message:", error)
 
       // Restore failed message for retry
-      setFailed(actualSessionID, savedMessage)
+      setFailed(sessionID, savedMessage)
 
       // Remove optimistic message on failure
-      setMessages((prev) => removeOptimisticMessages(prev, actualSessionID))
+      setMessages((prev) => removeOptimisticMessages(prev, sessionID))
 
       showToast(error.message, {
         title: "Failed to send message",
@@ -195,7 +183,7 @@ export function useMessageInput({
       })
 
       onError?.(error)
-      setSessionIdle(actualSessionID, true)
+      setSessionIdle(sessionID, true)
     }
   }, [
     sessionID,
@@ -208,8 +196,6 @@ export function useMessageInput({
     onError,
     setSessionIdle,
     showToast,
-    isVirtualSession,
-    materializeSession,
     editor,
     extractMessageParts,
     setFailed,
@@ -236,7 +222,6 @@ export function useMessageInput({
 
   const handleAbort = useCallback(async () => {
     if (!sessionID) return
-    if (sessionID.startsWith("virtual-")) return
     try {
       const result = await Promise.allSettled(getQuestionsBySession(sessionID).map((item) => rejectQuestion(item.id)))
 
@@ -267,15 +252,6 @@ export function useMessageInput({
   const handleCompact = useCallback(
     async (closeModal: () => void) => {
       if (!sessionID) return
-      if (sessionID.startsWith("virtual-")) {
-        showToast("Cannot compact a virtual session. Send a message first to create the session.", {
-          title: "Compaction not available",
-          variant: "warning",
-          duration: 6000,
-        })
-        closeModal()
-        return
-      }
       if (!selectedProviderId || !selectedModelId) {
         showToast("Select a model before compacting the session.", {
           title: "Model required",

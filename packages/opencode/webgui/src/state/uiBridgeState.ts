@@ -11,6 +11,7 @@ export type UiBridgeState = {
   activeTab: string
   // TODO: prune orphaned drafts when sessions are deleted to prevent unbounded growth
   drafts: Record<string, string>
+  draftSessionId: string | null
 }
 
 const empty: UiBridgeState = {
@@ -23,6 +24,7 @@ const empty: UiBridgeState = {
   openTabs: [],
   activeTab: "",
   drafts: {},
+  draftSessionId: null,
 }
 
 const DRAFT_SEND_DEBOUNCE_MS = 300
@@ -126,7 +128,8 @@ function hasNonDraftChange(prev: UiBridgeState, next: UiBridgeState) {
     prev.agent !== next.agent ||
     prev.variant !== next.variant ||
     prev.openTabs !== next.openTabs ||
-    prev.activeTab !== next.activeTab
+    prev.activeTab !== next.activeTab ||
+    prev.draftSessionId !== next.draftSessionId
   )
 }
 
@@ -188,6 +191,7 @@ export function uiBridgeHydrate(raw: unknown): UiBridgeState {
     openTabs,
     activeTab,
     drafts: nextDrafts,
+    draftSessionId: typeof obj?.draftSessionId === "string" ? obj.draftSessionId : null,
   }
 
   clearPendingDraftSend()
@@ -266,6 +270,12 @@ export function uiBridgeUpdate(patch: Partial<Omit<UiBridgeState, "v">>): UiBrid
     openTabs: nextOpenTabs,
     activeTab: nextActiveTab,
     drafts: nextDrafts,
+    draftSessionId:
+      typeof patch.draftSessionId === "string"
+        ? patch.draftSessionId
+        : patch.draftSessionId === null
+          ? null
+          : prev.draftSessionId,
   }
 
   const json = encode(next)
@@ -319,11 +329,10 @@ export function uiBridgeUpdateTabs(openTabs: string[], activeTab: string) {
   return uiBridgeUpdate({ openTabs, activeTab })
 }
 
-export function uiBridgeMoveDraft(from: string, to: string) {
-  if (!from || !to || from === to) return store.state
-  const value = store.state.drafts[from]
-  if (!value) return store.state
-  const drafts = omitDraft(store.state.drafts, from)
-  if (drafts[to]) return uiBridgeUpdate({ drafts })
-  return uiBridgeUpdate({ drafts: { ...drafts, [to]: value } })
+export function uiBridgeDraftSessionId() {
+  return store.state.draftSessionId
+}
+
+export function uiBridgeUpdateDraftSessionId(id: string | null) {
+  return uiBridgeUpdate({ draftSessionId: id })
 }

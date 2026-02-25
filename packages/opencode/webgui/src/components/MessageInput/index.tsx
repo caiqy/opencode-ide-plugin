@@ -330,8 +330,7 @@ const MessageInputInner = forwardRef<
 
   const isDisabled = busy
   const isButtonDisabled = busy || isEmpty
-  const isCompactDisabled =
-    busy || isCompacting || !sessionID || sessionID.startsWith("virtual-") || !selectedProviderId || !selectedModelId
+  const isCompactDisabled = busy || isCompacting || !sessionID || !selectedProviderId || !selectedModelId
 
   const handleCompactWithModal = useCallback(async () => {
     setIsCompacting(true)

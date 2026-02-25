@@ -1,12 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react"
 import { useEventHandler, type EventEmitter, type ServerEvent } from "../lib/api/events"
-import {
-  type Message,
-  type Part,
-  type WebguiPart,
-  type SDKMessage,
-  type QuestionRequest,
-} from "../types/messages"
+import { type Message, type Part, type WebguiPart, type SDKMessage, type QuestionRequest } from "../types/messages"
 import type { QuestionAnswer } from "@opencode-ai/sdk/v2/client"
 // PermissionRequest type based on new permission system (permission.asked event)
 interface PermissionRequest {
@@ -405,12 +399,6 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   // Load messages for a session
   const loadSessionMessages = useCallback(
     async (sessionID: string) => {
-      // Skip loading for virtual sessions (not yet persisted to server)
-      if (sessionID.startsWith("virtual-")) {
-        console.log("[MessagesContext] Skipping load for virtual session:", sessionID)
-        return null
-      }
-
       console.log("[MessagesContext] Loading messages for session:", sessionID)
 
       try {

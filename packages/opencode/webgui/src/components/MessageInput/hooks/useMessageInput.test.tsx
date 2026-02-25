@@ -10,7 +10,6 @@ const mocks = vi.hoisted(() => {
   return {
     root,
     setSessionIdle: vi.fn(),
-    materializeSession: vi.fn(async () => ({ id: "s-real" })),
     showToast: vi.fn(),
     addMessage: vi.fn(),
     setMessages: vi.fn(),
@@ -19,7 +18,8 @@ const mocks = vi.hoisted(() => {
     abort: vi.fn(async (_input: unknown) => ({ data: true, error: null })),
     getQuestionsBySession: vi.fn(() => []),
     rejectQuestion: vi.fn(async (_requestID: string) => true),
-    uiBridgeMoveDraft: vi.fn(),
+    uiBridgeDraftSessionId: vi.fn((): string | null => null),
+    uiBridgeUpdateDraftSessionId: vi.fn(),
   }
 })
 
@@ -48,8 +48,6 @@ vi.mock("../../../state/SessionContext", () => {
   return {
     useSession: () => ({
       setSessionIdle: mocks.setSessionIdle,
-      isVirtualSession: true,
-      materializeSession: mocks.materializeSession,
     }),
   }
 })
@@ -80,7 +78,8 @@ vi.mock("../../../lib/messagesStore", () => {
 
 vi.mock("../../../state/uiBridgeState", () => {
   return {
-    uiBridgeMoveDraft: (from: string, to: string) => mocks.uiBridgeMoveDraft(from, to),
+    uiBridgeDraftSessionId: () => mocks.uiBridgeDraftSessionId(),
+    uiBridgeUpdateDraftSessionId: (id: string | null) => mocks.uiBridgeUpdateDraftSessionId(id),
   }
 })
 
@@ -90,15 +89,15 @@ describe("useMessageInput", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.root.getTextContent.mockReturnValue("/status")
-    mocks.materializeSession.mockResolvedValue({ id: "s-real" })
     mocks.command.mockResolvedValue({ data: {}, error: null })
     mocks.prompt.mockResolvedValue({ data: {}, error: null })
     mocks.abort.mockResolvedValue({ data: true, error: null })
     mocks.getQuestionsBySession.mockReturnValue([])
     mocks.rejectQuestion.mockResolvedValue(true)
+    mocks.uiBridgeDraftSessionId.mockReturnValue(null)
   })
 
-  it("virtual 会话 materialize 后应迁移草稿到真实会话", async () => {
+  it("命令发送成功后，若当前会话是草稿则清空 draftSessionId", async () => {
     const editor = {
       getEditorState: () => ({
         read: (fn: () => void) => fn(),
@@ -107,9 +106,11 @@ describe("useMessageInput", () => {
       focus: vi.fn(),
     } as any
 
+    mocks.uiBridgeDraftSessionId.mockReturnValue("s-draft")
+
     const { result } = renderHook(() =>
       useMessageInput({
-        sessionID: "virtual-1",
+        sessionID: "s-draft",
         editor,
         isEmpty: false,
         selectedProviderId: "openai",
@@ -124,16 +125,16 @@ describe("useMessageInput", () => {
       await result.current.handleSubmit()
     })
 
-    expect(mocks.uiBridgeMoveDraft).toHaveBeenCalledWith("virtual-1", "s-real")
+    expect(mocks.uiBridgeUpdateDraftSessionId).toHaveBeenCalledWith(null)
     expect(mocks.command).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: { id: "s-real" },
+        path: { id: "s-draft" },
       }),
     )
   })
 
-  it("materialize 失败时不应迁移草稿且不发请求", async () => {
-    mocks.materializeSession.mockResolvedValue(null as any)
+  it("发送失败时不应清空 draftSessionId", async () => {
+    mocks.command.mockRejectedValue(new Error("Failed to execute command"))
 
     const editor = {
       getEditorState: () => ({
@@ -143,9 +144,11 @@ describe("useMessageInput", () => {
       focus: vi.fn(),
     } as any
 
+    mocks.uiBridgeDraftSessionId.mockReturnValue("s-draft")
+
     const { result } = renderHook(() =>
       useMessageInput({
-        sessionID: "virtual-1",
+        sessionID: "s-draft",
         editor,
         isEmpty: false,
         selectedProviderId: "openai",
@@ -160,12 +163,12 @@ describe("useMessageInput", () => {
       await result.current.handleSubmit()
     })
 
-    expect(mocks.uiBridgeMoveDraft).not.toHaveBeenCalled()
-    expect(mocks.command).not.toHaveBeenCalled()
+    expect(mocks.uiBridgeUpdateDraftSessionId).not.toHaveBeenCalled()
+    expect(mocks.command).toHaveBeenCalledTimes(1)
     expect(mocks.showToast).toHaveBeenCalledTimes(1)
   })
 
-  it("普通消息路径在 materialize 后应发送到真实会话", async () => {
+  it("普通消息发送成功后会清空匹配的 draftSessionId", async () => {
     mocks.root.getTextContent.mockReturnValue("hello")
 
     const editor = {
@@ -176,9 +179,11 @@ describe("useMessageInput", () => {
       focus: vi.fn(),
     } as any
 
+    mocks.uiBridgeDraftSessionId.mockReturnValue("s-1")
+
     const { result } = renderHook(() =>
       useMessageInput({
-        sessionID: "virtual-1",
+        sessionID: "s-1",
         editor,
         isEmpty: false,
         selectedProviderId: "openai",
@@ -195,11 +200,11 @@ describe("useMessageInput", () => {
 
     expect(mocks.prompt).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: { id: "s-real" },
+        path: { id: "s-1" },
       }),
     )
     expect(mocks.command).not.toHaveBeenCalled()
-    expect(mocks.uiBridgeMoveDraft).toHaveBeenCalledWith("virtual-1", "s-real")
+    expect(mocks.uiBridgeUpdateDraftSessionId).toHaveBeenCalledWith(null)
   })
 
   it("Stop 时 reject 部分失败也会继续 abort", async () => {

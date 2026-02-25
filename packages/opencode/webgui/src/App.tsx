@@ -17,9 +17,15 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts"
 import { ideBridge } from "./lib/ideBridge"
 import { extractPathsFromDrop } from "./lib/dnd"
 import { initKeyboardHandler, destroyKeyboardHandler } from "./lib/keyboardHandler"
-import { uiBridgeSubscribeSelector, type UiBridgeState } from "./state/uiBridgeState"
+import {
+  uiBridgeDraftSessionId,
+  uiBridgeSubscribeSelector,
+  uiBridgeUpdateDraftSessionId,
+  type UiBridgeState,
+} from "./state/uiBridgeState"
 import { useSessionActivation } from "./state/useSessionActivation"
 import { useTabStore } from "./state/tabStore"
+import { sdk } from "./lib/api/sdkClient"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 
@@ -35,12 +41,43 @@ function isBridgeSelectionsEqual(a: BridgeSelections, b: BridgeSelections) {
   )
 }
 
+export async function prepareSession(input: {
+  draft: string | null
+  reusable: (id: string) => Promise<boolean>
+  create: () => Promise<{ id: string } | null>
+  open: (id: string) => void
+  switchTo: (id: string) => Promise<void>
+  setDraft: (id: string | null) => void
+  fail: () => void
+}) {
+  if (input.draft) {
+    const ok = await input.reusable(input.draft).catch(() => false)
+    if (ok) {
+      input.open(input.draft)
+      const restored = await input
+        .switchTo(input.draft)
+        .then(() => true)
+        .catch(() => false)
+      if (restored) return
+    }
+    input.setDraft(null)
+  }
+
+  const next = await input.create()
+  if (!next) {
+    input.fail()
+    return
+  }
+  input.open(next.id)
+  input.setDraft(next.id)
+}
+
 // Inner component that uses MessagesContext
 function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   const {
     currentSession,
     sessions,
-    newVirtual,
+    createSession,
     switchSession,
     isCreating,
     error,
@@ -66,7 +103,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
 
   const [bridge, setBridge] = useState<BridgeSelections | null>(null)
   const restored = useRef({ session: false, selections: false })
-  const prevSessionId = useRef<string | null>(null)
+  const creating = useRef(false)
 
   useSessionActivation()
 
@@ -92,7 +129,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     restored.current.session = true
     tabStore.openTab(bridge.sessionID)
     if (bridge.sessionID === currentSession?.id) return
-    void switchSession(bridge.sessionID)
+    void switchSession(bridge.sessionID).catch(() => undefined)
   }, [bridge?.sessionID, currentSession?.id, switchSession, tabStore])
 
   useEffect(() => {
@@ -110,18 +147,28 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   }, [bridge, restoreSelections])
 
   const handleNewSession = useCallback(() => {
-    const v = newVirtual()
-    tabStore.openTab(v.id)
-  }, [newVirtual, tabStore])
-
-  useEffect(() => {
-    const prev = prevSessionId.current
-    const next = currentSession?.id || null
-    if (prev && next && prev !== next && prev.startsWith("virtual-") && !next.startsWith("virtual-")) {
-      tabStore.replaceTab(prev, next)
-    }
-    prevSessionId.current = next
-  }, [currentSession?.id, tabStore])
+    if (creating.current) return
+    creating.current = true
+    void prepareSession({
+      draft: uiBridgeDraftSessionId(),
+      reusable: async (id) => {
+        const session = await sdk.session.get({ path: { id } })
+        if (!session.data) return false
+        const messages = await sdk.session.messages({ path: { id } })
+        if (messages.error) return false
+        return (messages.data ?? []).length === 0
+      },
+      create: createSession,
+      open: tabStore.openTab,
+      switchTo: switchSession,
+      setDraft: uiBridgeUpdateDraftSessionId,
+      fail: () => {
+        showToast("创建会话失败", { variant: "error" })
+      },
+    }).finally(() => {
+      creating.current = false
+    })
+  }, [createSession, switchSession, tabStore.openTab, showToast])
 
   const handleToggleSessionList = useCallback(() => {
     compactHeaderRef.current?.toggleSessionDropdown()
