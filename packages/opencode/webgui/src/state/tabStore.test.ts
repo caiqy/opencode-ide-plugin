@@ -510,4 +510,21 @@ describe("useTabStore", () => {
     expect(uiBridgeUpdateTabs).toHaveBeenCalledTimes(2)
     expect(uiBridgeUpdateTabs).toHaveBeenLastCalledWith(["s1", "s2"], "s2")
   })
+
+  it("falls back to bridge state when sdk.kv.get rejects", async () => {
+    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("network"))
+    ;(uiBridgeTabs as ReturnType<typeof vi.fn>).mockReturnValue({
+      openTabs: ["b1"],
+      activeTab: "b1",
+    })
+
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    expect(result.current.openTabs).toEqual(["b1"])
+    expect(result.current.activeTab).toBe("b1")
+  })
 })

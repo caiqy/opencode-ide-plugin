@@ -54,6 +54,11 @@ function useTabStoreInternal() {
   const ref = useRef(state)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  function validated(tabs: string[], active: string): TabState {
+    const validActive = tabs.includes(active) ? active : tabs[tabs.length - 1] || ""
+    return { openTabs: tabs, activeTab: validActive }
+  }
+
   const save = useCallback((next: TabState) => {
     ref.current = next
     setState(next)
@@ -80,19 +85,13 @@ function useTabStoreInternal() {
         if (!live) return
         const data = parse(res.data?.[key])
         if (data && data.openTabs.length > 0) {
-          const tabs = data.openTabs
-          const active = data.activeTab
-          const validActive = tabs.includes(active) ? active : tabs[tabs.length - 1] || ""
-          const next = { openTabs: tabs, activeTab: validActive }
+          const next = validated(data.openTabs, data.activeTab)
           ref.current = next
           setState(next)
         } else {
           const bridge = uiBridgeTabs()
           if (bridge.openTabs.length > 0) {
-            const validActive = bridge.openTabs.includes(bridge.activeTab)
-              ? bridge.activeTab
-              : bridge.openTabs[bridge.openTabs.length - 1] || ""
-            const next = { openTabs: bridge.openTabs, activeTab: validActive }
+            const next = validated(bridge.openTabs, bridge.activeTab)
             ref.current = next
             setState(next)
           }
@@ -103,10 +102,7 @@ function useTabStoreInternal() {
         if (!live) return
         const bridge = uiBridgeTabs()
         if (bridge.openTabs.length > 0) {
-          const validActive = bridge.openTabs.includes(bridge.activeTab)
-            ? bridge.activeTab
-            : bridge.openTabs[bridge.openTabs.length - 1] || ""
-          const next = { openTabs: bridge.openTabs, activeTab: validActive }
+          const next = validated(bridge.openTabs, bridge.activeTab)
           ref.current = next
           setState(next)
         }
