@@ -52,6 +52,7 @@ function useTabStoreInternal() {
   const [state, setState] = useState(empty)
   const [loaded, setLoaded] = useState(false)
   const ref = useRef(state)
+  const ready = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function validated(tabs: string[], active: string): TabState {
@@ -62,12 +63,14 @@ function useTabStoreInternal() {
   const save = useCallback((next: TabState) => {
     ref.current = next
     setState(next)
+    if (!ready.current) return
     store(next)
   }, [])
 
   const saveDebounced = useCallback((next: TabState) => {
     ref.current = next
     setState(next)
+    if (!ready.current) return
     if (timer.current) {
       clearTimeout(timer.current)
     }
@@ -96,6 +99,7 @@ function useTabStoreInternal() {
             setState(next)
           }
         }
+        ready.current = true
         setLoaded(true)
       })
       .catch(() => {
@@ -106,6 +110,7 @@ function useTabStoreInternal() {
           ref.current = next
           setState(next)
         }
+        ready.current = true
         setLoaded(true)
       })
 
@@ -117,7 +122,9 @@ function useTabStoreInternal() {
   useEffect(() => {
     return () => {
       if (timer.current) {
-        store(ref.current)
+        if (ready.current) {
+          store(ref.current)
+        }
         clearTimeout(timer.current)
         timer.current = null
       }

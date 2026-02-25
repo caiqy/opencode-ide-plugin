@@ -528,6 +528,40 @@ describe("useTabStore", () => {
     expect(result.current.activeTab).toBe("b1")
   })
 
+  it("keeps bridge tabs when openTab is called before initial load resolves", async () => {
+    let done: ((value: KvGetResult) => void) | undefined
+    let bridge = { openTabs: ["b1", "b2"], activeTab: "b2" }
+
+    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise<KvGetResult>((resolve) => {
+        done = resolve
+      }),
+    )
+    ;(uiBridgeTabs as ReturnType<typeof vi.fn>).mockImplementation(() => bridge)
+    ;(uiBridgeUpdateTabs as ReturnType<typeof vi.fn>).mockImplementation((openTabs: string[], activeTab: string) => {
+      bridge = { openTabs, activeTab }
+    })
+
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    expect(result.current.loaded).toBe(false)
+
+    act(() => {
+      result.current.openTab("b2")
+    })
+
+    act(() => {
+      done?.({ data: {}, error: null } satisfies KvGetResult)
+    })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    expect(result.current.openTabs).toEqual(["b1", "b2"])
+    expect(result.current.activeTab).toBe("b2")
+  })
+
   it("pruneTabs removes tabs not in validIds set", async () => {
     ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
