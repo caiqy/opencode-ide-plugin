@@ -13,7 +13,13 @@ vi.mock("../lib/api/sdkClient", () => {
   }
 })
 
+vi.mock("./uiBridgeState", () => ({
+  uiBridgeTabs: vi.fn(() => ({ openTabs: [], activeTab: "" })),
+  uiBridgeUpdateTabs: vi.fn(),
+}))
+
 import { sdk } from "../lib/api/sdkClient"
+import { uiBridgeTabs } from "./uiBridgeState"
 import { TabStoreProvider, useTabStore } from "./tabStore"
 
 const key = "webgui_tabs"
@@ -439,5 +445,50 @@ describe("useTabStore", () => {
         },
       },
     })
+  })
+
+  it("prefers bridge state over empty localStorage on mount", async () => {
+    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {},
+      error: null,
+    } satisfies KvGetResult)
+    ;(uiBridgeTabs as ReturnType<typeof vi.fn>).mockReturnValue({
+      openTabs: ["b1", "b2"],
+      activeTab: "b2",
+    })
+
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    expect(result.current.openTabs).toEqual(["b1", "b2"])
+    expect(result.current.activeTab).toBe("b2")
+  })
+
+  it("prefers localStorage over bridge state when localStorage has tabs", async () => {
+    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        [key]: {
+          openTabs: ["ls1", "ls2"],
+          activeTab: "ls1",
+        },
+      },
+      error: null,
+    } satisfies KvGetResult)
+    ;(uiBridgeTabs as ReturnType<typeof vi.fn>).mockReturnValue({
+      openTabs: ["b1"],
+      activeTab: "b1",
+    })
+
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    expect(result.current.openTabs).toEqual(["ls1", "ls2"])
+    expect(result.current.activeTab).toBe("ls1")
   })
 })

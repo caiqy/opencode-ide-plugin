@@ -10,6 +10,7 @@ import {
 } from "react"
 import { sdk } from "../lib/api/sdkClient"
 import { isVirtualTab, openVirtualUnique, openWithPolicy } from "./tabPolicy"
+import { uiBridgeTabs } from "./uiBridgeState"
 
 const key = "webgui_tabs"
 const delay = 500
@@ -77,21 +78,37 @@ function useTabStoreInternal() {
       .then((res) => {
         if (!live) return
         const data = parse(res.data?.[key])
-        if (data) {
+        if (data && data.openTabs.length > 0) {
           const tabs = data.openTabs
           const active = data.activeTab
           const validActive = tabs.includes(active) ? active : tabs[tabs.length - 1] || ""
-          const next = {
-            openTabs: tabs,
-            activeTab: validActive,
-          }
+          const next = { openTabs: tabs, activeTab: validActive }
           ref.current = next
           setState(next)
+        } else {
+          const bridge = uiBridgeTabs()
+          if (bridge.openTabs.length > 0) {
+            const validActive = bridge.openTabs.includes(bridge.activeTab)
+              ? bridge.activeTab
+              : bridge.openTabs[bridge.openTabs.length - 1] || ""
+            const next = { openTabs: bridge.openTabs, activeTab: validActive }
+            ref.current = next
+            setState(next)
+          }
         }
         setLoaded(true)
       })
       .catch(() => {
         if (!live) return
+        const bridge = uiBridgeTabs()
+        if (bridge.openTabs.length > 0) {
+          const validActive = bridge.openTabs.includes(bridge.activeTab)
+            ? bridge.activeTab
+            : bridge.openTabs[bridge.openTabs.length - 1] || ""
+          const next = { openTabs: bridge.openTabs, activeTab: validActive }
+          ref.current = next
+          setState(next)
+        }
         setLoaded(true)
       })
 
