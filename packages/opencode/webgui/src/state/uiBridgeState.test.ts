@@ -301,4 +301,17 @@ describe("uiBridgeSubscribeSelector", () => {
     const tabs = uiBridgeStateModule.uiBridgeTabs()
     expect(tabs).toEqual({ openTabs: ["s1", "s2"], activeTab: "s1" })
   })
+
+  it("round-trips openTabs through hydrate", () => {
+    uiBridgeStateModule.uiBridgeHydrate({ openTabs: ["s1", "s2"], activeTab: "s1" })
+    uiBridgeStateModule.uiBridgeUpdateTabs(["s1", "s2", "s3"], "s3")
+
+    const snapshot = uiBridgeStateModule.uiBridgeState()
+    uiBridgeStateModule.uiBridgeHydrate(snapshot)
+
+    expect(uiBridgeStateModule.uiBridgeTabs()).toEqual({
+      openTabs: ["s1", "s2", "s3"],
+      activeTab: "s3",
+    })
+  })
 })
