@@ -220,4 +220,85 @@ describe("CompactHeader integration with real TabBar", () => {
     expect(setActiveTab).toHaveBeenCalledWith("s1")
     expect(showToast).toHaveBeenCalledWith("切换会话失败", { variant: "error" })
   })
+
+  it("删除当前会话后会清理标签并切换到下一个标签", async () => {
+    let done = () => {}
+    const switchSession = vi.fn((id: string) => {
+      if (id === "s1") {
+        return new Promise<void>((resolve) => {
+          done = resolve
+        })
+      }
+      return Promise.resolve()
+    })
+    const onNewSession = vi.fn()
+    let isLoading = true
+    const state = {
+      sessions: [
+        { id: "s1", title: "会话 1" },
+        { id: "s2", title: "会话 2" },
+      ],
+      currentSession: null as { id: string; title: string } | null,
+      openTabs: ["s1", "s2"],
+      activeTab: "s1",
+    }
+    const pruneTabs = vi.fn((validIds: Set<string>) => {
+      const openTabs = state.openTabs.filter((id) => validIds.has(id))
+      state.openTabs = openTabs
+      state.activeTab = openTabs.includes(state.activeTab) ? state.activeTab : openTabs[openTabs.length - 1] || ""
+    })
+
+    mocks.useSession.mockImplementation(() => ({
+      currentSession: state.currentSession,
+      setCurrentSession: vi.fn(),
+      sessions: state.sessions,
+      setSessions: vi.fn(),
+      switchSession,
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading,
+      isSessionIdle: vi.fn(() => true),
+      isSessionReasoning: vi.fn(() => false),
+    }))
+
+    mocks.useTabStore.mockImplementation(() => ({
+      openTabs: state.openTabs,
+      activeTab: state.activeTab,
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs,
+    }))
+
+    const view = render(<CompactHeader {...props()} onNewSession={onNewSession} />)
+
+    await waitFor(() => {
+      expect(switchSession).toHaveBeenCalledWith("s1")
+    })
+
+    isLoading = false
+    view.rerender(<CompactHeader {...props()} onNewSession={onNewSession} />)
+
+    state.sessions = [{ id: "s2", title: "会话 2" }]
+    view.rerender(<CompactHeader {...props()} onNewSession={onNewSession} />)
+
+    await waitFor(() => {
+      expect(pruneTabs).toHaveBeenCalledWith(new Set(["s2"]))
+    })
+
+    view.rerender(<CompactHeader {...props()} onNewSession={onNewSession} />)
+    done()
+
+    await waitFor(() => {
+      expect(switchSession).toHaveBeenCalledWith("s2")
+    })
+
+    expect(onNewSession).not.toHaveBeenCalled()
+  })
 })

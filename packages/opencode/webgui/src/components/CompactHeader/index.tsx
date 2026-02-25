@@ -46,9 +46,11 @@ const CompactHeader = forwardRef<
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   const [sharingSessionId, setSharingSessionId] = useState<string | null>(null)
+  const [restoring, setRestoring] = useState(false)
+  const activeRef = useRef("")
   const sessionsEverLoaded = useRef(false)
-  const restoring = useRef(false)
   if (isLoading) sessionsEverLoaded.current = true
+  activeRef.current = tabStore.activeTab
 
   const isShared = !!currentSession?.share?.url
 
@@ -198,9 +200,10 @@ const CompactHeader = forwardRef<
         return
       }
 
+      setCurrentSession(null)
       onNewSession()
     },
-    [onNewSession, switchSession, tabStore, toast],
+    [onNewSession, setCurrentSession, switchSession, tabStore, toast],
   )
 
   const handleCloseOtherTabs = useCallback(
@@ -292,28 +295,25 @@ const CompactHeader = forwardRef<
   }
 
   useEffect(() => {
-    let aborted = false
     if (!tabStore.loaded) return
     if (tabStore.openTabs.length > 0) {
       if (!tabStore.activeTab) {
         onNewSession()
-        return () => {
-          aborted = true
-        }
+        return
       }
-      if (currentSession?.id !== tabStore.activeTab && !restoring.current) {
-        restoring.current = true
-        void switchSession(tabStore.activeTab)
+      if (currentSession?.id !== tabStore.activeTab && !restoring) {
+        const target = tabStore.activeTab
+        setRestoring(true)
+        void switchSession(target)
           .catch(() => {
-            if (!aborted) onNewSession()
+            if (activeRef.current !== target) return
+            onNewSession()
           })
           .finally(() => {
-            restoring.current = false
+            setRestoring(false)
           })
       }
-      return () => {
-        aborted = true
-      }
+      return
     }
 
     if (currentSession?.id) {
@@ -330,14 +330,16 @@ const CompactHeader = forwardRef<
     tabStore.openTabs,
     tabStore.activeTab,
     tabStore.openTab,
+    restoring,
   ])
 
   useEffect(() => {
     if (!tabStore.loaded) return
     if (!currentSession?.id) return
+    if (!tabStore.activeTab) return
     if (tabStore.openTabs.includes(currentSession.id)) return
     tabStore.openTab(currentSession.id)
-  }, [currentSession?.id, tabStore.loaded, tabStore.openTabs, tabStore.openTab])
+  }, [currentSession?.id, tabStore.loaded, tabStore.activeTab, tabStore.openTabs, tabStore.openTab])
 
   useEffect(() => {
     if (!tabStore.loaded || !sessionsEverLoaded.current || isLoading) return

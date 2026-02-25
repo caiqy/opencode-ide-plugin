@@ -53,6 +53,7 @@ const mocks = vi.hoisted(() => ({
   sdkUnshare: vi.fn(),
   ideBridgeRequest: vi.fn(),
   tabBarProps: null as null | {
+    onClose: (id: string) => void
     onCloseOtherTabs: (id: string) => void
     onCloseTabsToRight: (id: string) => void
   },
@@ -99,7 +100,11 @@ vi.mock("./SessionDropdown", () => ({
 }))
 
 vi.mock("./TabBar", () => ({
-  TabBar: (props: { onCloseOtherTabs: (id: string) => void; onCloseTabsToRight: (id: string) => void }) => {
+  TabBar: (props: {
+    onClose: (id: string) => void
+    onCloseOtherTabs: (id: string) => void
+    onCloseTabsToRight: (id: string) => void
+  }) => {
     mocks.tabBarProps = props
     return null
   },
@@ -664,6 +669,164 @@ describe("CompactHeader", () => {
     mocks.tabBarProps.onCloseOtherTabs("s1")
     expect(switchSession).toHaveBeenCalledWith("s1")
     expect(showToast).not.toHaveBeenCalled()
+  })
+
+  it("关闭唯一标签后不会把刚关闭的会话重新打开", async () => {
+    const switchSession = vi.fn().mockResolvedValue(undefined)
+    const onNewSession = vi.fn()
+    const session = {
+      current: { id: "s1", title: "会话 1" } as { id: string; title: string } | null,
+    }
+    const setCurrentSession = vi.fn((next: { id: string; title: string } | null) => {
+      session.current = next
+    })
+    const state = {
+      openTabs: ["s1"],
+      activeTab: "s1",
+    }
+    const openTab = vi.fn((id: string) => {
+      if (state.openTabs.includes(id)) {
+        state.activeTab = id
+        return
+      }
+      state.openTabs = [...state.openTabs, id]
+      state.activeTab = id
+    })
+    const closeTab = vi.fn((id: string) => {
+      const index = state.openTabs.indexOf(id)
+      if (index < 0) return
+      const openTabs = state.openTabs.filter((v) => v !== id)
+      state.openTabs = openTabs
+      state.activeTab = openTabs[Math.min(index, Math.max(openTabs.length - 1, 0))] || ""
+    })
+
+    mocks.useSession.mockImplementation(() => ({
+      currentSession: session.current,
+      setCurrentSession,
+      sessions: [{ id: "s1", title: "会话 1" }],
+      setSessions: vi.fn(),
+      switchSession,
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading: false,
+    }))
+    mocks.useTabStore.mockImplementation(() => ({
+      openTabs: state.openTabs,
+      activeTab: state.activeTab,
+      loaded: true,
+      openTab,
+      closeTab,
+      removeTab: vi.fn(),
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    }))
+
+    const view = render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={onNewSession}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    if (!mocks.tabBarProps) throw new Error("tab bar props not captured")
+    mocks.tabBarProps.onClose("s1")
+
+    view.rerender(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={onNewSession}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(onNewSession).toHaveBeenCalled()
+    })
+    expect(setCurrentSession).toHaveBeenCalledWith(null)
+    expect(closeTab).toHaveBeenCalledWith("s1")
+    expect(openTab).not.toHaveBeenCalledWith("s1")
+    expect(switchSession).not.toHaveBeenCalled()
+  })
+
+  it("恢复切换进行中时 activeTab 改变，完成后会继续切换到最新 activeTab", async () => {
+    let resolveFirst = () => {}
+    const switchSession = vi.fn((id: string) => {
+      if (id === "s1") {
+        return new Promise<void>((resolve) => {
+          resolveFirst = resolve
+        })
+      }
+      return Promise.resolve()
+    })
+    const state = {
+      openTabs: ["s1", "s2"],
+      activeTab: "s1",
+    }
+
+    mocks.useSession.mockReturnValue({
+      currentSession: null,
+      setCurrentSession: vi.fn(),
+      sessions: [
+        { id: "s1", title: "会话 1" },
+        { id: "s2", title: "会话 2" },
+      ],
+      setSessions: vi.fn(),
+      switchSession,
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading: false,
+    })
+    mocks.useTabStore.mockImplementation(() => ({
+      openTabs: state.openTabs,
+      activeTab: state.activeTab,
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    }))
+
+    const view = render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(switchSession).toHaveBeenCalledWith("s1")
+    })
+
+    state.openTabs = ["s2"]
+    state.activeTab = "s2"
+    view.rerender(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    resolveFirst()
+
+    await waitFor(() => {
+      expect(switchSession).toHaveBeenCalledWith("s2")
+    })
   })
 
   it("adds left gap between tab area and right status/actions area", () => {
