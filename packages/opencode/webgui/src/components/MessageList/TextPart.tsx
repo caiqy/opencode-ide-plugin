@@ -227,7 +227,7 @@ export function TextPart({ part, isUser, attachedParts }: TextPartProps) {
 
     return (
       <div key={part.id} className="w-full flex justify-end">
-        <div className="inline-block min-w-0 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-blue-50 dark:bg-blue-900/20 border border-blue-400 dark:border-blue-600">
+        <div className="inline-block min-w-0 max-w-full px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-blue-50 dark:bg-blue-900/20 border border-blue-400 dark:border-blue-600">
           <div ref={ref} className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" onCopy={handleCopy}>
             {mentions.length > 0 ? renderTextWithMentions(text, mentions) : text}
           </div>
