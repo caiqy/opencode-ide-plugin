@@ -527,4 +527,70 @@ describe("useTabStore", () => {
     expect(result.current.openTabs).toEqual(["b1"])
     expect(result.current.activeTab).toBe("b1")
   })
+
+  it("pruneTabs removes tabs not in validIds set", async () => {
+    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        [key]: {
+          openTabs: ["s1", "s2", "s3"],
+          activeTab: "s2",
+        },
+      },
+      error: null,
+    } satisfies KvGetResult)
+
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    act(() => {
+      result.current.pruneTabs(new Set(["s1", "s3"]))
+    })
+
+    expect(result.current.openTabs).toEqual(["s1", "s3"])
+    expect(result.current.activeTab).toBe("s3")
+  })
+
+  it("pruneTabs preserves virtual tabs", async () => {
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    act(() => {
+      result.current.openTab("s1")
+      result.current.openTab("virtual-new")
+    })
+
+    act(() => {
+      result.current.pruneTabs(new Set<string>())
+    })
+
+    expect(result.current.openTabs).toEqual(["virtual-new"])
+    expect(result.current.activeTab).toBe("virtual-new")
+  })
+
+  it("pruneTabs is a no-op when all tabs are valid", async () => {
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    act(() => {
+      result.current.openTab("s1")
+      result.current.openTab("s2")
+    })
+    ;(sdk.kv.update as ReturnType<typeof vi.fn>).mockClear()
+
+    act(() => {
+      result.current.pruneTabs(new Set(["s1", "s2"]))
+    })
+
+    expect(result.current.openTabs).toEqual(["s1", "s2"])
+    expect(sdk.kv.update).not.toHaveBeenCalled()
+  })
 })

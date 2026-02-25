@@ -31,9 +31,12 @@ const LEGACY_DRAFT_KEY = "__legacy__"
 
 type UiBridgeTimer = ReturnType<typeof setTimeout>
 
+const emptyTabs = { openTabs: empty.openTabs, activeTab: empty.activeTab }
+
 const store = {
   state: empty,
   json: JSON.stringify(empty),
+  tabs: emptyTabs as { openTabs: string[]; activeTab: string },
   listeners: new Set<(s: UiBridgeState) => void>(),
   enabled: false,
   draftSendTimer: null as UiBridgeTimer | null,
@@ -190,6 +193,7 @@ export function uiBridgeHydrate(raw: unknown): UiBridgeState {
   clearPendingDraftSend()
   store.state = next
   store.json = encode(next)
+  store.tabs = { openTabs: next.openTabs, activeTab: next.activeTab }
   emit(next)
   return next
 }
@@ -268,6 +272,9 @@ export function uiBridgeUpdate(patch: Partial<Omit<UiBridgeState, "v">>): UiBrid
   store.state = next
   if (json === store.json) return next
   store.json = json
+  if (prev.openTabs !== next.openTabs || prev.activeTab !== next.activeTab) {
+    store.tabs = { openTabs: next.openTabs, activeTab: next.activeTab }
+  }
 
   const nonDraftChanged = hasNonDraftChange(prev, next)
   if (nonDraftChanged) {
@@ -305,7 +312,7 @@ export function uiBridgeUpdateDraft(sessionID: string | null, value: string) {
 }
 
 export function uiBridgeTabs() {
-  return { openTabs: store.state.openTabs, activeTab: store.state.activeTab }
+  return store.tabs
 }
 
 export function uiBridgeUpdateTabs(openTabs: string[], activeTab: string) {

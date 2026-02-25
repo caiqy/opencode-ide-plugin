@@ -190,6 +190,7 @@ describe("CompactHeader", () => {
       replaceTab: vi.fn(),
       closeOtherTabs: vi.fn(),
       closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
     })
 
     mocks.useSessionDropdown.mockReturnValue(createBaseDropdownMock())
@@ -246,7 +247,7 @@ describe("CompactHeader", () => {
   })
 
   it("removes open tabs when backing session is deleted", () => {
-    const removeTab = vi.fn()
+    const pruneTabs = vi.fn()
     const sessions = [{ id: "s1", title: "测试会话" }]
     let isLoading = true
     mocks.useSession.mockImplementation(() => ({
@@ -265,12 +266,13 @@ describe("CompactHeader", () => {
       loaded: true,
       openTab: vi.fn(),
       closeTab: vi.fn(),
-      removeTab,
+      removeTab: vi.fn(),
       setActiveTab: vi.fn(),
       reorderTabs: vi.fn(),
       replaceTab: vi.fn(),
       closeOtherTabs: vi.fn(),
       closeTabsToRight: vi.fn(),
+      pruneTabs,
     })
 
     const props = {
@@ -282,24 +284,24 @@ describe("CompactHeader", () => {
 
     // First render with isLoading=true so sessionsEverLoaded becomes true
     const view = render(<CompactHeader {...props} />)
-    expect(removeTab).not.toHaveBeenCalled()
+    expect(pruneTabs).not.toHaveBeenCalled()
 
     // Simulate loading complete — cleanup should now run and remove s2
     isLoading = false
     view.rerender(<CompactHeader {...props} />)
 
-    expect(removeTab).toHaveBeenCalledWith("s2")
-    expect(removeTab).not.toHaveBeenCalledWith("virtual-1")
+    expect(pruneTabs).toHaveBeenCalledWith(new Set(["s1"]))
 
-    removeTab.mockClear()
+    pruneTabs.mockClear()
     sessions.push({ id: "s2", title: "会话 2" })
     view.rerender(<CompactHeader {...props} />)
 
-    expect(removeTab).not.toHaveBeenCalled()
+    // sessions reference is unchanged (mutation), so useEffect deps don't trigger
+    expect(pruneTabs).not.toHaveBeenCalled()
   })
 
   it("cleans orphan tabs when openTabs changes even if sessions reference is unchanged", () => {
-    const removeTab = vi.fn()
+    const pruneTabs = vi.fn()
     const sessions = [{ id: "s1", title: "测试会话" }]
     let isLoading = true
     const state = {
@@ -323,12 +325,13 @@ describe("CompactHeader", () => {
       loaded: true,
       openTab: vi.fn(),
       closeTab: vi.fn(),
-      removeTab,
+      removeTab: vi.fn(),
       setActiveTab: vi.fn(),
       reorderTabs: vi.fn(),
       replaceTab: vi.fn(),
       closeOtherTabs: vi.fn(),
       closeTabsToRight: vi.fn(),
+      pruneTabs,
     }))
 
     const props = {
@@ -339,16 +342,17 @@ describe("CompactHeader", () => {
     }
 
     const view = render(<CompactHeader {...props} />)
-    expect(removeTab).not.toHaveBeenCalled()
+    expect(pruneTabs).not.toHaveBeenCalled()
 
     isLoading = false
     view.rerender(<CompactHeader {...props} />)
-    expect(removeTab).not.toHaveBeenCalled()
+    expect(pruneTabs).toHaveBeenCalledWith(new Set(["s1"]))
 
+    pruneTabs.mockClear()
     state.openTabs = ["s1", "s2"]
     view.rerender(<CompactHeader {...props} />)
 
-    expect(removeTab).toHaveBeenCalledWith("s2")
+    expect(pruneTabs).toHaveBeenCalledWith(new Set(["s1"]))
   })
 
   it("adds left gap between tab area and right status/actions area", () => {

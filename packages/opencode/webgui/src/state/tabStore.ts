@@ -246,6 +246,18 @@ function useTabStoreInternal() {
     [save],
   )
 
+  const pruneTabs = useCallback(
+    (validIds: Set<string>) => {
+      const openTabs = ref.current.openTabs.filter((id) => isVirtualTab(id) || validIds.has(id))
+      if (openTabs.length === ref.current.openTabs.length) return
+      const activeTab = openTabs.includes(ref.current.activeTab)
+        ? ref.current.activeTab
+        : openTabs[openTabs.length - 1] || ""
+      save({ openTabs, activeTab })
+    },
+    [save],
+  )
+
   return {
     openTabs: state.openTabs,
     activeTab: state.activeTab,
@@ -258,6 +270,7 @@ function useTabStoreInternal() {
     replaceTab,
     closeOtherTabs,
     closeTabsToRight,
+    pruneTabs,
   }
 }
 

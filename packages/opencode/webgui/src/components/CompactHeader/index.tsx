@@ -308,13 +308,8 @@ const CompactHeader = forwardRef<
 
   useEffect(() => {
     if (!tabStore.loaded || !sessionsEverLoaded.current || isLoading) return
-    const ids = new Set(sessions.map((s) => s.id))
-    for (const tabId of tabStore.openTabs) {
-      if (!tabId.startsWith("virtual-") && !ids.has(tabId)) {
-        tabStore.removeTab(tabId)
-      }
-    }
-  }, [sessions, tabStore.loaded, tabStore.openTabs, tabStore.removeTab, isLoading])
+    tabStore.pruneTabs(new Set(sessions.map((s) => s.id)))
+  }, [sessions, tabStore.loaded, tabStore.openTabs, tabStore.pruneTabs, isLoading])
 
   return (
     <>
