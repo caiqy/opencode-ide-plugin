@@ -139,4 +139,77 @@ describe("SubtaskDrawer", () => {
     render(<SubtaskDrawer />)
     expect(screen.queryByTestId("subtask-drawer-backdrop")).not.toBeInTheDocument()
   })
+
+  it("默认宽度应为 520px", () => {
+    render(<SubtaskDrawer />)
+    const dialog = screen.getByRole("dialog", { name: "子任务" })
+    expect(dialog).toHaveStyle({ width: "520px" })
+  })
+
+  it("左边缘向左拖拽后应变宽", () => {
+    render(<SubtaskDrawer />)
+    const handle = screen.getByTestId("subtask-drawer-resize-handle")
+    const dialog = screen.getByRole("dialog", { name: "子任务" })
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 900 })
+    fireEvent.pointerMove(document, { clientX: 820 })
+    fireEvent.pointerUp(document)
+
+    expect(parseFloat((dialog as HTMLElement).style.width)).toBeGreaterThan(520)
+  })
+
+  it("左边缘向右拖拽后应变窄", () => {
+    render(<SubtaskDrawer />)
+    const handle = screen.getByTestId("subtask-drawer-resize-handle")
+    const dialog = screen.getByRole("dialog", { name: "子任务" })
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 900 })
+    fireEvent.pointerMove(document, { clientX: 980 })
+    fireEvent.pointerUp(document)
+
+    expect(parseFloat((dialog as HTMLElement).style.width)).toBeLessThan(520)
+  })
+
+  it("宽度不应小于 360px", () => {
+    render(<SubtaskDrawer />)
+    const handle = screen.getByTestId("subtask-drawer-resize-handle")
+    const dialog = screen.getByRole("dialog", { name: "子任务" })
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 900 })
+    fireEvent.pointerMove(document, { clientX: 5000 })
+    fireEvent.pointerUp(document)
+
+    expect(parseFloat((dialog as HTMLElement).style.width)).toBe(360)
+  })
+
+  it("宽度不应超过 90vw", () => {
+    const original = window.innerWidth
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1000 })
+
+    render(<SubtaskDrawer />)
+    const handle = screen.getByTestId("subtask-drawer-resize-handle")
+    const dialog = screen.getByRole("dialog", { name: "子任务" })
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 900 })
+    fireEvent.pointerMove(document, { clientX: -2000 })
+    fireEvent.pointerUp(document)
+
+    expect(parseFloat((dialog as HTMLElement).style.width)).toBe(900)
+
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: original })
+  })
+
+  it("pointerup 后不应继续更新宽度", () => {
+    render(<SubtaskDrawer />)
+    const handle = screen.getByTestId("subtask-drawer-resize-handle")
+    const dialog = screen.getByRole("dialog", { name: "子任务" })
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 900 })
+    fireEvent.pointerMove(document, { clientX: 850 })
+    fireEvent.pointerUp(document)
+    const locked = parseFloat((dialog as HTMLElement).style.width)
+
+    fireEvent.pointerMove(document, { clientX: 750 })
+    expect(parseFloat((dialog as HTMLElement).style.width)).toBe(locked)
+  })
 })
