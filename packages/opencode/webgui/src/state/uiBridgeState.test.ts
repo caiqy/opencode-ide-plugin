@@ -271,4 +271,34 @@ describe("uiBridgeSubscribeSelector", () => {
     expect(setState).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
   })
+
+  it("uiBridgeUpdateTabs syncs openTabs and activeTab", () => {
+    uiBridgeStateModule.uiBridgeHydrate({})
+    uiBridgeStateModule.uiBridgeEnable()
+    const setState = ideBridge.setState as any
+    setState.mockClear()
+
+    uiBridgeStateModule.uiBridgeUpdateTabs(["s1", "s2"], "s2")
+
+    const state = uiBridgeStateModule.uiBridgeState()
+    expect(state.openTabs).toEqual(["s1", "s2"])
+    expect(state.activeTab).toBe("s2")
+    expect(setState).toHaveBeenCalledTimes(1)
+  })
+
+  it("uiBridgeUpdateTabs filters virtual tabs", () => {
+    uiBridgeStateModule.uiBridgeHydrate({})
+
+    uiBridgeStateModule.uiBridgeUpdateTabs(["s1", "virtual-new", "s2"], "virtual-new")
+
+    const state = uiBridgeStateModule.uiBridgeState()
+    expect(state.openTabs).toEqual(["s1", "s2"])
+    expect(state.activeTab).toBe("s2")
+  })
+
+  it("uiBridgeTabs returns current openTabs and activeTab", () => {
+    uiBridgeStateModule.uiBridgeHydrate({ openTabs: ["s1", "s2"], activeTab: "s1" })
+    const tabs = uiBridgeStateModule.uiBridgeTabs()
+    expect(tabs).toEqual({ openTabs: ["s1", "s2"], activeTab: "s1" })
+  })
 })

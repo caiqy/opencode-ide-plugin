@@ -304,6 +304,14 @@ export function uiBridgeUpdateDraft(sessionID: string | null, value: string) {
   return uiBridgeUpdate({ drafts })
 }
 
+export function uiBridgeTabs() {
+  return { openTabs: store.state.openTabs, activeTab: store.state.activeTab }
+}
+
+export function uiBridgeUpdateTabs(openTabs: string[], activeTab: string) {
+  return uiBridgeUpdate({ openTabs, activeTab })
+}
+
 export function uiBridgeMoveDraft(from: string, to: string) {
   if (!from || !to || from === to) return store.state
   const value = store.state.drafts[from]
