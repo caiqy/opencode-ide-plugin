@@ -145,7 +145,8 @@ export class WebviewController {
           },
         },
         {
-          minVersion: vscode.workspace.getConfiguration("opencode").get<string>("minVersion", "1.1.1"),
+          // TODO: re-enable minVersion check after stabilization
+          // minVersion: vscode.workspace.getConfiguration("opencode").get<string>("minVersion", "1.1.1"),
         },
       )
       this.bridgeSessionId = session.sessionId
