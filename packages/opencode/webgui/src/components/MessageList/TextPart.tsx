@@ -134,6 +134,12 @@ export function TextPart({ part, isUser, attachedParts }: TextPartProps) {
 
       const parts = Array.from(wrapper.querySelectorAll<HTMLElement>("[data-rawpart]"))
 
+      // No mention wrappers — plain text, use selection directly
+      if (parts.length === 0) {
+        e.clipboardData.setData("text/plain", selection.toString())
+        return
+      }
+
       const containsNode = (needle: Node, element: HTMLElement): boolean => {
         return needle === element || element.contains(needle)
       }
