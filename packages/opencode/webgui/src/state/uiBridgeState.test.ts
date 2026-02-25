@@ -243,4 +243,32 @@ describe("uiBridgeSubscribeSelector", () => {
     expect(state.openTabs).toEqual(["s1", "s2"])
     expect(state.activeTab).toBe("s2")
   })
+
+  it("uiBridgeUpdate sanitizes stale activeTab when openTabs shrinks", () => {
+    uiBridgeStateModule.uiBridgeHydrate({ openTabs: ["s1", "s2"], activeTab: "s1" })
+    uiBridgeStateModule.uiBridgeUpdate({ openTabs: ["s2", "s3"] })
+    const state = uiBridgeStateModule.uiBridgeState()
+    expect(state.openTabs).toEqual(["s2", "s3"])
+    expect(state.activeTab).toBe("s3")
+  })
+
+  it("uiBridgeUpdate filters virtual tabs from openTabs patch", () => {
+    uiBridgeStateModule.uiBridgeHydrate({})
+    uiBridgeStateModule.uiBridgeUpdate({ openTabs: ["s1", "virtual-temp", "s2"], activeTab: "s1" })
+    const state = uiBridgeStateModule.uiBridgeState()
+    expect(state.openTabs).toEqual(["s1", "s2"])
+    expect(state.activeTab).toBe("s1")
+  })
+
+  it("uiBridgeUpdate sends immediately on tab change", () => {
+    vi.useFakeTimers()
+    uiBridgeStateModule.uiBridgeHydrate({})
+    uiBridgeStateModule.uiBridgeEnable()
+    const setState = ideBridge.setState as any
+    setState.mockClear()
+
+    uiBridgeStateModule.uiBridgeUpdate({ openTabs: ["s1"], activeTab: "s1" })
+    expect(setState).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
 })

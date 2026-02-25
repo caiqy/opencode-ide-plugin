@@ -246,15 +246,11 @@ export function uiBridgeUpdate(patch: Partial<Omit<UiBridgeState, "v">>): UiBrid
   )
   const parsedDrafts = patch.drafts ? parseDrafts(patch.drafts) : prev.drafts
   const nextDrafts = migrateLegacyDraft(parsedDrafts, nextSessionID)
-  const nextOpenTabs = Array.isArray(patch.openTabs)
-    ? patch.openTabs.filter((id): id is string => typeof id === "string" && !id.startsWith("virtual-"))
-    : prev.openTabs
-  const nextActiveTab =
-    typeof patch.activeTab === "string"
-      ? nextOpenTabs.includes(patch.activeTab)
-        ? patch.activeTab
-        : nextOpenTabs[nextOpenTabs.length - 1] || ""
-      : prev.activeTab
+  const nextOpenTabs = Array.isArray(patch.openTabs) ? parseTabs(patch.openTabs) : prev.openTabs
+  const nextActiveTab = sanitizeActiveTab(
+    nextOpenTabs,
+    typeof patch.activeTab === "string" ? patch.activeTab : prev.activeTab,
+  )
   const next: UiBridgeState = {
     ...prev,
     sessionID: nextSessionID,
