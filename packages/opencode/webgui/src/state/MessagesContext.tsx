@@ -354,6 +354,38 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     [addPart, updateReasoningFromPart],
   )
 
+  // Listen to message.part.delta events (streaming text chunks)
+  const handlePartDelta = useCallback((event: ServerEvent) => {
+    if (event.type === "message.part.delta") {
+      const { messageID, partID, delta, field } = event.properties as {
+        sessionID: string
+        messageID: string
+        partID: string
+        field: string
+        delta: string
+      }
+      if (field === "text") {
+        setMessages((prev) => {
+          const messageIndex = prev.findIndex((m) => m.info.id === messageID)
+          if (messageIndex < 0) return prev
+          const message = prev[messageIndex]
+          const partIndex = message.parts.findIndex((p) => p.id === partID)
+          if (partIndex < 0) return prev
+          const existingPart = message.parts[partIndex]
+          if (existingPart.type !== "text" && existingPart.type !== "reasoning") return prev
+          const updatedParts = [...message.parts]
+          updatedParts[partIndex] = {
+            ...existingPart,
+            text: (existingPart.text || "") + delta,
+          }
+          const updated = [...prev]
+          updated[messageIndex] = { ...message, parts: updatedParts }
+          return updated
+        })
+      }
+    }
+  }, [])
+
   // Listen to session.error events
   const handleSessionError = useCallback(
     (event: ServerEvent) => {
@@ -615,6 +647,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   // Subscribe to events if emitter is provided
   useEventHandler(emitter ?? null, "message.updated", handleMessageUpdated)
   useEventHandler(emitter ?? null, "message.part.updated", handlePartUpdated)
+  useEventHandler(emitter ?? null, "message.part.delta", handlePartDelta)
   useEventHandler(emitter ?? null, "session.error", handleSessionError)
   useEventHandler(emitter ?? null, "message.removed", handleMessageRemoved)
   useEventHandler(emitter ?? null, "message.part.removed", handlePartRemoved)
