@@ -51,6 +51,7 @@ const mocks = vi.hoisted(() => ({
   useToast: vi.fn(),
   sdkShare: vi.fn(),
   sdkUnshare: vi.fn(),
+  ideBridgeRequest: vi.fn(),
   tabBarProps: null as null | {
     onCloseOtherTabs: (id: string) => void
     onCloseTabsToRight: (id: string) => void
@@ -113,6 +114,12 @@ vi.mock("../../lib/api/sdkClient", () => ({
   },
 }))
 
+vi.mock("../../lib/ideBridge", () => ({
+  ideBridge: {
+    request: (...args: unknown[]) => mocks.ideBridgeRequest(...args),
+  },
+}))
+
 import { CompactHeader } from "./index"
 
 function mockClipboard() {
@@ -172,6 +179,7 @@ describe("CompactHeader", () => {
     mocks.tabBarProps = null
     mocks.sdkShare.mockResolvedValue({ data: null })
     mocks.sdkUnshare.mockResolvedValue({ data: null })
+    mocks.ideBridgeRequest.mockResolvedValue({ ok: true })
 
     mocks.useTheme.mockReturnValue({ theme: "light", toggleTheme: vi.fn() })
 
@@ -670,5 +678,49 @@ describe("CompactHeader", () => {
 
     const right = screen.getByTestId("compact-header-right")
     expect(right.className).toContain("ml-2")
+  })
+
+  it("点击配置文件后调用 ideBridge ensureAndOpenFile", async () => {
+    const user = userEvent.setup()
+    mocks.ideBridgeRequest.mockResolvedValue({ ok: true })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByTitle("更多选项"))
+    await user.click(screen.getByText("配置文件"))
+
+    expect(mocks.ideBridgeRequest).toHaveBeenCalledWith("ensureAndOpenFile", {
+      path: "~/.config/opencode/opencode.jsonc",
+    })
+  })
+
+  it("ideBridge reject 时显示错误 toast", async () => {
+    const user = userEvent.setup()
+    const showToast = vi.fn()
+    mocks.useToast.mockReturnValue({ showToast })
+    mocks.ideBridgeRequest.mockRejectedValue(new Error("fail"))
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByTitle("更多选项"))
+    await user.click(screen.getByText("配置文件"))
+
+    await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith("打开配置文件失败", { variant: "error" })
+    })
   })
 })

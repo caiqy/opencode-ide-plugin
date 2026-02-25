@@ -246,6 +246,35 @@ class IdeBridgeServer {
           }
           break
 
+        case "ensureAndOpenFile": {
+          if (typeof payload?.path !== "string") {
+            this.replyError(session, id, "Missing path")
+            break
+          }
+          try {
+            const raw = payload.path.trim()
+            if (!raw) {
+              this.replyError(session, id, "Missing path")
+              break
+            }
+
+            let target = raw
+            if (/^~($|[\\/])/.test(target)) {
+              target = path.join(os.homedir(), target.slice(1))
+            }
+
+            fs.mkdirSync(path.dirname(target), { recursive: true })
+            if (!fs.existsSync(target)) {
+              fs.writeFileSync(target, "")
+            }
+            await session.handlers.openFile(target)
+            this.replyOk(session, id)
+          } catch (e) {
+            this.replyError(session, id, `ensureAndOpenFile failed: ${e}`)
+          }
+          break
+        }
+
         case "uiGetState": {
           if (!session.handlers.uiGetState) {
             this.replyError(session, id, "uiGetState not supported")

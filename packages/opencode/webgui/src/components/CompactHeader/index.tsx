@@ -14,6 +14,7 @@ import { HEADER_RIGHT_GAP } from "./utils"
 import { sdk } from "../../lib/api/sdkClient"
 import { useToast } from "../../state/ToastContext"
 import { useTabStore } from "../../state/tabStore"
+import { ideBridge } from "../../lib/ideBridge"
 
 interface CompactHeaderProps {
   connectionState: ConnectionState
@@ -50,6 +51,12 @@ const CompactHeader = forwardRef<
   if (isLoading) sessionsEverLoaded.current = true
 
   const isShared = !!currentSession?.share?.url
+
+  const handleOpenConfigFile = useCallback(() => {
+    void ideBridge.request("ensureAndOpenFile", { path: "~/.config/opencode/opencode.jsonc" }).catch(() => {
+      toast.showToast("打开配置文件失败", { variant: "error" })
+    })
+  }, [toast])
 
   const handleToggleShare = useCallback(async () => {
     if (!currentSession) return
@@ -376,6 +383,7 @@ const CompactHeader = forwardRef<
             theme={theme}
             toggleTheme={toggleTheme}
             onOpenCommandPalette={onOpenCommandPalette}
+            onOpenConfigFile={handleOpenConfigFile}
             onOpenSettings={() => setIsSettingsOpen(true)}
             onNewSession={onNewSession}
             onToggleHistory={dropdown.toggleDropdown}
