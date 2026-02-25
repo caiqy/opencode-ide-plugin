@@ -19,7 +19,7 @@ vi.mock("./uiBridgeState", () => ({
 }))
 
 import { sdk } from "../lib/api/sdkClient"
-import { uiBridgeTabs } from "./uiBridgeState"
+import { uiBridgeTabs, uiBridgeUpdateTabs } from "./uiBridgeState"
 import { TabStoreProvider, useTabStore } from "./tabStore"
 
 const key = "webgui_tabs"
@@ -490,5 +490,24 @@ describe("useTabStore", () => {
 
     expect(result.current.openTabs).toEqual(["ls1", "ls2"])
     expect(result.current.activeTab).toBe("ls1")
+  })
+
+  it("save calls uiBridgeUpdateTabs alongside sdk.kv.update", async () => {
+    ;(uiBridgeTabs as ReturnType<typeof vi.fn>).mockReturnValue({ openTabs: [], activeTab: "" })
+
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+    ;(uiBridgeUpdateTabs as ReturnType<typeof vi.fn>).mockClear()
+
+    act(() => {
+      result.current.openTab("s1")
+      result.current.openTab("s2")
+    })
+
+    expect(uiBridgeUpdateTabs).toHaveBeenCalledTimes(2)
+    expect(uiBridgeUpdateTabs).toHaveBeenLastCalledWith(["s1", "s2"], "s2")
   })
 })

@@ -10,7 +10,7 @@ import {
 } from "react"
 import { sdk } from "../lib/api/sdkClient"
 import { isVirtualTab, openVirtualUnique, openWithPolicy } from "./tabPolicy"
-import { uiBridgeTabs } from "./uiBridgeState"
+import { uiBridgeTabs, uiBridgeUpdateTabs } from "./uiBridgeState"
 
 const key = "webgui_tabs"
 const delay = 500
@@ -45,6 +45,7 @@ function store(next: TabState) {
       },
     })
     .catch(() => {})
+  uiBridgeUpdateTabs(next.openTabs, next.activeTab)
 }
 
 function useTabStoreInternal() {
