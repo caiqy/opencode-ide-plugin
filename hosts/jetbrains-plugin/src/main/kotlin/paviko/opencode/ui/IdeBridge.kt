@@ -2,8 +2,10 @@ package paviko.opencode.ui
 
 import com.google.gson.Gson
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.intellij.ide.BrowserUtil
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.LogicalPosition
@@ -14,6 +16,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.io.File
 import java.io.OutputStreamWriter
 import java.net.InetSocketAddress
@@ -26,7 +30,8 @@ data class Session(
     val id: String,
     val token: String,
     val project: Project,
-    val sseClients: MutableSet<HttpExchange> = Collections.synchronizedSet(mutableSetOf())
+    val sseClients: MutableSet<HttpExchange> = Collections.synchronizedSet(mutableSetOf()),
+    var uiState: JsonElement? = null
 )
 
 data class SessionInfo(val baseUrl: String, val token: String, val sessionId: String)
@@ -288,6 +293,25 @@ object IdeBridge {
                         replyError(session, id, "Missing path")
                     }
                 }
+                "ensureAndOpenFile" -> {
+                    val raw = payload?.get("path")?.asString?.trim()
+                    if (raw.isNullOrEmpty()) {
+                        replyError(session, id, "Missing path")
+                    } else {
+                        try {
+                            val target = if (raw.matches(Regex("^~([/\\\\].*|$)")))
+                                System.getProperty("user.home") + raw.substring(1)
+                            else raw
+                            val file = File(target)
+                            file.parentFile?.mkdirs()
+                            if (!file.exists()) file.createNewFile()
+                            openFile(session.project, target.replace("\\", "/"), -1, -1)
+                            replyOk(session, id)
+                        } catch (e: Exception) {
+                            replyError(session, id, "ensureAndOpenFile failed: $e")
+                        }
+                    }
+                }
                 "openUrl" -> {
                     val url = payload?.get("url")?.asString
                     if (url != null) {
@@ -372,6 +396,57 @@ object IdeBridge {
                     statePath.mkdirs()
                     file.writeText(gson.toJson(existing))
                     replyWithPayload(session, id, existing)
+                }
+
+                "clipboardWrite" -> {
+                    val text = payload?.get("text")?.asString
+                    if (text != null) {
+                        val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+                        clipboard.setContents(StringSelection(text), null)
+                        replyOk(session, id)
+                    } else {
+                        replyError(session, id, "Missing text")
+                    }
+                }
+
+                "storageGet" -> {
+                    val keys = payload?.getAsJsonArray("keys")
+                    val result = JsonObject()
+                    keys?.forEach { k ->
+                        val key = k.asString
+                        val value = PropertiesComponent.getInstance().getValue("opencode.$key")
+                        if (value != null) result.addProperty(key, value)
+                    }
+                    if (id != null) {
+                        broadcastSSE(session, gson.toJson(JsonObject().apply {
+                            addProperty("replyTo", id)
+                            addProperty("ok", true)
+                            add("result", result)
+                            addProperty("timestamp", System.currentTimeMillis())
+                        }))
+                    }
+                }
+
+                "storageSet" -> {
+                    val key = payload?.get("key")?.asString
+                    val value = payload?.get("value")?.asString
+                    if (key != null && value != null) {
+                        PropertiesComponent.getInstance().setValue("opencode.$key", value)
+                        replyOk(session, id)
+                    } else {
+                        replyError(session, id, "Missing key or value")
+                    }
+                }
+
+                "uiGetState" -> {
+                    replyWithPayload(session, id, JsonObject().apply {
+                        add("state", gson.toJsonTree(session.uiState))
+                    })
+                }
+
+                "uiSetState" -> {
+                    session.uiState = payload?.get("state")
+                    replyOk(session, id)
                 }
 
                 else -> replyError(session, id, "Unknown type: $type")
