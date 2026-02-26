@@ -26,6 +26,32 @@ describe("prepareSession", () => {
     expect(setDraft).not.toHaveBeenCalled()
   })
 
+  it("restores and reuses draft session when draft is null", async () => {
+    const open = vi.fn()
+    const setDraft = vi.fn()
+    const fail = vi.fn()
+    const create = vi.fn(async () => ({ id: "s-new" }))
+    const switchTo = vi.fn(async () => {})
+    const restore = vi.fn(async () => "s-draft")
+
+    await prepareSession({
+      draft: null,
+      restore,
+      reusable: async () => true,
+      create,
+      open,
+      switchTo,
+      setDraft,
+      fail,
+    })
+
+    expect(restore).toHaveBeenCalledTimes(1)
+    expect(open).toHaveBeenCalledWith("s-draft")
+    expect(switchTo).toHaveBeenCalledWith("s-draft")
+    expect(create).not.toHaveBeenCalled()
+    expect(fail).not.toHaveBeenCalled()
+  })
+
   it("creates new session when draft is invalid", async () => {
     const open = vi.fn()
     const setDraft = vi.fn()

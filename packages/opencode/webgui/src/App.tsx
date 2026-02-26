@@ -19,6 +19,7 @@ import { extractPathsFromDrop } from "./lib/dnd"
 import { initKeyboardHandler, destroyKeyboardHandler } from "./lib/keyboardHandler"
 import {
   uiBridgeDraftSessionId,
+  uiBridgeRestoreDraftSessionId,
   uiBridgeSubscribeSelector,
   uiBridgeUpdateDraftSessionId,
   type UiBridgeState,
@@ -43,6 +44,7 @@ function isBridgeSelectionsEqual(a: BridgeSelections, b: BridgeSelections) {
 
 export async function prepareSession(input: {
   draft: string | null
+  restore?: () => Promise<string | null>
   reusable: (id: string) => Promise<boolean>
   create: () => Promise<{ id: string } | null>
   open: (id: string) => void
@@ -50,12 +52,13 @@ export async function prepareSession(input: {
   setDraft: (id: string | null) => void
   fail: () => void
 }) {
-  if (input.draft) {
-    const ok = await input.reusable(input.draft).catch(() => false)
+  const draft = input.draft ?? (input.restore ? await input.restore().catch(() => null) : null)
+  if (draft) {
+    const ok = await input.reusable(draft).catch(() => false)
     if (ok) {
-      input.open(input.draft)
+      input.open(draft)
       const restored = await input
-        .switchTo(input.draft)
+        .switchTo(draft)
         .then(() => true)
         .catch(() => false)
       if (restored) return
@@ -151,6 +154,10 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     creating.current = true
     void prepareSession({
       draft: uiBridgeDraftSessionId(),
+      restore: async () => {
+        await uiBridgeRestoreDraftSessionId()
+        return uiBridgeDraftSessionId()
+      },
       reusable: async (id) => {
         const session = await sdk.session.get({ path: { id } })
         if (!session.data) return false
