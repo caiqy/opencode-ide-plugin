@@ -55,19 +55,13 @@ export function VersionGate({ children }: { children: ReactNode }) {
       }
     }
 
-    // If minVersion is already available (reconnect scenario), check immediately
-    if (ideBridge.minVersion) {
-      check()
-      return () => {
-        cancelled = true
-      }
-    }
+    check()
 
-    // Wait for the SSE "connected" event which populates minVersion
+    // Wait for the SSE "connected" event which may populate minVersion later
     const listener = () => {
       check()
     }
-    window.addEventListener("opencode:idebridge-connected", listener, { once: true })
+    window.addEventListener("opencode:idebridge-connected", listener)
 
     return () => {
       cancelled = true

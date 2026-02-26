@@ -376,6 +376,52 @@ describe("CompactHeader", () => {
     expect(pruneTabs).toHaveBeenCalledWith(new Set(["s1"]))
   })
 
+  it("pruneTabs 会保留 currentSession，避免会话列表延迟时清空当前标签", () => {
+    const pruneTabs = vi.fn()
+    let isLoading = true
+
+    mocks.useSession.mockImplementation(() => ({
+      currentSession: { id: "s-current", title: "当前会话" },
+      setCurrentSession: vi.fn(),
+      sessions: [{ id: "s1", title: "会话 1" }],
+      setSessions: vi.fn(),
+      switchSession: vi.fn(),
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading,
+    }))
+
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["s-current", "s1", "orphan"],
+      activeTab: "s-current",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      setActiveTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs,
+    })
+
+    const props = {
+      connectionState: "connected" as ConnectionState,
+      onNewSession: vi.fn(),
+      isCreatingSession: false,
+      onOpenCommandPalette: vi.fn(),
+    }
+
+    const view = render(<CompactHeader {...props} />)
+    expect(pruneTabs).not.toHaveBeenCalled()
+
+    isLoading = false
+    view.rerender(<CompactHeader {...props} />)
+
+    expect(pruneTabs).toHaveBeenCalledWith(new Set(["s1", "s-current"]))
+  })
+
   it("switches to restored activeTab when currentSession is null", () => {
     const switchSession = vi.fn().mockResolvedValue(undefined)
     const openTab = vi.fn()
