@@ -220,7 +220,7 @@ export function ActionButtons({
             <div className="my-1 h-px bg-gray-200 dark:bg-gray-700" />
 
             {/* Version */}
-            <div className="px-3 py-1.5 text-[10px] text-gray-400 dark:text-gray-500 text-center select-none">
+            <div className="px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 text-center select-none">
               v{__APP_VERSION__}
             </div>
           </div>
