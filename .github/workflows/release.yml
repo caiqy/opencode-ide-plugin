@@ -17,43 +17,21 @@ on:
         default: false
 
 jobs:
-  build-release:
+  # ── Stage 1: build backend binaries (shared by both plugins) ──
+  build-backend:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_number: ${{ steps.version.outputs.version_number }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      clean_version: ${{ steps.version.outputs.clean_version }}
+      vscode_version: ${{ steps.version.outputs.vscode_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Bun
         uses: ./.github/actions/setup-bun
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "pnpm"
-          cache-dependency-path: |
-            hosts/vscode-plugin/pnpm-lock.yaml
-            hosts/vscode-plugin/package.json
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: "21"
-          cache: "gradle"
-          cache-dependency-path: |
-            hosts/jetbrains-plugin/gradle/wrapper/gradle-wrapper.properties
-            hosts/jetbrains-plugin/gradle.properties
-            hosts/jetbrains-plugin/**/*.gradle
-            hosts/jetbrains-plugin/**/*.gradle.kts
 
       - name: Determine version
         id: version
@@ -69,20 +47,17 @@ jobs:
               echo "prerelease=false" >> $GITHUB_OUTPUT
             fi
           fi
-          # version without leading 'v' for use as OPENCODE_VERSION
           VER="$(grep -oP '"version":\s*"\K[^"]+' packages/opencode/package.json)"
           echo "version_number=$VER" >> $GITHUB_OUTPUT
 
-      - name: Inject version into plugin manifests
-        run: |
-          # Strip leading 'v' prefix if present (e.g. v1.2.3 -> 1.2.3)
-          RAW_VERSION="${{ steps.version.outputs.version }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW_VERSION="${{ github.event.inputs.version }}"
+          else
+            RAW_VERSION="${GITHUB_REF#refs/tags/}"
+          fi
           CLEAN_VERSION="${RAW_VERSION#v}"
-          echo "Injecting version: $CLEAN_VERSION"
+          echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
 
-          # VS Code requires semver (3 segments: major.minor.patch).
-          # Convert 4-segment CalVer YYYY.M.D.B to YYYY.MDD.B
-          # e.g. 2026.2.6.4 -> 2026.206.4
           VSCODE_VERSION=$(node -e '
             const v = process.argv[1];
             const parts = v.split(".");
@@ -93,9 +68,57 @@ jobs:
               console.log(v);
             }
           ' "$CLEAN_VERSION")
-          echo "VSCode version: $VSCODE_VERSION"
+          echo "vscode_version=$VSCODE_VERSION" >> $GITHUB_OUTPUT
 
-          # Update VSCode plugin package.json
+      - name: Build backend binaries
+        run: ./hosts/scripts/build_opencode.sh --exclude-os=linux
+        env:
+          OPENCODE_VERSION: ${{ steps.version.outputs.version_number }}
+
+      - name: Upload VSCode binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-bin
+          path: hosts/vscode-plugin/resources/bin
+          retention-days: 1
+
+      - name: Upload JetBrains binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: jetbrains-bin
+          path: hosts/jetbrains-plugin/src/main/resources/bin
+          retention-days: 1
+
+  # ── Stage 2a: build VSCode extension (parallel) ──
+  build-vscode:
+    runs-on: ubuntu-latest
+    needs: build-backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: |
+            hosts/vscode-plugin/pnpm-lock.yaml
+            hosts/vscode-plugin/package.json
+
+      - name: Download backend binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: vscode-bin
+          path: hosts/vscode-plugin/resources/bin
+
+      - name: Inject VSCode version
+        run: |
           node -e '
             const fs = require("fs");
             const path = "hosts/vscode-plugin/package.json";
@@ -103,18 +126,9 @@ jobs:
             pkg.version = process.argv[1];
             fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
             console.log("Updated " + path + " to version " + process.argv[1]);
-          ' "$VSCODE_VERSION"
+          ' "${{ needs.build-backend.outputs.vscode_version }}"
 
-          # Update JetBrains plugin build.gradle.kts fallback version
-          sed -i "s/^version = findProperty(\"plugin.version\")?.toString() ?: \".*\"/version = findProperty(\"plugin.version\")?.toString() ?: \"$CLEAN_VERSION\"/" hosts/jetbrains-plugin/build.gradle.kts
-          echo "Updated hosts/jetbrains-plugin/build.gradle.kts to version $CLEAN_VERSION"
-
-      - name: Build backend binaries
-        run: ./hosts/scripts/build_opencode.sh --exclude-os=linux
-        env:
-          OPENCODE_VERSION: ${{ steps.version.outputs.version_number }}
-
-      - name: Install VSCode plugin dependencies (all)
+      - name: Install dependencies
         working-directory: hosts/vscode-plugin
         run: |
           if [ -f pnpm-lock.yaml ]; then
@@ -123,7 +137,7 @@ jobs:
             npm ci
           fi
 
-      - name: Compile VSCode plugin TypeScript
+      - name: Compile TypeScript
         working-directory: hosts/vscode-plugin
         run: |
           if [ -f pnpm-lock.yaml ]; then
@@ -132,14 +146,13 @@ jobs:
             npm run compile:production
           fi
 
-      - name: Package VSCode plugin (standard) from staging
+      - name: Package VSCode plugin from staging
         working-directory: hosts/vscode-plugin
         run: |
           STAGE_DIR="../tmp_opencode_vscode_stage"
           rm -rf "$STAGE_DIR"
           mkdir -p "$STAGE_DIR"
 
-          # Copy minimal required files
           cp package.json "$STAGE_DIR/"
           cp -R out "$STAGE_DIR/out"
           cp -R resources "$STAGE_DIR/resources"
@@ -147,7 +160,6 @@ jobs:
           [ -f CHANGELOG.md ] && cp CHANGELOG.md "$STAGE_DIR/" || true
           [ -f ../../LICENSE ] && cp ../../LICENSE "$STAGE_DIR/" || true
 
-          # Sanitize package.json: remove scripts and devDependencies
           node -e '
             const fs=require("fs");
             const path=require("path");
@@ -158,64 +170,116 @@ jobs:
             fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
           '
 
-          # Package from staging directory without touching dependencies
           ( cd "$STAGE_DIR" && npx -y @vscode/vsce package --no-dependencies --out "opencode-standard.vsix" )
-
-          # Move artifact back into plugin dir for later collection
           mv "$STAGE_DIR"/*.vsix .
-
-          # Clean up staging
           rm -rf "$STAGE_DIR"
 
-      - name: Build JetBrains plugin distribution (standard)
-        uses: gradle/gradle-build-action@v2
+      - name: Upload VSCode artifact
+        uses: actions/upload-artifact@v4
         with:
-          gradle-version: 8.7
-          arguments: buildPlugin
-          build-root-directory: hosts/jetbrains-plugin
+          name: vscode-plugin
+          path: hosts/vscode-plugin/opencode-standard.vsix
+          retention-days: 1
 
-      - name: Prepare release artifacts
+  # ── Stage 2b: build JetBrains plugin (parallel) ──
+  build-jetbrains:
+    runs-on: ubuntu-latest
+    needs: build-backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Download backend binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: jetbrains-bin
+          path: hosts/jetbrains-plugin/src/main/resources/bin
+
+      - name: Inject JetBrains version
         run: |
+          CLEAN_VERSION="${{ needs.build-backend.outputs.clean_version }}"
+          sed -i "s/^version = findProperty(\"plugin.version\")?.toString() ?: \".*\"/version = findProperty(\"plugin.version\")?.toString() ?: \"$CLEAN_VERSION\"/" hosts/jetbrains-plugin/build.gradle.kts
+          echo "Updated hosts/jetbrains-plugin/build.gradle.kts to version $CLEAN_VERSION"
+
+      - name: Build JetBrains plugin
+        working-directory: hosts/jetbrains-plugin
+        run: ./gradlew buildPlugin
+
+      - name: Upload JetBrains artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jetbrains-plugin
+          path: hosts/jetbrains-plugin/build/distributions/*.zip
+          retention-days: 1
+
+  # ── Stage 3: create GitHub release ──
+  create-release:
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-vscode, build-jetbrains]
+    permissions:
+      contents: write
+    steps:
+      - name: Download VSCode artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vscode-plugin
+          path: ./artifacts
+
+      - name: Download JetBrains artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jetbrains-plugin
+          path: ./artifacts
+
+      - name: Rename artifacts
+        run: |
+          VERSION="${{ needs.build-backend.outputs.version }}"
           mkdir -p release-artifacts
 
-          # Copy and rename VSCode standard extension
-          if [ -f hosts/vscode-plugin/opencode-standard.vsix ]; then
-            cp hosts/vscode-plugin/opencode-standard.vsix \
-              "release-artifacts/opencode-vscode-${{ steps.version.outputs.version }}.vsix"
+          if [ -f artifacts/opencode-standard.vsix ]; then
+            cp artifacts/opencode-standard.vsix "release-artifacts/opencode-vscode-${VERSION}.vsix"
           fi
 
-          # Copy and rename JetBrains plugin
-          zipfile=$(find hosts/jetbrains-plugin/build/distributions -name "*.zip" -type f | head -n1)
+          zipfile=$(find artifacts -name "*.zip" -type f | head -n1)
           if [ -n "$zipfile" ]; then
-            cp "$zipfile" "release-artifacts/opencode-jetbrains-${{ steps.version.outputs.version }}.zip"
+            cp "$zipfile" "release-artifacts/opencode-jetbrains-${VERSION}.zip"
           fi
 
-          ls -la
+          ls -la release-artifacts/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: OpenCode Release ${{ steps.version.outputs.version }}
-          prerelease: ${{ steps.version.outputs.prerelease }}
+          tag_name: ${{ needs.build-backend.outputs.version }}
+          name: OpenCode Release ${{ needs.build-backend.outputs.version }}
+          prerelease: ${{ needs.build-backend.outputs.prerelease }}
           generate_release_notes: true
           files: |
             release-artifacts/*
           body: |
-            ## OpenCode Release ${{ steps.version.outputs.version }}
+            ## OpenCode Release ${{ needs.build-backend.outputs.version }}
 
             This release includes:
-            - **VSCode Extension (standard)**: `opencode-vscode-${{ steps.version.outputs.version }}.vsix` — bundles opencode binaries
-            - **JetBrains Plugin (standard)**: `opencode-jetbrains-${{ steps.version.outputs.version }}.zip` — bundles opencode binaries
+            - **VSCode Extension (standard)**: `opencode-vscode-${{ needs.build-backend.outputs.version }}.vsix` — bundles opencode binaries
+            - **JetBrains Plugin (standard)**: `opencode-jetbrains-${{ needs.build-backend.outputs.version }}.zip` — bundles opencode binaries
 
             ### Installation Instructions
 
             #### VSCode Extension (standard — includes binaries)
-            1. Download `opencode-vscode-${{ steps.version.outputs.version }}.vsix`
-            2. Install using: `code --install-extension opencode-vscode-${{ steps.version.outputs.version }}.vsix`
+            1. Download `opencode-vscode-${{ needs.build-backend.outputs.version }}.vsix`
+            2. Install using: `code --install-extension opencode-vscode-${{ needs.build-backend.outputs.version }}.vsix`
 
             #### JetBrains Plugin (standard — includes binaries)
-            1. Download `opencode-jetbrains-${{ steps.version.outputs.version }}.zip`
+            1. Download `opencode-jetbrains-${{ needs.build-backend.outputs.version }}.zip`
             2. In your JetBrains IDE, go to Settings → Plugins → Install Plugin from Disk
             3. Select the downloaded zip file
 
@@ -224,14 +288,21 @@ jobs:
 
   test-artifacts:
     runs-on: ubuntu-latest
-    needs: build-release
+    needs: create-release
     if: always()
 
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-artifacts
+          name: vscode-plugin
+          path: ./test-artifacts
+        continue-on-error: true
+
+      - name: Download JetBrains artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: jetbrains-plugin
           path: ./test-artifacts
         continue-on-error: true
 
@@ -240,15 +311,13 @@ jobs:
           echo "Checking release artifacts..."
           ls -la ./test-artifacts/ || echo "No artifacts found"
 
-          # Check if VSCode standard extension exists
-          if ls ./test-artifacts/opencode-vscode-v*.vsix 1> /dev/null 2>&1; then
+          if ls ./test-artifacts/*.vsix 1> /dev/null 2>&1; then
             echo "✓ VSCode extension (standard) found"
           else
             echo "✗ VSCode extension (standard) missing"
           fi
 
-          # Check if JetBrains standard plugin exists
-          if ls ./test-artifacts/opencode-jetbrains-*.zip 1> /dev/null 2>&1; then
+          if ls ./test-artifacts/*.zip 1> /dev/null 2>&1; then
             echo "✓ JetBrains plugin (standard) found"
           else
             echo "✗ JetBrains plugin (standard) missing"
