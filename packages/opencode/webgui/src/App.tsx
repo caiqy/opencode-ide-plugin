@@ -27,6 +27,7 @@ import {
 import { useSessionActivation } from "./state/useSessionActivation"
 import { useTabStore } from "./state/tabStore"
 import { sdk } from "./lib/api/sdkClient"
+import { setGlobalStateWriteErrorReporter } from "./state/globalState"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 
@@ -98,6 +99,18 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     pastePath: (path: string) => void
     insertPlainWithMentions: (value: string) => void
   }>(null)
+
+  useEffect(() => {
+    setGlobalStateWriteErrorReporter((input) => {
+      showToast(input.message, {
+        variant: "warning",
+        duration: 2500,
+      })
+    })
+    return () => {
+      setGlobalStateWriteErrorReporter(null)
+    }
+  }, [showToast])
 
   // Keyboard shortcuts state
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)

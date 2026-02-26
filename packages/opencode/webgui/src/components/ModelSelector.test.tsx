@@ -1,32 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import userEvent from "@testing-library/user-event"
-import { render, screen, within } from "../test/test-utils"
+import { render, screen, within, waitFor } from "../test/test-utils"
 
-vi.mock("../lib/api/sdkClient", () => {
-  return {
-    sdk: {
-      config: {
-        providers: vi.fn(),
-      },
-      model: {
-        get: vi.fn(),
-        update: vi.fn(),
-      },
+vi.mock("../lib/api/sdkClient", () => ({
+  sdk: {
+    config: {
+      providers: vi.fn(),
     },
-  }
-})
+    model: {
+      get: vi.fn(),
+      update: vi.fn(),
+    },
+  },
+}))
 
-vi.mock("../lib/ideBridge", () => {
-  return {
-    ideBridge: {
-      isInstalled: vi.fn(),
-      request: vi.fn(),
-    },
-  }
-})
+vi.mock("../lib/ideBridge", () => ({
+  ideBridge: {
+    isInstalled: vi.fn(),
+    request: vi.fn(),
+  },
+}))
 
 import { sdk } from "../lib/api/sdkClient"
-import { ideBridge } from "../lib/ideBridge"
 import { ModelSelector } from "./ModelSelector"
 
 describe("ModelSelector favorites", () => {
@@ -59,15 +54,18 @@ describe("ModelSelector favorites", () => {
       error: null,
     })
     ;(sdk.model.update as any).mockResolvedValue({ data: { recent: [], favorite: [] }, error: null })
-    ;(ideBridge.isInstalled as any).mockReturnValue(false)
-    ;(ideBridge.request as any).mockResolvedValue({ ok: true, result: {} })
   })
 
-  it("在下拉顶部展示 Favorites 分组（来自 localStorage）", async () => {
-    localStorage.setItem("opencode_favorite_models_v1", JSON.stringify(["openai/gpt-4.1"]))
+  it("在下拉顶部展示收藏分组（来自 sdk.model）", async () => {
+    ;(sdk.model.get as any).mockResolvedValue({
+      data: {
+        recent: [],
+        favorite: [{ providerID: "openai", modelID: "gpt-4.1" }],
+      },
+      error: null,
+    })
 
     render(<ModelSelector onSelect={() => {}} />)
-
     await screen.findByText("GPT 4.1")
 
     const user = userEvent.setup()
@@ -82,9 +80,19 @@ describe("ModelSelector favorites", () => {
     expect(ui.getByText("GPT 4.1")).toBeInTheDocument()
   })
 
-  it("点击星标会切换收藏且不会触发选择", async () => {
-    const onSelect = vi.fn()
+  it("不读取历史 localStorage 收藏键", async () => {
+    localStorage.setItem("opencode_favorite_models_v1", JSON.stringify(["openai/gpt-4.1"]))
+    const getSpy = vi.spyOn(Storage.prototype, "getItem")
 
+    render(<ModelSelector onSelect={() => {}} />)
+    await screen.findByText("GPT 4.1")
+
+    expect(getSpy).not.toHaveBeenCalledWith("opencode_favorite_models_v1")
+  })
+
+  it("点击星标会切换收藏且不会触发选择，也不写 localStorage", async () => {
+    const onSelect = vi.fn()
+    const setSpy = vi.spyOn(Storage.prototype, "setItem")
     render(<ModelSelector onSelect={onSelect} />)
     await screen.findByText("GPT 4.1")
 
@@ -101,61 +109,14 @@ describe("ModelSelector favorites", () => {
     await user.click(ui.getByLabelText("切换收藏 openai/gpt-4.1"))
     expect(onSelect).not.toHaveBeenCalled()
 
-    expect(JSON.parse(localStorage.getItem("opencode_favorite_models_v1") || "[]")).toEqual(["openai/gpt-4.1"])
-    expect(ui.getByText("收藏")).toBeInTheDocument()
-  })
-
-  it("在 IDE 环境中会从 host storage 恢复收藏", async () => {
-    ;(ideBridge.isInstalled as any).mockReturnValue(true)
-    ;(ideBridge.request as any).mockImplementation(async (type: string) => {
-      if (type === "storageGet") {
-        return {
-          ok: true,
-          result: {
-            opencode_favorite_models_v1: JSON.stringify(["openai/gpt-4.1"]),
-          },
-        }
-      }
-      return { ok: true }
+    await waitFor(() => {
+      expect(sdk.model.update).toHaveBeenCalledWith({
+        body: {
+          favorite: [{ providerID: "openai", modelID: "gpt-4.1" }],
+        },
+      })
     })
-
-    render(<ModelSelector onSelect={() => {}} />)
-
-    await screen.findByText("GPT 4.1")
-
-    const user = userEvent.setup()
-    await user.click(screen.getByTitle("选择模型"))
-
-    const input = screen.getByPlaceholderText("搜索模型…")
-    const dropdown = input.closest("div")?.parentElement
-    expect(dropdown).toBeTruthy()
-
-    const ui = within(dropdown as HTMLElement)
-    expect(ui.getByText("收藏")).toBeInTheDocument()
-    expect(ideBridge.request).toHaveBeenCalledWith("storageGet", {
-      keys: ["opencode_favorite_models_v1"],
-    })
-  })
-
-  it("在 IDE 环境中切换收藏会同步到 host storage", async () => {
-    ;(ideBridge.isInstalled as any).mockReturnValue(true)
-    ;(ideBridge.request as any).mockResolvedValue({ ok: true, result: {} })
-
-    const user = userEvent.setup()
-    render(<ModelSelector onSelect={() => {}} />)
-    await screen.findByText("GPT 4.1")
-    await user.click(screen.getByTitle("选择模型"))
-
-    const input = screen.getByPlaceholderText("搜索模型…")
-    const dropdown = input.closest("div")?.parentElement
-    const ui = within(dropdown as HTMLElement)
-
-    await user.click(ui.getByLabelText("切换收藏 openai/gpt-4.1"))
-
-    expect(ideBridge.request).toHaveBeenCalledWith("storageSet", {
-      key: "opencode_favorite_models_v1",
-      value: JSON.stringify(["openai/gpt-4.1"]),
-    })
+    expect(setSpy).not.toHaveBeenCalled()
   })
 
   it("选中模型使用前置亮点，且不再显示末尾勾选图标", async () => {
@@ -180,18 +141,5 @@ describe("ModelSelector favorites", () => {
       "svg path[d='M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z']",
     )
     expect(legacyCheckPath).not.toBeInTheDocument()
-  })
-
-  it("触发按钮在暗色主题下使用更亮的文本颜色（与工具栏其他选择器一致）", async () => {
-    render(<ModelSelector onSelect={() => {}} />)
-
-    // 等待首屏异步加载完成，避免 React act(...) 警告
-    await screen.findByText("GPT 4.1")
-
-    const trigger = screen.getByTitle("选择模型")
-    expect(trigger).toHaveClass("dark:text-gray-200")
-    expect(trigger).not.toHaveClass("dark:text-gray-400")
-    expect(trigger).toHaveClass("px-1.5")
-    expect(trigger).toHaveClass("gap-0.5")
   })
 })

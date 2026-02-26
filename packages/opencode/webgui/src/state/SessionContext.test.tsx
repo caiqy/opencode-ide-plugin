@@ -144,6 +144,27 @@ describe("SessionContext migration", () => {
     })
   })
 
+  it("setSelectedModel/setSelectedAgent 不再读取或写入 opencode_selected_*", async () => {
+    const getSpy = vi.spyOn(Storage.prototype, "getItem")
+    const setSpy = vi.spyOn(Storage.prototype, "setItem")
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.selectedAgent).toBe("build")
+    })
+
+    await act(async () => {
+      await result.current.setSelectedModel("openai", "gpt-4.1")
+      await result.current.setSelectedAgent("plan")
+    })
+
+    expect(getSpy).not.toHaveBeenCalledWith("opencode_selected_provider")
+    expect(getSpy).not.toHaveBeenCalledWith("opencode_selected_model")
+    expect(getSpy).not.toHaveBeenCalledWith("opencode_selected_agent")
+    expect(setSpy).not.toHaveBeenCalled()
+  })
+
   it("host 记录优先于 kv/model", async () => {
     ;(ideBridge.isInstalled as any).mockReturnValue(true)
     ;(ideBridge.request as any).mockImplementation(async (type: string) => {

@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react"
-import { useLocalStorage } from "../hooks/useLocalStorage"
-import { ideBridge } from "../lib/ideBridge"
+import { globalStateGetJSON, globalStateSetJSON } from "./globalState"
 
 type Theme = "light" | "dark"
 
@@ -10,51 +9,25 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
+const key = "opencode:webgui:theme:v1"
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  // 默认主题：暗色（若用户曾手动切换，会以 oc-webgui-theme 已保存值为准）
-  const [theme, setTheme] = useLocalStorage<Theme>("oc-webgui-theme", "dark")
+  const [theme, setTheme] = useState<Theme>("dark")
   const [hydrated, setHydrated] = useState(false)
-  const setThemeRef = useRef(setTheme)
-  const userTouchedRef = useRef(false)
+  const touched = useRef(false)
 
   useEffect(() => {
-    setThemeRef.current = setTheme
-  }, [setTheme])
-
-  useEffect(() => {
-    const sync = async () => {
-      if (!ideBridge.isInstalled()) {
-        setHydrated(true)
-        return
+    let live = true
+    void globalStateGetJSON<Theme>(key, "dark").then((value) => {
+      if (!live) return
+      if (!touched.current && (value === "light" || value === "dark")) {
+        setTheme(value)
       }
-
-      const local = window.localStorage.getItem("oc-webgui-theme")
-      const reply = await ideBridge.request("storageGet", {
-        keys: ["oc-webgui-theme"],
-      })
-      const host = typeof reply.result?.["oc-webgui-theme"] === "string" ? reply.result["oc-webgui-theme"] : null
-
-      if (host === "light" || host === "dark") {
-        // 若用户在 host 同步完成前已手动切换，则不覆盖用户选择
-        if (!userTouchedRef.current) {
-          setThemeRef.current(host)
-        }
-        setHydrated(true)
-        return
-      }
-
-      if (local === "light" || local === "dark") {
-        await ideBridge.request("storageSet", {
-          key: "oc-webgui-theme",
-          value: local,
-        })
-      }
-
       setHydrated(true)
+    })
+    return () => {
+      live = false
     }
-
-    sync()
   }, [])
 
   useEffect(() => {
@@ -64,18 +37,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       document.documentElement.classList.remove("dark")
     }
 
-    if (!hydrated || !ideBridge.isInstalled()) {
-      return
-    }
-
-    ideBridge.request("storageSet", {
-      key: "oc-webgui-theme",
-      value: theme,
-    })
+    if (!hydrated) return
+    void globalStateSetJSON(key, theme)
   }, [theme, hydrated])
 
   const toggleTheme = () => {
-    userTouchedRef.current = true
+    touched.current = true
     setTheme((prev) => (prev === "light" ? "dark" : "light"))
   }
 

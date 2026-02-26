@@ -184,7 +184,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     })
   }, [])
 
-  // Model and Agent selection state (synced with server state + localStorage fallback)
+  // Model and Agent selection state (synced with server/global state)
   const [selectedProviderId, setSelectedProviderId] = useState<string | undefined>()
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>()
   const [selectedAgent, setSelectedAgentState] = useState<string>("build")
@@ -239,7 +239,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   /**
    * Initialize state from server on mount
-   * Priority: host last selection > kv/model > config > localStorage
+   * Priority: host last selection > kv/model > config
    */
   useEffect(() => {
     const initializeState = async () => {
@@ -279,7 +279,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
         // Set agent (host > kv > default)
         const agent = hostSelection?.agent || kv.webgui_agent || "build"
         setSelectedAgentState(agent)
-        localStorage.setItem("opencode_selected_agent", agent)
 
         let providerId = kv.webgui_provider as string | undefined
         let modelId = kv.webgui_model as string | undefined
@@ -334,8 +333,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
         if (providerId && modelId) {
           setSelectedProviderId(providerId)
           setSelectedModelId(modelId)
-          localStorage.setItem("opencode_selected_provider", providerId)
-          localStorage.setItem("opencode_selected_model", modelId)
 
           // Priority for initial variant: host > model.json map
           let initialVariant =
@@ -361,14 +358,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
           }
         }
       } catch (err) {
-        console.error("[SessionContext] Failed to load state from server, using localStorage fallback:", err)
-        const savedProvider = localStorage.getItem("opencode_selected_provider")
-        const savedModel = localStorage.getItem("opencode_selected_model")
-        const savedAgent = localStorage.getItem("opencode_selected_agent")
-
-        if (savedProvider) setSelectedProviderId(savedProvider)
-        if (savedModel) setSelectedModelId(savedModel)
-        if (savedAgent) setSelectedAgentState(savedAgent)
+        console.error("[SessionContext] Failed to load state from server:", err)
       } finally {
         setSelectionReadyForHostSync(true)
       }
@@ -391,7 +381,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   }, [selectionReadyForHostSync, selectedAgent, selectedProviderId, selectedModelId, selectedVariant])
 
   /**
-   * Set selected model and persist to server + localStorage
+   * Set selected model and persist to server
    * Also updates per-agent model preference
    */
   const setSelectedModel = useCallback(
@@ -405,18 +395,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
         setSelectedVariantState(variantMap[modelKey])
       } else {
         setSelectedVariantState(undefined)
-      }
-
-      // Persist to localStorage as fallback
-      if (providerId) {
-        localStorage.setItem("opencode_selected_provider", providerId)
-      } else {
-        localStorage.removeItem("opencode_selected_provider")
-      }
-      if (modelId) {
-        localStorage.setItem("opencode_selected_model", modelId)
-      } else {
-        localStorage.removeItem("opencode_selected_model")
       }
 
       // Persist to server state (including per-agent preference)
@@ -497,7 +475,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   )
 
   /**
-   * Set selected agent and persist to server + localStorage
+   * Set selected agent and persist to server
    * Also handles per-agent model preferences
    */
   const setSelectedAgent = useCallback(
@@ -534,14 +512,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
         // Update state
         setSelectedAgentState(newAgent)
-        localStorage.setItem("opencode_selected_agent", newAgent)
 
         // Update model if it changed
         if (newProvider !== currentProvider || newModel !== currentModel) {
           setSelectedProviderId(newProvider)
           setSelectedModelId(newModel)
-          if (newProvider) localStorage.setItem("opencode_selected_provider", newProvider)
-          if (newModel) localStorage.setItem("opencode_selected_model", newModel)
         }
 
         // Persist to kv.json (webgui-specific keys)
@@ -558,7 +533,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
         console.error("[SessionContext] Failed to save agent preference to server:", err)
         // Fallback to simple update
         setSelectedAgentState(newAgent)
-        localStorage.setItem("opencode_selected_agent", newAgent)
       }
     },
     [selectedAgent, selectedProviderId, selectedModelId],
@@ -571,7 +545,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
       if (typeof state.agent === "string") {
         setSelectedAgentState(state.agent)
-        localStorage.setItem("opencode_selected_agent", state.agent)
       }
 
       const nextProvider = typeof state.providerId === "string" ? state.providerId : undefined
@@ -581,8 +554,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
       if (hasModel && nextProvider && nextModel) {
         setSelectedProviderId(nextProvider)
         setSelectedModelId(nextModel)
-        localStorage.setItem("opencode_selected_provider", nextProvider)
-        localStorage.setItem("opencode_selected_model", nextModel)
       }
 
       if (state.variant === null) {

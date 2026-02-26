@@ -4,6 +4,7 @@
  */
 
 import { createOpencodeClient, type Provider } from "@opencode-ai/sdk/client"
+import { globalStateGetJSON, globalStateSetJSON } from "../../state/globalState"
 
 // Create a single SDK client instance on current origin
 const baseClient = createOpencodeClient({
@@ -47,30 +48,6 @@ function errorMessage(input: unknown, fallback: string) {
   return fallback
 }
 
-/**
- * Legacy webgui state snapshot (migration only)
- */
-interface LegacyStateSnapshot {
-  theme?: string
-  agent_model?: Record<string, { provider_id: string; model_id: string }>
-  provider?: string
-  model?: string
-  agent?: string
-  variant?: Record<string, string>
-  recently_used_models?: Array<{
-    provider_id: string
-    model_id: string
-    last_used: string // RFC3339 timestamp
-  }>
-  recently_used_agents?: Array<{
-    agent_name: string
-    last_used: string // RFC3339 timestamp
-  }>
-  show_tool_details?: boolean
-  show_thinking_blocks?: boolean
-  message_parts_auto_expand?: boolean
-}
-
 interface ProvidersResponse {
   providers: Provider[]
   default: Record<string, string>
@@ -99,48 +76,8 @@ interface PathResponse {
   directory: string
 }
 
-const stateKey = "opencode_webgui_state_v1"
-const modelKey = "opencode_webgui_model_v1"
-const kvKey = "opencode_webgui_kv_v1"
-const legacyFavoriteKey = "opencode_favorite_models_v1"
-
-function stateValue() {
-  if (typeof localStorage === "undefined") return {}
-  const raw = localStorage.getItem(stateKey)
-  if (!raw) return {}
-  try {
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== "object") return {}
-    return parsed as LegacyStateSnapshot
-  } catch {
-    return {}
-  }
-}
-
-function recentFromState(state: LegacyStateSnapshot) {
-  return (state.recently_used_models ?? []).map((item) => ({
-    providerID: item.provider_id,
-    modelID: item.model_id,
-  }))
-}
-
-function kvFromLegacyState(state: LegacyStateSnapshot) {
-  const migrated: Record<string, any> = {}
-  if (typeof state.agent === "string") migrated.webgui_agent = state.agent
-  if (typeof state.provider === "string") migrated.webgui_provider = state.provider
-  if (typeof state.model === "string") migrated.webgui_model = state.model
-  if (state.agent_model && typeof state.agent_model === "object") {
-    migrated.webgui_agent_model = state.agent_model
-  }
-  if (typeof state.message_parts_auto_expand === "boolean") {
-    migrated.webgui_message_parts_auto_expand = state.message_parts_auto_expand
-  }
-  return migrated
-}
-
-function modelEntryKey(entry: ModelEntry) {
-  return `${entry.providerID}/${entry.modelID}`
-}
+const modelKey = "opencode:webgui:model:v1"
+const kvKey = "opencode:webgui:kv:v1"
 
 function parseModelEntryArray(input: unknown) {
   if (!Array.isArray(input)) return [] as ModelEntry[]
@@ -153,156 +90,40 @@ function parseModelEntryArray(input: unknown) {
   )
 }
 
-function parseLegacyFavoriteEntries(raw: string | null | undefined) {
-  if (!raw) return [] as ModelEntry[]
-  try {
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    const result: ModelEntry[] = []
-    for (const item of parsed) {
-      if (typeof item !== "string") continue
-      const index = item.indexOf("/")
-      if (index <= 0 || index >= item.length - 1) continue
-      result.push({
-        providerID: item.slice(0, index),
-        modelID: item.slice(index + 1),
-      })
-    }
-    return result
-  } catch {
-    return []
-  }
+function parseVariant(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {} as Record<string, string>
+  return Object.fromEntries(
+    Object.entries(input).filter((item): item is [string, string] => typeof item[1] === "string"),
+  )
 }
 
-function mergeModelEntries(primary: ModelEntry[], secondary: ModelEntry[]) {
-  const merged: ModelEntry[] = []
-  const seen = new Set<string>()
-  for (const item of [...primary, ...secondary]) {
-    const key = modelEntryKey(item)
-    if (seen.has(key)) continue
-    seen.add(key)
-    merged.push(item)
-  }
-  return merged
-}
-
-function legacyFavoriteEntries() {
-  if (typeof localStorage === "undefined") return [] as ModelEntry[]
-  return parseLegacyFavoriteEntries(localStorage.getItem(legacyFavoriteKey))
-}
-
-function legacyFavoriteStore(entries: ModelEntry[]) {
-  if (typeof localStorage === "undefined") return
-  localStorage.setItem(legacyFavoriteKey, JSON.stringify(entries.map(modelEntryKey)))
-}
-
-function modelFromState(state: LegacyStateSnapshot): ModelPreferences {
-  return {
-    recent: recentFromState(state),
+async function modelValue(): Promise<ModelPreferences> {
+  const fallback: ModelPreferences = {
+    recent: [],
     favorite: [],
-    variant: state.variant ?? {},
+    variant: {},
+  }
+  const parsed = await globalStateGetJSON<unknown>(modelKey, fallback)
+  if (!parsed || typeof parsed !== "object") return fallback
+  return {
+    recent: parseModelEntryArray((parsed as { recent?: unknown }).recent),
+    favorite: parseModelEntryArray((parsed as { favorite?: unknown }).favorite),
+    variant: parseVariant((parsed as { variant?: unknown }).variant),
   }
 }
 
-function modelValue() {
-  const state = stateValue()
-  const fallback = modelFromState(state)
-  if (typeof localStorage === "undefined") return fallback
-
-  const legacyFavorite = legacyFavoriteEntries()
-  const raw = localStorage.getItem(modelKey)
-  if (!raw) {
-    const favorite = mergeModelEntries(fallback.favorite, legacyFavorite)
-    const migrated = {
-      ...fallback,
-      favorite,
-    }
-    if (favorite.length > 0) {
-      modelStore(migrated)
-    }
-    return migrated
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as {
-      recent?: unknown
-      favorite?: unknown
-      variant?: unknown
-    }
-
-    const recent = parsed.recent !== undefined ? parseModelEntryArray(parsed.recent) : fallback.recent
-
-    const parsedFavorite = parsed.favorite !== undefined ? parseModelEntryArray(parsed.favorite) : fallback.favorite
-    const favorite = mergeModelEntries(parsedFavorite, legacyFavorite)
-
-    const variant =
-      parsed.variant && typeof parsed.variant === "object"
-        ? (parsed.variant as Record<string, string>)
-        : fallback.variant
-
-    const result = {
-      recent,
-      favorite,
-      variant,
-    }
-
-    if (favorite.length !== parsedFavorite.length) {
-      modelStore(result)
-    }
-
-    return result
-  } catch {
-    const favorite = mergeModelEntries(fallback.favorite, legacyFavorite)
-    const migrated = {
-      ...fallback,
-      favorite,
-    }
-    if (favorite.length > 0) {
-      modelStore(migrated)
-    }
-    return migrated
-  }
+async function modelStore(value: ModelPreferences) {
+  await globalStateSetJSON(modelKey, value)
 }
 
-function modelStore(value: ModelPreferences) {
-  if (typeof localStorage === "undefined") return
-  localStorage.setItem(modelKey, JSON.stringify(value))
-  legacyFavoriteStore(value.favorite)
+async function kvValue() {
+  const parsed = await globalStateGetJSON<unknown>(kvKey, {})
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {} as Record<string, any>
+  return parsed as Record<string, any>
 }
 
-function kvValue() {
-  if (typeof localStorage === "undefined") return {}
-  const legacy = kvFromLegacyState(stateValue())
-  const raw = localStorage.getItem(kvKey)
-  if (!raw) {
-    if (Object.keys(legacy).length > 0) {
-      kvStore(legacy)
-    }
-    return legacy
-  }
-  try {
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== "object") return legacy
-    const current = parsed as Record<string, any>
-    const merged = {
-      ...legacy,
-      ...current,
-    }
-    if (JSON.stringify(merged) !== JSON.stringify(current)) {
-      kvStore(merged)
-    }
-    return merged
-  } catch {
-    if (Object.keys(legacy).length > 0) {
-      kvStore(legacy)
-    }
-    return legacy
-  }
-}
-
-function kvStore(value: Record<string, any>) {
-  if (typeof localStorage === "undefined") return
-  localStorage.setItem(kvKey, JSON.stringify(value))
+async function kvStore(value: Record<string, any>) {
+  await globalStateSetJSON(kvKey, value)
 }
 
 function retryParts(input: any[]) {
@@ -568,12 +389,12 @@ export const sdk = {
   },
   model: {
     get: async () => {
-      const data = modelValue()
+      const data = await modelValue()
       return { data, error: null as { message: string } | null }
     },
     update: async (options: { body: Partial<ModelPreferences> }) => {
       try {
-        const prev = modelValue()
+        const prev = await modelValue()
         const body = options.body
         const next: ModelPreferences = {
           recent: body.recent ?? prev.recent ?? [],
@@ -586,7 +407,7 @@ export const sdk = {
             : (prev.variant ?? {}),
         }
 
-        modelStore(next)
+        await modelStore(next)
 
         return { data: next, error: null as { message: string } | null }
       } catch (error) {
@@ -599,16 +420,17 @@ export const sdk = {
   },
   kv: {
     get: async () => {
-      const data = kvValue()
+      const data = await kvValue()
       return { data, error: null as { message: string } | null }
     },
     update: async (options: { body: Record<string, any> }) => {
       try {
+        const prev = await kvValue()
         const next = {
-          ...kvValue(),
+          ...prev,
           ...options.body,
         }
-        kvStore(next)
+        await kvStore(next)
         return { data: next, error: null as { message: string } | null }
       } catch (error) {
         return {

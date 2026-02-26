@@ -1,4 +1,5 @@
 import { ideBridge } from "../lib/ideBridge"
+import { globalStateGetJSON, globalStateSetJSON } from "./globalState"
 
 export type UiBridgeState = {
   v: 3
@@ -30,8 +31,7 @@ const empty: UiBridgeState = {
 const DRAFT_SEND_DEBOUNCE_MS = 300
 // Reserved key for migrating v1 input before a concrete sessionID is available.
 const LEGACY_DRAFT_KEY = "__legacy__"
-const KV_STORAGE_KEY = "opencode_webgui_kv_v1"
-const DRAFT_SESSION_KEY = "webgui_draft_session"
+const DRAFT_SESSION_KEY = "opencode:webgui:draft_session:v1"
 
 type UiBridgeTimer = ReturnType<typeof setTimeout>
 
@@ -87,32 +87,8 @@ function parseDraftSessionId(input: unknown) {
   return input
 }
 
-function persistedDraftSessionId() {
-  if (typeof localStorage === "undefined") return null
-  const raw = localStorage.getItem(KV_STORAGE_KEY)
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== "object") return null
-    return parseDraftSessionId((parsed as Record<string, unknown>)[DRAFT_SESSION_KEY])
-  } catch {
-    return null
-  }
-}
-
 function persistDraftSessionId(id: string | null) {
-  if (ideBridge.isInstalled()) {
-    void ideBridge.storageSet(DRAFT_SESSION_KEY, JSON.stringify(id)).catch(() => {})
-    return
-  }
-  if (typeof localStorage === "undefined") return
-  let current: Record<string, unknown> = {}
-  try {
-    const raw = localStorage.getItem(KV_STORAGE_KEY)
-    const parsed = raw ? JSON.parse(raw) : null
-    if (parsed && typeof parsed === "object") current = parsed as Record<string, unknown>
-  } catch {}
-  localStorage.setItem(KV_STORAGE_KEY, JSON.stringify({ ...current, [DRAFT_SESSION_KEY]: id }))
+  void globalStateSetJSON(DRAFT_SESSION_KEY, id)
 }
 
 function sanitizeSession(sessionID: string | null): string | null {
@@ -212,7 +188,7 @@ export function uiBridgeHydrate(raw: unknown): UiBridgeState {
   const openTabs = parseTabs(obj?.openTabs)
   const activeTab = sanitizeActiveTab(openTabs, obj?.activeTab)
 
-  const draftSessionId = parseDraftSessionId(obj?.draftSessionId) ?? persistedDraftSessionId()
+  const draftSessionId = parseDraftSessionId(obj?.draftSessionId)
 
   const next: UiBridgeState = {
     v: 3,
@@ -241,18 +217,8 @@ export function uiBridgeHydrate(raw: unknown): UiBridgeState {
 }
 
 export async function uiBridgeRestoreDraftSessionId() {
-  if (!ideBridge.isInstalled()) return
   if (store.state.draftSessionId) return
-  const stored = await ideBridge.storageGet([DRAFT_SESSION_KEY])
-  const raw = stored?.[DRAFT_SESSION_KEY]
-  if (typeof raw !== "string" || !raw) return
-  let parsed: unknown = null
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    parsed = raw
-  }
-  const id = parseDraftSessionId(parsed)
+  const id = parseDraftSessionId(await globalStateGetJSON<string | null>(DRAFT_SESSION_KEY, null))
   if (!id) return
   uiBridgeUpdateDraftSessionId(id)
 }

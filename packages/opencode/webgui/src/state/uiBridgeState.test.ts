@@ -11,7 +11,15 @@ vi.mock("../lib/ideBridge", () => {
   }
 })
 
+vi.mock("./globalState", () => {
+  return {
+    globalStateGetJSON: vi.fn(async () => null),
+    globalStateSetJSON: vi.fn(async () => ({ ok: true })),
+  }
+})
+
 import { ideBridge } from "../lib/ideBridge"
+import { globalStateGetJSON, globalStateSetJSON } from "./globalState"
 import * as uiBridgeStateModule from "./uiBridgeState"
 
 describe("uiBridgeState", () => {
@@ -19,6 +27,8 @@ describe("uiBridgeState", () => {
     vi.clearAllMocks()
     localStorage.clear()
     ;(ideBridge.isInstalled as any).mockReturnValue(true)
+    ;(globalStateGetJSON as any).mockResolvedValue(null)
+    ;(globalStateSetJSON as any).mockResolvedValue({ ok: true })
     uiBridgeStateModule.uiBridgeHydrate({})
   })
 
@@ -296,7 +306,7 @@ describe("uiBridgeState", () => {
     })
 
     it("restore loads persisted draftSessionId from host storage", async () => {
-      ;(ideBridge.storageGet as any).mockResolvedValue({ webgui_draft_session: JSON.stringify("s-persist") })
+      ;(globalStateGetJSON as any).mockResolvedValue("s-persist")
       uiBridgeStateModule.uiBridgeHydrate({})
       uiBridgeStateModule.uiBridgeEnable()
 
@@ -309,13 +319,21 @@ describe("uiBridgeState", () => {
     it("uiBridgeUpdateDraftSessionId persists to host storage", () => {
       uiBridgeStateModule.uiBridgeHydrate({})
       uiBridgeStateModule.uiBridgeEnable()
-      ;(ideBridge.storageSet as any).mockClear()
+      ;(globalStateSetJSON as any).mockClear()
 
       uiBridgeStateModule.uiBridgeUpdateDraftSessionId("s-next")
-      expect(ideBridge.storageSet).toHaveBeenCalledWith("webgui_draft_session", JSON.stringify("s-next"))
+      expect(globalStateSetJSON).toHaveBeenCalledWith("opencode:webgui:draft_session:v1", "s-next")
 
       uiBridgeStateModule.uiBridgeUpdateDraftSessionId(null)
-      expect(ideBridge.storageSet).toHaveBeenLastCalledWith("webgui_draft_session", "null")
+      expect(globalStateSetJSON).toHaveBeenLastCalledWith("opencode:webgui:draft_session:v1", null)
+    })
+
+    it("non-IDE 场景不写 localStorage", () => {
+      ;(ideBridge.isInstalled as any).mockReturnValue(false)
+      const setSpy = vi.spyOn(Storage.prototype, "setItem")
+      uiBridgeStateModule.uiBridgeHydrate({})
+      uiBridgeStateModule.uiBridgeUpdateDraftSessionId("s-next")
+      expect(setSpy).not.toHaveBeenCalled()
     })
   })
 

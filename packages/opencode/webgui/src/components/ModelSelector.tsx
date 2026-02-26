@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react"
 import { sdk } from "../lib/api/sdkClient"
 import type { Provider } from "@opencode-ai/sdk/client"
 import { useDropdown } from "../hooks/useDropdown"
-import { ideBridge } from "../lib/ideBridge"
 
 interface ModelSelectorProps {
   selectedProviderId?: string
@@ -17,48 +16,9 @@ interface ModelEntry {
 }
 
 const MAX_RECENT = 10
-const LEGACY_FAVORITE_KEY = "opencode_favorite_models_v1"
 
 function favoriteKey(entry: ModelEntry) {
   return `${entry.providerID}/${entry.modelID}`
-}
-
-function parseLegacyFavorite(raw: string | null | undefined): ModelEntry[] {
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    const result: ModelEntry[] = []
-    for (const item of parsed) {
-      if (typeof item !== "string") continue
-      const index = item.indexOf("/")
-      if (index <= 0 || index >= item.length - 1) continue
-      result.push({
-        providerID: item.slice(0, index),
-        modelID: item.slice(index + 1),
-      })
-    }
-    return result
-  } catch {
-    return []
-  }
-}
-
-function mergeFavorite(primary: ModelEntry[], secondary: ModelEntry[]) {
-  const merged: ModelEntry[] = []
-  const seen = new Set<string>()
-  for (const item of [...primary, ...secondary]) {
-    const key = favoriteKey(item)
-    if (seen.has(key)) continue
-    seen.add(key)
-    merged.push(item)
-  }
-  return merged
-}
-
-function sameFavorite(a: ModelEntry[], b: ModelEntry[]) {
-  if (a.length !== b.length) return false
-  return a.every((item, index) => favoriteKey(item) === favoriteKey(b[index]))
 }
 
 function StarIcon({
@@ -115,8 +75,6 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
   const [isLoading, setIsLoading] = useState(true)
   const [recent, setRecent] = useState<ModelEntry[]>([])
   const [favorite, setFavorite] = useState<ModelEntry[]>([])
-  const [readyForHydration, setReadyForHydration] = useState(false)
-  const [hydrated, setHydrated] = useState(false)
 
   const favoriteSet = new Set(favorite.map(favoriteKey))
 
@@ -155,7 +113,6 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
       } finally {
         if (active) {
           setIsLoading(false)
-          setReadyForHydration(true)
         }
       }
     }
@@ -165,85 +122,6 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
       active = false
     }
   }, [])
-
-  useEffect(() => {
-    if (!readyForHydration) return
-
-    let cancelled = false
-
-    const applyLegacy = (entries: ModelEntry[]) => {
-      if (entries.length === 0) return
-      setFavorite((prev) => {
-        const merged = mergeFavorite(entries, prev)
-        if (sameFavorite(prev, merged)) return prev
-        sdk.model
-          .update({ body: { favorite: merged } })
-          .catch((err) => console.error("[ModelSelector] Failed to migrate legacy favorites:", err))
-        return merged
-      })
-    }
-
-    const hydrateLegacyFavorites = async () => {
-      const localRaw = typeof window === "undefined" ? null : window.localStorage.getItem(LEGACY_FAVORITE_KEY)
-
-      if (!ideBridge.isInstalled()) {
-        applyLegacy(parseLegacyFavorite(localRaw))
-        if (!cancelled) setHydrated(true)
-        return
-      }
-
-      try {
-        const reply = await ideBridge.request("storageGet", {
-          keys: [LEGACY_FAVORITE_KEY],
-        })
-
-        if (cancelled) return
-
-        const hostRaw =
-          typeof reply.result?.[LEGACY_FAVORITE_KEY] === "string" ? reply.result[LEGACY_FAVORITE_KEY] : null
-        const hostFavorites = parseLegacyFavorite(hostRaw)
-
-        if (hostFavorites.length > 0) {
-          applyLegacy(hostFavorites)
-        } else if (localRaw) {
-          await ideBridge.request("storageSet", {
-            key: LEGACY_FAVORITE_KEY,
-            value: localRaw,
-          })
-        }
-      } catch (err) {
-        console.error("[ModelSelector] Failed to hydrate legacy favorites:", err)
-      } finally {
-        if (!cancelled) setHydrated(true)
-      }
-    }
-
-    hydrateLegacyFavorites()
-
-    return () => {
-      cancelled = true
-    }
-  }, [readyForHydration])
-
-  useEffect(() => {
-    if (!hydrated) return
-
-    const serialized = JSON.stringify(favorite.map(favoriteKey))
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(LEGACY_FAVORITE_KEY, serialized)
-    }
-
-    if (!ideBridge.isInstalled()) return
-
-    ideBridge
-      .request("storageSet", {
-        key: LEGACY_FAVORITE_KEY,
-        value: serialized,
-      })
-      .catch((err) => {
-        console.error("[ModelSelector] Failed to sync favorites to IDE storage:", err)
-      })
-  }, [favorite, hydrated])
 
   const getCurrentDisplay = () => {
     const pid = selectedProviderId || defaultIds.provider

@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { sdk } from "./sdkClient"
+import { resetGlobalStateForTest } from "../../state/globalState"
 
 describe("sdk migration baseline", () => {
   beforeEach(() => {
     localStorage.clear()
+    resetGlobalStateForTest()
   })
 
   afterEach(() => {
@@ -41,7 +43,7 @@ describe("sdk migration baseline", () => {
     })
   })
 
-  it("kv.get migrates legacy state key when kv key is missing", async () => {
+  it("kv.get does not migrate legacy state key", async () => {
     localStorage.setItem(
       "opencode_webgui_state_v1",
       JSON.stringify({
@@ -61,40 +63,45 @@ describe("sdk migration baseline", () => {
     const r = await sdk.kv.get()
 
     expect(r.error).toBeNull()
-    expect(r.data).toMatchObject({
-      webgui_agent: "plan",
-      webgui_provider: "openai",
-      webgui_model: "gpt-4.1",
-      webgui_agent_model: {
-        plan: {
-          provider_id: "openai",
-          model_id: "gpt-4.1",
-        },
-      },
-      webgui_message_parts_auto_expand: false,
-    })
+    expect(r.data).toEqual({})
   })
 
-  it("model.get migrates legacy favorites key when model key is missing", async () => {
+  it("model.get does not migrate legacy favorites key", async () => {
     localStorage.setItem("opencode_favorite_models_v1", JSON.stringify(["openai/gpt-4.1", "anthropic/claude-3"]))
 
     const r = await sdk.model.get()
 
     expect(r.error).toBeNull()
-    expect(r.data?.favorite).toEqual([
-      { providerID: "openai", modelID: "gpt-4.1" },
-      { providerID: "anthropic", modelID: "claude-3" },
-    ])
+    expect(r.data?.favorite).toEqual([])
   })
 
-  it("model.update keeps legacy favorites key in sync", async () => {
+  it("model.update does not keep legacy favorites key in sync", async () => {
     await sdk.model.update({
       body: {
         favorite: [{ providerID: "openai", modelID: "gpt-4.1" }],
       },
     })
 
-    expect(JSON.parse(localStorage.getItem("opencode_favorite_models_v1") || "[]")).toEqual(["openai/gpt-4.1"])
+    expect(localStorage.getItem("opencode_favorite_models_v1")).toBeNull()
+  })
+
+  it("sdk.model/sdk.kv 关键链路不触发 localStorage API", async () => {
+    const get = vi.spyOn(Storage.prototype, "getItem")
+    const set = vi.spyOn(Storage.prototype, "setItem")
+    const remove = vi.spyOn(Storage.prototype, "removeItem")
+
+    await sdk.kv.get()
+    await sdk.model.get()
+    await sdk.kv.update({ body: { foo: "bar" } })
+    await sdk.model.update({
+      body: {
+        favorite: [{ providerID: "openai", modelID: "gpt-4.1" }],
+      },
+    })
+
+    expect(get).not.toHaveBeenCalled()
+    expect(set).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
   })
 
   it("auth.list maps to provider.list().connected", async () => {
