@@ -113,6 +113,17 @@
 - 任何用户纠正都要沉淀为“防再犯规则”
 - 复盘后更新经验记录（如 `tasks/lessons.md`）
 
+### 存储陷阱：WebView 的 localStorage ≠ 跨重启持久化
+
+- `packages/opencode/webgui/src/lib/api/sdkClient.ts` 里的 `sdk.kv.get()/update()` 是 **localStorage shim**（key: `opencode_webgui_kv_v1`），不是服务端 KV
+- WebGUI 通常由后端 `/app` 以随机端口提供（`location.origin` 会变），因此：
+  - IDE 重启后可能读不到旧 localStorage（origin 变了）
+  - 重新安装/重装扩展也可能清空 WebView 存储
+- 结论：**不要用 `sdk.kv`/localStorage 来实现“跨 IDE 重启仍存在”的状态**（例如 draft session 标记、恢复标记等）
+- 推荐做法：
+  - 需要跨重启稳定持久化：使用 ideBridge 的 `storageGet/storageSet`（VSCode 侧映射到 `context.globalState`，见 `hosts/vscode-plugin/src/ui/WebviewController.ts`）
+  - 或者把状态存到后端/用户目录的真实持久化介质（而非 WebView 存储）
+
 ### Verification Before Done
 
 - 没有证据就不宣称完成
