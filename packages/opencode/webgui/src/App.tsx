@@ -28,6 +28,7 @@ import { useTabStore } from "./state/tabStore"
 import { sdk } from "./lib/api/sdkClient"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
+const KV_DRAFT_KEY = "webgui_draft_session"
 
 type BridgeSelections = Pick<UiBridgeState, "sessionID" | "providerId" | "modelId" | "agent" | "variant">
 
@@ -149,23 +150,34 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   const handleNewSession = useCallback(() => {
     if (creating.current) return
     creating.current = true
-    void prepareSession({
-      draft: uiBridgeDraftSessionId(),
-      reusable: async (id) => {
-        const session = await sdk.session.get({ path: { id } })
-        if (!session.data) return false
-        const messages = await sdk.session.messages({ path: { id } })
-        if (messages.error) return false
-        return (messages.data ?? []).length === 0
-      },
-      create: createSession,
-      open: tabStore.openTab,
-      switchTo: switchSession,
-      setDraft: uiBridgeUpdateDraftSessionId,
-      fail: () => {
-        showToast("创建会话失败", { variant: "error" })
-      },
-    }).finally(() => {
+    void (async () => {
+      let draft = uiBridgeDraftSessionId()
+      if (!draft) {
+        const res = await sdk.kv.get().catch(() => null)
+        const stored = (res?.data as Record<string, unknown> | undefined)?.[KV_DRAFT_KEY]
+        if (typeof stored === "string" && stored) draft = stored
+      }
+      await prepareSession({
+        draft,
+        reusable: async (id) => {
+          const session = await sdk.session.get({ path: { id } })
+          if (!session.data) return false
+          const messages = await sdk.session.messages({ path: { id } })
+          if (messages.error) return false
+          return (messages.data ?? []).length === 0
+        },
+        create: createSession,
+        open: tabStore.openTab,
+        switchTo: switchSession,
+        setDraft: (id) => {
+          uiBridgeUpdateDraftSessionId(id)
+          void sdk.kv.update({ body: { [KV_DRAFT_KEY]: id } }).catch(() => {})
+        },
+        fail: () => {
+          showToast("创建会话失败", { variant: "error" })
+        },
+      })
+    })().finally(() => {
       creating.current = false
     })
   }, [createSession, switchSession, tabStore.openTab, showToast])
