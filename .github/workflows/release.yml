@@ -41,12 +41,19 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: |
             hosts/vscode-plugin/pnpm-lock.yaml
+            hosts/vscode-plugin/package.json
 
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "21"
+          cache: "gradle"
+          cache-dependency-path: |
+            hosts/jetbrains-plugin/gradle/wrapper/gradle-wrapper.properties
+            hosts/jetbrains-plugin/gradle.properties
+            hosts/jetbrains-plugin/**/*.gradle
+            hosts/jetbrains-plugin/**/*.gradle.kts
 
       - name: Determine version
         id: version
@@ -103,7 +110,7 @@ jobs:
           echo "Updated hosts/jetbrains-plugin/build.gradle.kts to version $CLEAN_VERSION"
 
       - name: Build backend binaries
-        run: ./hosts/scripts/build_opencode.sh
+        run: ./hosts/scripts/build_opencode.sh --exclude-os=linux
         env:
           OPENCODE_VERSION: ${{ steps.version.outputs.version_number }}
 
