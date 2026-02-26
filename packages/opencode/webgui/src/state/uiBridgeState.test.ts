@@ -5,6 +5,8 @@ vi.mock("../lib/ideBridge", () => {
     ideBridge: {
       isInstalled: vi.fn(() => true),
       setState: vi.fn(),
+      storageGet: vi.fn(async () => ({})),
+      storageSet: vi.fn(async () => true),
     },
   }
 })
@@ -15,6 +17,7 @@ import * as uiBridgeStateModule from "./uiBridgeState"
 describe("uiBridgeState", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     ;(ideBridge.isInstalled as any).mockReturnValue(true)
     uiBridgeStateModule.uiBridgeHydrate({})
   })
@@ -285,6 +288,34 @@ describe("uiBridgeState", () => {
     it("uiBridgeDraftSessionId returns current value", () => {
       uiBridgeStateModule.uiBridgeHydrate({ draftSessionId: "s-read" })
       expect(uiBridgeStateModule.uiBridgeDraftSessionId()).toBe("s-read")
+    })
+
+    it("hydrate does not wipe persisted value", () => {
+      uiBridgeStateModule.uiBridgeHydrate({})
+      expect(ideBridge.storageSet).not.toHaveBeenCalled()
+    })
+
+    it("restore loads persisted draftSessionId from host storage", async () => {
+      ;(ideBridge.storageGet as any).mockResolvedValue({ webgui_draft_session: JSON.stringify("s-persist") })
+      uiBridgeStateModule.uiBridgeHydrate({})
+      uiBridgeStateModule.uiBridgeEnable()
+
+      expect(typeof (uiBridgeStateModule as any).uiBridgeRestoreDraftSessionId).toBe("function")
+      await (uiBridgeStateModule as any).uiBridgeRestoreDraftSessionId()
+
+      expect(uiBridgeStateModule.uiBridgeDraftSessionId()).toBe("s-persist")
+    })
+
+    it("uiBridgeUpdateDraftSessionId persists to host storage", () => {
+      uiBridgeStateModule.uiBridgeHydrate({})
+      uiBridgeStateModule.uiBridgeEnable()
+      ;(ideBridge.storageSet as any).mockClear()
+
+      uiBridgeStateModule.uiBridgeUpdateDraftSessionId("s-next")
+      expect(ideBridge.storageSet).toHaveBeenCalledWith("webgui_draft_session", JSON.stringify("s-next"))
+
+      uiBridgeStateModule.uiBridgeUpdateDraftSessionId(null)
+      expect(ideBridge.storageSet).toHaveBeenLastCalledWith("webgui_draft_session", "null")
     })
   })
 

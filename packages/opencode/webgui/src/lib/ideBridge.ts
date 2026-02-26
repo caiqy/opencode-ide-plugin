@@ -58,8 +58,7 @@ class IdeBridge {
         if (typeof data.minVersion === "string") {
           this.minVersion = data.minVersion
         }
-      } catch {
-      }
+      } catch {}
       try {
         window.dispatchEvent(new Event("opencode:idebridge-connected"))
       } catch {}
@@ -247,6 +246,26 @@ class IdeBridge {
   async setState(state: any): Promise<boolean> {
     try {
       const res = await this.request("uiSetState", { state })
+      return !!(res as any)?.ok
+    } catch {
+      return false
+    }
+  }
+
+  async storageGet(keys: string[]): Promise<Record<string, string | undefined> | null> {
+    try {
+      const res = await this.request<Record<string, string | undefined>>("storageGet", { keys })
+      const result = (res as any)?.result
+      if (!result || typeof result !== "object") return {}
+      return result as Record<string, string | undefined>
+    } catch {
+      return null
+    }
+  }
+
+  async storageSet(key: string, value: string): Promise<boolean> {
+    try {
+      const res = await this.request("storageSet", { key, value })
       return !!(res as any)?.ok
     } catch {
       return false

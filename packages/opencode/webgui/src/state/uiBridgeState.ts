@@ -30,6 +30,8 @@ const empty: UiBridgeState = {
 const DRAFT_SEND_DEBOUNCE_MS = 300
 // Reserved key for migrating v1 input before a concrete sessionID is available.
 const LEGACY_DRAFT_KEY = "__legacy__"
+const KV_STORAGE_KEY = "opencode_webgui_kv_v1"
+const DRAFT_SESSION_KEY = "webgui_draft_session"
 
 type UiBridgeTimer = ReturnType<typeof setTimeout>
 
@@ -77,6 +79,40 @@ function parseDrafts(input: unknown) {
     },
     {} as Record<string, string>,
   )
+}
+
+function parseDraftSessionId(input: unknown) {
+  if (typeof input !== "string") return null
+  if (!input) return null
+  return input
+}
+
+function persistedDraftSessionId() {
+  if (typeof localStorage === "undefined") return null
+  const raw = localStorage.getItem(KV_STORAGE_KEY)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") return null
+    return parseDraftSessionId((parsed as Record<string, unknown>)[DRAFT_SESSION_KEY])
+  } catch {
+    return null
+  }
+}
+
+function persistDraftSessionId(id: string | null) {
+  if (ideBridge.isInstalled()) {
+    void ideBridge.storageSet(DRAFT_SESSION_KEY, JSON.stringify(id)).catch(() => {})
+    return
+  }
+  if (typeof localStorage === "undefined") return
+  let current: Record<string, unknown> = {}
+  try {
+    const raw = localStorage.getItem(KV_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    if (parsed && typeof parsed === "object") current = parsed as Record<string, unknown>
+  } catch {}
+  localStorage.setItem(KV_STORAGE_KEY, JSON.stringify({ ...current, [DRAFT_SESSION_KEY]: id }))
 }
 
 function sanitizeSession(sessionID: string | null): string | null {
@@ -176,6 +212,8 @@ export function uiBridgeHydrate(raw: unknown): UiBridgeState {
   const openTabs = parseTabs(obj?.openTabs)
   const activeTab = sanitizeActiveTab(openTabs, obj?.activeTab)
 
+  const draftSessionId = parseDraftSessionId(obj?.draftSessionId) ?? persistedDraftSessionId()
+
   const next: UiBridgeState = {
     v: 3,
     sessionID,
@@ -191,7 +229,7 @@ export function uiBridgeHydrate(raw: unknown): UiBridgeState {
     openTabs,
     activeTab,
     drafts: nextDrafts,
-    draftSessionId: typeof obj?.draftSessionId === "string" ? obj.draftSessionId : null,
+    draftSessionId,
   }
 
   clearPendingDraftSend()
@@ -200,6 +238,23 @@ export function uiBridgeHydrate(raw: unknown): UiBridgeState {
   store.tabs = { openTabs: next.openTabs, activeTab: next.activeTab }
   emit(next)
   return next
+}
+
+export async function uiBridgeRestoreDraftSessionId() {
+  if (!ideBridge.isInstalled()) return
+  if (store.state.draftSessionId) return
+  const stored = await ideBridge.storageGet([DRAFT_SESSION_KEY])
+  const raw = stored?.[DRAFT_SESSION_KEY]
+  if (typeof raw !== "string" || !raw) return
+  let parsed: unknown = null
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    parsed = raw
+  }
+  const id = parseDraftSessionId(parsed)
+  if (!id) return
+  uiBridgeUpdateDraftSessionId(id)
 }
 
 export function uiBridgeSubscribe(fn: (s: UiBridgeState) => void) {
@@ -280,6 +335,9 @@ export function uiBridgeUpdate(patch: Partial<Omit<UiBridgeState, "v">>): UiBrid
 
   const json = encode(next)
   store.state = next
+  if (prev.draftSessionId !== next.draftSessionId) {
+    persistDraftSessionId(next.draftSessionId)
+  }
   if (json === store.json) return next
   store.json = json
   if (prev.openTabs !== next.openTabs || prev.activeTab !== next.activeTab) {

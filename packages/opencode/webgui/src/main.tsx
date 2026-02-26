@@ -4,7 +4,7 @@ import "./index.css"
 import App from "./App.tsx"
 import { ideBridge } from "./lib/ideBridge"
 import { installTooltipPolyfillBridge } from "./lib/tooltipPolyfill"
-import { uiBridgeEnable, uiBridgeHydrate } from "./state/uiBridgeState"
+import { uiBridgeEnable, uiBridgeHydrate, uiBridgeRestoreDraftSessionId } from "./state/uiBridgeState"
 import { SessionProvider } from "./state/SessionContext.tsx"
 import { ToastProvider } from "./state/ToastContext.tsx"
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx"
@@ -22,6 +22,7 @@ window.addEventListener(
     const state = (ev as CustomEvent<{ state?: unknown }>).detail?.state
     if (state) uiBridgeHydrate(state)
     uiBridgeEnable()
+    void uiBridgeRestoreDraftSessionId()
   },
   { once: true },
 )
