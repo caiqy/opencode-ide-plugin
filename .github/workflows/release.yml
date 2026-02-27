@@ -49,11 +49,6 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.7"
-
       - name: Determine version
         id: version
         run: |
@@ -167,8 +162,11 @@ jobs:
           rm -rf "$STAGE_DIR"
 
       - name: Build JetBrains plugin distribution (standard)
-        working-directory: hosts/jetbrains-plugin
-        run: gradle buildPlugin
+        uses: gradle/gradle-build-action@v2
+        with:
+          gradle-version: 8.7
+          arguments: buildPlugin
+          build-root-directory: hosts/jetbrains-plugin
 
       - name: Prepare release artifacts
         run: |
