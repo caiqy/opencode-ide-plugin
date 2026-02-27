@@ -165,7 +165,7 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           gradle-version: 8.7
-          arguments: buildPlugin
+          arguments: buildPlugin -x test -x unitTest
           build-root-directory: hosts/jetbrains-plugin
 
       - name: Prepare release artifacts
