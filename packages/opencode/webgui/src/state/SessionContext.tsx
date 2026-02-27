@@ -1,8 +1,10 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react"
 import { sdk } from "../lib/api/sdkClient"
 import type { Session, FileDiff, Provider } from "@opencode-ai/sdk/client"
 import { eventEmitter } from "../lib/api/events"
-import { scopedStateGetJSON, scopedStateSetJSON } from "./globalState"
+import { cleanupDeletedSessionDraft } from "./repo/draftRepo"
+import { addRecentModel, loadModelPrefs } from "./repo/modelPrefsRepo"
+import { loadSelection, patchSelection, saveSelection } from "./repo/selectionRepo"
 
 /**
  * Session context state
@@ -87,16 +89,6 @@ interface SessionContextState {
 }
 
 const SessionContext = createContext<SessionContextState | null>(null)
-const selectionKey = "opencode:webgui:workspace:last_selection:v1"
-
-type LastSelection = {
-  agent: string | null
-  providerId: string | null
-  modelId: string | null
-  variant: string | null
-  updatedAt: number
-  agentModelMap: Record<string, { provider_id: string; model_id: string }>
-}
 
 function hasModel(providers: Provider[], providerId: string | undefined, modelId: string | undefined): boolean {
   if (!providerId || !modelId) return false
@@ -129,62 +121,6 @@ function modelVariants(
   const model = (provider.models as Record<string, { variants?: Record<string, unknown> } | undefined>)[modelId]
   if (!model?.variants) return undefined
   return Object.keys(model.variants)
-}
-
-function parseAgentModelMap(input: unknown) {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
-    return {} as Record<string, { provider_id: string; model_id: string }>
-  }
-  return Object.fromEntries(
-    Object.entries(input).flatMap(([key, value]) => {
-      if (!value || typeof value !== "object" || Array.isArray(value)) return []
-      const provider = (value as { provider_id?: unknown }).provider_id
-      const model = (value as { model_id?: unknown }).model_id
-      if (typeof provider !== "string" || typeof model !== "string") return []
-      return [[key, { provider_id: provider, model_id: model }]]
-    }),
-  )
-}
-
-async function loadLastSelectionFromHost(): Promise<LastSelection | null> {
-  const parsed = await scopedStateGetJSON<unknown>("workspace", selectionKey, null)
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null
-  return {
-    agent: typeof (parsed as { agent?: unknown }).agent === "string" ? (parsed as { agent: string }).agent : null,
-    providerId:
-      typeof (parsed as { provider_id?: unknown }).provider_id === "string"
-        ? (parsed as { provider_id: string }).provider_id
-        : null,
-    modelId:
-      typeof (parsed as { model_id?: unknown }).model_id === "string"
-        ? (parsed as { model_id: string }).model_id
-        : null,
-    variant:
-      typeof (parsed as { variant?: unknown }).variant === "string" ? (parsed as { variant: string }).variant : null,
-    updatedAt:
-      typeof (parsed as { updated_at?: unknown }).updated_at === "number"
-        ? (parsed as { updated_at: number }).updated_at
-        : 0,
-    agentModelMap: parseAgentModelMap((parsed as { agent_model_map?: unknown }).agent_model_map),
-  }
-}
-
-async function saveLastSelectionToHost(value: {
-  agent: string | null
-  providerId: string | null
-  modelId: string | null
-  variant: string | null
-  updatedAt: number
-  agentModelMap?: Record<string, { provider_id: string; model_id: string }>
-}): Promise<void> {
-  await scopedStateSetJSON("workspace", selectionKey, {
-    agent: value.agent,
-    provider_id: value.providerId,
-    model_id: value.modelId,
-    variant: value.variant,
-    agent_model_map: value.agentModelMap ?? {},
-    updated_at: value.updatedAt,
-  })
 }
 
 /**
@@ -261,6 +197,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [variantMap, setVariantMap] = useState<Record<string, string>>({})
   const [selectionRestoreNotice, setSelectionRestoreNotice] = useState<string | null>(null)
   const [selectionReadyForHostSync, setSelectionReadyForHostSync] = useState(false)
+  const draftCleanupQueueRef = useRef<Promise<void>>(Promise.resolve())
 
   const clearSelectionRestoreNotice = useCallback(() => {
     setSelectionRestoreNotice(null)
@@ -303,25 +240,42 @@ export function SessionProvider({ children }: SessionProviderProps) {
     })
   }, [])
 
+  const clearDeletedSessionDraft = useCallback(async (sessionId: string) => {
+    if (!sessionId) return
+    await cleanupDeletedSessionDraft(sessionId)
+  }, [])
+
+  const queueDeletedSessionDraftCleanup = useCallback(
+    (sessionId: string) => {
+      if (!sessionId) return Promise.resolve()
+
+      const run = () => clearDeletedSessionDraft(sessionId)
+      const task = draftCleanupQueueRef.current.then(run, run)
+      draftCleanupQueueRef.current = task.then(
+        () => undefined,
+        () => undefined,
+      )
+      return task
+    },
+    [clearDeletedSessionDraft],
+  )
+
   /**
-   * Initialize state from server on mount
-   * Priority: host last selection > kv/model > config
+   * Initialize state from repos + server config
+   * Priority: workspace:last_selection -> global:model.recent -> config.model -> providers first available
    */
   useEffect(() => {
     const initializeState = async () => {
       try {
-        const [kvRes, modelRes, providersRes, configRes, hostSelection] = await Promise.all([
-          sdk.kv.get(),
-          sdk.model.get(),
+        const [selection, modelPrefs, providersRes, configRes] = await Promise.all([
+          loadSelection(),
+          loadModelPrefs(),
           sdk.config.providers(),
           sdk.config.get(),
-          loadLastSelectionFromHost(),
         ])
 
-        const kv = kvRes.data ?? {}
-        const modelPrefs = modelRes.data
         const providers = providersRes.data?.providers ?? []
-        const recent = modelPrefs?.recent ?? []
+        const recent = modelPrefs.recent
         const configModel = (() => {
           if (!configRes.data?.model) return undefined
           const parts = configRes.data.model.split("/")
@@ -332,31 +286,15 @@ export function SessionProvider({ children }: SessionProviderProps) {
           }
         })()
 
-        // Cache agent_model map from kv
-        if (kv.webgui_agent_model) {
-          setAgentModelMap(kv.webgui_agent_model)
-        }
+        setAgentModelMap(selection.agent_model_map)
 
-        // Set agent (host > kv > default)
-        const agent = hostSelection?.agent || kv.webgui_agent || "build"
+        const agent = selection.agent || "build"
         setSelectedAgentState(agent)
 
-        let providerId = kv.webgui_provider as string | undefined
-        let modelId = kv.webgui_model as string | undefined
+        let providerId: string | undefined =
+          selection.provider_id ?? selection.agent_model_map[agent]?.provider_id ?? undefined
+        let modelId: string | undefined = selection.model_id ?? selection.agent_model_map[agent]?.model_id ?? undefined
 
-        // Prefer per-agent model in kv when available
-        if (kv.webgui_agent_model?.[agent]) {
-          providerId = kv.webgui_agent_model[agent].provider_id
-          modelId = kv.webgui_agent_model[agent].model_id
-        }
-
-        // Host selection overrides kv when available
-        if (hostSelection?.providerId && hostSelection?.modelId) {
-          providerId = hostSelection.providerId
-          modelId = hostSelection.modelId
-        }
-
-        // Fallback candidates for empty selection
         if (!providerId || !modelId) {
           if (recent.length > 0) {
             providerId = recent[0].providerID
@@ -369,7 +307,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
           modelId = configModel.modelId
         }
 
-        // Validate selected model against currently available providers/models
+        if ((!providerId || !modelId) && providers.length > 0) {
+          const fallbackModel = firstAvailableModel(providers)
+          providerId = fallbackModel?.providerId
+          modelId = fallbackModel?.modelId
+        }
+
         let didFallbackModel = false
         if (providers.length > 0 && !hasModel(providers, providerId, modelId)) {
           const fallbackRecent = recent.find((item) => hasModel(providers, item.providerID, item.modelID))
@@ -390,15 +333,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
           didFallbackModel = true
         }
 
-        // Set model/provider if we have them
         if (providerId && modelId) {
           setSelectedProviderId(providerId)
           setSelectedModelId(modelId)
 
-          // Priority for initial variant: workspace selection
-          let initialVariant = hostSelection?.variant ?? undefined
+          let initialVariant = selection.variant ?? undefined
 
-          // Validate variant if model variants are present
           let didFallbackVariant = false
           if (initialVariant) {
             const variants = modelVariants(providers, providerId, modelId)
@@ -427,18 +367,18 @@ export function SessionProvider({ children }: SessionProviderProps) {
   useEffect(() => {
     if (!selectionReadyForHostSync) return
 
-    void saveLastSelectionToHost({
+    void saveSelection({
       agent: selectedAgent ?? null,
-      providerId: selectedProviderId ?? null,
-      modelId: selectedModelId ?? null,
+      provider_id: selectedProviderId ?? null,
+      model_id: selectedModelId ?? null,
       variant: selectedVariant ?? null,
-      updatedAt: Date.now(),
-      agentModelMap: agentModelMap,
+      updated_at: Date.now(),
+      agent_model_map: agentModelMap,
     })
   }, [selectionReadyForHostSync, selectedAgent, selectedProviderId, selectedModelId, selectedVariant, agentModelMap])
 
   /**
-   * Set selected model and persist to server
+   * Set selected model and persist to repos
    * Also updates per-agent model preference
    */
   const setSelectedModel = useCallback(
@@ -454,10 +394,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
         setSelectedVariantState(undefined)
       }
 
-      // Persist to server state (including per-agent preference)
       if (providerId && modelId) {
         try {
-          // Update cached agent_model map
           const currentAgent = selectedAgent
           const updatedAgentModel = currentAgent
             ? {
@@ -470,25 +408,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
             : agentModelMap
 
           setAgentModelMap(updatedAgentModel)
-
-          // Persist to kv.json (webgui-specific keys)
-          await sdk.kv.update({
-            body: {
-              webgui_provider: providerId,
-              webgui_model: modelId,
-              webgui_agent_model: updatedAgentModel,
-            },
+          await patchSelection({
+            provider_id: providerId,
+            model_id: modelId,
+            agent_model_map: updatedAgentModel,
           })
-
-          // Update model.json recent list (shared with CLI)
-          const modelRes = await sdk.model.get()
-          const existing = modelRes.data?.recent ?? []
-          const entry = { providerID: providerId, modelID: modelId }
-          const deduped = [entry, ...existing.filter((r) => r.providerID !== providerId || r.modelID !== modelId)]
-          if (deduped.length > 10) deduped.length = 10
-          await sdk.model.update({ body: { recent: deduped } })
+          await addRecentModel({ providerID: providerId, modelID: modelId })
         } catch (err) {
-          console.error("[SessionContext] Failed to save model preference to server:", err)
+          console.error("[SessionContext] Failed to save model preference:", err)
         }
       }
     },
@@ -521,67 +448,50 @@ export function SessionProvider({ children }: SessionProviderProps) {
   )
 
   /**
-   * Set selected agent and persist to server
+   * Set selected agent and persist to repos
    * Also handles per-agent model preferences
    */
   const setSelectedAgent = useCallback(
     async (newAgent: string) => {
+      const currentAgent = selectedAgent
+      const currentProvider = selectedProviderId
+      const currentModel = selectedModelId
+
+      const nextAgentModel =
+        currentAgent && currentProvider && currentModel
+          ? {
+              ...agentModelMap,
+              [currentAgent]: {
+                provider_id: currentProvider,
+                model_id: currentModel,
+              },
+            }
+          : agentModelMap
+
+      const preferred = nextAgentModel[newAgent]
+      const newProvider = preferred?.provider_id ?? currentProvider
+      const newModel = preferred?.model_id ?? currentModel
+
+      setSelectedAgentState(newAgent)
+      setAgentModelMap(nextAgentModel)
+
+      if (newProvider !== currentProvider || newModel !== currentModel) {
+        setSelectedProviderId(newProvider)
+        setSelectedModelId(newModel)
+      }
+
       try {
-        // Fetch current kv to get agent_model map
-        const kvRes = await sdk.kv.get()
-        const currentAgent = selectedAgent
-        const currentProvider = selectedProviderId
-        const currentModel = selectedModelId
-
-        // Save current model for current agent if we have one
-        let agentModel = kvRes.data?.webgui_agent_model || {}
-        if (currentAgent && currentProvider && currentModel) {
-          agentModel = {
-            ...agentModel,
-            [currentAgent]: {
-              provider_id: currentProvider,
-              model_id: currentModel,
-            },
-          }
-          console.log(`[SessionContext] Saved model for agent ${currentAgent}:`, currentProvider, currentModel)
-        }
-
-        // Check if new agent has a saved model preference
-        let newProvider = currentProvider
-        let newModel = currentModel
-
-        if (agentModel[newAgent]) {
-          newProvider = agentModel[newAgent].provider_id
-          newModel = agentModel[newAgent].model_id
-          console.log(`[SessionContext] Restoring model for agent ${newAgent}:`, newProvider, newModel)
-        }
-
-        // Update state
-        setSelectedAgentState(newAgent)
-
-        // Update model if it changed
-        if (newProvider !== currentProvider || newModel !== currentModel) {
-          setSelectedProviderId(newProvider)
-          setSelectedModelId(newModel)
-        }
-
-        // Persist to kv.json (webgui-specific keys)
-        await sdk.kv.update({
-          body: {
-            webgui_agent: newAgent,
-            webgui_agent_model: agentModel,
-            webgui_provider: newProvider,
-            webgui_model: newModel,
-          },
+        await patchSelection({
+          agent: newAgent,
+          provider_id: newProvider ?? null,
+          model_id: newModel ?? null,
+          agent_model_map: nextAgentModel,
         })
-        console.log("[SessionContext] Agent and model preferences saved to server")
       } catch (err) {
-        console.error("[SessionContext] Failed to save agent preference to server:", err)
-        // Fallback to simple update
-        setSelectedAgentState(newAgent)
+        console.error("[SessionContext] Failed to save agent preference:", err)
       }
     },
-    [selectedAgent, selectedProviderId, selectedModelId],
+    [selectedAgent, selectedProviderId, selectedModelId, agentModelMap],
   )
 
   const restoreSelections = useCallback(
@@ -1110,6 +1020,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
       if (event.type === "session.deleted" && event.properties?.info) {
         const deletedId = event.properties.info.id
         console.log("[SessionContext] Session deleted event:", deletedId)
+        void queueDeletedSessionDraftCleanup(deletedId).catch((err) => {
+          console.error("[SessionContext] Failed to clear deleted session draft:", err)
+        })
         setSessions((prev) => prev.filter((s) => s.id !== deletedId))
         setSessionDiffMap((prev) => {
           if (!prev[deletedId]) return prev
@@ -1167,7 +1080,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       unsubscribeStatus()
       unsubscribeDiff()
     }
-  }, [currentSession?.id, setReasoning, setSessionIdle])
+  }, [currentSession?.id, queueDeletedSessionDraftCleanup, setReasoning, setSessionIdle])
 
   const value: SessionContextState = {
     currentSession,

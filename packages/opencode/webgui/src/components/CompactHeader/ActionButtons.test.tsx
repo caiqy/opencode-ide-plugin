@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ComponentProps } from "react"
@@ -24,6 +24,10 @@ function renderButtons(overrides: Partial<ComponentProps<typeof ActionButtons>> 
 }
 
 describe("CompactHeader/ActionButtons", () => {
+  beforeEach(() => {
+    Reflect.set(globalThis, "__APP_VERSION__", "test")
+  })
+
   it("按钮 tooltip 为中文", () => {
     renderButtons()
 

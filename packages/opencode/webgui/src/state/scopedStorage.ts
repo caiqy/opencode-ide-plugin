@@ -32,13 +32,13 @@ function warn(key: string, error: ScopedStateWriteError) {
   report?.({ key, error, message: "设置未保存，本次会话可继续使用" })
 }
 
-export function setGlobalStateWriteErrorReporter(
+export function setScopedStateWriteErrorReporter(
   fn: ((input: { key: string; error: ScopedStateWriteError; message: string }) => void) | null,
 ) {
   report = fn
 }
 
-export function resetGlobalStateForTest() {
+export function resetScopedStateForTest() {
   cache.global.clear()
   cache.workspace.clear()
   cache.mem.clear()
@@ -97,23 +97,4 @@ export async function scopedStateSetJSON(
   value: unknown,
 ): Promise<ScopedStateWriteResult> {
   return scopedStateSet(scope, key, JSON.stringify(value))
-}
-
-export type GlobalStateWriteError = ScopedStateWriteError
-export type GlobalStateWriteResult = ScopedStateWriteResult
-
-export async function globalStateGet(keys: string[]) {
-  return scopedStateGet("global", keys)
-}
-
-export async function globalStateSet(key: string, value: string): Promise<GlobalStateWriteResult> {
-  return scopedStateSet("global", key, value)
-}
-
-export async function globalStateGetJSON<T>(key: string, fallback: T): Promise<T> {
-  return scopedStateGetJSON("global", key, fallback)
-}
-
-export async function globalStateSetJSON(key: string, value: unknown): Promise<GlobalStateWriteResult> {
-  return scopedStateSetJSON("global", key, value)
 }

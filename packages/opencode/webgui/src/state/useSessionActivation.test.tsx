@@ -5,14 +5,6 @@ import type { ReactNode } from "react"
 vi.mock("../lib/api/sdkClient", () => {
   return {
     sdk: {
-      kv: {
-        get: vi.fn(),
-        update: vi.fn(),
-      },
-      model: {
-        get: vi.fn(),
-        update: vi.fn(),
-      },
       config: {
         get: vi.fn(),
         providers: vi.fn(),
@@ -91,10 +83,6 @@ describe("useSessionActivation", () => {
     })
     ;(sdk.session.diff as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.session.get as any).mockResolvedValue({ data: null, error: null })
-    ;(sdk.kv.get as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.kv.update as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.model.get as any).mockResolvedValue({ data: { recent: [], favorite: [], variant: {} }, error: null })
-    ;(sdk.model.update as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.providers as any).mockResolvedValue({
       data: {

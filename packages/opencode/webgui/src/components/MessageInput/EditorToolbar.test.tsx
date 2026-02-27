@@ -26,12 +26,6 @@ vi.mock("./MessageActions", () => {
   }
 })
 
-vi.mock("../../state/uiBridgeState", () => {
-  return {
-    uiBridgeUpdate: vi.fn(),
-  }
-})
-
 describe("EditorToolbar", () => {
   it("重试与添加文件按钮文案为中文", () => {
     render(

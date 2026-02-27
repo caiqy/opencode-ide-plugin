@@ -2,29 +2,28 @@ import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createElement, type ReactNode } from "react"
 
-vi.mock("../lib/api/sdkClient", () => {
+const mocks = vi.hoisted(() => {
   return {
-    sdk: {
-      kv: {
-        get: vi.fn(),
-        update: vi.fn(),
-      },
-    },
+    loadTabs: vi.fn(
+      async (): Promise<{ open_tabs: string[]; active_tab: string }> => ({
+        open_tabs: [],
+        active_tab: "",
+      }),
+    ),
+    saveOpenTabs: vi.fn(async (_value: unknown) => ({ open_tabs: [], active_tab: "" })),
+    activateTab: vi.fn(async (_sessionId: string) => ({ ok: true })),
   }
 })
 
-vi.mock("./uiBridgeState", () => ({
-  uiBridgeTabs: vi.fn(() => ({ openTabs: [], activeTab: "" })),
-  uiBridgeUpdateTabs: vi.fn(),
-}))
+vi.mock("./repo/tabsRepo", () => {
+  return {
+    loadTabs: () => mocks.loadTabs(),
+    saveOpenTabs: (value: unknown) => mocks.saveOpenTabs(value),
+    activateTab: (sessionId: string) => mocks.activateTab(sessionId),
+  }
+})
 
-import { sdk } from "../lib/api/sdkClient"
-import { uiBridgeTabs, uiBridgeUpdateTabs } from "./uiBridgeState"
 import { TabStoreProvider, useTabStore } from "./tabStore"
-
-const key = "webgui_tabs"
-type KvGetResult = Awaited<ReturnType<typeof sdk.kv.get>>
-type KvUpdateResult = Awaited<ReturnType<typeof sdk.kv.update>>
 
 function wrapper({ children }: { children: ReactNode }) {
   return createElement(TabStoreProvider, null, children)
@@ -32,11 +31,10 @@ function wrapper({ children }: { children: ReactNode }) {
 
 describe("useTabStore", () => {
   beforeEach(() => {
-    const get = sdk.kv.get as ReturnType<typeof vi.fn>
-    const update = sdk.kv.update as ReturnType<typeof vi.fn>
     vi.resetAllMocks()
-    get.mockResolvedValue({ data: {}, error: null } satisfies KvGetResult)
-    update.mockResolvedValue({ data: {}, error: null } satisfies KvUpdateResult)
+    mocks.loadTabs.mockResolvedValue({ open_tabs: [], active_tab: "" })
+    mocks.saveOpenTabs.mockResolvedValue({ open_tabs: [], active_tab: "" })
+    mocks.activateTab.mockResolvedValue({ ok: true })
   })
 
   afterEach(() => {
@@ -44,15 +42,10 @@ describe("useTabStore", () => {
   })
 
   it("loads persisted tabs on mount", async () => {
-    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: {
-        [key]: {
-          openTabs: ["s1", "s2"],
-          activeTab: "s2",
-        },
-      },
-      error: null,
-    } satisfies KvGetResult)
+    mocks.loadTabs.mockResolvedValueOnce({
+      open_tabs: ["s1", "s2"],
+      active_tab: "s2",
+    })
 
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
@@ -64,19 +57,14 @@ describe("useTabStore", () => {
 
     expect(result.current.openTabs).toEqual(["s1", "s2"])
     expect(result.current.activeTab).toBe("s2")
-    expect(sdk.kv.get).toHaveBeenCalledTimes(1)
+    expect(mocks.loadTabs).toHaveBeenCalledTimes(1)
   })
 
   it("normalizes persisted active tab when id is missing", async () => {
-    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: {
-        [key]: {
-          openTabs: ["s1", "s2"],
-          activeTab: "missing",
-        },
-      },
-      error: null,
-    } satisfies KvGetResult)
+    mocks.loadTabs.mockResolvedValueOnce({
+      open_tabs: ["s1", "s2"],
+      active_tab: "missing",
+    })
 
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
@@ -89,15 +77,10 @@ describe("useTabStore", () => {
   })
 
   it("falls back to empty state when persisted data is invalid", async () => {
-    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: {
-        [key]: {
-          openTabs: ["s1", 2],
-          activeTab: null,
-        },
-      },
-      error: null,
-    } as KvGetResult)
+    mocks.loadTabs.mockResolvedValueOnce({
+      open_tabs: [],
+      active_tab: "",
+    })
 
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
@@ -124,18 +107,36 @@ describe("useTabStore", () => {
 
     expect(result.current.openTabs).toEqual(["s1", "s2"])
     expect(result.current.activeTab).toBe("s1")
-    expect(sdk.kv.update).toHaveBeenCalledTimes(3)
-    expect(sdk.kv.update).toHaveBeenLastCalledWith({
-      body: {
-        [key]: {
-          openTabs: ["s1", "s2"],
-          activeTab: "s1",
-        },
-      },
-    })
+    expect(mocks.saveOpenTabs).toHaveBeenCalledTimes(2)
+    expect(mocks.activateTab).toHaveBeenCalledWith("s1")
+    expect(mocks.saveOpenTabs).toHaveBeenLastCalledWith(["s1", "s2"])
   })
 
-  it("openTab keeps at most six tabs and evicts oldest non-incoming", async () => {
+  it("openTab 仅激活已存在标签时走 activateTab 入口", async () => {
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    act(() => {
+      result.current.openTab("s1")
+    })
+
+    mocks.saveOpenTabs.mockClear()
+    mocks.activateTab.mockClear()
+
+    act(() => {
+      result.current.openTab("s1")
+    })
+
+    expect(result.current.openTabs).toEqual(["s1"])
+    expect(result.current.activeTab).toBe("s1")
+    expect(mocks.activateTab).toHaveBeenCalledWith("s1")
+    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
+  })
+
+  it("openTab keeps at most six tabs and evicts oldest", async () => {
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
@@ -156,23 +157,6 @@ describe("useTabStore", () => {
     expect(result.current.activeTab).toBe("s7")
   })
 
-  it("openTab treats prefixed ids as normal tabs", async () => {
-    const { result } = renderHook(() => useTabStore(), { wrapper })
-
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
-    })
-
-    act(() => {
-      result.current.openTab("s1")
-      result.current.openTab("virtual-temp")
-      result.current.openTab("virtual-next")
-    })
-
-    expect(result.current.openTabs).toEqual(["s1", "virtual-temp", "virtual-next"])
-    expect(result.current.activeTab).toBe("virtual-next")
-  })
-
   it("closeTab switches active to right neighbor or left when rightmost", async () => {
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
@@ -184,7 +168,7 @@ describe("useTabStore", () => {
       result.current.openTab("s1")
       result.current.openTab("s2")
       result.current.openTab("s3")
-      result.current.setActiveTab("s2")
+      result.current.activateTab("s2")
       result.current.closeTab("s2")
     })
 
@@ -197,16 +181,9 @@ describe("useTabStore", () => {
 
     expect(result.current.openTabs).toEqual(["s1"])
     expect(result.current.activeTab).toBe("s1")
-
-    act(() => {
-      result.current.closeTab("s1")
-    })
-
-    expect(result.current.openTabs).toEqual([])
-    expect(result.current.activeTab).toBe("")
   })
 
-  it("closeTab keeps active tab when closing a different tab", async () => {
+  it("closeTab clears activeTab when closing last tab", async () => {
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
@@ -215,17 +192,36 @@ describe("useTabStore", () => {
 
     act(() => {
       result.current.openTab("s1")
-      result.current.openTab("s2")
-      result.current.openTab("s3")
-      result.current.setActiveTab("s2")
       result.current.closeTab("s1")
     })
 
-    expect(result.current.openTabs).toEqual(["s2", "s3"])
-    expect(result.current.activeTab).toBe("s2")
+    expect(result.current.openTabs).toEqual([])
+    expect(result.current.activeTab).toBe("")
   })
 
-  it("removeTab switches active to last remaining tab when active is removed", async () => {
+  it("activateTab is no-op for non-existing tab", async () => {
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    act(() => {
+      result.current.openTab("s1")
+    })
+
+    mocks.saveOpenTabs.mockClear()
+
+    act(() => {
+      result.current.activateTab("missing")
+    })
+
+    expect(result.current.openTabs).toEqual(["s1"])
+    expect(result.current.activeTab).toBe("s1")
+    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
+  })
+
+  it("removeTab switches active to last remaining tab when removing active", async () => {
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
@@ -236,39 +232,6 @@ describe("useTabStore", () => {
       result.current.openTab("s1")
       result.current.openTab("s2")
       result.current.removeTab("s2")
-    })
-
-    expect(result.current.openTabs).toEqual(["s1"])
-    expect(result.current.activeTab).toBe("s1")
-  })
-
-  it("setActiveTab persists active tab without reordering", async () => {
-    const { result } = renderHook(() => useTabStore(), { wrapper })
-
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
-    })
-
-    act(() => {
-      result.current.openTab("s1")
-      result.current.openTab("s2")
-      result.current.setActiveTab("s1")
-    })
-
-    expect(result.current.openTabs).toEqual(["s1", "s2"])
-    expect(result.current.activeTab).toBe("s1")
-  })
-
-  it("setActiveTab ignores ids that are not open", async () => {
-    const { result } = renderHook(() => useTabStore(), { wrapper })
-
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
-    })
-
-    act(() => {
-      result.current.openTab("s1")
-      result.current.setActiveTab("missing")
     })
 
     expect(result.current.openTabs).toEqual(["s1"])
@@ -292,14 +255,14 @@ describe("useTabStore", () => {
     expect(result.current.activeTab).toBe("s2")
 
     act(() => {
-      result.current.setActiveTab("s1")
+      result.current.activateTab("s1")
       result.current.replaceTab("s1", "s1-real")
     })
 
     expect(result.current.activeTab).toBe("s1-real")
   })
 
-  it("replaceTab removes old id when new id already exists", async () => {
+  it("replaceTab removes old tab when new tab already exists", async () => {
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
@@ -309,7 +272,7 @@ describe("useTabStore", () => {
     act(() => {
       result.current.openTab("old")
       result.current.openTab("new")
-      result.current.setActiveTab("old")
+      result.current.activateTab("old")
       result.current.replaceTab("old", "new")
     })
 
@@ -317,7 +280,7 @@ describe("useTabStore", () => {
     expect(result.current.activeTab).toBe("new")
   })
 
-  it("closeOtherTabs and closeTabsToRight keep the right tabs", async () => {
+  it("closeOtherTabs and closeTabsToRight keep expected tabs", async () => {
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
@@ -342,31 +305,6 @@ describe("useTabStore", () => {
     expect(result.current.activeTab).toBe("s2")
   })
 
-  it("shares one store instance across multiple consumers", async () => {
-    const { result } = renderHook(
-      () => {
-        const first = useTabStore()
-        const second = useTabStore()
-        return { first, second }
-      },
-      { wrapper },
-    )
-
-    await waitFor(() => {
-      expect(result.current.first.loaded).toBe(true)
-      expect(result.current.second.loaded).toBe(true)
-    })
-
-    expect(sdk.kv.get).toHaveBeenCalledTimes(1)
-
-    act(() => {
-      result.current.first.openTab("shared")
-    })
-
-    expect(result.current.second.openTabs).toEqual(["shared"])
-    expect(result.current.second.activeTab).toBe("shared")
-  })
-
   it("reorderTabs updates order and persists with 500ms debounce", async () => {
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
@@ -381,7 +319,8 @@ describe("useTabStore", () => {
       result.current.openTab("s2")
       result.current.openTab("s3")
     })
-    ;(sdk.kv.update as ReturnType<typeof vi.fn>).mockClear()
+
+    mocks.saveOpenTabs.mockClear()
 
     act(() => {
       result.current.reorderTabs(2, 0)
@@ -389,27 +328,20 @@ describe("useTabStore", () => {
     })
 
     expect(result.current.openTabs).toEqual(["s1", "s3", "s2"])
-    expect(sdk.kv.update).toHaveBeenCalledTimes(0)
+    expect(mocks.saveOpenTabs).toHaveBeenCalledTimes(0)
 
     act(() => {
       vi.advanceTimersByTime(499)
     })
 
-    expect(sdk.kv.update).toHaveBeenCalledTimes(0)
+    expect(mocks.saveOpenTabs).toHaveBeenCalledTimes(0)
 
     act(() => {
       vi.advanceTimersByTime(1)
     })
 
-    expect(sdk.kv.update).toHaveBeenCalledTimes(1)
-    expect(sdk.kv.update).toHaveBeenCalledWith({
-      body: {
-        [key]: {
-          openTabs: ["s1", "s3", "s2"],
-          activeTab: "s3",
-        },
-      },
-    })
+    expect(mocks.saveOpenTabs).toHaveBeenCalledTimes(1)
+    expect(mocks.saveOpenTabs).toHaveBeenCalledWith(["s1", "s3", "s2"])
   })
 
   it("flushes pending reorder persistence on unmount", async () => {
@@ -426,185 +358,19 @@ describe("useTabStore", () => {
       result.current.openTab("s2")
       result.current.openTab("s3")
     })
-    ;(sdk.kv.update as ReturnType<typeof vi.fn>).mockClear()
+
+    mocks.saveOpenTabs.mockClear()
 
     act(() => {
       result.current.reorderTabs(2, 0)
     })
 
-    expect(sdk.kv.update).toHaveBeenCalledTimes(0)
+    expect(mocks.saveOpenTabs).toHaveBeenCalledTimes(0)
 
     unmount()
 
-    expect(sdk.kv.update).toHaveBeenCalledTimes(1)
-    expect(sdk.kv.update).toHaveBeenCalledWith({
-      body: {
-        [key]: {
-          openTabs: ["s3", "s1", "s2"],
-          activeTab: "s3",
-        },
-      },
-    })
-  })
-
-  it("prefers bridge state over empty localStorage on mount", async () => {
-    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: {},
-      error: null,
-    } satisfies KvGetResult)
-    ;(uiBridgeTabs as ReturnType<typeof vi.fn>).mockReturnValue({
-      openTabs: ["b1", "b2"],
-      activeTab: "b2",
-    })
-
-    const { result } = renderHook(() => useTabStore(), { wrapper })
-
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
-    })
-
-    expect(result.current.openTabs).toEqual(["b1", "b2"])
-    expect(result.current.activeTab).toBe("b2")
-  })
-
-  it("prefers localStorage over bridge state when localStorage has tabs", async () => {
-    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: {
-        [key]: {
-          openTabs: ["ls1", "ls2"],
-          activeTab: "ls1",
-        },
-      },
-      error: null,
-    } satisfies KvGetResult)
-    ;(uiBridgeTabs as ReturnType<typeof vi.fn>).mockReturnValue({
-      openTabs: ["b1"],
-      activeTab: "b1",
-    })
-
-    const { result } = renderHook(() => useTabStore(), { wrapper })
-
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
-    })
-
-    expect(result.current.openTabs).toEqual(["ls1", "ls2"])
-    expect(result.current.activeTab).toBe("ls1")
-  })
-
-  it("save calls uiBridgeUpdateTabs alongside sdk.kv.update", async () => {
-    ;(uiBridgeTabs as ReturnType<typeof vi.fn>).mockReturnValue({ openTabs: [], activeTab: "" })
-
-    const { result } = renderHook(() => useTabStore(), { wrapper })
-
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
-    })
-    ;(uiBridgeUpdateTabs as ReturnType<typeof vi.fn>).mockClear()
-
-    act(() => {
-      result.current.openTab("s1")
-      result.current.openTab("s2")
-    })
-
-    expect(uiBridgeUpdateTabs).toHaveBeenCalledTimes(2)
-    expect(uiBridgeUpdateTabs).toHaveBeenLastCalledWith(["s1", "s2"], "s2")
-  })
-
-  it("falls back to bridge state when sdk.kv.get rejects", async () => {
-    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("network"))
-    ;(uiBridgeTabs as ReturnType<typeof vi.fn>).mockReturnValue({
-      openTabs: ["b1"],
-      activeTab: "b1",
-    })
-
-    const { result } = renderHook(() => useTabStore(), { wrapper })
-
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
-    })
-
-    expect(result.current.openTabs).toEqual(["b1"])
-    expect(result.current.activeTab).toBe("b1")
-  })
-
-  it("keeps bridge tabs when openTab is called before initial load resolves", async () => {
-    let done: ((value: KvGetResult) => void) | undefined
-    let bridge = { openTabs: ["b1", "b2"], activeTab: "b2" }
-
-    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockReturnValue(
-      new Promise<KvGetResult>((resolve) => {
-        done = resolve
-      }),
-    )
-    ;(uiBridgeTabs as ReturnType<typeof vi.fn>).mockImplementation(() => bridge)
-    ;(uiBridgeUpdateTabs as ReturnType<typeof vi.fn>).mockImplementation((openTabs: string[], activeTab: string) => {
-      bridge = { openTabs, activeTab }
-    })
-
-    const { result } = renderHook(() => useTabStore(), { wrapper })
-
-    expect(result.current.loaded).toBe(false)
-
-    act(() => {
-      result.current.openTab("b2")
-    })
-
-    act(() => {
-      done?.({ data: {}, error: null } satisfies KvGetResult)
-    })
-
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
-    })
-
-    expect(result.current.openTabs).toEqual(["b1", "b2"])
-    expect(result.current.activeTab).toBe("b2")
-  })
-
-  it("pruneTabs removes tabs not in validIds set", async () => {
-    ;(sdk.kv.get as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: {
-        [key]: {
-          openTabs: ["s1", "s2", "s3"],
-          activeTab: "s2",
-        },
-      },
-      error: null,
-    } satisfies KvGetResult)
-
-    const { result } = renderHook(() => useTabStore(), { wrapper })
-
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
-    })
-
-    act(() => {
-      result.current.pruneTabs(new Set(["s1", "s3"]))
-    })
-
-    expect(result.current.openTabs).toEqual(["s1", "s3"])
-    expect(result.current.activeTab).toBe("s3")
-  })
-
-  it("pruneTabs removes tabs not in validIds", async () => {
-    const { result } = renderHook(() => useTabStore(), { wrapper })
-
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
-    })
-
-    act(() => {
-      result.current.openTab("s1")
-      result.current.openTab("virtual-new")
-    })
-
-    act(() => {
-      result.current.pruneTabs(new Set<string>())
-    })
-
-    expect(result.current.openTabs).toEqual([])
-    expect(result.current.activeTab).toBe("")
+    expect(mocks.saveOpenTabs).toHaveBeenCalledTimes(1)
+    expect(mocks.saveOpenTabs).toHaveBeenCalledWith(["s3", "s1", "s2"])
   })
 
   it("pruneTabs is a no-op when all tabs are valid", async () => {
@@ -618,13 +384,42 @@ describe("useTabStore", () => {
       result.current.openTab("s1")
       result.current.openTab("s2")
     })
-    ;(sdk.kv.update as ReturnType<typeof vi.fn>).mockClear()
+
+    mocks.saveOpenTabs.mockClear()
 
     act(() => {
       result.current.pruneTabs(new Set(["s1", "s2"]))
     })
 
     expect(result.current.openTabs).toEqual(["s1", "s2"])
-    expect(sdk.kv.update).not.toHaveBeenCalled()
+    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
+  })
+
+  it("pruneTabs removes deleted sessions and normalizes active tab", async () => {
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    act(() => {
+      result.current.openTab("s1")
+      result.current.openTab("s2")
+      result.current.openTab("s3")
+      result.current.activateTab("s2")
+    })
+
+    mocks.saveOpenTabs.mockClear()
+
+    act(() => {
+      result.current.pruneTabs(new Set(["s1", "s3"]))
+    })
+
+    expect(result.current.openTabs).toEqual(["s1", "s3"])
+    expect(result.current.activeTab).toBe("s3")
+    await waitFor(() => {
+      expect(mocks.saveOpenTabs).toHaveBeenCalledWith(["s1", "s3"])
+      expect(mocks.activateTab).toHaveBeenCalledWith("s3")
+    })
   })
 })

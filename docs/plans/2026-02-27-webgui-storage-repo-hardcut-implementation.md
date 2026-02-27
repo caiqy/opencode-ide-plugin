@@ -236,10 +236,10 @@ Expected: FAIL。
 
 **Step 1: 生产代码禁用符号检索**
 
-Run（仓库根目录）：
-`rg -n "globalStateGet|globalStateSet|globalStateGetJSON|globalStateSetJSON|sdk\.kv|sdk\.model|uiGetState|uiSetState|kv\.get|kv\.update|model\.get|model\.update|opencode_webgui_state_v1|opencode_favorite_models_v1" packages/opencode/webgui/src hosts/vscode-plugin/src hosts/jetbrains-plugin/src --glob "!**/*.test.*"`
+Run（在 `packages/opencode/webgui`）：
+`bun run test:run src/test/legacyStorageGate.test.ts`
 
-Expected: 无命中。
+Expected: PASS（自动扫描三处生产代码目录，命中 legacy 符号即失败）。
 
 **Step 2: WebGUI 回归**
 
@@ -268,3 +268,43 @@ Expected: PASS。
 - `global/workspace/mem` scope 路由断言
 - 会话切换失败回滚测试
 - `session.deleted` 清理测试
+
+---
+
+## 执行状态（2026-02-27）
+
+### 任务完成度
+
+- Task 1 ✅ 完成（`scopedStorage` + tests）
+- Task 2 ✅ 完成（5 个 Repo + tests）
+- Task 3 ✅ 完成（调用方迁移到 Repo，切换一致性/回滚/删除清理覆盖）
+- Task 4 ✅ 完成（删除 `sdk.kv/model` 与 `globalState*`，迁移门禁测试通过）
+- Task 5 ✅ 完成（双宿主 reject legacy 写路径 + 三域路由断言）
+- Task 6 ✅ 完成（静态门禁 + WebGUI/Host 回归 + 文档收敛）
+
+### 实测命令与结果
+
+1. WebGUI 全量回归（`packages/opencode/webgui`）
+   - `bun run test:run`
+   - 结果：PASS（`103 passed`, `495 passed`）
+
+2. VSCode host 定向回归（`hosts/vscode-plugin`）
+   - `pnpm run compile && pnpm exec vscode-test --run out/test/test/suite/ideBridgeServer.test.js`
+   - 结果：PASS（`6 passing`，覆盖 scoped storage + legacy reject）
+
+3. JetBrains host 定向回归（`hosts/jetbrains-plugin`）
+   - `./gradlew test --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`
+   - 结果：PASS（`BUILD SUCCESSFUL`）
+
+4. 静态硬切门禁（生产代码）
+   - `bun run test:run src/test/legacyStorageGate.test.ts`
+   - 结果：PASS（`3 passed`，覆盖“命中即失败 / 测试目录排除 / 仓库生产代码零命中”）
+
+### 额外修正记录
+
+- `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt`
+  - 将 `global/workspace` 存储重构为可注入后端（生产 `PropertiesComponent` + 测试 InMemory backend），并改为 **per-session backend 注入**，移除全局可变 backend 状态与 `Application == null` 语义降级 fallback，保证生产语义稳定与测试隔离。
+- `packages/opencode/webgui/src/state/switchSession.ts`
+  - 回滚策略增强为“候选链路回退”（`previousSessionId -> previousActiveTab`），避免首选回滚目标失效时的恢复盲区。
+- `packages/opencode/webgui/src/components/CompactHeader/*.test.tsx`
+  - 补 `__APP_VERSION__` 测试全局，修复测试环境下 `ReferenceError`。

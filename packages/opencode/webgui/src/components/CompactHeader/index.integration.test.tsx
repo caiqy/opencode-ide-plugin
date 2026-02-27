@@ -128,7 +128,8 @@ describe("CompactHeader integration with real TabBar", () => {
   })
 
   it("activates a tab and switches session when user clicks another tab", async () => {
-    const setActiveTab = vi.fn()
+    const openTab = vi.fn()
+    const activateTab = vi.fn()
     const switchSession = vi.fn().mockResolvedValue(undefined)
 
     mocks.useSession.mockReturnValue({
@@ -151,10 +152,10 @@ describe("CompactHeader integration with real TabBar", () => {
       openTabs: ["s1", "s2"],
       activeTab: "s1",
       loaded: true,
-      openTab: vi.fn(),
+      openTab,
       closeTab: vi.fn(),
       removeTab: vi.fn(),
-      setActiveTab,
+      activateTab,
       reorderTabs: vi.fn(),
       replaceTab: vi.fn(),
       closeOtherTabs: vi.fn(),
@@ -166,14 +167,16 @@ describe("CompactHeader integration with real TabBar", () => {
 
     await user.click(screen.getByTitle("会话 2"))
 
-    expect(setActiveTab).toHaveBeenCalledWith("s2")
+    expect(activateTab).toHaveBeenCalledWith("s2")
+    expect(openTab).not.toHaveBeenCalled()
     await waitFor(() => {
       expect(switchSession).toHaveBeenCalledWith("s2")
     })
   })
 
   it("rolls back active tab and shows toast when switching session fails", async () => {
-    const setActiveTab = vi.fn()
+    const openTab = vi.fn()
+    const activateTab = vi.fn()
     const switchSession = vi.fn().mockRejectedValue(new Error("boom"))
     const showToast = vi.fn()
 
@@ -198,10 +201,10 @@ describe("CompactHeader integration with real TabBar", () => {
       openTabs: ["s1", "s2"],
       activeTab: "s1",
       loaded: true,
-      openTab: vi.fn(),
+      openTab,
       closeTab: vi.fn(),
       removeTab: vi.fn(),
-      setActiveTab,
+      activateTab,
       reorderTabs: vi.fn(),
       replaceTab: vi.fn(),
       closeOtherTabs: vi.fn(),
@@ -216,8 +219,9 @@ describe("CompactHeader integration with real TabBar", () => {
     await waitFor(() => {
       expect(switchSession).toHaveBeenCalledWith("s2")
     })
-    expect(setActiveTab).toHaveBeenCalledWith("s2")
-    expect(setActiveTab).toHaveBeenCalledWith("s1")
+    expect(openTab).not.toHaveBeenCalled()
+    expect(activateTab).toHaveBeenCalledWith("s2")
+    expect(activateTab).toHaveBeenCalledWith("s1")
     expect(showToast).toHaveBeenCalledWith("切换会话失败", { variant: "error" })
   })
 
@@ -268,7 +272,7 @@ describe("CompactHeader integration with real TabBar", () => {
       openTab: vi.fn(),
       closeTab: vi.fn(),
       removeTab: vi.fn(),
-      setActiveTab: vi.fn(),
+      activateTab: vi.fn(),
       reorderTabs: vi.fn(),
       replaceTab: vi.fn(),
       closeOtherTabs: vi.fn(),

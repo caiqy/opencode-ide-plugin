@@ -9,13 +9,13 @@ vi.mock("../lib/ideBridge", () => ({
   },
 }))
 
-vi.mock("./globalState", () => ({
-  globalStateGetJSON: vi.fn(),
-  globalStateSetJSON: vi.fn(),
+vi.mock("./repo/themeRepo", () => ({
+  loadTheme: vi.fn(),
+  saveTheme: vi.fn(),
 }))
 
 import { ThemeProvider, useTheme } from "./ThemeContext"
-import { globalStateGetJSON, globalStateSetJSON } from "./globalState"
+import { loadTheme, saveTheme } from "./repo/themeRepo"
 
 function Probe() {
   const theme = useTheme()
@@ -31,8 +31,8 @@ describe("ThemeContext", () => {
   beforeEach(() => {
     vi.resetAllMocks()
     document.documentElement.classList.remove("dark")
-    vi.mocked(globalStateGetJSON).mockResolvedValue("dark")
-    vi.mocked(globalStateSetJSON).mockResolvedValue({ ok: true })
+    vi.mocked(loadTheme).mockResolvedValue("dark")
+    vi.mocked(saveTheme).mockResolvedValue({ ok: true })
   })
 
   it("默认主题为 dark", async () => {
@@ -46,8 +46,8 @@ describe("ThemeContext", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(true)
   })
 
-  it("会从 globalState 恢复主题", async () => {
-    vi.mocked(globalStateGetJSON).mockResolvedValue("light")
+  it("会从 scoped global state 恢复主题", async () => {
+    vi.mocked(loadTheme).mockResolvedValue("light")
 
     render(
       <ThemeProvider>
@@ -56,10 +56,10 @@ describe("ThemeContext", () => {
     )
 
     await screen.findByText("light")
-    expect(globalStateGetJSON).toHaveBeenCalledWith("opencode:webgui:theme:v1", "dark")
+    expect(loadTheme).toHaveBeenCalledTimes(1)
   })
 
-  it("切换主题会写入 globalState 且不触碰 localStorage", async () => {
+  it("切换主题会写入 scoped global state 且不触碰 localStorage", async () => {
     const getSpy = vi.spyOn(Storage.prototype, "getItem")
     const setSpy = vi.spyOn(Storage.prototype, "setItem")
     const user = userEvent.setup()
@@ -74,7 +74,7 @@ describe("ThemeContext", () => {
     await user.click(screen.getByText("toggle"))
 
     await waitFor(() => {
-      expect(globalStateSetJSON).toHaveBeenCalledWith("opencode:webgui:theme:v1", "light")
+      expect(saveTheme).toHaveBeenCalledWith("light")
     })
     expect(getSpy).not.toHaveBeenCalled()
     expect(setSpy).not.toHaveBeenCalled()

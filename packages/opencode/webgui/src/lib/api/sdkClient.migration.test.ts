@@ -1,129 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { sdk } from "./sdkClient"
-import { resetGlobalStateForTest, scopedStateGetJSON } from "../../state/globalState"
+import { resetScopedStateForTest } from "../../state/scopedStorage"
 
 describe("sdk migration baseline", () => {
   beforeEach(() => {
     localStorage.clear()
-    resetGlobalStateForTest()
+    resetScopedStateForTest()
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it("kv.get returns {data,error} shape", async () => {
-    await sdk.kv.update({ body: { webgui_agent: "build" } })
-    const r = await sdk.kv.get()
-    expect(r.error).toBeNull()
-    expect(r.data?.webgui_agent).toBe("build")
-  })
-
-  it("kv.update merges and persists webgui preferences", async () => {
-    await sdk.kv.update({
-      body: {
-        webgui_provider: "openai",
-        webgui_model: "gpt-4.1",
-      },
-    })
-    await sdk.kv.update({
-      body: {
-        webgui_agent: "plan",
-      },
-    })
-
-    const r = await sdk.kv.get()
-    expect(r.error).toBeNull()
-    expect(r.data).toMatchObject({
-      webgui_provider: "openai",
-      webgui_model: "gpt-4.1",
-      webgui_agent: "plan",
-    })
-  })
-
-  it("kv.get does not migrate legacy state key", async () => {
-    localStorage.setItem(
-      "opencode_webgui_state_v1",
-      JSON.stringify({
-        agent: "plan",
-        provider: "openai",
-        model: "gpt-4.1",
-        agent_model: {
-          plan: {
-            provider_id: "openai",
-            model_id: "gpt-4.1",
-          },
-        },
-        message_parts_auto_expand: false,
-      }),
-    )
-
-    const r = await sdk.kv.get()
-
-    expect(r.error).toBeNull()
-    expect(r.data).toEqual({
-      webgui_agent: null,
-      webgui_provider: null,
-      webgui_model: null,
-      webgui_variant: null,
-      webgui_agent_model: {},
-    })
-  })
-
-  it("model.get does not migrate legacy favorites key", async () => {
-    localStorage.setItem("opencode_favorite_models_v1", JSON.stringify(["openai/gpt-4.1", "anthropic/claude-3"]))
-
-    const r = await sdk.model.get()
-
-    expect(r.error).toBeNull()
-    expect(r.data?.favorite).toEqual([])
-  })
-
-  it("model.update does not keep legacy favorites key in sync", async () => {
-    await sdk.model.update({
-      body: {
-        favorite: [{ providerID: "openai", modelID: "gpt-4.1" }],
-      },
-    })
-
-    expect(localStorage.getItem("opencode_favorite_models_v1")).toBeNull()
-  })
-
-  it("global:model 仅 recent/favorite，variant 仅存 workspace:last_selection", async () => {
-    await sdk.kv.update({
-      body: {
-        webgui_variant: "reasoning",
-      },
-    })
-
-    const model = await sdk.model.get()
-    expect(model.data).toEqual({ recent: [], favorite: [] })
-
-    const selection = await scopedStateGetJSON<{ variant?: string | null }>(
-      "workspace",
-      "opencode:webgui:workspace:last_selection:v1",
-      {},
-    )
-    expect(selection.variant).toBe("reasoning")
-  })
-
-  it("sdk.model/sdk.kv 关键链路不触发 localStorage API", async () => {
-    const get = vi.spyOn(Storage.prototype, "getItem")
-    const set = vi.spyOn(Storage.prototype, "setItem")
-    const remove = vi.spyOn(Storage.prototype, "removeItem")
-
-    await sdk.kv.get()
-    await sdk.model.get()
-    await sdk.kv.update({ body: { foo: "bar" } })
-    await sdk.model.update({
-      body: {
-        favorite: [{ providerID: "openai", modelID: "gpt-4.1" }],
-      },
-    })
-
-    expect(get).not.toHaveBeenCalled()
-    expect(set).not.toHaveBeenCalled()
-    expect(remove).not.toHaveBeenCalled()
+  it("sdk 不再暴露 kv/model 聚合接口", () => {
+    expect("kv" in sdk).toBe(false)
+    expect("model" in sdk).toBe(false)
   })
 
   it("auth.list maps to provider.list().connected", async () => {

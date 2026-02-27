@@ -131,7 +131,7 @@ UI 与 Context 只调用 Repo，不直接接触 key/scope/bridge message。
 
 1. `variant` 只能存在 `workspace:last_selection`。
 2. `recent/favorite` 只能存在 `global:model`。
-3. `active_tab` 只能由 `tabsRepo.activate(sessionId)` 修改。
+3. `active_tab` 的“激活语义”统一由 `tabsRepo.activateTab(sessionId)` 入口驱动；`open_tabs` 持久化流程仅允许做必要一致性校正，不承担跨入口切换编排。
 4. 所有会话切换入口（CommandPalette/Header/Tabs）统一调用：
    `tabsRepo.activate(sessionId) -> switchSession(sessionId)`。
 
@@ -170,7 +170,16 @@ UI 与 Context 只调用 Repo，不直接接触 key/scope/bridge message。
 
 ### 1) 静态硬切门禁
 
-在生产代码目录检索以下任一命中即失败：
+静态门禁已落地为自动化测试：`packages/opencode/webgui/src/test/legacyStorageGate.test.ts`。
+
+- 执行命令（在 `packages/opencode/webgui`）：`bun run test:run src/test/legacyStorageGate.test.ts`
+- 扫描范围：
+  - `packages/opencode/webgui/src`
+  - `hosts/vscode-plugin/src`
+  - `hosts/jetbrains-plugin/src`
+- 仅扫描生产代码，排除：`src/test/**`（含 Kotlin `src/test`）、`src/unitTest/**`、`**/*.test.*`、`**/*.spec.*`、`**/__tests__/**`
+
+门禁检索以下任一命中即失败：
 
 - `globalStateGet|globalStateSet|globalStateGetJSON|globalStateSetJSON`
 - `sdk.kv|sdk.model`
@@ -223,3 +232,24 @@ UI 与 Context 只调用 Repo，不直接接触 key/scope/bridge message。
 1. `globalState` 作为核心模块概念退役，改为 `scopedStorage + Repos`。
 2. `sdk.kv/model` 在 UI 内部彻底移除，不再保留。
 3. host 作为总桥梁继续承载非存储消息，但存储协议硬切且仅 scoped。
+
+---
+
+## 验收结论（2026-02-27）
+
+本设计对应实现已按硬切目标完成并通过回归：
+
+1. WebGUI 分层已收敛为 `UI -> Repo -> scopedStorage -> ideBridge`。
+2. 旧接口语义已删除：`globalState*`、`sdk.kv`、`sdk.model`。
+3. Host 存储协议硬切仅 `storageGet/storageSet(scope, ...)`，并在 VSCode/JetBrains 双宿主补齐 reject 与三域路由断言。
+4. 关键一致性契约通过：
+   - 会话切换成功一致性
+   - 会话切换失败回滚
+   - `session.deleted` 清理规则
+
+验收命令结果摘要：
+
+- `packages/opencode/webgui`: `bun run test:run src/test/legacyStorageGate.test.ts` ✅
+- `packages/opencode/webgui`: `bun run test:run` ✅
+- `hosts/vscode-plugin`: `pnpm run compile && pnpm exec vscode-test --run out/test/test/suite/ideBridgeServer.test.js` ✅
+- `hosts/jetbrains-plugin`: `./gradlew test --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"` ✅

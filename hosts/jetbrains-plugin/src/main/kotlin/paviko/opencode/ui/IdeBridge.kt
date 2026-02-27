@@ -3,7 +3,6 @@ package paviko.opencode.ui
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.intellij.ide.BrowserUtil
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.LogicalPosition
@@ -29,7 +28,8 @@ data class Session(
     val token: String,
     val project: Project,
     val sseClients: MutableSet<HttpExchange> = Collections.synchronizedSet(mutableSetOf()),
-    val mem: MutableMap<String, String> = ConcurrentHashMap()
+    val mem: MutableMap<String, String> = ConcurrentHashMap(),
+    val storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend
 )
 
 data class SessionInfo(val baseUrl: String, val token: String, val sessionId: String)
@@ -80,7 +80,7 @@ object IdeBridge {
         try { executor.shutdownNow() } catch (_: Throwable) {}
     }
 
-    fun createSession(project: Project): SessionInfo {
+    fun createSession(project: Project, storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend): SessionInfo {
         start() // ensure server is running
         
         // Remove any existing session for this project
@@ -90,7 +90,7 @@ object IdeBridge {
         
         val sessionId = UUID.randomUUID().toString()
         val token = UUID.randomUUID().toString()
-        sessions[sessionId] = Session(sessionId, token, project)
+        sessions[sessionId] = Session(sessionId, token, project, storage = storage)
         projectToSession[project] = sessionId
         
         // Start keepalive timer if not running
@@ -349,8 +349,8 @@ object IdeBridge {
                         keys?.forEach { k ->
                             val key = k.asString
                             val value = when (scope) {
-                                "global" -> PropertiesComponent.getInstance().getValue(key)
-                                "workspace" -> PropertiesComponent.getInstance(session.project).getValue(key)
+                                "global" -> session.storage.getGlobal(key)
+                                "workspace" -> session.storage.getWorkspace(session.project, key)
                                 else -> session.mem[key]
                             }
                             if (value != null) result.addProperty(key, value)
@@ -375,8 +375,8 @@ object IdeBridge {
                         val value = payload.get("value")?.asString
                         if (key != null && value != null) {
                             when (scope) {
-                                "global" -> PropertiesComponent.getInstance().setValue(key, value)
-                                "workspace" -> PropertiesComponent.getInstance(session.project).setValue(key, value)
+                                "global" -> session.storage.setGlobal(key, value)
+                                "workspace" -> session.storage.setWorkspace(session.project, key, value)
                                 else -> session.mem[key] = value
                             }
                             replyOk(session, id)

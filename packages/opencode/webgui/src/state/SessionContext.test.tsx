@@ -2,6 +2,32 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 
+const events = vi.hoisted(() => {
+  const handlers = new Map<string, Set<(event: any) => void>>()
+
+  const on = (type: string, fn: (event: any) => void) => {
+    const set = handlers.get(type) ?? new Set<(event: any) => void>()
+    set.add(fn)
+    handlers.set(type, set)
+    return () => {
+      set.delete(fn)
+      if (set.size === 0) {
+        handlers.delete(type)
+      }
+    }
+  }
+
+  const emit = (type: string, event: any) => {
+    handlers.get(type)?.forEach((fn) => fn(event))
+  }
+
+  const reset = () => {
+    handlers.clear()
+  }
+
+  return { on, emit, reset }
+})
+
 vi.mock("../lib/api/sdkClient", () => {
   return {
     sdk: {
@@ -38,7 +64,8 @@ vi.mock("../lib/ideBridge", () => {
   return {
     ideBridge: {
       isInstalled: vi.fn(),
-      request: vi.fn(),
+      storageGet: vi.fn(),
+      storageSet: vi.fn(),
     },
   }
 })
@@ -46,14 +73,19 @@ vi.mock("../lib/ideBridge", () => {
 vi.mock("../lib/api/events", () => {
   return {
     eventEmitter: {
-      on: vi.fn(() => () => {}),
+      on: events.on,
     },
   }
 })
 
 import { sdk } from "../lib/api/sdkClient"
 import { ideBridge } from "../lib/ideBridge"
+import { resetScopedStateForTest, scopedStateGetJSON, scopedStateSetJSON } from "./scopedStorage"
 import { SessionProvider, useSession } from "./SessionContext"
+
+const selectionKey = "opencode:webgui:workspace:last_selection:v1"
+const draftsKey = "opencode:webgui:workspace:drafts:v1"
+const draftSessionKey = "opencode:webgui:workspace:draft_session:v1"
 
 function wrapper(props: { children: ReactNode }) {
   return <SessionProvider>{props.children}</SessionProvider>
@@ -62,6 +94,8 @@ function wrapper(props: { children: ReactNode }) {
 describe("SessionContext migration", () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    events.reset()
+    resetScopedStateForTest()
     ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
@@ -102,22 +136,27 @@ describe("SessionContext migration", () => {
       },
       error: null,
     })
-    ;(sdk.kv.get as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.kv.update as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.model.get as any).mockResolvedValue({ data: { recent: [], favorite: [], variant: {} }, error: null })
-    ;(sdk.model.update as any).mockResolvedValue({ data: {}, error: null })
     ;(ideBridge.isInstalled as any).mockReturnValue(false)
-    ;(ideBridge.request as any).mockResolvedValue({ ok: true, result: {} })
+    ;(ideBridge.storageGet as any).mockResolvedValue({})
+    ;(ideBridge.storageSet as any).mockResolvedValue(true)
   })
 
-  it("session context still initializes model and agent from kv/model api", async () => {
-    ;(sdk.kv.get as any).mockResolvedValue({
-      data: {
-        webgui_agent: "plan",
-        webgui_provider: "openai",
-        webgui_model: "gpt-4.1",
-      },
-      error: null,
+  it("session context initializes model and agent from workspace/global repos", async () => {
+    ;(ideBridge.isInstalled as any).mockReturnValue(true)
+    ;(ideBridge.storageGet as any).mockImplementation(async (scope: string) => {
+      if (scope === "workspace") {
+        return {
+          [selectionKey]: JSON.stringify({
+            agent: "plan",
+            provider_id: "openai",
+            model_id: "gpt-4.1",
+            variant: null,
+            agent_model_map: {},
+            updated_at: 1,
+          }),
+        }
+      }
+      return {}
     })
 
     const { result } = renderHook(() => useSession(), { wrapper })
@@ -130,9 +169,6 @@ describe("SessionContext migration", () => {
   })
 
   it("retry still triggers assistant loop call path", async () => {
-    ;(sdk.kv.get as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.model.get as any).mockResolvedValue({ data: { recent: [], favorite: [] }, error: null })
-
     const { result } = renderHook(() => useSession(), { wrapper })
 
     await act(async () => {
@@ -165,82 +201,147 @@ describe("SessionContext migration", () => {
     expect(setSpy).not.toHaveBeenCalled()
   })
 
-  it("host 记录优先于 kv/model", async () => {
+  it("恢复优先级: workspace:last_selection > global:model.recent > config.model > providers 首个可用", async () => {
     ;(ideBridge.isInstalled as any).mockReturnValue(true)
-    ;(ideBridge.request as any).mockImplementation(async (type: string) => {
-      if (type === "storageGet") {
+    ;(sdk.config.get as any).mockResolvedValue({ data: { model: "openai/gpt-4.1" }, error: null })
+    ;(ideBridge.storageGet as any).mockImplementation(async (scope: string) => {
+      if (scope === "workspace") {
         return {
-          ok: true,
-          result: {
-            opencode_last_selection_v1: JSON.stringify({
-              v: 1,
-              agent: "build",
-              providerId: "anthropic",
-              modelId: "claude-4-sonnet",
-              variant: "high",
-              updatedAt: 123,
-            }),
-          },
+          [selectionKey]: JSON.stringify({
+            agent: "build",
+            provider_id: "anthropic",
+            model_id: "claude-4-sonnet",
+            variant: "high",
+            updated_at: 123,
+            agent_model_map: {},
+          }),
         }
       }
-      return { ok: true, result: {} }
-    })
-    ;(sdk.kv.get as any).mockResolvedValue({
-      data: {
-        webgui_agent: "plan",
-        webgui_provider: "openai",
-        webgui_model: "gpt-4.1",
-      },
-      error: null,
-    })
-    ;(sdk.model.get as any).mockResolvedValue({
-      data: {
-        recent: [{ providerID: "openai", modelID: "gpt-4.1" }],
-        favorite: [],
-        variant: {
-          "openai/gpt-4.1": "low",
-        },
-      },
-      error: null,
+      if (scope === "global") {
+        return {
+          "opencode:webgui:global:model:v1": JSON.stringify({
+            recent: [{ providerID: "openai", modelID: "gpt-4.1" }],
+            favorite: [],
+          }),
+        }
+      }
+      return {}
     })
 
-    const { result } = renderHook(() => useSession(), { wrapper })
+    const first = renderHook(() => useSession(), { wrapper })
 
     await waitFor(() => {
-      expect(result.current.selectedAgent).toBe("build")
-      expect(result.current.selectedProviderId).toBe("anthropic")
-      expect(result.current.selectedModelId).toBe("claude-4-sonnet")
-      expect(result.current.selectedVariant).toBe("high")
+      expect(first.result.current.selectedAgent).toBe("build")
+      expect(first.result.current.selectedProviderId).toBe("anthropic")
+      expect(first.result.current.selectedModelId).toBe("claude-4-sonnet")
+      expect(first.result.current.selectedVariant).toBe("high")
     })
+    first.unmount()
+    ;(ideBridge.storageGet as any).mockImplementation(async (scope: string) => {
+      if (scope === "workspace") {
+        return {
+          [selectionKey]: JSON.stringify({
+            agent: "build",
+            provider_id: null,
+            model_id: null,
+            variant: null,
+            updated_at: 123,
+            agent_model_map: {},
+          }),
+        }
+      }
+      if (scope === "global") {
+        return {
+          "opencode:webgui:global:model:v1": JSON.stringify({
+            recent: [{ providerID: "openai", modelID: "gpt-4.1" }],
+            favorite: [],
+          }),
+        }
+      }
+      return {}
+    })
+
+    const recentOnly = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => {
+      expect(recentOnly.result.current.selectedProviderId).toBe("openai")
+      expect(recentOnly.result.current.selectedModelId).toBe("gpt-4.1")
+    })
+    recentOnly.unmount()
+    ;(ideBridge.storageGet as any).mockImplementation(async (scope: string) => {
+      if (scope === "workspace") {
+        return {
+          [selectionKey]: JSON.stringify({
+            agent: "build",
+            provider_id: null,
+            model_id: null,
+            variant: null,
+            updated_at: 123,
+            agent_model_map: {},
+          }),
+        }
+      }
+      if (scope === "global") {
+        return {
+          "opencode:webgui:global:model:v1": JSON.stringify({
+            recent: [],
+            favorite: [],
+          }),
+        }
+      }
+      return {}
+    })
+
+    const configOnly = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => {
+      expect(configOnly.result.current.selectedProviderId).toBe("openai")
+      expect(configOnly.result.current.selectedModelId).toBe("gpt-4.1")
+    })
+    configOnly.unmount()
+    ;(sdk.config.get as any).mockResolvedValue({ data: { model: "missing/not-found" }, error: null })
+    ;(ideBridge.storageGet as any).mockImplementation(async (scope: string) => {
+      if (scope === "workspace") {
+        return {
+          [selectionKey]: JSON.stringify({
+            agent: "build",
+            provider_id: null,
+            model_id: null,
+            variant: null,
+            updated_at: 123,
+            agent_model_map: {},
+          }),
+        }
+      }
+      if (scope === "global") {
+        return {
+          "opencode:webgui:global:model:v1": JSON.stringify({
+            recent: [],
+            favorite: [],
+          }),
+        }
+      }
+      return {}
+    })
+
+    const fallbackOnly = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => {
+      expect(fallbackOnly.result.current.selectedProviderId).toBe("openai")
+      expect(fallbackOnly.result.current.selectedModelId).toBe("gpt-4.1")
+    })
+    fallbackOnly.unmount()
   })
 
   it("host 模型不可用时自动回退到可用模型", async () => {
     ;(ideBridge.isInstalled as any).mockReturnValue(true)
-    ;(ideBridge.request as any).mockImplementation(async (type: string) => {
-      if (type === "storageGet") {
-        return {
-          ok: true,
-          result: {
-            opencode_last_selection_v1: JSON.stringify({
-              v: 1,
-              agent: "build",
-              providerId: "missing-provider",
-              modelId: "missing-model",
-              variant: "high",
-              updatedAt: 123,
-            }),
-          },
-        }
+    ;(ideBridge.storageGet as any).mockImplementation(async () => {
+      return {
+        [selectionKey]: JSON.stringify({
+          agent: "build",
+          provider_id: "missing-provider",
+          model_id: "missing-model",
+          variant: "high",
+          updated_at: 123,
+        }),
       }
-      return { ok: true, result: {} }
-    })
-    ;(sdk.model.get as any).mockResolvedValue({
-      data: {
-        recent: [{ providerID: "openai", modelID: "gpt-4.1" }],
-        favorite: [],
-        variant: {},
-      },
-      error: null,
     })
 
     const { result } = renderHook(() => useSession(), { wrapper })
@@ -254,23 +355,16 @@ describe("SessionContext migration", () => {
 
   it("host variant 不可用时清空为 undefined", async () => {
     ;(ideBridge.isInstalled as any).mockReturnValue(true)
-    ;(ideBridge.request as any).mockImplementation(async (type: string) => {
-      if (type === "storageGet") {
-        return {
-          ok: true,
-          result: {
-            opencode_last_selection_v1: JSON.stringify({
-              v: 1,
-              agent: "build",
-              providerId: "openai",
-              modelId: "gpt-4.1",
-              variant: "non-existent-variant",
-              updatedAt: 123,
-            }),
-          },
-        }
+    ;(ideBridge.storageGet as any).mockImplementation(async () => {
+      return {
+        [selectionKey]: JSON.stringify({
+          agent: "build",
+          provider_id: "openai",
+          model_id: "gpt-4.1",
+          variant: "non-existent-variant",
+          updated_at: 123,
+        }),
       }
-      return { ok: true, result: {} }
     })
 
     const { result } = renderHook(() => useSession(), { wrapper })
@@ -284,12 +378,8 @@ describe("SessionContext migration", () => {
 
   it("变更 agent/model/variant 后会写回 host storage", async () => {
     ;(ideBridge.isInstalled as any).mockReturnValue(true)
-    ;(ideBridge.request as any).mockImplementation(async (type: string) => {
-      if (type === "storageGet") {
-        return { ok: true, result: {} }
-      }
-      return { ok: true, result: {} }
-    })
+    ;(ideBridge.storageGet as any).mockResolvedValue({})
+    ;(ideBridge.storageSet as any).mockResolvedValue(true)
 
     const { result } = renderHook(() => useSession(), { wrapper })
 
@@ -306,15 +396,15 @@ describe("SessionContext migration", () => {
     })
 
     await waitFor(() => {
-      const writes = (ideBridge.request as any).mock.calls.filter((call: any[]) => call[0] === "storageSet")
-      expect(writes.length).toBeGreaterThan(0)
+      expect((ideBridge.storageSet as any).mock.calls.length).toBeGreaterThan(0)
 
-      const lastWrite = writes[writes.length - 1]?.[1]
-      expect(lastWrite?.key).toBe("opencode_last_selection_v1")
+      const lastWrite = (ideBridge.storageSet as any).mock.calls.at(-1)
+      expect(lastWrite?.[0]).toBe("workspace")
+      expect(lastWrite?.[1]).toBe(selectionKey)
 
-      const payload = JSON.parse(lastWrite?.value || "{}")
-      expect(payload.providerId).toBe("openai")
-      expect(payload.modelId).toBe("gpt-4.1")
+      const payload = JSON.parse(lastWrite?.[2] || "{}")
+      expect(payload.provider_id).toBe("openai")
+      expect(payload.model_id).toBe("gpt-4.1")
       expect(payload.variant).toBe("medium")
       expect(payload.agent).toBe("build")
     })
@@ -374,16 +464,15 @@ describe("SessionContext migration", () => {
 describe("SessionContext virtual API removed", () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    events.reset()
+    resetScopedStateForTest()
     ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.providers as any).mockResolvedValue({ data: { providers: [] }, error: null })
-    ;(sdk.kv.get as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.kv.update as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.model.get as any).mockResolvedValue({ data: { recent: [], favorite: [], variant: {} }, error: null })
-    ;(sdk.model.update as any).mockResolvedValue({ data: {}, error: null })
     ;(ideBridge.isInstalled as any).mockReturnValue(false)
-    ;(ideBridge.request as any).mockResolvedValue({ ok: true, result: {} })
+    ;(ideBridge.storageGet as any).mockResolvedValue({})
+    ;(ideBridge.storageSet as any).mockResolvedValue(true)
   })
 
   it("context does not expose newVirtual", async () => {
@@ -422,16 +511,15 @@ describe("SessionContext virtual API removed", () => {
 describe("SessionContext session 状态查询", () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    events.reset()
+    resetScopedStateForTest()
     ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.providers as any).mockResolvedValue({ data: { providers: [] }, error: null })
-    ;(sdk.kv.get as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.kv.update as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.model.get as any).mockResolvedValue({ data: { recent: [], favorite: [], variant: {} }, error: null })
-    ;(sdk.model.update as any).mockResolvedValue({ data: {}, error: null })
     ;(ideBridge.isInstalled as any).mockReturnValue(false)
-    ;(ideBridge.request as any).mockResolvedValue({ ok: true, result: {} })
+    ;(ideBridge.storageGet as any).mockResolvedValue({})
+    ;(ideBridge.storageSet as any).mockResolvedValue(true)
   })
 
   it("暴露 isSessionIdle/isSessionReasoning，并可按 session 查询状态", async () => {
@@ -454,6 +542,129 @@ describe("SessionContext session 状态查询", () => {
     await waitFor(() => {
       expect(ctx().isSessionIdle("s-child")).toBe(false)
       expect(ctx().isSessionReasoning("s-child")).toBe(true)
+    })
+  })
+})
+
+describe("SessionContext session.deleted scoped draft cleanup", () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    events.reset()
+    resetScopedStateForTest()
+    ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
+    ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.config.providers as any).mockResolvedValue({ data: { providers: [] }, error: null })
+    ;(ideBridge.isInstalled as any).mockReturnValue(false)
+    ;(ideBridge.storageGet as any).mockResolvedValue({})
+    ;(ideBridge.storageSet as any).mockResolvedValue(true)
+  })
+
+  it("cleans drafts map and active draft session on session.deleted", async () => {
+    await scopedStateSetJSON("workspace", draftsKey, {
+      "s-keep": "keep me",
+      "s-drop": "drop me",
+    })
+    await scopedStateSetJSON("workspace", draftSessionKey, "s-drop")
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    act(() => {
+      events.emit("session.deleted", {
+        type: "session.deleted",
+        properties: {
+          info: {
+            id: "s-drop",
+          },
+        },
+      })
+    })
+
+    await waitFor(async () => {
+      const drafts = await scopedStateGetJSON<Record<string, string>>("workspace", draftsKey, {})
+      const draftSession = await scopedStateGetJSON<string | null>("workspace", draftSessionKey, null)
+
+      expect(drafts).toEqual({ "s-keep": "keep me" })
+      expect(draftSession).toBeNull()
+    })
+  })
+
+  it("does not revive deleted draft keys when two sessions are deleted in sequence", async () => {
+    await scopedStateSetJSON("workspace", draftsKey, {
+      "s-a": "draft-a",
+      "s-b": "draft-b",
+      "s-keep": "keep",
+    })
+    await scopedStateSetJSON("workspace", draftSessionKey, "s-keep")
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    act(() => {
+      events.emit("session.deleted", {
+        type: "session.deleted",
+        properties: {
+          info: {
+            id: "s-a",
+          },
+        },
+      })
+      events.emit("session.deleted", {
+        type: "session.deleted",
+        properties: {
+          info: {
+            id: "s-b",
+          },
+        },
+      })
+    })
+
+    await waitFor(async () => {
+      const drafts = await scopedStateGetJSON<Record<string, string>>("workspace", draftsKey, {})
+      const draftSession = await scopedStateGetJSON<string | null>("workspace", draftSessionKey, null)
+
+      expect(drafts).toEqual({ "s-keep": "keep" })
+      expect(draftSession).toBe("s-keep")
+    })
+  })
+
+  it("keeps draft_session when deleting a non-active draft session", async () => {
+    await scopedStateSetJSON("workspace", draftsKey, {
+      "s-drop": "drop",
+      "s-active": "active",
+    })
+    await scopedStateSetJSON("workspace", draftSessionKey, "s-active")
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    act(() => {
+      events.emit("session.deleted", {
+        type: "session.deleted",
+        properties: {
+          info: {
+            id: "s-drop",
+          },
+        },
+      })
+    })
+
+    await waitFor(async () => {
+      const drafts = await scopedStateGetJSON<Record<string, string>>("workspace", draftsKey, {})
+      const draftSession = await scopedStateGetJSON<string | null>("workspace", draftSessionKey, null)
+
+      expect(drafts).toEqual({ "s-active": "active" })
+      expect(draftSession).toBe("s-active")
     })
   })
 })

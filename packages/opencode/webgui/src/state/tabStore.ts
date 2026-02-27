@@ -9,9 +9,8 @@ import {
   type ReactNode,
 } from "react"
 import { openWithPolicy } from "./tabPolicy"
-import { scopedStateGetJSON, scopedStateSetJSON } from "./globalState"
+import { activateTab as activateTabRepo, loadTabs, saveOpenTabs } from "./repo/tabsRepo"
 
-const key = "opencode:webgui:workspace:tabs:v1"
 const delay = 500
 
 type TabState = {
@@ -24,23 +23,18 @@ const empty: TabState = {
   activeTab: "",
 }
 
-function parse(input: unknown) {
-  if (!input || typeof input !== "object") return null
-  if (!Array.isArray((input as { open_tabs?: unknown }).open_tabs)) return null
-  if (!(input as { open_tabs: unknown[] }).open_tabs.every((id) => typeof id === "string")) return null
-  if (typeof (input as { active_tab?: unknown }).active_tab !== "string") return null
-
-  return {
-    openTabs: (input as { open_tabs: string[] }).open_tabs,
-    activeTab: (input as { active_tab: string }).active_tab,
-  }
+function persist(next: TabState) {
+  void saveOpenTabs(next.openTabs)
+    .then((value) => {
+      if (!next.activeTab || value.active_tab === next.activeTab) return
+      return activateTabRepo(next.activeTab)
+    })
+    .catch(() => {})
 }
 
-function store(next: TabState) {
-  void scopedStateSetJSON("workspace", key, {
-    open_tabs: next.openTabs,
-    active_tab: next.activeTab,
-  }).catch(() => {})
+function sameTabs(a: string[], b: string[]) {
+  if (a.length !== b.length) return false
+  return a.every((id, i) => id === b[i])
 }
 
 function useTabStoreInternal() {
@@ -59,7 +53,7 @@ function useTabStoreInternal() {
     ref.current = next
     setState(next)
     if (!ready.current) return
-    store(next)
+    persist(next)
   }, [])
 
   const saveDebounced = useCallback((next: TabState) => {
@@ -70,19 +64,18 @@ function useTabStoreInternal() {
       clearTimeout(timer.current)
     }
     timer.current = setTimeout(() => {
-      store(ref.current)
+      persist(ref.current)
       timer.current = null
     }, delay)
   }, [])
 
   useEffect(() => {
     let live = true
-    void scopedStateGetJSON<unknown>("workspace", key, null)
+    void loadTabs()
       .then((res) => {
         if (!live) return
-        const data = parse(res)
-        if (data && data.openTabs.length > 0) {
-          const next = validated(data.openTabs, data.activeTab)
+        if (res.open_tabs.length > 0) {
+          const next = validated(res.open_tabs, res.active_tab)
           ref.current = next
           setState(next)
         }
@@ -104,7 +97,7 @@ function useTabStoreInternal() {
     return () => {
       if (timer.current) {
         if (ready.current) {
-          store(ref.current)
+          persist(ref.current)
         }
         clearTimeout(timer.current)
         timer.current = null
@@ -112,12 +105,29 @@ function useTabStoreInternal() {
     }
   }, [])
 
+  const activateTab = useCallback((sessionId: string) => {
+    if (!ref.current.openTabs.includes(sessionId)) return
+    const next = {
+      openTabs: ref.current.openTabs,
+      activeTab: sessionId,
+    }
+    ref.current = next
+    setState(next)
+    if (!ready.current) return
+    void activateTabRepo(sessionId).catch(() => {})
+  }, [])
+
   const openTab = useCallback(
     (sessionId: string) => {
+      const prev = ref.current
       const next = openWithPolicy(ref.current, sessionId)
+      if (sameTabs(next.openTabs, prev.openTabs)) {
+        activateTab(sessionId)
+        return
+      }
       save(next)
     },
-    [save],
+    [activateTab, save],
   )
 
   const closeTab = useCallback(
@@ -150,17 +160,6 @@ function useTabStoreInternal() {
       save({
         openTabs,
         activeTab,
-      })
-    },
-    [save],
-  )
-
-  const setActiveTab = useCallback(
-    (sessionId: string) => {
-      if (!ref.current.openTabs.includes(sessionId)) return
-      save({
-        openTabs: ref.current.openTabs,
-        activeTab: sessionId,
       })
     },
     [save],
@@ -251,7 +250,7 @@ function useTabStoreInternal() {
     openTab,
     closeTab,
     removeTab,
-    setActiveTab,
+    activateTab,
     reorderTabs,
     replaceTab,
     closeOtherTabs,

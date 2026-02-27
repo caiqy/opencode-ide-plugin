@@ -20,10 +20,7 @@ import { useDragDrop } from "./hooks/useDragDrop"
 import { useEditorKeyboard } from "./hooks/useEditorKeyboard"
 import { useMessageParts } from "./hooks/useMessageParts"
 import { insertPlainWithMentionsImpl } from "./utils"
-import { scopedStateGetJSON, scopedStateSetJSON } from "../../state/globalState"
-
-const draftsKey = "opencode:webgui:workspace:drafts:v1"
-const draftSessionKey = "opencode:webgui:workspace:draft_session:v1"
+import { loadDrafts, saveDraftSession, saveDrafts } from "../../state/repo/draftRepo"
 
 interface MessageInputProps {
   sessionID: string | null
@@ -102,8 +99,8 @@ const MessageInputInner = forwardRef<
           delete next[sessionID]
         }
         drafts.current = next
-        void scopedStateSetJSON("workspace", draftsKey, next)
-        void scopedStateSetJSON("workspace", draftSessionKey, sessionID)
+        void saveDrafts(next)
+        void saveDraftSession(sessionID)
       })
     },
     [sessionID],
@@ -182,7 +179,7 @@ const MessageInputInner = forwardRef<
   // Restore session-scoped draft from workspace storage
   useEffect(() => {
     let active = true
-    void scopedStateGetJSON<Record<string, string>>("workspace", draftsKey, {}).then((value) => {
+    void loadDrafts().then((value) => {
       if (!active) return
       drafts.current = value
       const next = sessionID ? (value[sessionID] ?? "") : ""

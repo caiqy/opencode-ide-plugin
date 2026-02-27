@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react"
-import { scopedStateGetJSON, scopedStateSetJSON } from "./globalState"
+import { loadTheme, saveTheme } from "./repo/themeRepo"
 
 type Theme = "light" | "dark"
 
@@ -9,7 +9,6 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
-const key = "opencode:webgui:global:theme:v1"
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>("dark")
@@ -18,7 +17,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let live = true
-    void scopedStateGetJSON<Theme>("global", key, "dark").then((value) => {
+    void loadTheme().then((value) => {
       if (!live) return
       if (!touched.current && (value === "light" || value === "dark")) {
         setTheme(value)
@@ -38,7 +37,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
 
     if (!hydrated) return
-    void scopedStateSetJSON("global", key, theme)
+    void saveTheme(theme)
   }, [theme, hydrated])
 
   const toggleTheme = () => {

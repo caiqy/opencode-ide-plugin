@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { act, render } from "@testing-library/react"
+import { render, waitFor } from "@testing-library/react"
 
 let lastConfirmModalProps: any
 let lastEditorToolbarProps: any
@@ -7,12 +7,9 @@ let sessionIdle = true
 const mocks = vi.hoisted(() => {
   return {
     insertPlainWithMentionsImpl: vi.fn(),
-    draftListener: null as ((value: string) => void) | null,
-    uiBridgeDraft: vi.fn((id: string | null) => {
-      if (id === "s1") return "draft-a"
-      if (id === "s2") return "draft-b"
-      return ""
-    }),
+    loadDrafts: vi.fn(async () => ({})),
+    saveDrafts: vi.fn(async (_value: Record<string, string>) => ({ ok: true })),
+    saveDraftSession: vi.fn(async (_value: string | null) => ({ ok: true })),
   }
 })
 
@@ -116,17 +113,11 @@ vi.mock("./utils", () => {
   }
 })
 
-vi.mock("../../state/uiBridgeState", () => {
+vi.mock("../../state/repo/draftRepo", () => {
   return {
-    uiBridgeDraft: mocks.uiBridgeDraft,
-    uiBridgeSubscribeDraft: vi.fn((id: string | null, fn: (value: string) => void) => {
-      void id
-      mocks.draftListener = fn
-      return () => {
-        mocks.draftListener = null
-      }
-    }),
-    uiBridgeUpdateDraft: vi.fn(),
+    loadDrafts: () => mocks.loadDrafts(),
+    saveDrafts: (value: Record<string, string>) => mocks.saveDrafts(value),
+    saveDraftSession: (value: string | null) => mocks.saveDraftSession(value),
   }
 })
 
@@ -173,7 +164,10 @@ describe("MessageInput compact confirm", () => {
   beforeEach(() => {
     sessionIdle = true
     lastEditorToolbarProps = null
-    mocks.draftListener = null
+    vi.clearAllMocks()
+    mocks.loadDrafts.mockResolvedValue({})
+    mocks.saveDrafts.mockResolvedValue({ ok: true })
+    mocks.saveDraftSession.mockResolvedValue({ ok: true })
   })
 
   it("精简会话确认弹窗文案为中文", () => {
@@ -186,20 +180,27 @@ describe("MessageInput compact confirm", () => {
     expect(lastConfirmModalProps.cancelText).toBe("取消")
   })
 
-  it("按会话恢复草稿，切换会话时不串线", () => {
+  it("按会话恢复草稿，切换会话时不串线", async () => {
+    mocks.loadDrafts.mockResolvedValue({
+      s1: "draft-a",
+      s2: "draft-b",
+    })
     mocks.insertPlainWithMentionsImpl.mockClear()
     const { rerender } = render(<MessageInput sessionID="s1" />)
 
-    expect(mocks.uiBridgeDraft).toHaveBeenCalledWith("s1")
-    expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(expect.anything(), expect.anything(), "draft-a", {
-      replace: true,
+    await waitFor(() => {
+      expect(mocks.loadDrafts).toHaveBeenCalledTimes(1)
+      expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(expect.anything(), expect.anything(), "draft-a", {
+        replace: true,
+      })
     })
 
     rerender(<MessageInput sessionID="s2" />)
 
-    expect(mocks.uiBridgeDraft).toHaveBeenCalledWith("s2")
-    expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(expect.anything(), expect.anything(), "draft-b", {
-      replace: true,
+    await waitFor(() => {
+      expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(expect.anything(), expect.anything(), "draft-b", {
+        replace: true,
+      })
     })
   })
 
@@ -224,23 +225,36 @@ describe("MessageInput compact confirm", () => {
     expect(lastEditorToolbarProps.isDisabled).toBe(false)
   })
 
-  it("同会话下后到的草稿更新应触发回填", () => {
+  it("再次进入会话时会读取最新的 scoped 草稿", async () => {
+    mocks.loadDrafts
+      .mockResolvedValueOnce({ s3: "" })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ s3: "late-draft" })
+
     mocks.insertPlainWithMentionsImpl.mockClear()
-    render(<MessageInput sessionID="s3" />)
+    const { rerender } = render(<MessageInput sessionID="s3" />)
 
-    expect(mocks.insertPlainWithMentionsImpl).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), "", {
-      replace: true,
+    await waitFor(() => {
+      expect(mocks.loadDrafts).toHaveBeenCalledTimes(1)
     })
 
-    act(() => {
-      mocks.draftListener?.("late-draft")
+    expect(mocks.insertPlainWithMentionsImpl).not.toHaveBeenCalled()
+
+    rerender(<MessageInput sessionID={null} />)
+
+    await waitFor(() => {
+      expect(mocks.loadDrafts).toHaveBeenCalledTimes(2)
     })
 
-    expect(mocks.insertPlainWithMentionsImpl).toHaveBeenLastCalledWith(
-      expect.anything(),
-      expect.anything(),
-      "late-draft",
-      { replace: true },
-    )
+    rerender(<MessageInput sessionID="s3" />)
+
+    await waitFor(() => {
+      expect(mocks.insertPlainWithMentionsImpl).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        "late-draft",
+        { replace: true },
+      )
+    })
   })
 })

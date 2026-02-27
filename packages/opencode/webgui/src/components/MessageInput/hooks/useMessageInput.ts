@@ -5,9 +5,7 @@ import { useSession } from "../../../state/SessionContext"
 import { useToast } from "../../../state/ToastContext"
 import { useMessages } from "../../../state/MessagesContext"
 import { createOptimisticUserMessage, removeOptimisticMessages } from "../../../lib/messagesStore"
-import { scopedStateGetJSON, scopedStateSetJSON } from "../../../state/globalState"
-
-const draftSessionKey = "opencode:webgui:workspace:draft_session:v1"
+import { loadDraftSession, saveDraftSession } from "../../../state/repo/draftRepo"
 
 interface UseMessageInputOptions {
   sessionID: string | null
@@ -166,9 +164,9 @@ export function useMessageInput({
       }
 
       if (sessionID) {
-        const activeDraft = await scopedStateGetJSON<string | null>("workspace", draftSessionKey, null)
+        const activeDraft = await loadDraftSession()
         if (activeDraft === sessionID) {
-          await scopedStateSetJSON("workspace", draftSessionKey, null)
+          await saveDraftSession(null)
         }
       }
     } catch (err) {

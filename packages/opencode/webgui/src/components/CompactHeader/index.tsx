@@ -15,6 +15,7 @@ import { sdk } from "../../lib/api/sdkClient"
 import { useToast } from "../../state/ToastContext"
 import { useTabStore } from "../../state/tabStore"
 import { ideBridge } from "../../lib/ideBridge"
+import { switchSessionWithTabRollback } from "../../state/switchSession"
 
 interface CompactHeaderProps {
   connectionState: ConnectionState
@@ -148,34 +149,46 @@ const CompactHeader = forwardRef<
     [dropdown.toggleDropdown],
   )
 
+  const switchWithRollback = useCallback(
+    async (sessionId: string, afterSuccess?: () => void, afterFailure?: () => void) => {
+      const ok = await switchSessionWithTabRollback({
+        sessionId,
+        previousSessionId: currentSession?.id ?? null,
+        previousActiveTab: tabStore.activeTab,
+        existed: tabStore.openTabs.includes(sessionId),
+        open: tabStore.openTab,
+        activate: tabStore.activateTab,
+        canActivate: (id) => tabStore.openTabs.includes(id),
+        onUnrecoverable: () => {
+          setCurrentSession(null)
+          onNewSession()
+        },
+        remove: tabStore.removeTab,
+        switchTo: switchSession,
+      })
+      if (ok) {
+        afterSuccess?.()
+        return true
+      }
+      afterFailure?.()
+      toast.showToast("切换会话失败", { variant: "error" })
+      return false
+    },
+    [currentSession?.id, onNewSession, setCurrentSession, switchSession, tabStore, toast],
+  )
+
   const handleSessionSelect = useCallback(
     async (sessionId: string) => {
-      const prev = tabStore.activeTab
-      const existed = tabStore.openTabs.includes(sessionId)
-      tabStore.openTab(sessionId)
-      await switchSession(sessionId)
-        .then(() => {
-          dropdown.closeDropdown()
-        })
-        .catch(() => {
-          if (!existed) tabStore.removeTab(sessionId)
-          if (prev && prev !== sessionId) tabStore.setActiveTab(prev)
-          toast.showToast("切换会话失败", { variant: "error" })
-        })
+      await switchWithRollback(sessionId, dropdown.closeDropdown)
     },
-    [dropdown, switchSession, tabStore, toast],
+    [dropdown.closeDropdown, switchWithRollback],
   )
 
   const handleTabActivate = useCallback(
     async (sessionId: string) => {
-      const prev = tabStore.activeTab
-      tabStore.setActiveTab(sessionId)
-      await switchSession(sessionId).catch(() => {
-        if (prev && prev !== sessionId) tabStore.setActiveTab(prev)
-        toast.showToast("切换会话失败", { variant: "error" })
-      })
+      await switchWithRollback(sessionId)
     },
-    [switchSession, tabStore, toast],
+    [switchWithRollback],
   )
 
   const handleTabClose = useCallback(
@@ -191,29 +204,32 @@ const CompactHeader = forwardRef<
             : openTabs[Math.min(idx, openTabs.length - 1)]
           : tabStore.activeTab
 
-      tabStore.closeTab(sessionId)
-
-      if (activeTab) {
-        await switchSession(activeTab).catch(() => {
-          toast.showToast("切换会话失败", { variant: "error" })
-        })
+      if (tabStore.activeTab !== sessionId) {
+        tabStore.closeTab(sessionId)
         return
       }
 
+      if (activeTab) {
+        const ok = await switchWithRollback(activeTab)
+        if (!ok) return
+        tabStore.closeTab(sessionId)
+        return
+      }
+
+      tabStore.closeTab(sessionId)
       setCurrentSession(null)
       onNewSession()
     },
-    [onNewSession, setCurrentSession, switchSession, tabStore, toast],
+    [onNewSession, setCurrentSession, switchWithRollback, tabStore],
   )
 
   const handleCloseOtherTabs = useCallback(
     async (sessionId: string) => {
+      const ok = await switchWithRollback(sessionId)
+      if (!ok) return
       tabStore.closeOtherTabs(sessionId)
-      await switchSession(sessionId).catch(() => {
-        toast.showToast("切换会话失败", { variant: "error" })
-      })
     },
-    [switchSession, tabStore, toast],
+    [switchWithRollback, tabStore],
   )
 
   const handleCloseTabsToRight = useCallback(
@@ -223,12 +239,13 @@ const CompactHeader = forwardRef<
       const openTabs = tabStore.openTabs.slice(0, idx + 1)
       const activeTab = openTabs.includes(tabStore.activeTab) ? tabStore.activeTab : sessionId
 
+      if (activeTab !== tabStore.activeTab) {
+        const ok = await switchWithRollback(activeTab)
+        if (!ok) return
+      }
       tabStore.closeTabsToRight(sessionId)
-      await switchSession(activeTab).catch(() => {
-        toast.showToast("切换会话失败", { variant: "error" })
-      })
     },
-    [switchSession, tabStore, toast],
+    [switchWithRollback, tabStore],
   )
 
   const handleTabDelete = useCallback(
@@ -304,14 +321,12 @@ const CompactHeader = forwardRef<
       if (currentSession?.id !== tabStore.activeTab && !restoring) {
         const target = tabStore.activeTab
         setRestoring(true)
-        void switchSession(target)
-          .catch(() => {
-            if (activeRef.current !== target) return
-            onNewSession()
-          })
-          .finally(() => {
-            setRestoring(false)
-          })
+        void switchWithRollback(target, undefined, () => {
+          if (activeRef.current !== target) return
+          onNewSession()
+        }).finally(() => {
+          setRestoring(false)
+        })
       }
       return
     }
@@ -325,7 +340,7 @@ const CompactHeader = forwardRef<
   }, [
     currentSession?.id,
     onNewSession,
-    switchSession,
+    switchWithRollback,
     tabStore.loaded,
     tabStore.openTabs,
     tabStore.activeTab,

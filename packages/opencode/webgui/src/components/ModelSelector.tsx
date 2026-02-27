@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { sdk } from "../lib/api/sdkClient"
 import type { Provider } from "@opencode-ai/sdk/client"
 import { useDropdown } from "../hooks/useDropdown"
+import { addRecentModel, loadModelPrefs, updateModelPrefs } from "../state/repo/modelPrefsRepo"
 
 interface ModelSelectorProps {
   selectedProviderId?: string
@@ -89,7 +90,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
     async function load() {
       setIsLoading(true)
       try {
-        const [provRes, modelRes] = await Promise.all([sdk.config.providers(), sdk.model.get()])
+        const [provRes, modelPrefs] = await Promise.all([sdk.config.providers(), loadModelPrefs()])
 
         if (!active) return
 
@@ -104,10 +105,8 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
           setDefaultIds(provRes.data.default)
         }
 
-        if (modelRes.data) {
-          setRecent(modelRes.data.recent.slice(0, MAX_RECENT))
-          setFavorite(modelRes.data.favorite)
-        }
+        setRecent(modelPrefs.recent.slice(0, MAX_RECENT))
+        setFavorite(modelPrefs.favorite)
       } catch (err) {
         if (active) console.error("[ModelSelector] Failed to load:", err)
       } finally {
@@ -140,8 +139,11 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
     if (deduped.length > MAX_RECENT) deduped.length = MAX_RECENT
     setRecent(deduped)
 
-    sdk.model
-      .update({ body: { recent: deduped } })
+    addRecentModel(entry)
+      .then((value) => {
+        setRecent(value.recent)
+        setFavorite(value.favorite)
+      })
       .catch((err) => console.error("[ModelSelector] Failed to update recent:", err))
 
     close()
@@ -155,8 +157,19 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
       : [{ providerID, modelID }, ...favorite]
     setFavorite(next)
 
-    sdk.model
-      .update({ body: { favorite: next } })
+    updateModelPrefs((value) => {
+      const active = value.favorite.some((f) => f.providerID === providerID && f.modelID === modelID)
+      return {
+        recent: value.recent,
+        favorite: active
+          ? value.favorite.filter((f) => f.providerID !== providerID || f.modelID !== modelID)
+          : [{ providerID, modelID }, ...value.favorite],
+      }
+    })
+      .then((value) => {
+        setRecent(value.recent)
+        setFavorite(value.favorite)
+      })
       .catch((err) => console.error("[ModelSelector] Failed to update favorites:", err))
   }
 

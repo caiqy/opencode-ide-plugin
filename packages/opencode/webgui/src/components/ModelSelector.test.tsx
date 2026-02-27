@@ -7,11 +7,19 @@ vi.mock("../lib/api/sdkClient", () => ({
     config: {
       providers: vi.fn(),
     },
-    model: {
-      get: vi.fn(),
-      update: vi.fn(),
-    },
   },
+}))
+
+const repo = vi.hoisted(() => ({
+  loadModelPrefs: vi.fn(),
+  updateModelPrefs: vi.fn(),
+  addRecentModel: vi.fn(),
+}))
+
+vi.mock("../state/repo/modelPrefsRepo", () => ({
+  loadModelPrefs: (...args: unknown[]) => repo.loadModelPrefs(...args),
+  updateModelPrefs: (...args: unknown[]) => repo.updateModelPrefs(...args),
+  addRecentModel: (...args: unknown[]) => repo.addRecentModel(...args),
 }))
 
 vi.mock("../lib/ideBridge", () => ({
@@ -46,23 +54,18 @@ describe("ModelSelector favorites", () => {
       },
       error: null,
     })
-    ;(sdk.model.get as any).mockResolvedValue({
-      data: {
-        recent: [],
-        favorite: [],
-      },
-      error: null,
+    repo.loadModelPrefs.mockResolvedValue({
+      recent: [],
+      favorite: [],
     })
-    ;(sdk.model.update as any).mockResolvedValue({ data: { recent: [], favorite: [] }, error: null })
+    repo.updateModelPrefs.mockResolvedValue({ recent: [], favorite: [] })
+    repo.addRecentModel.mockResolvedValue({ recent: [], favorite: [] })
   })
 
   it("在下拉顶部展示收藏分组（来自 sdk.model）", async () => {
-    ;(sdk.model.get as any).mockResolvedValue({
-      data: {
-        recent: [],
-        favorite: [{ providerID: "openai", modelID: "gpt-4.1" }],
-      },
-      error: null,
+    repo.loadModelPrefs.mockResolvedValue({
+      recent: [],
+      favorite: [{ providerID: "openai", modelID: "gpt-4.1" }],
     })
 
     render(<ModelSelector onSelect={() => {}} />)
@@ -110,11 +113,7 @@ describe("ModelSelector favorites", () => {
     expect(onSelect).not.toHaveBeenCalled()
 
     await waitFor(() => {
-      expect(sdk.model.update).toHaveBeenCalledWith({
-        body: {
-          favorite: [{ providerID: "openai", modelID: "gpt-4.1" }],
-        },
-      })
+      expect(repo.updateModelPrefs).toHaveBeenCalledTimes(1)
     })
     expect(setSpy).not.toHaveBeenCalled()
   })

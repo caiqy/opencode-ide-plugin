@@ -20,11 +20,11 @@ import { initKeyboardHandler, destroyKeyboardHandler } from "./lib/keyboardHandl
 import { useSessionActivation } from "./state/useSessionActivation"
 import { useTabStore } from "./state/tabStore"
 import { sdk } from "./lib/api/sdkClient"
-import { scopedStateGetJSON, scopedStateSetJSON, setGlobalStateWriteErrorReporter } from "./state/globalState"
+import { setScopedStateWriteErrorReporter } from "./state/scopedStorage"
+import { loadDraftSession, saveDraftSession } from "./state/repo/draftRepo"
+import { switchSessionWithTabRollback } from "./state/switchSession"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
-
-const draftSessionKey = "opencode:webgui:workspace:draft_session:v1"
 
 export async function prepareSession(input: {
   draft: string | null
@@ -83,14 +83,14 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   }>(null)
 
   useEffect(() => {
-    setGlobalStateWriteErrorReporter((input) => {
+    setScopedStateWriteErrorReporter((input) => {
       showToast(input.message, {
         variant: "warning",
         duration: 2500,
       })
     })
     return () => {
-      setGlobalStateWriteErrorReporter(null)
+      setScopedStateWriteErrorReporter(null)
     }
   }, [showToast])
 
@@ -108,7 +108,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     creating.current = true
     void prepareSession({
       draft: null,
-      restore: async () => scopedStateGetJSON<string | null>("workspace", draftSessionKey, null),
+      restore: loadDraftSession,
       reusable: async (id) => {
         const session = await sdk.session.get({ path: { id } })
         if (!session.data) return false
@@ -120,7 +120,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
       open: tabStore.openTab,
       switchTo: switchSession,
       setDraft: (id) => {
-        void scopedStateSetJSON("workspace", draftSessionKey, id)
+        void saveDraftSession(id)
       },
       fail: () => {
         showToast("创建会话失败", { variant: "error" })
@@ -133,6 +133,27 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   const handleToggleSessionList = useCallback(() => {
     compactHeaderRef.current?.toggleSessionDropdown()
   }, [])
+
+  const handleSwitchSession = useCallback(
+    async (sessionId: string) => {
+      const ok = await switchSessionWithTabRollback({
+        sessionId,
+        previousSessionId: currentSession?.id ?? null,
+        previousActiveTab: tabStore.activeTab,
+        existed: tabStore.openTabs.includes(sessionId),
+        open: tabStore.openTab,
+        activate: tabStore.activateTab,
+        canActivate: (id) => tabStore.openTabs.includes(id),
+        onUnrecoverable: handleNewSession,
+        remove: tabStore.removeTab,
+        switchTo: switchSession,
+      })
+      if (ok) return true
+      showToast("切换会话失败", { variant: "error" })
+      return false
+    },
+    [currentSession?.id, handleNewSession, showToast, switchSession, tabStore],
+  )
 
   // Keyboard shortcuts handlers
   const handleCloseModal = useCallback(() => {
@@ -325,7 +346,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
         onClose={() => setIsCommandPaletteOpen(false)}
         sessions={sessions}
         onNewSession={handleNewSession}
-        onSwitchSession={switchSession}
+        onSwitchSession={handleSwitchSession}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onShowHelp={() => setIsHelpOpen(true)}
       />

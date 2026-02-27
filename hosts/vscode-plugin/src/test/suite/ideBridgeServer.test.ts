@@ -211,7 +211,16 @@ suite("IdeBridgeServer scoped storage", () => {
   setup(async () => {
     getCalls = []
     setCalls = []
+    const global = new Map<string, string>()
+    const workspace = new Map<string, string>()
     const mem = new Map<string, string>()
+
+    const pick = (scope: unknown) => {
+      if (scope === "global") return global
+      if (scope === "workspace") return workspace
+      if (scope === "mem") return mem
+      return null
+    }
 
     const handlers: SessionHandlers = {
       openFile: async () => {},
@@ -222,17 +231,19 @@ suite("IdeBridgeServer scoped storage", () => {
         getCalls.push(args)
         const scope = args[0]
         const keys = Array.isArray(args[1]) ? args[1] : []
-        if (scope !== "mem") return {}
-        return Object.fromEntries(keys.map((k: string) => [k, mem.get(k)]))
+        const store = pick(scope)
+        if (!store) return {}
+        return Object.fromEntries(keys.map((k: string) => [k, store.get(k)]))
       }) as any,
       storageSet: (async (...args: any[]) => {
         setCalls.push(args)
         const scope = args[0]
         const key = args[1]
         const value = args[2]
-        if (scope !== "mem") return
+        const store = pick(scope)
+        if (!store) return
         if (typeof key !== "string" || typeof value !== "string") return
-        mem.set(key, value)
+        store.set(key, value)
       }) as any,
     }
 
@@ -246,31 +257,75 @@ suite("IdeBridgeServer scoped storage", () => {
     bridgeServer.removeSession(sessionId)
   })
 
-  test("仅支持 scoped storage，旧 ui/kv 路由返回错误", async () => {
-    const key = "opencode:webgui:mem:runtime:v1"
+  test("仅支持 scoped storage，旧 ui/kv/model 路由返回错误且三域路由正确", async () => {
+    const memKey = "opencode:webgui:mem:runtime:v1"
+    const globalKey = "opencode:webgui:global:theme:v1"
+    const workspaceKey = "opencode:webgui:workspace:tabs:v1"
 
     const setRes = await requestReply(baseUrl, token, {
       type: "storageSet",
-      payload: { scope: "mem", key, value: "{}" },
+      payload: { scope: "mem", key: memKey, value: "{}" },
     })
     assert.strictEqual(setRes.ok, true)
 
     const getRes = await requestReply(baseUrl, token, {
       type: "storageGet",
-      payload: { scope: "mem", keys: [key] },
+      payload: { scope: "mem", keys: [memKey] },
     })
     assert.strictEqual(getRes.ok, true)
-    assert.strictEqual(getRes.result?.[key], "{}")
+    assert.strictEqual(getRes.result?.[memKey], "{}")
+
+    const setGlobalRes = await requestReply(baseUrl, token, {
+      type: "storageSet",
+      payload: { scope: "global", key: globalKey, value: '"dark"' },
+    })
+    assert.strictEqual(setGlobalRes.ok, true)
+
+    const getGlobalRes = await requestReply(baseUrl, token, {
+      type: "storageGet",
+      payload: { scope: "global", keys: [globalKey] },
+    })
+    assert.strictEqual(getGlobalRes.ok, true)
+    assert.strictEqual(getGlobalRes.result?.[globalKey], '"dark"')
+
+    const setWorkspaceRes = await requestReply(baseUrl, token, {
+      type: "storageSet",
+      payload: { scope: "workspace", key: workspaceKey, value: "{}" },
+    })
+    assert.strictEqual(setWorkspaceRes.ok, true)
+
+    const getWorkspaceRes = await requestReply(baseUrl, token, {
+      type: "storageGet",
+      payload: { scope: "workspace", keys: [workspaceKey] },
+    })
+    assert.strictEqual(getWorkspaceRes.ok, true)
+    assert.strictEqual(getWorkspaceRes.result?.[workspaceKey], "{}")
+
+    assert.strictEqual(setCalls.length >= 3, true)
+    assert.strictEqual(getCalls.length >= 3, true)
     assert.strictEqual(setCalls[0]?.[0], "mem")
+    assert.strictEqual(setCalls[1]?.[0], "global")
+    assert.strictEqual(setCalls[2]?.[0], "workspace")
     assert.strictEqual(getCalls[0]?.[0], "mem")
+    assert.strictEqual(getCalls[1]?.[0], "global")
+    assert.strictEqual(getCalls[2]?.[0], "workspace")
 
     const uiRes = await requestReply(baseUrl, token, { type: "uiGetState", payload: {} })
     assert.strictEqual(uiRes.ok, false)
 
+    const uiSetRes = await requestReply(baseUrl, token, { type: "uiSetState", payload: {} })
+    assert.strictEqual(uiSetRes.ok, false)
+
     const kvRes = await requestReply(baseUrl, token, { type: "kv.get", payload: {} })
     assert.strictEqual(kvRes.ok, false)
 
+    const kvUpdateRes = await requestReply(baseUrl, token, { type: "kv.update", payload: {} })
+    assert.strictEqual(kvUpdateRes.ok, false)
+
     const modelRes = await requestReply(baseUrl, token, { type: "model.get", payload: {} })
     assert.strictEqual(modelRes.ok, false)
+
+    const modelUpdateRes = await requestReply(baseUrl, token, { type: "model.update", payload: {} })
+    assert.strictEqual(modelUpdateRes.ok, false)
   })
 })

@@ -6,7 +6,7 @@ interface CommandPaletteProps {
   onClose: () => void
   sessions: Session[]
   onNewSession: () => void
-  onSwitchSession: (sessionId: string) => void
+  onSwitchSession: (sessionId: string) => void | Promise<boolean | void>
   onOpenSettings: () => void
   onShowHelp: () => void
 }
@@ -77,8 +77,12 @@ export function CommandPalette({
       description: "切换到会话",
       icon: "💬",
       action: () => {
-        onSwitchSession(session.id)
-        onClose()
+        void Promise.resolve(onSwitchSession(session.id))
+          .then((ok) => {
+            if (ok === false) return
+            onClose()
+          })
+          .catch(() => {})
       },
       category: "Session" as const,
     })),
