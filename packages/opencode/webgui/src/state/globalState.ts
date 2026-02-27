@@ -1,23 +1,29 @@
 import { ideBridge } from "../lib/ideBridge"
 
-export type GlobalStateWriteError = "host_write_failed"
+export type StorageScope = "global" | "workspace" | "mem"
 
-export type GlobalStateWriteResult =
+export type ScopedStateWriteError = "host_write_failed"
+
+export type ScopedStateWriteResult =
   | {
       ok: true
     }
   | {
       ok: false
-      error: GlobalStateWriteError
+      error: ScopedStateWriteError
     }
 
-const mem = new Map<string, string>()
+const cache = {
+  global: new Map<string, string>(),
+  workspace: new Map<string, string>(),
+  mem: new Map<string, string>(),
+}
 const seen = new Map<string, number>()
 const delay = 5000
 
-let report: ((input: { key: string; error: GlobalStateWriteError; message: string }) => void) | null = null
+let report: ((input: { key: string; error: ScopedStateWriteError; message: string }) => void) | null = null
 
-function warn(key: string, error: GlobalStateWriteError) {
+function warn(key: string, error: ScopedStateWriteError) {
   const id = `${key}:${error}`
   const now = Date.now()
   const last = seen.get(id) ?? 0
@@ -27,23 +33,26 @@ function warn(key: string, error: GlobalStateWriteError) {
 }
 
 export function setGlobalStateWriteErrorReporter(
-  fn: ((input: { key: string; error: GlobalStateWriteError; message: string }) => void) | null,
+  fn: ((input: { key: string; error: ScopedStateWriteError; message: string }) => void) | null,
 ) {
   report = fn
 }
 
 export function resetGlobalStateForTest() {
-  mem.clear()
+  cache.global.clear()
+  cache.workspace.clear()
+  cache.mem.clear()
   seen.clear()
   report = null
 }
 
-export async function globalStateGet(keys: string[]) {
+export async function scopedStateGet(scope: StorageScope, keys: string[]) {
+  const mem = cache[scope]
   if (!ideBridge.isInstalled()) {
     return Object.fromEntries(keys.map((key) => [key, mem.get(key)]))
   }
 
-  const host = await ideBridge.storageGet(keys)
+  const host = await ideBridge.storageGet(scope, keys)
   if (!host) {
     return Object.fromEntries(keys.map((key) => [key, mem.get(key)]))
   }
@@ -57,11 +66,12 @@ export async function globalStateGet(keys: string[]) {
   return Object.fromEntries(keys.map((key) => [key, host[key] ?? mem.get(key)]))
 }
 
-export async function globalStateSet(key: string, value: string): Promise<GlobalStateWriteResult> {
+export async function scopedStateSet(scope: StorageScope, key: string, value: string): Promise<ScopedStateWriteResult> {
+  const mem = cache[scope]
   mem.set(key, value)
   if (!ideBridge.isInstalled()) return { ok: true }
 
-  const ok = await ideBridge.storageSet(key, value)
+  const ok = await ideBridge.storageSet(scope, key, value)
   if (ok) return { ok: true }
 
   warn(key, "host_write_failed")
@@ -71,8 +81,8 @@ export async function globalStateSet(key: string, value: string): Promise<Global
   }
 }
 
-export async function globalStateGetJSON<T>(key: string, fallback: T): Promise<T> {
-  const raw = (await globalStateGet([key]))[key]
+export async function scopedStateGetJSON<T>(scope: StorageScope, key: string, fallback: T): Promise<T> {
+  const raw = (await scopedStateGet(scope, [key]))[key]
   if (!raw) return fallback
   try {
     return JSON.parse(raw) as T
@@ -81,6 +91,29 @@ export async function globalStateGetJSON<T>(key: string, fallback: T): Promise<T
   }
 }
 
+export async function scopedStateSetJSON(
+  scope: StorageScope,
+  key: string,
+  value: unknown,
+): Promise<ScopedStateWriteResult> {
+  return scopedStateSet(scope, key, JSON.stringify(value))
+}
+
+export type GlobalStateWriteError = ScopedStateWriteError
+export type GlobalStateWriteResult = ScopedStateWriteResult
+
+export async function globalStateGet(keys: string[]) {
+  return scopedStateGet("global", keys)
+}
+
+export async function globalStateSet(key: string, value: string): Promise<GlobalStateWriteResult> {
+  return scopedStateSet("global", key, value)
+}
+
+export async function globalStateGetJSON<T>(key: string, fallback: T): Promise<T> {
+  return scopedStateGetJSON("global", key, fallback)
+}
+
 export async function globalStateSetJSON(key: string, value: unknown): Promise<GlobalStateWriteResult> {
-  return globalStateSet(key, JSON.stringify(value))
+  return scopedStateSetJSON("global", key, value)
 }

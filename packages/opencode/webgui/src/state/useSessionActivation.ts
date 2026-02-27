@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react"
 import { selectionFromMessages } from "../lib/selection/selectionFromMessages"
 import { useMessages } from "./MessagesContext"
 import { useSession } from "./SessionContext"
-import { uiBridgeUpdate } from "./uiBridgeState"
 
 export function useSessionActivation() {
   const { currentSession, restoreSelections } = useSession()
@@ -20,7 +19,6 @@ export function useSessionActivation() {
     if (lastActivatedSessionIDRef.current === sessionID) return
 
     lastActivatedSessionIDRef.current = sessionID
-    uiBridgeUpdate({ sessionID })
 
     const token = ++activationTokenRef.current
 

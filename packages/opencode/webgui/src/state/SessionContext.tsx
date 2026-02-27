@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, type React
 import { sdk } from "../lib/api/sdkClient"
 import type { Session, FileDiff, Provider } from "@opencode-ai/sdk/client"
 import { eventEmitter } from "../lib/api/events"
-import { loadLastSelectionFromHost, saveLastSelectionToHost } from "./lastSelectionStore"
+import { scopedStateGetJSON, scopedStateSetJSON } from "./globalState"
 
 /**
  * Session context state
@@ -87,6 +87,16 @@ interface SessionContextState {
 }
 
 const SessionContext = createContext<SessionContextState | null>(null)
+const selectionKey = "opencode:webgui:workspace:last_selection:v1"
+
+type LastSelection = {
+  agent: string | null
+  providerId: string | null
+  modelId: string | null
+  variant: string | null
+  updatedAt: number
+  agentModelMap: Record<string, { provider_id: string; model_id: string }>
+}
 
 function hasModel(providers: Provider[], providerId: string | undefined, modelId: string | undefined): boolean {
   if (!providerId || !modelId) return false
@@ -119,6 +129,62 @@ function modelVariants(
   const model = (provider.models as Record<string, { variants?: Record<string, unknown> } | undefined>)[modelId]
   if (!model?.variants) return undefined
   return Object.keys(model.variants)
+}
+
+function parseAgentModelMap(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {} as Record<string, { provider_id: string; model_id: string }>
+  }
+  return Object.fromEntries(
+    Object.entries(input).flatMap(([key, value]) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return []
+      const provider = (value as { provider_id?: unknown }).provider_id
+      const model = (value as { model_id?: unknown }).model_id
+      if (typeof provider !== "string" || typeof model !== "string") return []
+      return [[key, { provider_id: provider, model_id: model }]]
+    }),
+  )
+}
+
+async function loadLastSelectionFromHost(): Promise<LastSelection | null> {
+  const parsed = await scopedStateGetJSON<unknown>("workspace", selectionKey, null)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null
+  return {
+    agent: typeof (parsed as { agent?: unknown }).agent === "string" ? (parsed as { agent: string }).agent : null,
+    providerId:
+      typeof (parsed as { provider_id?: unknown }).provider_id === "string"
+        ? (parsed as { provider_id: string }).provider_id
+        : null,
+    modelId:
+      typeof (parsed as { model_id?: unknown }).model_id === "string"
+        ? (parsed as { model_id: string }).model_id
+        : null,
+    variant:
+      typeof (parsed as { variant?: unknown }).variant === "string" ? (parsed as { variant: string }).variant : null,
+    updatedAt:
+      typeof (parsed as { updated_at?: unknown }).updated_at === "number"
+        ? (parsed as { updated_at: number }).updated_at
+        : 0,
+    agentModelMap: parseAgentModelMap((parsed as { agent_model_map?: unknown }).agent_model_map),
+  }
+}
+
+async function saveLastSelectionToHost(value: {
+  agent: string | null
+  providerId: string | null
+  modelId: string | null
+  variant: string | null
+  updatedAt: number
+  agentModelMap?: Record<string, { provider_id: string; model_id: string }>
+}): Promise<void> {
+  await scopedStateSetJSON("workspace", selectionKey, {
+    agent: value.agent,
+    provider_id: value.providerId,
+    model_id: value.modelId,
+    variant: value.variant,
+    agent_model_map: value.agentModelMap ?? {},
+    updated_at: value.updatedAt,
+  })
 }
 
 /**
@@ -271,11 +337,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
           setAgentModelMap(kv.webgui_agent_model)
         }
 
-        // Load variant map from model.json
-        if (modelPrefs?.variant) {
-          setVariantMap(modelPrefs.variant as Record<string, string>)
-        }
-
         // Set agent (host > kv > default)
         const agent = hostSelection?.agent || kv.webgui_agent || "build"
         setSelectedAgentState(agent)
@@ -334,12 +395,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
           setSelectedProviderId(providerId)
           setSelectedModelId(modelId)
 
-          // Priority for initial variant: host > model.json map
-          let initialVariant =
-            hostSelection?.variant ||
-            (modelPrefs?.variant
-              ? (modelPrefs.variant as Record<string, string>)[`${providerId}/${modelId}`]
-              : undefined)
+          // Priority for initial variant: workspace selection
+          let initialVariant = hostSelection?.variant ?? undefined
 
           // Validate variant if model variants are present
           let didFallbackVariant = false
@@ -371,14 +428,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
     if (!selectionReadyForHostSync) return
 
     void saveLastSelectionToHost({
-      v: 1,
       agent: selectedAgent ?? null,
       providerId: selectedProviderId ?? null,
       modelId: selectedModelId ?? null,
       variant: selectedVariant ?? null,
       updatedAt: Date.now(),
+      agentModelMap: agentModelMap,
     })
-  }, [selectionReadyForHostSync, selectedAgent, selectedProviderId, selectedModelId, selectedVariant])
+  }, [selectionReadyForHostSync, selectedAgent, selectedProviderId, selectedModelId, selectedVariant, agentModelMap])
 
   /**
    * Set selected model and persist to server
@@ -458,17 +515,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
           delete updatedVariantMap[modelKey]
         }
         setVariantMap(updatedVariantMap)
-
-        // Persist variant to model.json (shared with CLI)
-        try {
-          await sdk.model.update({
-            body: {
-              variant: updatedVariantMap,
-            },
-          })
-        } catch (err) {
-          console.error("[SessionContext] Failed to save variant preference:", err)
-        }
       }
     },
     [selectedProviderId, selectedModelId, variantMap],

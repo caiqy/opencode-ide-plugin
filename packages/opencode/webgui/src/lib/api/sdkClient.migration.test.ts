@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { sdk } from "./sdkClient"
-import { resetGlobalStateForTest } from "../../state/globalState"
+import { resetGlobalStateForTest, scopedStateGetJSON } from "../../state/globalState"
 
 describe("sdk migration baseline", () => {
   beforeEach(() => {
@@ -24,7 +24,6 @@ describe("sdk migration baseline", () => {
       body: {
         webgui_provider: "openai",
         webgui_model: "gpt-4.1",
-        webgui_message_parts_auto_expand: false,
       },
     })
     await sdk.kv.update({
@@ -39,7 +38,6 @@ describe("sdk migration baseline", () => {
       webgui_provider: "openai",
       webgui_model: "gpt-4.1",
       webgui_agent: "plan",
-      webgui_message_parts_auto_expand: false,
     })
   })
 
@@ -63,7 +61,13 @@ describe("sdk migration baseline", () => {
     const r = await sdk.kv.get()
 
     expect(r.error).toBeNull()
-    expect(r.data).toEqual({})
+    expect(r.data).toEqual({
+      webgui_agent: null,
+      webgui_provider: null,
+      webgui_model: null,
+      webgui_variant: null,
+      webgui_agent_model: {},
+    })
   })
 
   it("model.get does not migrate legacy favorites key", async () => {
@@ -83,6 +87,24 @@ describe("sdk migration baseline", () => {
     })
 
     expect(localStorage.getItem("opencode_favorite_models_v1")).toBeNull()
+  })
+
+  it("global:model 仅 recent/favorite，variant 仅存 workspace:last_selection", async () => {
+    await sdk.kv.update({
+      body: {
+        webgui_variant: "reasoning",
+      },
+    })
+
+    const model = await sdk.model.get()
+    expect(model.data).toEqual({ recent: [], favorite: [] })
+
+    const selection = await scopedStateGetJSON<{ variant?: string | null }>(
+      "workspace",
+      "opencode:webgui:workspace:last_selection:v1",
+      {},
+    )
+    expect(selection.variant).toBe("reasoning")
   })
 
   it("sdk.model/sdk.kv 关键链路不触发 localStorage API", async () => {

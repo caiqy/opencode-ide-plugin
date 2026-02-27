@@ -31,6 +31,59 @@ function post(url: string, body: object): Promise<{ status: number }> {
   })
 }
 
+function requestReply(baseUrl: string, token: string, message: { type: string; payload?: Record<string, unknown> }) {
+  return new Promise<any>((resolve, reject) => {
+    const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const sse = http.get(`${baseUrl}/events?token=${token}`)
+    const timer = setTimeout(() => {
+      sse.destroy()
+      reject(new Error(`timeout waiting reply: ${message.type}`))
+    }, 2000)
+
+    function done(fn: () => void) {
+      clearTimeout(timer)
+      sse.destroy()
+      fn()
+    }
+
+    sse.on("response", (res) => {
+      res.setEncoding("utf8")
+      let buf = ""
+      res.on("data", (chunk: string) => {
+        buf += chunk
+        while (true) {
+          const idx = buf.indexOf("\n\n")
+          if (idx < 0) break
+          const event = buf.slice(0, idx)
+          buf = buf.slice(idx + 2)
+          const line = event.split("\n").find((item) => item.startsWith("data:"))
+          if (!line) continue
+          try {
+            const msg = JSON.parse(line.slice(5).trim())
+            if (msg.replyTo !== id) continue
+            done(() => resolve(msg))
+            return
+          } catch {
+            continue
+          }
+        }
+      })
+
+      void post(`${baseUrl}/send?token=${token}`, {
+        id,
+        type: message.type,
+        payload: message.payload,
+      }).catch((err) => {
+        done(() => reject(err))
+      })
+    })
+
+    sse.on("error", (err) => {
+      done(() => reject(err))
+    })
+  })
+}
+
 suite("IdeBridgeServer ensureAndOpenFile", () => {
   let baseUrl: string
   let token: string
@@ -145,5 +198,79 @@ suite("IdeBridgeServer ensureAndOpenFile", () => {
     assert.strictEqual(fs.readFileSync(target, "utf-8"), "hello")
     assert.strictEqual(openFileCalls.length, 1)
     assert.strictEqual(openFileCalls[0], target)
+  })
+})
+
+suite("IdeBridgeServer scoped storage", () => {
+  let baseUrl: string
+  let token: string
+  let sessionId: string
+  let getCalls: any[]
+  let setCalls: any[]
+
+  setup(async () => {
+    getCalls = []
+    setCalls = []
+    const mem = new Map<string, string>()
+
+    const handlers: SessionHandlers = {
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+      storageGet: (async (...args: any[]) => {
+        getCalls.push(args)
+        const scope = args[0]
+        const keys = Array.isArray(args[1]) ? args[1] : []
+        if (scope !== "mem") return {}
+        return Object.fromEntries(keys.map((k: string) => [k, mem.get(k)]))
+      }) as any,
+      storageSet: (async (...args: any[]) => {
+        setCalls.push(args)
+        const scope = args[0]
+        const key = args[1]
+        const value = args[2]
+        if (scope !== "mem") return
+        if (typeof key !== "string" || typeof value !== "string") return
+        mem.set(key, value)
+      }) as any,
+    }
+
+    const session = await bridgeServer.createSession(handlers)
+    baseUrl = session.baseUrl
+    token = session.token
+    sessionId = session.sessionId
+  })
+
+  teardown(() => {
+    bridgeServer.removeSession(sessionId)
+  })
+
+  test("仅支持 scoped storage，旧 ui/kv 路由返回错误", async () => {
+    const key = "opencode:webgui:mem:runtime:v1"
+
+    const setRes = await requestReply(baseUrl, token, {
+      type: "storageSet",
+      payload: { scope: "mem", key, value: "{}" },
+    })
+    assert.strictEqual(setRes.ok, true)
+
+    const getRes = await requestReply(baseUrl, token, {
+      type: "storageGet",
+      payload: { scope: "mem", keys: [key] },
+    })
+    assert.strictEqual(getRes.ok, true)
+    assert.strictEqual(getRes.result?.[key], "{}")
+    assert.strictEqual(setCalls[0]?.[0], "mem")
+    assert.strictEqual(getCalls[0]?.[0], "mem")
+
+    const uiRes = await requestReply(baseUrl, token, { type: "uiGetState", payload: {} })
+    assert.strictEqual(uiRes.ok, false)
+
+    const kvRes = await requestReply(baseUrl, token, { type: "kv.get", payload: {} })
+    assert.strictEqual(kvRes.ok, false)
+
+    const modelRes = await requestReply(baseUrl, token, { type: "model.get", payload: {} })
+    assert.strictEqual(modelRes.ok, false)
   })
 })

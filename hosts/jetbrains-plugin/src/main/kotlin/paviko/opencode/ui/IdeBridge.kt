@@ -1,8 +1,6 @@
 package paviko.opencode.ui
 
 import com.google.gson.Gson
-import com.google.gson.JsonArray
-import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.intellij.ide.BrowserUtil
 import com.intellij.ide.util.PropertiesComponent
@@ -31,7 +29,7 @@ data class Session(
     val token: String,
     val project: Project,
     val sseClients: MutableSet<HttpExchange> = Collections.synchronizedSet(mutableSetOf()),
-    var uiState: JsonElement? = null
+    val mem: MutableMap<String, String> = ConcurrentHashMap()
 )
 
 data class SessionInfo(val baseUrl: String, val token: String, val sessionId: String)
@@ -330,74 +328,6 @@ object IdeBridge {
                         replyError(session, id, "Missing path")
                     }
                 }
-                "kv.get" -> {
-                    val file = File(statePath, "kv.json")
-                    val data = try {
-                        if (file.exists()) gson.fromJson(file.readText(), JsonObject::class.java) ?: JsonObject()
-                        else JsonObject()
-                    } catch (_: Throwable) { JsonObject() }
-                    replyWithPayload(session, id, data)
-                }
-
-                "kv.update" -> {
-                    val file = File(statePath, "kv.json")
-                    val existing = try {
-                        if (file.exists()) gson.fromJson(file.readText(), JsonObject::class.java) ?: JsonObject()
-                        else JsonObject()
-                    } catch (_: Throwable) { JsonObject() }
-                    payload?.entrySet()?.forEach { (k, v) -> existing.add(k, v) }
-                    statePath.mkdirs()
-                    file.writeText(gson.toJson(existing))
-                    replyWithPayload(session, id, existing)
-                }
-
-                "model.get" -> {
-                    val file = File(statePath, "model.json")
-                    val data = try {
-                        if (file.exists()) {
-                            val raw = gson.fromJson(file.readText(), JsonObject::class.java) ?: JsonObject()
-                            JsonObject().apply {
-                                add("recent", if (raw.has("recent") && raw.get("recent").isJsonArray) raw.getAsJsonArray("recent") else JsonArray())
-                                add("favorite", if (raw.has("favorite") && raw.get("favorite").isJsonArray) raw.getAsJsonArray("favorite") else JsonArray())
-                                add("variant", if (raw.has("variant") && raw.get("variant").isJsonObject) raw.getAsJsonObject("variant") else JsonObject())
-                            }
-                        } else {
-                            JsonObject().apply {
-                                add("recent", JsonArray())
-                                add("favorite", JsonArray())
-                                add("variant", JsonObject())
-                            }
-                        }
-                    } catch (_: Throwable) {
-                        JsonObject().apply {
-                            add("recent", JsonArray())
-                            add("favorite", JsonArray())
-                            add("variant", JsonObject())
-                        }
-                    }
-                    replyWithPayload(session, id, data)
-                }
-
-                "model.update" -> {
-                    val file = File(statePath, "model.json")
-                    val existing = try {
-                        if (file.exists()) gson.fromJson(file.readText(), JsonObject::class.java) ?: JsonObject()
-                        else JsonObject()
-                    } catch (_: Throwable) { JsonObject() }
-                    if (!existing.has("recent") || !existing.get("recent").isJsonArray) existing.add("recent", JsonArray())
-                    if (!existing.has("favorite") || !existing.get("favorite").isJsonArray) existing.add("favorite", JsonArray())
-                    if (!existing.has("variant") || !existing.get("variant").isJsonObject) existing.add("variant", JsonObject())
-                    if (payload?.has("recent") == true) existing.add("recent", payload.get("recent"))
-                    if (payload?.has("favorite") == true) existing.add("favorite", payload.get("favorite"))
-                    if (payload?.has("variant") == true) {
-                        val current = existing.getAsJsonObject("variant")
-                        payload.getAsJsonObject("variant").entrySet().forEach { (k, v) -> current.add(k, v) }
-                    }
-                    statePath.mkdirs()
-                    file.writeText(gson.toJson(existing))
-                    replyWithPayload(session, id, existing)
-                }
-
                 "clipboardWrite" -> {
                     val text = payload?.get("text")?.asString
                     if (text != null) {
@@ -410,46 +340,53 @@ object IdeBridge {
                 }
 
                 "storageGet" -> {
-                    val keys = payload?.getAsJsonArray("keys")
-                    val result = JsonObject()
-                    keys?.forEach { k ->
-                        val key = k.asString
-                        val value = PropertiesComponent.getInstance().getValue("opencode.$key")
-                        if (value != null) result.addProperty(key, value)
-                    }
-                    if (id != null) {
-                        broadcastSSE(session, gson.toJson(JsonObject().apply {
-                            addProperty("replyTo", id)
-                            addProperty("ok", true)
-                            add("result", result)
-                            addProperty("timestamp", System.currentTimeMillis())
-                        }))
+                    val scope = payload?.get("scope")?.asString
+                    if (scope != "global" && scope != "workspace" && scope != "mem") {
+                        replyError(session, id, "Invalid scope")
+                    } else {
+                        val keys = payload.getAsJsonArray("keys")
+                        val result = JsonObject()
+                        keys?.forEach { k ->
+                            val key = k.asString
+                            val value = when (scope) {
+                                "global" -> PropertiesComponent.getInstance().getValue(key)
+                                "workspace" -> PropertiesComponent.getInstance(session.project).getValue(key)
+                                else -> session.mem[key]
+                            }
+                            if (value != null) result.addProperty(key, value)
+                        }
+                        if (id != null) {
+                            broadcastSSE(session, gson.toJson(JsonObject().apply {
+                                addProperty("replyTo", id)
+                                addProperty("ok", true)
+                                add("result", result)
+                                addProperty("timestamp", System.currentTimeMillis())
+                            }))
+                        }
                     }
                 }
 
                 "storageSet" -> {
-                    val key = payload?.get("key")?.asString
-                    val value = payload?.get("value")?.asString
-                    if (key != null && value != null) {
-                        PropertiesComponent.getInstance().setValue("opencode.$key", value)
-                        replyOk(session, id)
+                    val scope = payload?.get("scope")?.asString
+                    if (scope != "global" && scope != "workspace" && scope != "mem") {
+                        replyError(session, id, "Invalid scope")
                     } else {
-                        replyError(session, id, "Missing key or value")
+                        val key = payload.get("key")?.asString
+                        val value = payload.get("value")?.asString
+                        if (key != null && value != null) {
+                            when (scope) {
+                                "global" -> PropertiesComponent.getInstance().setValue(key, value)
+                                "workspace" -> PropertiesComponent.getInstance(session.project).setValue(key, value)
+                                else -> session.mem[key] = value
+                            }
+                            replyOk(session, id)
+                        } else {
+                            replyError(session, id, "Missing key or value")
+                        }
                     }
                 }
 
-                "uiGetState" -> {
-                    replyWithPayload(session, id, JsonObject().apply {
-                        add("state", gson.toJsonTree(session.uiState))
-                    })
-                }
-
-                "uiSetState" -> {
-                    session.uiState = payload?.get("state")
-                    replyOk(session, id)
-                }
-
-                else -> replyError(session, id, "Unknown type: $type")
+                else -> replyError(session, id, "unsupported message type")
             }
 
             exchange.sendResponseHeaders(204, -1)
@@ -458,23 +395,6 @@ object IdeBridge {
             exchange.sendResponseHeaders(400, -1)
         }
         exchange.close()
-    }
-
-    private val statePath: File
-        get() = File(
-            System.getenv("XDG_STATE_HOME") ?: "${System.getProperty("user.home")}/.local/state",
-            "opencode"
-        )
-
-    private fun replyWithPayload(session: Session, id: String?, payload: Any) {
-        if (id == null) return
-        val msg = JsonObject().apply {
-            addProperty("replyTo", id)
-            addProperty("ok", true)
-            add("payload", gson.toJsonTree(payload))
-            addProperty("timestamp", System.currentTimeMillis())
-        }
-        broadcastSSE(session, gson.toJson(msg))
     }
 
     private fun replyOk(session: Session, id: String?) {

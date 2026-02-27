@@ -8,6 +8,8 @@ type Message = {
   error?: string
 }
 
+export type StorageScope = "global" | "workspace" | "mem"
+
 type Handler = (message: Message) => void
 
 // Parse URL params once at module load
@@ -70,12 +72,6 @@ class IdeBridge {
       this.connectErrorLogged = false
       console.log("[ideBridge] Connected", { bridgeBase })
       this.flushQueue()
-
-      void this.getState().then((state) => {
-        try {
-          window.dispatchEvent(new CustomEvent("opencode:ui-bridge-state", { detail: { state } }))
-        } catch {}
-      })
     }
 
     this.eventSource.onmessage = (ev) => {
@@ -170,8 +166,6 @@ class IdeBridge {
   private async doSend(msg: Message, retryCount = 0) {
     if (!bridgeBase || !token) return
 
-    const quiet = msg.type === "uiGetState" || msg.type === "uiSetState"
-
     try {
       const response = await fetch(`${bridgeBase}/send?token=${encodeURIComponent(token)}`, {
         method: "POST",
@@ -180,14 +174,14 @@ class IdeBridge {
       })
 
       if (!response.ok) {
-        if (!quiet) console.warn("[ideBridge] Send failed with status:", response.status)
+        console.warn("[ideBridge] Send failed with status:", response.status)
         // Requeue on server errors (5xx) with limited retries
         if (response.status >= 500 && retryCount < 3) {
           this.requeueWithBackoff(msg, retryCount)
         }
       }
     } catch (e) {
-      if (!quiet) console.warn("[ideBridge] Send failed:", e)
+      console.warn("[ideBridge] Send failed:", e)
       // Network error - requeue with backoff
       if (retryCount < 3) {
         this.requeueWithBackoff(msg, retryCount)
@@ -233,28 +227,9 @@ class IdeBridge {
     } catch {}
   }
 
-  async getState<T = any>(): Promise<T | null> {
+  async storageGet(scope: StorageScope, keys: string[]): Promise<Record<string, string | undefined> | null> {
     try {
-      const res = await this.request<{ state: T }>("uiGetState")
-      const state = (res as any)?.payload?.state
-      return (state ?? null) as T | null
-    } catch {
-      return null
-    }
-  }
-
-  async setState(state: any): Promise<boolean> {
-    try {
-      const res = await this.request("uiSetState", { state })
-      return !!(res as any)?.ok
-    } catch {
-      return false
-    }
-  }
-
-  async storageGet(keys: string[]): Promise<Record<string, string | undefined> | null> {
-    try {
-      const res = await this.request<Record<string, string | undefined>>("storageGet", { keys })
+      const res = await this.request<Record<string, string | undefined>>("storageGet", { scope, keys })
       const result = (res as any)?.result
       if (!result || typeof result !== "object") return {}
       return result as Record<string, string | undefined>
@@ -263,9 +238,9 @@ class IdeBridge {
     }
   }
 
-  async storageSet(key: string, value: string): Promise<boolean> {
+  async storageSet(scope: StorageScope, key: string, value: string): Promise<boolean> {
     try {
-      const res = await this.request("storageSet", { key, value })
+      const res = await this.request("storageSet", { scope, key, value })
       return !!(res as any)?.ok
     } catch {
       return false

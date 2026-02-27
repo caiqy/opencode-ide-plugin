@@ -4,7 +4,7 @@
  */
 
 import { createOpencodeClient, type Provider } from "@opencode-ai/sdk/client"
-import { globalStateGetJSON, globalStateSetJSON } from "../../state/globalState"
+import { scopedStateGetJSON, scopedStateSetJSON } from "../../state/globalState"
 
 // Create a single SDK client instance on current origin
 const baseClient = createOpencodeClient({
@@ -61,7 +61,6 @@ interface ModelEntry {
 interface ModelPreferences {
   recent: ModelEntry[]
   favorite: ModelEntry[]
-  variant?: Record<string, string>
 }
 
 interface SkillsResponse {
@@ -76,8 +75,8 @@ interface PathResponse {
   directory: string
 }
 
-const modelKey = "opencode:webgui:model:v1"
-const kvKey = "opencode:webgui:kv:v1"
+const modelKey = "opencode:webgui:global:model:v1"
+const selectionKey = "opencode:webgui:workspace:last_selection:v1"
 
 function parseModelEntryArray(input: unknown) {
   if (!Array.isArray(input)) return [] as ModelEntry[]
@@ -90,40 +89,91 @@ function parseModelEntryArray(input: unknown) {
   )
 }
 
-function parseVariant(input: unknown) {
-  if (!input || typeof input !== "object" || Array.isArray(input)) return {} as Record<string, string>
-  return Object.fromEntries(
-    Object.entries(input).filter((item): item is [string, string] => typeof item[1] === "string"),
-  )
-}
-
 async function modelValue(): Promise<ModelPreferences> {
   const fallback: ModelPreferences = {
     recent: [],
     favorite: [],
-    variant: {},
   }
-  const parsed = await globalStateGetJSON<unknown>(modelKey, fallback)
+  const parsed = await scopedStateGetJSON<unknown>("global", modelKey, fallback)
   if (!parsed || typeof parsed !== "object") return fallback
   return {
     recent: parseModelEntryArray((parsed as { recent?: unknown }).recent),
     favorite: parseModelEntryArray((parsed as { favorite?: unknown }).favorite),
-    variant: parseVariant((parsed as { variant?: unknown }).variant),
   }
 }
 
 async function modelStore(value: ModelPreferences) {
-  await globalStateSetJSON(modelKey, value)
+  await scopedStateSetJSON("global", modelKey, value)
 }
 
-async function kvValue() {
-  const parsed = await globalStateGetJSON<unknown>(kvKey, {})
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {} as Record<string, any>
-  return parsed as Record<string, any>
+type WorkspaceSelection = {
+  agent: string | null
+  provider_id: string | null
+  model_id: string | null
+  variant: string | null
+  agent_model_map: Record<string, { provider_id: string; model_id: string }>
+  updated_at: number
 }
 
-async function kvStore(value: Record<string, any>) {
-  await globalStateSetJSON(kvKey, value)
+function parseAgentModelMap(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {} as Record<string, { provider_id: string; model_id: string }>
+  }
+  return Object.fromEntries(
+    Object.entries(input).flatMap(([key, value]) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return []
+      const provider = (value as { provider_id?: unknown }).provider_id
+      const model = (value as { model_id?: unknown }).model_id
+      if (typeof provider !== "string" || typeof model !== "string") return []
+      return [[key, { provider_id: provider, model_id: model }]]
+    }),
+  )
+}
+
+async function selectionValue() {
+  const parsed = await scopedStateGetJSON<unknown>("workspace", selectionKey, {})
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {
+      agent: null,
+      provider_id: null,
+      model_id: null,
+      variant: null,
+      agent_model_map: {},
+      updated_at: 0,
+    } satisfies WorkspaceSelection
+  }
+  return {
+    agent: typeof (parsed as { agent?: unknown }).agent === "string" ? (parsed as { agent: string }).agent : null,
+    provider_id:
+      typeof (parsed as { provider_id?: unknown }).provider_id === "string"
+        ? (parsed as { provider_id: string }).provider_id
+        : null,
+    model_id:
+      typeof (parsed as { model_id?: unknown }).model_id === "string"
+        ? (parsed as { model_id: string }).model_id
+        : null,
+    variant:
+      typeof (parsed as { variant?: unknown }).variant === "string" ? (parsed as { variant: string }).variant : null,
+    agent_model_map: parseAgentModelMap((parsed as { agent_model_map?: unknown }).agent_model_map),
+    updated_at:
+      typeof (parsed as { updated_at?: unknown }).updated_at === "number"
+        ? (parsed as { updated_at: number }).updated_at
+        : 0,
+  } satisfies WorkspaceSelection
+}
+
+async function selectionStore(value: WorkspaceSelection) {
+  await scopedStateSetJSON("workspace", selectionKey, value)
+}
+
+function kvFromSelection(value: WorkspaceSelection) {
+  return {
+    webgui_agent: value.agent,
+    webgui_provider: value.provider_id,
+    webgui_model: value.model_id,
+    webgui_variant: value.variant,
+    webgui_agent_model: value.agent_model_map,
+  }
 }
 
 function retryParts(input: any[]) {
@@ -399,12 +449,6 @@ export const sdk = {
         const next: ModelPreferences = {
           recent: body.recent ?? prev.recent ?? [],
           favorite: body.favorite ?? prev.favorite ?? [],
-          variant: body.variant
-            ? {
-                ...(prev.variant ?? {}),
-                ...body.variant,
-              }
-            : (prev.variant ?? {}),
         }
 
         await modelStore(next)
@@ -420,18 +464,27 @@ export const sdk = {
   },
   kv: {
     get: async () => {
-      const data = await kvValue()
+      const selection = await selectionValue()
+      const data = kvFromSelection(selection)
       return { data, error: null as { message: string } | null }
     },
     update: async (options: { body: Record<string, any> }) => {
       try {
-        const prev = await kvValue()
+        const prev = await selectionValue()
         const next = {
           ...prev,
-          ...options.body,
-        }
-        await kvStore(next)
-        return { data: next, error: null as { message: string } | null }
+          agent: typeof options.body.webgui_agent === "string" ? options.body.webgui_agent : prev.agent,
+          provider_id:
+            typeof options.body.webgui_provider === "string" ? options.body.webgui_provider : prev.provider_id,
+          model_id: typeof options.body.webgui_model === "string" ? options.body.webgui_model : prev.model_id,
+          variant: typeof options.body.webgui_variant === "string" ? options.body.webgui_variant : prev.variant,
+          agent_model_map: options.body.webgui_agent_model
+            ? parseAgentModelMap(options.body.webgui_agent_model)
+            : prev.agent_model_map,
+          updated_at: Date.now(),
+        } satisfies WorkspaceSelection
+        await selectionStore(next)
+        return { data: kvFromSelection(next), error: null as { message: string } | null }
       } catch (error) {
         return {
           error: { message: error instanceof Error ? error.message : "Unknown error" },

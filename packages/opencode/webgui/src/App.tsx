@@ -17,31 +17,14 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts"
 import { ideBridge } from "./lib/ideBridge"
 import { extractPathsFromDrop } from "./lib/dnd"
 import { initKeyboardHandler, destroyKeyboardHandler } from "./lib/keyboardHandler"
-import {
-  uiBridgeDraftSessionId,
-  uiBridgeRestoreDraftSessionId,
-  uiBridgeSubscribeSelector,
-  uiBridgeUpdateDraftSessionId,
-  type UiBridgeState,
-} from "./state/uiBridgeState"
 import { useSessionActivation } from "./state/useSessionActivation"
 import { useTabStore } from "./state/tabStore"
 import { sdk } from "./lib/api/sdkClient"
-import { setGlobalStateWriteErrorReporter } from "./state/globalState"
+import { scopedStateGetJSON, scopedStateSetJSON, setGlobalStateWriteErrorReporter } from "./state/globalState"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 
-type BridgeSelections = Pick<UiBridgeState, "sessionID" | "providerId" | "modelId" | "agent" | "variant">
-
-function isBridgeSelectionsEqual(a: BridgeSelections, b: BridgeSelections) {
-  return (
-    a.sessionID === b.sessionID &&
-    a.providerId === b.providerId &&
-    a.modelId === b.modelId &&
-    a.agent === b.agent &&
-    a.variant === b.variant
-  )
-}
+const draftSessionKey = "opencode:webgui:workspace:draft_session:v1"
 
 export async function prepareSession(input: {
   draft: string | null
@@ -86,7 +69,6 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     isCreating,
     error,
     clearError,
-    restoreSelections,
     selectionRestoreNotice,
     clearSelectionRestoreNotice,
   } = useSession()
@@ -117,60 +99,16 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
-  const [bridge, setBridge] = useState<BridgeSelections | null>(null)
-  const restored = useRef({ session: false, selections: false })
   const creating = useRef(false)
 
   useSessionActivation()
-
-  useEffect(
-    () =>
-      uiBridgeSubscribeSelector(
-        (s) => ({
-          sessionID: s.sessionID,
-          providerId: s.providerId,
-          modelId: s.modelId,
-          agent: s.agent,
-          variant: s.variant,
-        }),
-        setBridge,
-        isBridgeSelectionsEqual,
-      ),
-    [],
-  )
-
-  useEffect(() => {
-    if (restored.current.session) return
-    if (!bridge?.sessionID) return
-    restored.current.session = true
-    tabStore.openTab(bridge.sessionID)
-    if (bridge.sessionID === currentSession?.id) return
-    void switchSession(bridge.sessionID).catch(() => undefined)
-  }, [bridge?.sessionID, currentSession?.id, switchSession, tabStore])
-
-  useEffect(() => {
-    if (restored.current.selections) return
-    if (!bridge) return
-    const has = !!(bridge.agent || bridge.variant || (bridge.providerId && bridge.modelId))
-    if (!has) return
-    restored.current.selections = true
-    restoreSelections({
-      providerId: bridge.providerId,
-      modelId: bridge.modelId,
-      agent: bridge.agent,
-      variant: bridge.variant,
-    })
-  }, [bridge, restoreSelections])
 
   const handleNewSession = useCallback(() => {
     if (creating.current) return
     creating.current = true
     void prepareSession({
-      draft: uiBridgeDraftSessionId(),
-      restore: async () => {
-        await uiBridgeRestoreDraftSessionId()
-        return uiBridgeDraftSessionId()
-      },
+      draft: null,
+      restore: async () => scopedStateGetJSON<string | null>("workspace", draftSessionKey, null),
       reusable: async (id) => {
         const session = await sdk.session.get({ path: { id } })
         if (!session.data) return false
@@ -181,7 +119,9 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
       create: createSession,
       open: tabStore.openTab,
       switchTo: switchSession,
-      setDraft: uiBridgeUpdateDraftSessionId,
+      setDraft: (id) => {
+        void scopedStateSetJSON("workspace", draftSessionKey, id)
+      },
       fail: () => {
         showToast("创建会话失败", { variant: "error" })
       },

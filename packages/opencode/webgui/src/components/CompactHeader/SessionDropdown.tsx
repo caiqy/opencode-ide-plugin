@@ -1,6 +1,5 @@
 import type { Session } from "@opencode-ai/sdk/client"
 import { SessionList } from "./SessionList"
-import { uiBridgeUpdate } from "../../state/uiBridgeState"
 
 interface SessionDropdownProps {
   sessions: Session[]
@@ -66,7 +65,6 @@ export function SessionDropdown({
   if (!isDropdownOpen) return null
 
   const handleSelect = (sessionId: string) => {
-    uiBridgeUpdate({ sessionID: sessionId })
     onSessionSelect(sessionId)
   }
 

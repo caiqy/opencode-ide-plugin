@@ -10,11 +10,11 @@ export interface SessionHandlers {
   openUrl: (url: string) => Promise<void>
   reloadPath: (path: string) => Promise<void>
   clipboardWrite: (text: string) => Promise<void>
-  uiGetState?: () => Promise<any>
-  uiSetState?: (state: any) => Promise<void>
-  storageGet?: (keys: string[]) => Promise<Record<string, string | undefined>>
-  storageSet?: (key: string, value: string) => Promise<void>
+  storageGet?: (scope: StorageScope, keys: string[]) => Promise<Record<string, string | undefined>>
+  storageSet?: (scope: StorageScope, key: string, value: string) => Promise<void>
 }
+
+type StorageScope = "global" | "workspace" | "mem"
 
 interface SessionMetadata {
   minVersion?: string
@@ -275,113 +275,18 @@ class IdeBridgeServer {
           break
         }
 
-        case "uiGetState": {
-          if (!session.handlers.uiGetState) {
-            this.replyError(session, id, "uiGetState not supported")
-            break
-          }
-          const state = await session.handlers.uiGetState()
-          if (id) {
-            this.broadcastSSE(
-              session,
-              JSON.stringify({
-                replyTo: id,
-                ok: true,
-                payload: { state },
-                timestamp: Date.now(),
-              }),
-            )
-          }
-          break
-        }
-
-        case "kv.get": {
-          const file = path.join(this.statePath(), "kv.json")
-          try {
-            if (fs.existsSync(file)) {
-              this.replyWithPayload(session, id, JSON.parse(fs.readFileSync(file, "utf-8")))
-            } else {
-              this.replyWithPayload(session, id, {})
-            }
-          } catch {
-            this.replyWithPayload(session, id, {})
-          }
-          break
-        }
-
-        case "kv.update": {
-          const dir = this.statePath()
-          const file = path.join(dir, "kv.json")
-          let existing: Record<string, any> = {}
-          try {
-            if (fs.existsSync(file)) existing = JSON.parse(fs.readFileSync(file, "utf-8"))
-          } catch {}
-          const merged = { ...existing, ...(payload ?? {}) }
-          fs.mkdirSync(dir, { recursive: true })
-          fs.writeFileSync(file, JSON.stringify(merged, null, 2))
-          this.replyWithPayload(session, id, merged)
-          break
-        }
-
-        case "model.get": {
-          const file = path.join(this.statePath(), "model.json")
-          try {
-            if (fs.existsSync(file)) {
-              const data = JSON.parse(fs.readFileSync(file, "utf-8"))
-              this.replyWithPayload(session, id, {
-                recent: Array.isArray(data.recent) ? data.recent : [],
-                favorite: Array.isArray(data.favorite) ? data.favorite : [],
-                variant: typeof data.variant === "object" && data.variant !== null ? data.variant : {},
-              })
-            } else {
-              this.replyWithPayload(session, id, { recent: [], favorite: [], variant: {} })
-            }
-          } catch {
-            this.replyWithPayload(session, id, { recent: [], favorite: [], variant: {} })
-          }
-          break
-        }
-
-        case "model.update": {
-          const dir = this.statePath()
-          const file = path.join(dir, "model.json")
-          let existing = { recent: [] as any[], favorite: [] as any[], variant: {} as Record<string, string> }
-          try {
-            if (fs.existsSync(file)) {
-              const data = JSON.parse(fs.readFileSync(file, "utf-8"))
-              existing = {
-                recent: Array.isArray(data.recent) ? data.recent : [],
-                favorite: Array.isArray(data.favorite) ? data.favorite : [],
-                variant: typeof data.variant === "object" && data.variant !== null ? data.variant : {},
-              }
-            }
-          } catch {}
-          if (payload?.recent !== undefined) existing.recent = payload.recent
-          if (payload?.favorite !== undefined) existing.favorite = payload.favorite
-          if (payload?.variant !== undefined) existing.variant = { ...existing.variant, ...payload.variant }
-          fs.mkdirSync(dir, { recursive: true })
-          fs.writeFileSync(file, JSON.stringify(existing))
-          this.replyWithPayload(session, id, existing)
-          break
-        }
-
-        case "uiSetState": {
-          if (!session.handlers.uiSetState) {
-            this.replyError(session, id, "uiSetState not supported")
-            break
-          }
-          await session.handlers.uiSetState(payload?.state)
-          this.replyOk(session, id)
-          break
-        }
-
         case "storageGet": {
           if (!session.handlers.storageGet) {
             this.replyError(session, id, "storageGet not supported")
             break
           }
+          const scope = payload?.scope
+          if (scope !== "global" && scope !== "workspace" && scope !== "mem") {
+            this.replyError(session, id, "Invalid scope")
+            break
+          }
           const keys: string[] = Array.isArray(payload?.keys) ? payload.keys : []
-          const storageResult = await session.handlers.storageGet(keys)
+          const storageResult = await session.handlers.storageGet(scope, keys)
           if (id) {
             this.broadcastSSE(
               session,
@@ -401,8 +306,13 @@ class IdeBridgeServer {
             this.replyError(session, id, "storageSet not supported")
             break
           }
+          const scope = payload?.scope
+          if (scope !== "global" && scope !== "workspace" && scope !== "mem") {
+            this.replyError(session, id, "Invalid scope")
+            break
+          }
           if (typeof payload?.key === "string" && typeof payload?.value === "string") {
-            await session.handlers.storageSet(payload.key, payload.value)
+            await session.handlers.storageSet(scope, payload.key, payload.value)
             this.replyOk(session, id)
           } else {
             this.replyError(session, id, "Missing key or value")
@@ -411,7 +321,7 @@ class IdeBridgeServer {
         }
 
         default:
-          this.replyError(session, id, `Unknown type: ${type}`)
+          this.replyError(session, id, "unsupported message type")
       }
 
       res.writeHead(204)
@@ -420,23 +330,6 @@ class IdeBridgeServer {
       res.writeHead(400)
     }
     res.end()
-  }
-
-  private statePath(): string {
-    return path.join(process.env.XDG_STATE_HOME || path.join(os.homedir(), ".local", "state"), "opencode")
-  }
-
-  private replyWithPayload(session: Session, id: string | undefined, payload: any): void {
-    if (!id) return
-    this.broadcastSSE(
-      session,
-      JSON.stringify({
-        replyTo: id,
-        ok: true,
-        payload,
-        timestamp: Date.now(),
-      }),
-    )
   }
 
   private replyOk(session: Session, id?: string): void {

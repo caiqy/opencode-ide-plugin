@@ -13,6 +13,8 @@ import {
   globalStateGetJSON,
   globalStateSetJSON,
   resetGlobalStateForTest,
+  scopedStateGetJSON,
+  scopedStateSetJSON,
   setGlobalStateWriteErrorReporter,
 } from "./globalState"
 
@@ -50,5 +52,21 @@ describe("globalState", () => {
     await globalStateSetJSON("opencode:webgui:theme:v1", "dark")
 
     expect(report).toHaveBeenCalledTimes(2)
+  })
+
+  it("scoped API 显式支持 global/workspace/mem 且三域均有内存镜像", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+    vi.mocked(ideBridge.storageGet).mockResolvedValue({
+      "opencode:webgui:workspace:tabs:v1": JSON.stringify({ open_tabs: ["s1"], active_tab: "s1" }),
+    })
+
+    await scopedStateSetJSON("mem", "opencode:webgui:mem:runtime:v1", { panel: "chat" })
+    const tabs = await scopedStateGetJSON("workspace", "opencode:webgui:workspace:tabs:v1", {
+      open_tabs: [],
+      active_tab: "",
+    })
+
+    expect(tabs.active_tab).toBe("s1")
+    expect(ideBridge.storageGet).toHaveBeenCalledWith("workspace", ["opencode:webgui:workspace:tabs:v1"])
   })
 })

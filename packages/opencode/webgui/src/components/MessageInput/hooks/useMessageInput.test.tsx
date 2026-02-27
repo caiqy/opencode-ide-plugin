@@ -18,8 +18,8 @@ const mocks = vi.hoisted(() => {
     abort: vi.fn(async (_input: unknown) => ({ data: true, error: null })),
     getQuestionsBySession: vi.fn(() => []),
     rejectQuestion: vi.fn(async (_requestID: string) => true),
-    uiBridgeDraftSessionId: vi.fn((): string | null => null),
-    uiBridgeUpdateDraftSessionId: vi.fn(),
+    scopedStateGetJSON: vi.fn(async (_scope: string, _key: string, _fallback: unknown): Promise<string | null> => null),
+    scopedStateSetJSON: vi.fn(async (_scope: string, _key: string, _value: unknown) => ({ ok: true })),
   }
 })
 
@@ -76,10 +76,11 @@ vi.mock("../../../lib/messagesStore", () => {
   }
 })
 
-vi.mock("../../../state/uiBridgeState", () => {
+vi.mock("../../../state/globalState", () => {
   return {
-    uiBridgeDraftSessionId: () => mocks.uiBridgeDraftSessionId(),
-    uiBridgeUpdateDraftSessionId: (id: string | null) => mocks.uiBridgeUpdateDraftSessionId(id),
+    scopedStateGetJSON: (scope: string, key: string, fallback: unknown) =>
+      mocks.scopedStateGetJSON(scope, key, fallback),
+    scopedStateSetJSON: (scope: string, key: string, value: unknown) => mocks.scopedStateSetJSON(scope, key, value),
   }
 })
 
@@ -94,7 +95,7 @@ describe("useMessageInput", () => {
     mocks.abort.mockResolvedValue({ data: true, error: null })
     mocks.getQuestionsBySession.mockReturnValue([])
     mocks.rejectQuestion.mockResolvedValue(true)
-    mocks.uiBridgeDraftSessionId.mockReturnValue(null)
+    mocks.scopedStateGetJSON.mockResolvedValue(null)
   })
 
   it("命令发送成功后，若当前会话是草稿则清空 draftSessionId", async () => {
@@ -106,7 +107,7 @@ describe("useMessageInput", () => {
       focus: vi.fn(),
     } as any
 
-    mocks.uiBridgeDraftSessionId.mockReturnValue("s-draft")
+    mocks.scopedStateGetJSON.mockResolvedValue("s-draft")
 
     const { result } = renderHook(() =>
       useMessageInput({
@@ -125,7 +126,11 @@ describe("useMessageInput", () => {
       await result.current.handleSubmit()
     })
 
-    expect(mocks.uiBridgeUpdateDraftSessionId).toHaveBeenCalledWith(null)
+    expect(mocks.scopedStateSetJSON).toHaveBeenCalledWith(
+      "workspace",
+      "opencode:webgui:workspace:draft_session:v1",
+      null,
+    )
     expect(mocks.command).toHaveBeenCalledWith(
       expect.objectContaining({
         path: { id: "s-draft" },
@@ -144,7 +149,7 @@ describe("useMessageInput", () => {
       focus: vi.fn(),
     } as any
 
-    mocks.uiBridgeDraftSessionId.mockReturnValue("s-draft")
+    mocks.scopedStateGetJSON.mockResolvedValue("s-draft")
 
     const { result } = renderHook(() =>
       useMessageInput({
@@ -163,7 +168,7 @@ describe("useMessageInput", () => {
       await result.current.handleSubmit()
     })
 
-    expect(mocks.uiBridgeUpdateDraftSessionId).not.toHaveBeenCalled()
+    expect(mocks.scopedStateSetJSON).not.toHaveBeenCalled()
     expect(mocks.command).toHaveBeenCalledTimes(1)
     expect(mocks.showToast).toHaveBeenCalledTimes(1)
   })
@@ -179,7 +184,7 @@ describe("useMessageInput", () => {
       focus: vi.fn(),
     } as any
 
-    mocks.uiBridgeDraftSessionId.mockReturnValue("s-1")
+    mocks.scopedStateGetJSON.mockResolvedValue("s-1")
 
     const { result } = renderHook(() =>
       useMessageInput({
@@ -204,7 +209,11 @@ describe("useMessageInput", () => {
       }),
     )
     expect(mocks.command).not.toHaveBeenCalled()
-    expect(mocks.uiBridgeUpdateDraftSessionId).toHaveBeenCalledWith(null)
+    expect(mocks.scopedStateSetJSON).toHaveBeenCalledWith(
+      "workspace",
+      "opencode:webgui:workspace:draft_session:v1",
+      null,
+    )
   })
 
   it("Stop 时 reject 部分失败也会继续 abort", async () => {

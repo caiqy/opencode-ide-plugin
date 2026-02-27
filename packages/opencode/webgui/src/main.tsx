@@ -4,7 +4,6 @@ import "./index.css"
 import App from "./App.tsx"
 import { ideBridge } from "./lib/ideBridge"
 import { installTooltipPolyfillBridge } from "./lib/tooltipPolyfill"
-import { uiBridgeEnable, uiBridgeHydrate, uiBridgeRestoreDraftSessionId } from "./state/uiBridgeState"
 import { SessionProvider } from "./state/SessionContext.tsx"
 import { ToastProvider } from "./state/ToastContext.tsx"
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx"
@@ -15,17 +14,6 @@ import { UISettingsProvider } from "./state/UISettingsContext"
 import { initGlobalDnD } from "./lib/dnd"
 import { VersionGate } from "./components/VersionGate"
 import { TabStoreProvider } from "./state/tabStore"
-
-window.addEventListener(
-  "opencode:ui-bridge-state",
-  (ev) => {
-    const state = (ev as CustomEvent<{ state?: unknown }>).detail?.state
-    if (state) uiBridgeHydrate(state)
-    uiBridgeEnable()
-    void uiBridgeRestoreDraftSessionId()
-  },
-  { once: true },
-)
 
 ideBridge.init()
 installTooltipPolyfillBridge()

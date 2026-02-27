@@ -16,8 +16,8 @@ export interface WebviewControllerOptions {
   webview: vscode.Webview
   context: vscode.ExtensionContext
   settingsManager?: SettingsManager
-  uiGetState?: () => Promise<any>
-  uiSetState?: (state: any) => Promise<void>
+  storageGet: (scope: "global" | "workspace" | "mem", keys: string[]) => Promise<Record<string, string | undefined>>
+  storageSet: (scope: "global" | "workspace" | "mem", key: string, value: string) => Promise<void>
 }
 
 export class WebviewController {
@@ -29,16 +29,19 @@ export class WebviewController {
   private connection?: BackendConnection
   private disposables: vscode.Disposable[] = []
   private bridgeSessionId: string | null = null
-  private uiGetState?: () => Promise<any>
-  private uiSetState?: (state: any) => Promise<void>
+  private storageGet: (
+    scope: "global" | "workspace" | "mem",
+    keys: string[],
+  ) => Promise<Record<string, string | undefined>>
+  private storageSet: (scope: "global" | "workspace" | "mem", key: string, value: string) => Promise<void>
   private disposed = false
 
   constructor(opts: WebviewControllerOptions) {
     this.webview = opts.webview
     this.context = opts.context
     this.settingsManager = opts.settingsManager
-    this.uiGetState = opts.uiGetState
-    this.uiSetState = opts.uiSetState
+    this.storageGet = opts.storageGet
+    this.storageSet = opts.storageSet
   }
 
   getCommunicationBridge(): CommunicationBridge | undefined {
@@ -131,18 +134,8 @@ export class WebviewController {
           clipboardWrite: async (text) => {
             await vscode.env.clipboard.writeText(text)
           },
-          uiGetState: this.uiGetState,
-          uiSetState: this.uiSetState,
-          storageGet: async (keys: string[]) => {
-            const result: Record<string, string | undefined> = {}
-            for (const key of keys) {
-              result[key] = this.context.globalState.get<string>(key)
-            }
-            return result
-          },
-          storageSet: async (key: string, value: string) => {
-            await this.context.globalState.update(key, value)
-          },
+          storageGet: this.storageGet,
+          storageSet: this.storageSet,
         },
         {
           minVersion: vscode.workspace.getConfiguration("opencode").get<string>("minVersion", "1.1.1"),

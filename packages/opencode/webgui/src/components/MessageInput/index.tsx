@@ -20,7 +20,10 @@ import { useDragDrop } from "./hooks/useDragDrop"
 import { useEditorKeyboard } from "./hooks/useEditorKeyboard"
 import { useMessageParts } from "./hooks/useMessageParts"
 import { insertPlainWithMentionsImpl } from "./utils"
-import { uiBridgeDraft, uiBridgeSubscribeDraft, uiBridgeUpdateDraft } from "../../state/uiBridgeState"
+import { scopedStateGetJSON, scopedStateSetJSON } from "../../state/globalState"
+
+const draftsKey = "opencode:webgui:workspace:drafts:v1"
+const draftSessionKey = "opencode:webgui:workspace:draft_session:v1"
 
 interface MessageInputProps {
   sessionID: string | null
@@ -82,6 +85,7 @@ const MessageInputInner = forwardRef<
 
   const restoring = useRef(false)
   const draft = useRef("")
+  const drafts = useRef<Record<string, string>>({})
 
   const handleEditorChange = useCallback(
     (editorState: EditorState) => {
@@ -90,7 +94,16 @@ const MessageInputInner = forwardRef<
         const textContent = root.getTextContent()
         setIsEmpty(textContent.trim().length === 0)
         draft.current = textContent
-        if (!restoring.current && sessionID) uiBridgeUpdateDraft(sessionID, textContent)
+        if (restoring.current || !sessionID) return
+        const next = { ...drafts.current }
+        if (textContent) {
+          next[sessionID] = textContent
+        } else {
+          delete next[sessionID]
+        }
+        drafts.current = next
+        void scopedStateSetJSON("workspace", draftsKey, next)
+        void scopedStateSetJSON("workspace", draftSessionKey, sessionID)
       })
     },
     [sessionID],
@@ -166,13 +179,19 @@ const MessageInputInner = forwardRef<
 
   useEditorKeyboard({ editor, contentEditableRef, parseWithRange, onSubmit: handleSubmit })
 
-  // Restore and subscribe to session-scoped draft (handles late host hydrate)
+  // Restore session-scoped draft from workspace storage
   useEffect(() => {
-    restore(uiBridgeDraft(sessionID))
-    return uiBridgeSubscribeDraft(sessionID, (value) => {
-      if (value === draft.current) return
-      restore(value)
+    let active = true
+    void scopedStateGetJSON<Record<string, string>>("workspace", draftsKey, {}).then((value) => {
+      if (!active) return
+      drafts.current = value
+      const next = sessionID ? (value[sessionID] ?? "") : ""
+      if (next === draft.current) return
+      restore(next)
     })
+    return () => {
+      active = false
+    }
   }, [restore, sessionID])
 
   // Expose methods to parent

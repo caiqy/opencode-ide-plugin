@@ -5,7 +5,9 @@ import { useSession } from "../../../state/SessionContext"
 import { useToast } from "../../../state/ToastContext"
 import { useMessages } from "../../../state/MessagesContext"
 import { createOptimisticUserMessage, removeOptimisticMessages } from "../../../lib/messagesStore"
-import { uiBridgeDraftSessionId, uiBridgeUpdateDraftSessionId } from "../../../state/uiBridgeState"
+import { scopedStateGetJSON, scopedStateSetJSON } from "../../../state/globalState"
+
+const draftSessionKey = "opencode:webgui:workspace:draft_session:v1"
 
 interface UseMessageInputOptions {
   sessionID: string | null
@@ -163,8 +165,11 @@ export function useMessageInput({
         }
       }
 
-      if (uiBridgeDraftSessionId() === sessionID) {
-        uiBridgeUpdateDraftSessionId(null)
+      if (sessionID) {
+        const activeDraft = await scopedStateGetJSON<string | null>("workspace", draftSessionKey, null)
+        if (activeDraft === sessionID) {
+          await scopedStateSetJSON("workspace", draftSessionKey, null)
+        }
       }
     } catch (err) {
       const error = err instanceof Error ? err : new Error("Failed to send message")

@@ -8,11 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { sdk } from "../lib/api/sdkClient"
 import { openWithPolicy } from "./tabPolicy"
-import { uiBridgeTabs, uiBridgeUpdateTabs } from "./uiBridgeState"
+import { scopedStateGetJSON, scopedStateSetJSON } from "./globalState"
 
-const key = "webgui_tabs"
+const key = "opencode:webgui:workspace:tabs:v1"
 const delay = 500
 
 type TabState = {
@@ -27,25 +26,21 @@ const empty: TabState = {
 
 function parse(input: unknown) {
   if (!input || typeof input !== "object") return null
-  if (!Array.isArray((input as { openTabs?: unknown }).openTabs)) return null
-  if (!(input as { openTabs: unknown[] }).openTabs.every((id) => typeof id === "string")) return null
-  if (typeof (input as { activeTab?: unknown }).activeTab !== "string") return null
+  if (!Array.isArray((input as { open_tabs?: unknown }).open_tabs)) return null
+  if (!(input as { open_tabs: unknown[] }).open_tabs.every((id) => typeof id === "string")) return null
+  if (typeof (input as { active_tab?: unknown }).active_tab !== "string") return null
 
   return {
-    openTabs: (input as { openTabs: string[] }).openTabs,
-    activeTab: (input as { activeTab: string }).activeTab,
+    openTabs: (input as { open_tabs: string[] }).open_tabs,
+    activeTab: (input as { active_tab: string }).active_tab,
   }
 }
 
 function store(next: TabState) {
-  void sdk.kv
-    .update({
-      body: {
-        [key]: next,
-      },
-    })
-    .catch(() => {})
-  uiBridgeUpdateTabs(next.openTabs, next.activeTab)
+  void scopedStateSetJSON("workspace", key, {
+    open_tabs: next.openTabs,
+    active_tab: next.activeTab,
+  }).catch(() => {})
 }
 
 function useTabStoreInternal() {
@@ -82,34 +77,20 @@ function useTabStoreInternal() {
 
   useEffect(() => {
     let live = true
-    void sdk.kv
-      .get()
+    void scopedStateGetJSON<unknown>("workspace", key, null)
       .then((res) => {
         if (!live) return
-        const data = parse(res.data?.[key])
+        const data = parse(res)
         if (data && data.openTabs.length > 0) {
           const next = validated(data.openTabs, data.activeTab)
           ref.current = next
           setState(next)
-        } else {
-          const bridge = uiBridgeTabs()
-          if (bridge.openTabs.length > 0) {
-            const next = validated(bridge.openTabs, bridge.activeTab)
-            ref.current = next
-            setState(next)
-          }
         }
         ready.current = true
         setLoaded(true)
       })
       .catch(() => {
         if (!live) return
-        const bridge = uiBridgeTabs()
-        if (bridge.openTabs.length > 0) {
-          const next = validated(bridge.openTabs, bridge.activeTab)
-          ref.current = next
-          setState(next)
-        }
         ready.current = true
         setLoaded(true)
       })

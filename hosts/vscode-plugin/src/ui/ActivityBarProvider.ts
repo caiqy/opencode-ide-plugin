@@ -34,7 +34,7 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
   private connection?: BackendConnection
   private controller?: WebviewController
   private view?: vscode.WebviewView
-  private uiState: any
+  private mem = new Map<string, string>()
   private loadGeneration = 0
 
   constructor(context: vscode.ExtensionContext, backendLauncher: BackendLauncher, settingsManager: SettingsManager) {
@@ -161,9 +161,27 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
                 webview: webviewView.webview,
                 context: this.context,
                 settingsManager: this.settingsManager,
-                uiGetState: async () => this.uiState,
-                uiSetState: async (state) => {
-                  this.uiState = state
+                storageGet: async (scope, keys) => {
+                  const result: Record<string, string | undefined> = {}
+                  if (scope === "mem") {
+                    for (const key of keys) {
+                      result[key] = this.mem.get(key)
+                    }
+                    return result
+                  }
+                  const state = scope === "workspace" ? this.context.workspaceState : this.context.globalState
+                  for (const key of keys) {
+                    result[key] = state.get<string>(key)
+                  }
+                  return result
+                },
+                storageSet: async (scope, key, value) => {
+                  if (scope === "mem") {
+                    this.mem.set(key, value)
+                    return
+                  }
+                  const state = scope === "workspace" ? this.context.workspaceState : this.context.globalState
+                  await state.update(key, value)
                 },
               })
               await this.controller.load(this.connection)

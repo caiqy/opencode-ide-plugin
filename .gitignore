@@ -57,6 +57,10 @@ replay_pid*
 !gradle/wrapper/gradle-wrapper.properties
 !gradlew
 !gradlew.bat
+!hosts/jetbrains-plugin/gradle/wrapper/gradle-wrapper.jar
+!hosts/jetbrains-plugin/gradle/wrapper/gradle-wrapper.properties
+!hosts/jetbrains-plugin/gradlew
+!hosts/jetbrains-plugin/gradlew.bat
 
 # ---- Go ----
 backend/rovo-*
