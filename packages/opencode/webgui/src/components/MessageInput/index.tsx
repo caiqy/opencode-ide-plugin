@@ -100,6 +100,7 @@ const MessageInputInner = forwardRef<
         }
         drafts.current = next
         void saveDrafts(next)
+        if (!textContent) return
         void saveDraftSession(sessionID)
       })
     },

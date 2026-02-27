@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { render, waitFor } from "@testing-library/react"
+import { act, render, waitFor } from "@testing-library/react"
+import { prepareSession } from "../../App"
 
 let lastConfirmModalProps: any
 let lastEditorToolbarProps: any
+let lastEditorContentProps: any
+let rootText = ""
 let sessionIdle = true
 const mocks = vi.hoisted(() => {
   return {
     insertPlainWithMentionsImpl: vi.fn(),
     loadDrafts: vi.fn(async () => ({})),
+    loadDraftSession: vi.fn(async (): Promise<string | null> => null),
     saveDrafts: vi.fn(async (_value: Record<string, string>) => ({ ok: true })),
     saveDraftSession: vi.fn(async (_value: string | null) => ({ ok: true })),
   }
@@ -40,6 +44,18 @@ vi.mock("@lexical/react/LexicalComposerContext", () => {
   }
 })
 
+vi.mock("lexical", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("lexical")>()
+  return {
+    ...actual,
+    $getRoot: () => ({
+      getTextContent: () => rootText,
+    }),
+    $getSelection: () => null,
+    $isRangeSelection: () => false,
+  }
+})
+
 vi.mock("./EditorConfig", () => {
   return {
     createEditorConfig: () => ({}),
@@ -48,7 +64,10 @@ vi.mock("./EditorConfig", () => {
 
 vi.mock("./EditorContent", () => {
   return {
-    EditorContent: () => null,
+    EditorContent: (props: any) => {
+      lastEditorContentProps = props
+      return null
+    },
   }
 })
 
@@ -116,6 +135,7 @@ vi.mock("./utils", () => {
 vi.mock("../../state/repo/draftRepo", () => {
   return {
     loadDrafts: () => mocks.loadDrafts(),
+    loadDraftSession: () => mocks.loadDraftSession(),
     saveDrafts: (value: Record<string, string>) => mocks.saveDrafts(value),
     saveDraftSession: (value: string | null) => mocks.saveDraftSession(value),
   }
@@ -164,8 +184,11 @@ describe("MessageInput compact confirm", () => {
   beforeEach(() => {
     sessionIdle = true
     lastEditorToolbarProps = null
+    lastEditorContentProps = null
+    rootText = ""
     vi.clearAllMocks()
     mocks.loadDrafts.mockResolvedValue({})
+    mocks.loadDraftSession.mockResolvedValue(null)
     mocks.saveDrafts.mockResolvedValue({ ok: true })
     mocks.saveDraftSession.mockResolvedValue({ ok: true })
   })
@@ -202,6 +225,61 @@ describe("MessageInput compact confirm", () => {
         replace: true,
       })
     })
+  })
+
+  it("空内容变更不会覆盖 draftSession 指针", () => {
+    render(<MessageInput sessionID="s2" />)
+
+    act(() => {
+      rootText = ""
+      lastEditorContentProps.onEditorChange({
+        read: (run: () => void) => run(),
+      })
+    })
+
+    expect(mocks.saveDraftSession).not.toHaveBeenCalled()
+  })
+
+  it("草稿标签不在打开列表时，再次新建会话会复用原草稿会话", async () => {
+    let draftSession: string | null = "s-draft"
+    mocks.loadDraftSession.mockImplementation(async () => draftSession)
+    mocks.saveDraftSession.mockImplementation(async (value: string | null) => {
+      draftSession = value
+      return { ok: true }
+    })
+
+    render(<MessageInput sessionID="s-other" />)
+
+    act(() => {
+      rootText = ""
+      lastEditorContentProps.onEditorChange({
+        read: (run: () => void) => run(),
+      })
+    })
+
+    const open = vi.fn()
+    const create = vi.fn(async () => ({ id: "s-new" }))
+    const switchTo = vi.fn(async () => {})
+    const fail = vi.fn()
+
+    await prepareSession({
+      draft: null,
+      restore: mocks.loadDraftSession,
+      reusable: async (id) => id === "s-draft",
+      create,
+      open,
+      switchTo,
+      setDraft: (id) => {
+        void mocks.saveDraftSession(id)
+      },
+      fail,
+    })
+
+    expect(draftSession).toBe("s-draft")
+    expect(open).toHaveBeenCalledWith("s-draft")
+    expect(switchTo).toHaveBeenCalledWith("s-draft")
+    expect(create).not.toHaveBeenCalled()
+    expect(fail).not.toHaveBeenCalled()
   })
 
   it("生成中会话应禁用精简按钮，仅保留停止能力", () => {
