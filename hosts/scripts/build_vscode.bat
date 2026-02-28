@@ -219,9 +219,9 @@ if "%MISSING_BINARIES%"=="true" (
 )
 
 if "%BUILD_TYPE%"=="production" (
-    call %VSCE_CMD% package --no-dependencies --out "opencode-vscode-%TIMESTAMP%.vsix"
+    call %VSCE_CMD% package --no-dependencies --allow-missing-repository --out "opencode-vscode-%TIMESTAMP%.vsix"
 ) else (
-    call %VSCE_CMD% package --pre-release --no-dependencies --out "opencode-vscode-dev-%TIMESTAMP%.vsix"
+    call %VSCE_CMD% package --pre-release --no-dependencies --allow-missing-repository --out "opencode-vscode-dev-%TIMESTAMP%.vsix"
 )
 if errorlevel 1 exit /b 1
 
