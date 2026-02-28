@@ -5,7 +5,8 @@ import { useSession } from "./state/SessionContext"
 import { useToast } from "./state/ToastContext"
 import { MessageInput } from "./components/MessageInput"
 import { MessageList } from "./components/MessageList"
-import { MessagesProvider } from "./state/MessagesContext"
+import { ChatLoadGuard } from "./components/ChatLoadGuard"
+import { MessagesProvider, useMessages } from "./state/MessagesContext"
 import { ThemeProvider } from "./state/ThemeContext"
 import { CompactHeader } from "./components/CompactHeader"
 import { OfflineBanner } from "./components/OfflineBanner"
@@ -74,6 +75,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   } = useSession()
   const tabStore = useTabStore()
   const { showToast } = useToast()
+  const { isSessionLoading, isSessionLoaded, isSessionLoadError, loadSessionMessages } = useMessages()
   const compactHeaderRef = useRef<{ toggleSessionDropdown: () => void }>(null)
   const messageInputRef = useRef<{
     focus: () => void
@@ -102,6 +104,19 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   const creating = useRef(false)
 
   useSessionActivation()
+
+  const chatLoading = currentSession?.id
+    ? isSessionLoading(currentSession.id) ||
+      (!isSessionLoaded(currentSession.id) && !isSessionLoadError(currentSession.id))
+    : false
+  const chatLoadError = currentSession?.id ? isSessionLoadError(currentSession.id) : false
+  const chatBlocked = chatLoading || chatLoadError
+
+  const handleRetrySessionLoad = useCallback(() => {
+    const id = currentSession?.id
+    if (!id) return
+    void loadSessionMessages(id)
+  }, [currentSession?.id, loadSessionMessages])
 
   const handleNewSession = useCallback(() => {
     if (creating.current) return
@@ -320,25 +335,28 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
       {/* Offline Banner */}
       <OfflineBanner connectionState={connectionState} />
 
-      {/* Messages Area */}
-      <main className="flex-1 overflow-y-auto px-4 py-3">
-        <MessageList
-          sessionID={currentSession?.id}
-          onUndoToInput={(value) => messageInputRef.current?.insertPlainWithMentions(value)}
-        />
-      </main>
+      <ChatLoadGuard loading={chatLoading} error={chatLoadError} onRetry={handleRetrySessionLoad}>
+        {/* Messages Area */}
+        <main className="flex-1 overflow-y-auto px-4 py-3">
+          <MessageList
+            sessionID={currentSession?.id}
+            onUndoToInput={(value) => messageInputRef.current?.insertPlainWithMentions(value)}
+          />
+        </main>
 
-      {/* Input Area */}
-      <MessageInput
-        ref={messageInputRef}
-        sessionID={currentSession?.id ?? null}
-        onMessageSent={() => {
-          console.log("[App] Message sent successfully")
-        }}
-        onError={(error) => {
-          console.error("[App] Message send error:", error)
-        }}
-      />
+        {/* Input Area */}
+        <MessageInput
+          ref={messageInputRef}
+          sessionID={currentSession?.id ?? null}
+          blocked={chatBlocked}
+          onMessageSent={() => {
+            console.log("[App] Message sent successfully")
+          }}
+          onError={(error) => {
+            console.error("[App] Message send error:", error)
+          }}
+        />
+      </ChatLoadGuard>
 
       {/* Command Palette */}
       <CommandPalette

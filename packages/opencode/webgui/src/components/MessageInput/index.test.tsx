@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
   return {
     insertPlainWithMentionsImpl: vi.fn(),
     getMessagesBySession: vi.fn((): any[] => []),
+    isSessionLoaded: vi.fn(() => true),
     loadDrafts: vi.fn(async () => ({})),
     loadDraftSession: vi.fn(async (): Promise<string | null> => null),
     saveDrafts: vi.fn(async (_value: Record<string, string>) => ({ ok: true })),
@@ -208,6 +209,7 @@ vi.mock("../../state/MessagesContext", () => {
   return {
     useMessages: () => ({
       getMessagesBySession: mocks.getMessagesBySession,
+      isSessionLoaded: mocks.isSessionLoaded,
     }),
   }
 })
@@ -257,6 +259,7 @@ describe("MessageInput compact confirm", () => {
     rootText = ""
     vi.clearAllMocks()
     mocks.getMessagesBySession.mockReturnValue([])
+    mocks.isSessionLoaded.mockReturnValue(true)
     mocks.loadDrafts.mockImplementation(async () => new Promise(() => {}))
     mocks.loadDraftSession.mockResolvedValue(null)
     mocks.saveDrafts.mockResolvedValue({ ok: true })
@@ -562,6 +565,7 @@ describe("MessageInput compact confirm", () => {
   it("会话消息未加载完成时输入也不应覆盖已有 draftSession 指针", () => {
     let draftSession: string | null = "s-draft"
     mocks.getMessagesBySession.mockReturnValue([])
+    mocks.isSessionLoaded.mockReturnValue(false)
     mocks.saveDraftSession.mockImplementation(async (value: string | null) => {
       draftSession = value
       return { ok: true }

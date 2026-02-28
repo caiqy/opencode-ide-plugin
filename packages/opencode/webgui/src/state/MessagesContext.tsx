@@ -35,6 +35,9 @@ interface MessagesContextValue {
   clearMessages: () => void
   getMessagesBySession: (sessionID: string) => Message[]
   loadSessionMessages: (sessionID: string) => Promise<Message[] | null>
+  isSessionLoading: (sessionID: string) => boolean
+  isSessionLoaded: (sessionID: string) => boolean
+  isSessionLoadError: (sessionID: string) => boolean
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   removeSessionErrors: (sessionID: string, afterTimestamp?: number) => void
   // permissions
@@ -98,8 +101,11 @@ function infoSessionErrorKey(info: unknown): string | undefined {
 
 export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const [messages, setMessages] = useState<Message[]>([])
+  const [sessionLoadMap, setSessionLoadMap] = useState<Record<string, "loading" | "loaded" | "error">>({})
   const [permissions, setPermissions] = useState<PermissionRequest[]>([])
   const [questions, setQuestions] = useState<Map<string, QuestionRequest[]>>(new Map())
+  const sessionLoadToken = useRef<Record<string, number>>({})
+  const sessionVersion = useRef<Record<string, number>>({})
   const session = useSession()
   const setReasoning = session.setReasoning
   const setSessionIdle = session.setSessionIdle
@@ -276,29 +282,63 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     [messages],
   )
 
-  // Listen to message.updated events (also handles message creation)
-  const handleMessageUpdated = useCallback((event: ServerEvent) => {
-    if (event.type === "message.updated") {
-      const { info } = event.properties as { info: SDKMessage }
-      console.log("[MessagesContext] Message updated:", info.id, info.role)
+  const isSessionLoading = useCallback(
+    (sessionID: string) => {
+      if (!sessionID) return false
+      return sessionLoadMap[sessionID] === "loading"
+    },
+    [sessionLoadMap],
+  )
 
-      const key = infoSessionErrorKey(info)
+  const isSessionLoaded = useCallback(
+    (sessionID: string) => {
+      if (!sessionID) return false
+      return sessionLoadMap[sessionID] === "loaded"
+    },
+    [sessionLoadMap],
+  )
 
-      // updateMessageInfoCleaningOptimistic removes optimistic placeholders
-      // when a real user message arrives, then upserts the real message.
-      setMessages((prev) => {
-        const next = Store.updateMessageInfoCleaningOptimistic(prev, info.id, info)
-        if (!key) return next
+  const isSessionLoadError = useCallback(
+    (sessionID: string) => {
+      if (!sessionID) return false
+      return sessionLoadMap[sessionID] === "error"
+    },
+    [sessionLoadMap],
+  )
 
-        // If we later receive a message-level error, remove any synthetic session error we created for it.
-        return next.filter((m) => {
-          if (m.info.sessionID !== info.sessionID) return true
-          if (!m.info.id.startsWith("error-")) return true
-          return (m.info as any)?.syntheticErrorKey !== key
-        })
-      })
-    }
+  const touch = useCallback((sessionID: string) => {
+    if (!sessionID) return
+    const value = sessionVersion.current[sessionID] ?? 0
+    sessionVersion.current[sessionID] = value + 1
   }, [])
+
+  // Listen to message.updated events (also handles message creation)
+  const handleMessageUpdated = useCallback(
+    (event: ServerEvent) => {
+      if (event.type === "message.updated") {
+        const { info } = event.properties as { info: SDKMessage }
+        console.log("[MessagesContext] Message updated:", info.id, info.role)
+        touch(info.sessionID)
+
+        const key = infoSessionErrorKey(info)
+
+        // updateMessageInfoCleaningOptimistic removes optimistic placeholders
+        // when a real user message arrives, then upserts the real message.
+        setMessages((prev) => {
+          const next = Store.updateMessageInfoCleaningOptimistic(prev, info.id, info)
+          if (!key) return next
+
+          // If we later receive a message-level error, remove any synthetic session error we created for it.
+          return next.filter((m) => {
+            if (m.info.sessionID !== info.sessionID) return true
+            if (!m.info.id.startsWith("error-")) return true
+            return (m.info as any)?.syntheticErrorKey !== key
+          })
+        })
+      }
+    },
+    [touch],
+  )
 
   // Listen to message.part.updated events
   const handlePartUpdated = useCallback(
@@ -311,6 +351,9 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
           part.type,
           delta ? `(delta: ${delta.length} chars)` : "",
         )
+
+        const sid = (part as { sessionID?: string }).sessionID
+        if (sid) touch(sid)
 
         if (delta && part.type === "text") {
           // Apply delta for streaming text
@@ -351,40 +394,44 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         }
       }
     },
-    [addPart, updateReasoningFromPart],
+    [addPart, touch, updateReasoningFromPart],
   )
 
   // Listen to message.part.delta events (streaming text chunks)
-  const handlePartDelta = useCallback((event: ServerEvent) => {
-    if (event.type === "message.part.delta") {
-      const { messageID, partID, delta, field } = event.properties as {
-        sessionID: string
-        messageID: string
-        partID: string
-        field: string
-        delta: string
+  const handlePartDelta = useCallback(
+    (event: ServerEvent) => {
+      if (event.type === "message.part.delta") {
+        const { sessionID, messageID, partID, delta, field } = event.properties as {
+          sessionID: string
+          messageID: string
+          partID: string
+          field: string
+          delta: string
+        }
+        if (field === "text") {
+          touch(sessionID)
+          setMessages((prev) => {
+            const messageIndex = prev.findIndex((m) => m.info.id === messageID)
+            if (messageIndex < 0) return prev
+            const message = prev[messageIndex]
+            const partIndex = message.parts.findIndex((p) => p.id === partID)
+            if (partIndex < 0) return prev
+            const existingPart = message.parts[partIndex]
+            if (existingPart.type !== "text" && existingPart.type !== "reasoning") return prev
+            const updatedParts = [...message.parts]
+            updatedParts[partIndex] = {
+              ...existingPart,
+              text: (existingPart.text || "") + delta,
+            }
+            const updated = [...prev]
+            updated[messageIndex] = { ...message, parts: updatedParts }
+            return updated
+          })
+        }
       }
-      if (field === "text") {
-        setMessages((prev) => {
-          const messageIndex = prev.findIndex((m) => m.info.id === messageID)
-          if (messageIndex < 0) return prev
-          const message = prev[messageIndex]
-          const partIndex = message.parts.findIndex((p) => p.id === partID)
-          if (partIndex < 0) return prev
-          const existingPart = message.parts[partIndex]
-          if (existingPart.type !== "text" && existingPart.type !== "reasoning") return prev
-          const updatedParts = [...message.parts]
-          updatedParts[partIndex] = {
-            ...existingPart,
-            text: (existingPart.text || "") + delta,
-          }
-          const updated = [...prev]
-          updated[messageIndex] = { ...message, parts: updatedParts }
-          return updated
-        })
-      }
-    }
-  }, [])
+    },
+    [touch],
+  )
 
   // Listen to session.error events
   const handleSessionError = useCallback(
@@ -404,11 +451,12 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       if (event.type === "message.removed") {
         const { sessionID, messageID } = event.properties as { sessionID: string; messageID: string }
         console.log("[MessagesContext] Message removed:", messageID)
+        touch(sessionID)
         removeMessage(messageID)
         setReasoning(sessionID, false)
       }
     },
-    [removeMessage, setReasoning],
+    [removeMessage, setReasoning, touch],
   )
 
   // Listen to message.part.removed events
@@ -421,23 +469,36 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
           partID: string
         }
         console.log("[MessagesContext] Part removed:", partID)
+        touch(sessionID)
         removePart(messageID, partID)
         removeTrackedReasoningPart(sessionID, partID)
       }
     },
-    [removePart, removeTrackedReasoningPart],
+    [removePart, removeTrackedReasoningPart, touch],
   )
 
   // Load messages for a session
   const loadSessionMessages = useCallback(
     async (sessionID: string) => {
       console.log("[MessagesContext] Loading messages for session:", sessionID)
+      const token = (sessionLoadToken.current[sessionID] ?? 0) + 1
+      sessionLoadToken.current[sessionID] = token
+      const version = sessionVersion.current[sessionID] ?? 0
+      const active = () => sessionLoadToken.current[sessionID] === token
+      const changed = () => (sessionVersion.current[sessionID] ?? 0) !== version
+      setSessionLoadMap((prev) => {
+        if (prev[sessionID] === "loading") return prev
+        return { ...prev, [sessionID]: "loading" }
+      })
 
       try {
         const response = await sdk.session.messages({ path: { id: sessionID } })
 
         if (response.error) {
           console.error("[MessagesContext] Failed to load messages:", response.error)
+          if (active()) {
+            setSessionLoadMap((prev) => ({ ...prev, [sessionID]: "error" }))
+          }
           return null
         }
 
@@ -447,6 +508,22 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         // Cast needed because sdk.session.messages returns non-v2 types, but they're structurally identical
 
         console.log("[MessagesContext] Loaded messages sample:", loadedMessages[0])
+
+        if (!active()) return loadedMessages
+
+        if (changed()) {
+          if (loadedMessages.length > 0) {
+            setMessages((prev) => {
+              const current = prev.filter((msg) => msg.info.sessionID === sessionID)
+              const known = new Set(current.map((msg) => msg.info.id))
+              const extra = loadedMessages.filter((msg) => !known.has(msg.info.id))
+              if (extra.length === 0) return prev
+              return [...prev, ...extra]
+            })
+          }
+          setSessionLoadMap((prev) => ({ ...prev, [sessionID]: "loaded" }))
+          return loadedMessages
+        }
 
         if (loadedMessages.length > 0) {
           // Replace messages for this session with latest server data.
@@ -472,9 +549,14 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         const busy = Boolean(last && isAssistant && (!completed || completed === 0))
         setSessionIdle(sessionID, !busy)
 
+        setSessionLoadMap((prev) => ({ ...prev, [sessionID]: "loaded" }))
+
         return loadedMessages
       } catch (err) {
         console.error("[MessagesContext] Failed to load messages:", err)
+        if (active()) {
+          setSessionLoadMap((prev) => ({ ...prev, [sessionID]: "error" }))
+        }
         return null
       }
     },
@@ -669,6 +751,9 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     clearMessages,
     getMessagesBySession,
     loadSessionMessages,
+    isSessionLoading,
+    isSessionLoaded,
+    isSessionLoadError,
     setMessages,
     removeSessionErrors,
     permissions,

@@ -28,6 +28,7 @@ import { quick_phrase_updated_event } from "../../state/repo/quickPhraseEvent"
 
 interface MessageInputProps {
   sessionID: string | null
+  blocked?: boolean
   onMessageSent?: () => void
   onError?: (error: Error) => void
 }
@@ -40,12 +41,18 @@ export const MessageInput = forwardRef<
     insertPlainWithMentions: (value: string) => void
   },
   MessageInputProps
->(({ sessionID, onMessageSent, onError }, ref) => {
+>(({ sessionID, blocked = false, onMessageSent, onError }, ref) => {
   const initialConfig = createEditorConfig()
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <MessageInputInner ref={ref} sessionID={sessionID} onMessageSent={onMessageSent} onError={onError} />
+      <MessageInputInner
+        ref={ref}
+        sessionID={sessionID}
+        blocked={blocked}
+        onMessageSent={onMessageSent}
+        onError={onError}
+      />
     </LexicalComposer>
   )
 })
@@ -60,7 +67,7 @@ const MessageInputInner = forwardRef<
     insertPlainWithMentions: (value: string) => void
   },
   MessageInputProps
->(({ sessionID, onMessageSent, onError }, ref) => {
+>(({ sessionID, blocked = false, onMessageSent, onError }, ref) => {
   const [editor] = useLexicalComposerContext()
   const [isEmpty, setIsEmpty] = useState(true)
   const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
@@ -81,7 +88,7 @@ const MessageInputInner = forwardRef<
     setSelectedVariant,
   } = useSession()
   const { providersDirty, clearProvidersDirty } = useProviders()
-  const { getMessagesBySession } = useMessages()
+  const { getMessagesBySession, isSessionLoaded } = useMessages()
 
   // Providers state for variants computation
   const [providers, setProviders] = useState<Provider[]>([])
@@ -109,11 +116,12 @@ const MessageInputInner = forwardRef<
         drafts.current = next
         void saveDrafts(next)
         if (!textContent) return
+        if (!isSessionLoaded(sessionID)) return
         if (getMessagesBySession(sessionID).length > 0) return
         void saveDraftSession(sessionID)
       })
     },
-    [sessionID, getMessagesBySession],
+    [sessionID, getMessagesBySession, isSessionLoaded],
   )
 
   const resolveToAbsolutePath = useCallback(
@@ -308,11 +316,12 @@ const MessageInputInner = forwardRef<
   )
 
   const busy = !isIdle
+  const locked = busy || blocked
 
   // Disable/enable editor based on session busy state
   useEffect(() => {
-    editor.setEditable(!busy)
-  }, [editor, busy])
+    editor.setEditable(!locked)
+  }, [editor, locked])
 
   // Load providers for variant computation
   useEffect(() => {
@@ -374,9 +383,9 @@ const MessageInputInner = forwardRef<
     }
   }, [providers, selectedProviderId, selectedModelId])
 
-  const isDisabled = busy
-  const isButtonDisabled = busy || isEmpty
-  const isCompactDisabled = busy || isCompacting || !sessionID || !selectedProviderId || !selectedModelId
+  const isDisabled = locked
+  const isButtonDisabled = locked || isEmpty
+  const isCompactDisabled = locked || isCompacting || !sessionID || !selectedProviderId || !selectedModelId
 
   const handleCompactWithModal = useCallback(async () => {
     setIsCompacting(true)
@@ -396,10 +405,11 @@ const MessageInputInner = forwardRef<
       const next = { ...drafts.current, [sessionID]: body }
       drafts.current = next
       void saveDrafts(next)
+      if (!isSessionLoaded(sessionID)) return
       if (getMessagesBySession(sessionID).length > 0) return
       void saveDraftSession(sessionID)
     },
-    [editor, getMessagesBySession, parseWithRange, sessionID],
+    [editor, getMessagesBySession, isSessionLoaded, parseWithRange, sessionID],
   )
 
   const sendPhrase = useCallback(
