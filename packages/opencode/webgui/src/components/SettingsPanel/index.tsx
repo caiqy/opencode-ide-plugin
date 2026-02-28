@@ -85,7 +85,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     try {
       // Save config if it changed
       if (JSON.stringify(formData) !== JSON.stringify(originalFormData)) {
-        const configResponse = await sdk.config.update({
+        const configResponse = await sdk.global.config.update({
           body: formData,
         })
 

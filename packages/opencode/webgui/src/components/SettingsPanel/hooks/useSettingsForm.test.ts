@@ -4,8 +4,12 @@ import { renderHook, waitFor } from "@testing-library/react"
 vi.mock("../../../lib/api/sdkClient", () => {
   return {
     sdk: {
+      global: {
+        config: {
+          get: vi.fn(),
+        },
+      },
       config: {
-        get: vi.fn(),
         providers: vi.fn(),
       },
       auth: {
@@ -24,7 +28,7 @@ describe("useSettingsForm migration", () => {
   })
 
   it("settings form loads providers from provider.list all[]", async () => {
-    ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
+    ;((sdk as any).global.config.get as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.providers as any).mockResolvedValue({
       data: {
         providers: [
@@ -42,10 +46,11 @@ describe("useSettingsForm migration", () => {
     await waitFor(() => {
       expect(result.current.providers.map((item) => item.id)).toEqual(["alpha", "zeta"])
     })
+    expect((sdk as any).global.config.get).toHaveBeenCalledTimes(1)
   })
 
   it("configuredProviders derived from connected[] compatibility mapping", async () => {
-    ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
+    ;((sdk as any).global.config.get as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.providers as any).mockResolvedValue({
       data: { providers: [], default: {} },
       error: null,

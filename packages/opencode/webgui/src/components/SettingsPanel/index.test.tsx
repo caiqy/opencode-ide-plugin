@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 
 const mocks = vi.hoisted(() => ({
   useSettingsForm: vi.fn(),
   useUnsavedChanges: vi.fn(),
+  globalConfigUpdate: vi.fn(),
+  configUpdate: vi.fn(),
+  authSet: vi.fn(),
 }))
 
 vi.mock("./hooks/useSettingsForm", () => ({
@@ -24,10 +27,36 @@ vi.mock("../../state/IdeBridgeContext", () => ({
   useCustomApi: () => true,
 }))
 
+vi.mock("../../state/ProjectContext", () => ({
+  useProject: () => ({
+    worktree: "D:/repo",
+  }),
+}))
+
+vi.mock("../../lib/api/sdkClient", () => ({
+  sdk: {
+    global: {
+      config: {
+        update: (...args: unknown[]) => mocks.globalConfigUpdate(...args),
+      },
+    },
+    config: {
+      update: (...args: unknown[]) => mocks.configUpdate(...args),
+    },
+    auth: {
+      set: (...args: unknown[]) => mocks.authSet(...args),
+    },
+  },
+}))
+
 import { SettingsPanel } from "./index"
 
 describe("SettingsPanel", () => {
   beforeEach(() => {
+    mocks.globalConfigUpdate.mockResolvedValue({ data: {}, error: null })
+    mocks.configUpdate.mockResolvedValue({ data: {}, error: null })
+    mocks.authSet.mockResolvedValue(undefined)
+
     mocks.useSettingsForm.mockReturnValue({
       formData: {},
       setFormData: vi.fn(),
@@ -69,5 +98,40 @@ describe("SettingsPanel", () => {
     expect(screen.getByText("有未保存的更改。确定要直接关闭且不保存吗？")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "放弃更改" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "继续编辑" })).toBeInTheDocument()
+  })
+
+  it("保存设置走全局配置接口", async () => {
+    const setFormData = vi.fn()
+    const setOriginalFormData = vi.fn()
+    mocks.useSettingsForm.mockReturnValue({
+      formData: { snapshot: true },
+      setFormData,
+      originalFormData: { snapshot: false },
+      setOriginalFormData,
+      apiKeys: {},
+      setApiKeys: vi.fn(),
+      showApiKeys: {},
+      setShowApiKeys: vi.fn(),
+      providers: [],
+      configuredProviders: [],
+      setConfiguredProviders: vi.fn(),
+      isLoading: false,
+      error: null,
+    })
+    mocks.useUnsavedChanges.mockReturnValue({
+      hasUnsavedChanges: () => true,
+      showCloseConfirm: false,
+      setShowCloseConfirm: vi.fn(),
+    })
+
+    render(<SettingsPanel isOpen={true} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole("button", { name: "保存更改" }))
+
+    await waitFor(() => {
+      expect(mocks.globalConfigUpdate).toHaveBeenCalledWith({
+        body: { snapshot: true },
+      })
+    })
+    expect(mocks.configUpdate).not.toHaveBeenCalled()
   })
 })

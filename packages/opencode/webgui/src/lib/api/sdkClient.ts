@@ -3,7 +3,7 @@
  * Configured to connect to the OpenCode server at the default location
  */
 
-import { createOpencodeClient, type Provider } from "@opencode-ai/sdk/client"
+import { createOpencodeClient, type Config, type Provider } from "@opencode-ai/sdk/client"
 
 // Create a single SDK client instance on current origin
 const baseClient = createOpencodeClient({
@@ -64,6 +64,11 @@ interface PathResponse {
   directory: string
 }
 
+type ApiResult<T> = {
+  data: T | null
+  error: { message: string } | null
+}
+
 function retryParts(input: any[]) {
   return input
     .filter((part) => ["text", "file", "agent", "subtask"].includes(part.type))
@@ -75,12 +80,67 @@ function retryParts(input: any[]) {
     })
 }
 
+async function globalConfigGet(): Promise<ApiResult<Config>> {
+  try {
+    const response = await fetch("/global/config", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    })
+
+    if (!response.ok) {
+      return {
+        error: { message: "Failed to load global config" },
+        data: null,
+      }
+    }
+
+    const data = (await response.json()) as Config
+    return { data, error: null }
+  } catch (error) {
+    return {
+      error: { message: error instanceof Error ? error.message : "Unknown error" },
+      data: null,
+    }
+  }
+}
+
+async function globalConfigUpdate(options: { body: Partial<Config> }): Promise<ApiResult<Config>> {
+  try {
+    const response = await fetch("/global/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options.body),
+    })
+
+    if (!response.ok) {
+      return {
+        error: { message: "Failed to update global config" },
+        data: null,
+      }
+    }
+
+    const data = (await response.json()) as Config
+    return { data, error: null }
+  } catch (error) {
+    return {
+      error: { message: error instanceof Error ? error.message : "Unknown error" },
+      data: null,
+    }
+  }
+}
+
 /**
  * Extended SDK client with state management methods
  * TODO: Remove once SDK is regenerated with Stainless
  */
 export const sdk = {
   ...baseClient,
+  global: Object.assign(baseClient.global, {
+    config: {
+      get: globalConfigGet,
+      update: globalConfigUpdate,
+    },
+  }),
   session: Object.assign(baseClient.session, {
     retry: async (options: { path: { sessionID: string } }) => {
       try {

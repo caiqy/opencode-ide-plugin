@@ -40,13 +40,13 @@ export function GeneralTab({ formData, setFormData }: GeneralTabProps) {
         <label className="flex items-center space-x-2">
           <input
             type="checkbox"
-            checked={formData.snapshot ?? false}
+            checked={formData.snapshot ?? true}
             onChange={(e) => setFormData({ ...formData, snapshot: e.target.checked })}
             className="rounded border-gray-300 dark:border-gray-700"
           />
           <span className="text-sm text-gray-700 dark:text-gray-300">启用快照</span>
         </label>
-        <p className="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400">在会话中记录文件状态快照</p>
+        <p className="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400">在会话中记录文件状态快照（默认开启）</p>
       </div>
 
       <div>

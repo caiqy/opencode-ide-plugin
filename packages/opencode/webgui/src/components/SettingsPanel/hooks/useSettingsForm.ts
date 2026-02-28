@@ -26,7 +26,7 @@ export function useSettingsForm(isOpen: boolean, customApi?: boolean) {
 
       try {
         // Fetch config
-        const configResponse = await sdk.config.get()
+        const configResponse = await sdk.global.config.get()
 
         if (configResponse.error) {
           throw new Error("Failed to load config")
