@@ -5,7 +5,7 @@ interface ScrollToBottomButtonProps {
 
 export function ScrollToBottomButton({ visible, onClick }: ScrollToBottomButtonProps) {
   return (
-    <div className="fixed bottom-[110px] right-6 z-30 pointer-events-none">
+    <div className="fixed bottom-[105px] right-6 z-30 pointer-events-none">
       <button
         type="button"
         aria-label="滚动到底部"
