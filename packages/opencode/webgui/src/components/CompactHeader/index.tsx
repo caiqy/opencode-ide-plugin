@@ -320,6 +320,8 @@ const CompactHeader = forwardRef<
       }
       if (currentSession?.id !== tabStore.activeTab && !restoring) {
         const target = tabStore.activeTab
+        const targetMissing = sessionsEverLoaded.current && !isLoading && !sessions.some((s) => s.id === target)
+        if (targetMissing) return
         setRestoring(true)
         void switchWithRollback(target, undefined, () => {
           if (activeRef.current !== target) return

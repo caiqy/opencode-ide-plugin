@@ -507,6 +507,90 @@ describe("CompactHeader", () => {
     expect(openTab).not.toHaveBeenCalledWith("s1")
   })
 
+  it("删除当前唯一草稿标签后不会触发切换失败 toast", async () => {
+    const switchSession = vi.fn().mockRejectedValue(new Error("not found"))
+    const showToast = vi.fn()
+    const onNewSession = vi.fn()
+    let isLoading = true
+    const state = {
+      currentSession: { id: "s-draft", title: "草稿会话" } as { id: string; title: string } | null,
+      sessions: [{ id: "s-draft", title: "草稿会话" }],
+      openTabs: ["s-draft"],
+      activeTab: "s-draft",
+    }
+    const pruneTabs = vi.fn((validIds: Set<string>) => {
+      const openTabs = state.openTabs.filter((id) => validIds.has(id))
+      state.openTabs = openTabs
+      state.activeTab = openTabs.includes(state.activeTab) ? state.activeTab : openTabs[openTabs.length - 1] || ""
+    })
+
+    mocks.useSession.mockImplementation(() => ({
+      currentSession: state.currentSession,
+      setCurrentSession: vi.fn(),
+      sessions: state.sessions,
+      setSessions: vi.fn(),
+      switchSession,
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading,
+    }))
+    mocks.useTabStore.mockImplementation(() => ({
+      openTabs: state.openTabs,
+      activeTab: state.activeTab,
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      activateTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs,
+    }))
+    mocks.useToast.mockReturnValue({ showToast })
+
+    const view = render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={onNewSession}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    state.currentSession = null
+    state.sessions = []
+    isLoading = false
+    view.rerender(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={onNewSession}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(pruneTabs).toHaveBeenCalledWith(new Set())
+    })
+
+    view.rerender(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={onNewSession}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(onNewSession).toHaveBeenCalled()
+    })
+    expect(switchSession).not.toHaveBeenCalled()
+    expect(showToast).not.toHaveBeenCalledWith("切换会话失败", { variant: "error" })
+  })
+
   it("falls back to onNewSession when restored activeTab switch fails", async () => {
     const switchSession = vi.fn().mockRejectedValue(new Error("not found"))
     const onNewSession = vi.fn()
