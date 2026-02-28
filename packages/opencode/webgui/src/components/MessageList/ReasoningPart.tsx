@@ -1,6 +1,7 @@
 import type { Part } from "../../state/MessagesContext"
 import { CollapsiblePart } from "./CollapsiblePart"
 import { usePartOpen } from "./PartOpenContext"
+import { MarkdownRenderer } from "../MarkdownRenderer"
 
 interface ReasoningPartProps {
   part: Part & { type: "reasoning" }
@@ -25,7 +26,7 @@ export function ReasoningPart({ part, durationMs }: ReasoningPartProps) {
     <CollapsiblePart
       trigger={<span className="leading-none">{label}</span>}
       triggerClassName="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-      content={part.text || ""}
+      content={<MarkdownRenderer tone="muted">{part.text || ""}</MarkdownRenderer>}
       contentClassName="mt-1 text-xs text-gray-600 dark:text-gray-400 pl-3"
       expanded={expanded}
       onExpandedChange={(next) => open.setOpen(part.id, next)}

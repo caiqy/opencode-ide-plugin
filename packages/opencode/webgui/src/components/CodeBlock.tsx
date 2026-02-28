@@ -10,9 +10,10 @@ interface CodeBlockProps {
   language: string
   value: string
   inline?: boolean
+  tone?: "default" | "muted"
 }
 
-export function CodeBlock({ language, value, inline = false }: CodeBlockProps) {
+export function CodeBlock({ language, value, inline = false, tone = "default" }: CodeBlockProps) {
   const [copied, setCopied] = useState(false)
   const [isExpanded, setIsExpanded] = useState(true)
   const { theme } = useTheme()
@@ -29,7 +30,12 @@ export function CodeBlock({ language, value, inline = false }: CodeBlockProps) {
   // Keep this inline-only branch before style computation so future edits do not regress the inline layout
   if (inline) {
     return (
-      <code className="bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-1.5 py-0.5 text-sm font-mono inline whitespace-pre-wrap break-all">
+      <code
+        className={cn(
+          "bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 text-sm font-mono inline whitespace-pre-wrap break-all",
+          tone === "muted" ? "text-inherit" : "text-gray-900 dark:text-gray-100",
+        )}
+      >
         {value}
       </code>
     )
@@ -122,23 +128,29 @@ export function CodeBlock({ language, value, inline = false }: CodeBlockProps) {
       {/* Code with syntax highlighting */}
       {isExpanded && (
         <div className="overflow-x-auto">
-          <SyntaxHighlighter
-            language={language || "text"}
-            style={syntaxStyle}
-            customStyle={{
-              margin: 0,
-              padding: "0.75rem",
-              fontSize: "0.875rem",
-              lineHeight: "1.5",
-            }}
-            codeTagProps={{
-              style: {
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-              },
-            }}
-          >
-            {value}
-          </SyntaxHighlighter>
+          {tone === "muted" ? (
+            <pre className="m-0 p-3 text-sm leading-6 text-gray-600 dark:text-gray-400 whitespace-pre-wrap break-words">
+              <code className="font-mono">{value}</code>
+            </pre>
+          ) : (
+            <SyntaxHighlighter
+              language={language || "text"}
+              style={syntaxStyle}
+              customStyle={{
+                margin: 0,
+                padding: "0.75rem",
+                fontSize: "0.875rem",
+                lineHeight: "1.5",
+              }}
+              codeTagProps={{
+                style: {
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                },
+              }}
+            >
+              {value}
+            </SyntaxHighlighter>
+          )}
         </div>
       )}
     </div>
