@@ -457,7 +457,12 @@ const MessageInputInner = forwardRef<
     <>
       <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex-shrink-0">
         <FooterPanels sessionID={sessionID} />
-        <QuickPhraseBar items={phraseItems} disabled={isDisabled} onActivate={onActivatePhrase} />
+        <QuickPhraseBar
+          items={phraseItems}
+          mode={quickPhrases?.mode}
+          disabled={isDisabled}
+          onActivate={onActivatePhrase}
+        />
         <EditorContent
           contentEditableRef={contentEditableRef}
           containerRef={containerRef}

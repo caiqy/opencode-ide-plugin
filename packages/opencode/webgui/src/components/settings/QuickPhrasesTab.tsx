@@ -85,7 +85,7 @@ export function QuickPhrasesTab() {
           }}
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
         >
-          <option value="double_send">双击发送</option>
+          <option value="double_send">直接发送</option>
           <option value="confirm_send">确认后发送</option>
           <option value="fill_input">回填输入框</option>
         </select>
@@ -99,12 +99,12 @@ export function QuickPhrasesTab() {
                 <input
                   value={editTitle}
                   onChange={(event) => setEditTitle(event.target.value)}
-                  className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800"
+                  className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 />
                 <textarea
                   value={editBody}
                   onChange={(event) => setEditBody(event.target.value)}
-                  className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800"
+                  className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 />
                 <button
                   onClick={() => {
@@ -184,13 +184,13 @@ export function QuickPhrasesTab() {
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           placeholder="短语标题"
-          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800"
+          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
         />
         <textarea
           value={body}
           onChange={(event) => setBody(event.target.value)}
           placeholder="短语正文"
-          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800"
+          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
         />
         <button
           onClick={() => {
@@ -199,7 +199,7 @@ export function QuickPhrasesTab() {
             setTitle("")
             setBody("")
           }}
-          className="text-sm px-2 py-1 rounded border border-gray-300 dark:border-gray-700"
+          className="text-sm px-2 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100"
         >
           添加短语
         </button>
