@@ -134,4 +134,28 @@ describe("SettingsPanel", () => {
     })
     expect(mocks.configUpdate).not.toHaveBeenCalled()
   })
+
+  it("可以切换到快捷短语标签页", async () => {
+    mocks.useSettingsForm.mockReturnValue({
+      formData: {},
+      setFormData: vi.fn(),
+      originalFormData: {},
+      setOriginalFormData: vi.fn(),
+      apiKeys: {},
+      setApiKeys: vi.fn(),
+      showApiKeys: {},
+      setShowApiKeys: vi.fn(),
+      providers: [],
+      configuredProviders: [],
+      setConfiguredProviders: vi.fn(),
+      isLoading: false,
+      error: null,
+    })
+
+    render(<SettingsPanel isOpen={true} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole("button", { name: /快捷短语/ }))
+    await waitFor(() => {
+      expect(screen.getByText("快捷短语设置")).toBeInTheDocument()
+    })
+  })
 })

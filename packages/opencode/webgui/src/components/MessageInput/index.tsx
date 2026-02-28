@@ -4,6 +4,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { $getRoot, $getSelection, $isRangeSelection, $createTextNode, type EditorState } from "lexical"
 import { $createMentionNode } from "../mention/MentionNode"
 import { useSession } from "../../state/SessionContext"
+import { useMessages } from "../../state/MessagesContext"
 import { useProject } from "../../state/ProjectContext"
 import { useProviders } from "../../state/ProvidersContext"
 import { sdk } from "../../lib/api/sdkClient"
@@ -14,6 +15,7 @@ import { createEditorConfig } from "./EditorConfig"
 import { EditorContent } from "./EditorContent"
 import { EditorToolbar } from "./EditorToolbar"
 import { FooterPanels } from "./FooterPanels"
+import { QuickPhraseBar } from "./QuickPhraseBar"
 import { useMessageInput } from "./hooks/useMessageInput"
 import { useFileAttachment } from "./hooks/useFileAttachment"
 import { useDragDrop } from "./hooks/useDragDrop"
@@ -21,6 +23,8 @@ import { useEditorKeyboard } from "./hooks/useEditorKeyboard"
 import { useMessageParts } from "./hooks/useMessageParts"
 import { insertPlainWithMentionsImpl } from "./utils"
 import { loadDrafts, saveDraftSession, saveDrafts } from "../../state/repo/draftRepo"
+import { loadQuickPhraseState, type QuickPhraseState } from "../../state/repo/quickPhraseRepo"
+import { quick_phrase_updated_event } from "../../state/repo/quickPhraseEvent"
 
 interface MessageInputProps {
   sessionID: string | null
@@ -60,6 +64,7 @@ const MessageInputInner = forwardRef<
   const [editor] = useLexicalComposerContext()
   const [isEmpty, setIsEmpty] = useState(true)
   const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
+  const [phraseConfirm, setPhraseConfirm] = useState<{ title: string; body: string } | null>(null)
   const [isCompacting, setIsCompacting] = useState(false)
   const [modelSelectorKey, setModelSelectorKey] = useState(0)
   const contentEditableRef = useRef<HTMLDivElement>(null)
@@ -76,11 +81,14 @@ const MessageInputInner = forwardRef<
     setSelectedVariant,
   } = useSession()
   const { providersDirty, clearProvidersDirty } = useProviders()
+  const { getMessagesBySession } = useMessages()
 
   // Providers state for variants computation
   const [providers, setProviders] = useState<Provider[]>([])
+  const [quickPhrases, setQuickPhrases] = useState<QuickPhraseState | null>(null)
 
   const restoring = useRef(false)
+  const phraseLoading = useRef(0)
   const draft = useRef("")
   const drafts = useRef<Record<string, string>>({})
 
@@ -101,10 +109,11 @@ const MessageInputInner = forwardRef<
         drafts.current = next
         void saveDrafts(next)
         if (!textContent) return
+        if (getMessagesBySession(sessionID).length > 0) return
         void saveDraftSession(sessionID)
       })
     },
-    [sessionID],
+    [sessionID, getMessagesBySession],
   )
 
   const resolveToAbsolutePath = useCallback(
@@ -158,18 +167,19 @@ const MessageInputInner = forwardRef<
 
   const { extractMessageParts } = useMessageParts({ editor, resolveToAbsolutePath })
 
-  const { lastFailedMessage, handleSubmit, handleRetry, handleAbort, handleCompact } = useMessageInput({
-    sessionID,
-    editor,
-    isEmpty,
-    selectedProviderId,
-    selectedModelId,
-    selectedVariant,
-    selectedAgent,
-    extractMessageParts,
-    onMessageSent,
-    onError,
-  })
+  const { lastFailedMessage, handleSubmit, submitQuickPhrase, handleRetry, handleAbort, handleCompact } =
+    useMessageInput({
+      sessionID,
+      editor,
+      isEmpty,
+      selectedProviderId,
+      selectedModelId,
+      selectedVariant,
+      selectedAgent,
+      extractMessageParts,
+      onMessageSent,
+      onError,
+    })
 
   const { fileInputRef, handleFileSelect, handleFileChange } = useFileAttachment(editor)
 
@@ -191,6 +201,25 @@ const MessageInputInner = forwardRef<
       active = false
     }
   }, [restore, sessionID])
+
+  useEffect(() => {
+    let active = true
+    const load = () => {
+      const id = ++phraseLoading.current
+      void loadQuickPhraseState().then((state) => {
+        if (!active) return
+        if (id !== phraseLoading.current) return
+        setQuickPhrases(state)
+      })
+    }
+    const onUpdate = () => load()
+    load()
+    window.addEventListener(quick_phrase_updated_event, onUpdate)
+    return () => {
+      active = false
+      window.removeEventListener(quick_phrase_updated_event, onUpdate)
+    }
+  }, [])
 
   // Expose methods to parent
   useImperativeHandle(
@@ -357,10 +386,68 @@ const MessageInputInner = forwardRef<
     })
   }, [handleCompact])
 
+  const fillPhrase = useCallback(
+    (body: string) => {
+      if (!body.trim()) return
+      insertPlainWithMentionsImpl(editor, parseWithRange, body, { replace: true })
+      draft.current = body
+      setIsEmpty(body.trim().length === 0)
+      if (!sessionID) return
+      const next = { ...drafts.current, [sessionID]: body }
+      drafts.current = next
+      void saveDrafts(next)
+      if (getMessagesBySession(sessionID).length > 0) return
+      void saveDraftSession(sessionID)
+    },
+    [editor, getMessagesBySession, parseWithRange, sessionID],
+  )
+
+  const sendPhrase = useCallback(
+    (body: string) => {
+      if (!body.trim()) return
+      if (isDisabled) return
+      void submitQuickPhrase(body)
+    },
+    [isDisabled, submitQuickPhrase],
+  )
+
+  const onActivatePhrase = useCallback(
+    (item: { id: string; title: string; body: string }) => {
+      if (!quickPhrases || isDisabled) return
+      if (!item.body.trim()) return
+      if (quickPhrases.mode === "fill_input") {
+        fillPhrase(item.body)
+        return
+      }
+      if (quickPhrases.mode === "double_send") {
+        sendPhrase(item.body)
+        return
+      }
+      setPhraseConfirm({ title: item.title, body: item.body })
+    },
+    [fillPhrase, isDisabled, quickPhrases, sendPhrase],
+  )
+
+  const onConfirmPhrase = useCallback(() => {
+    const body = phraseConfirm?.body
+    setPhraseConfirm(null)
+    if (!body) return
+    sendPhrase(body)
+  }, [phraseConfirm?.body, sendPhrase])
+
+  const phraseItems = useMemo(() => {
+    if (!quickPhrases) return [] as Array<{ id: string; title: string; body: string }>
+    return quickPhrases.order
+      .map((id) => quickPhrases.items[id])
+      .filter((item): item is NonNullable<typeof item> => Boolean(item) && item.hidden !== true)
+      .map((item) => ({ id: item.id, title: item.title, body: item.body }))
+  }, [quickPhrases])
+
   return (
     <>
       <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex-shrink-0">
         <FooterPanels sessionID={sessionID} />
+        <QuickPhraseBar items={phraseItems} disabled={isDisabled} onActivate={onActivatePhrase} />
         <EditorContent
           contentEditableRef={contentEditableRef}
           containerRef={containerRef}
@@ -391,6 +478,17 @@ const MessageInputInner = forwardRef<
           isReasoningModel={currentModelInfo.isReasoning}
         />
       </footer>
+
+      <ConfirmModal
+        isOpen={Boolean(phraseConfirm)}
+        onClose={() => setPhraseConfirm(null)}
+        onConfirm={onConfirmPhrase}
+        title="确认发送快捷短语"
+        message={phraseConfirm ? `将发送：${phraseConfirm.title}` : ""}
+        confirmText="发送"
+        cancelText="取消"
+        variant="info"
+      />
 
       <ConfirmModal
         isOpen={isCompactConfirmOpen}

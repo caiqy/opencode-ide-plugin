@@ -1,6 +1,6 @@
 interface TabBarProps {
-  activeTab: "general" | "api-keys" | "models" | "advanced"
-  onTabChange: (tab: "general" | "api-keys" | "models" | "advanced") => void
+  activeTab: "general" | "api-keys" | "models" | "advanced" | "quick-phrases"
+  onTabChange: (tab: "general" | "api-keys" | "models" | "advanced" | "quick-phrases") => void
   hideApiKeys?: boolean
 }
 
@@ -9,6 +9,7 @@ export function TabBar({ activeTab, onTabChange, hideApiKeys }: TabBarProps) {
     { id: "general", label: "常规", icon: "⚙️" },
     { id: "api-keys", label: "API 密钥", icon: "🔑" },
     { id: "models", label: "模型", icon: "🤖" },
+    { id: "quick-phrases", label: "快捷短语", icon: "🏷️" },
     { id: "advanced", label: "高级", icon: "🔧" },
   ]
   const tabs = hideApiKeys ? all.filter((t) => t.id !== "api-keys") : all

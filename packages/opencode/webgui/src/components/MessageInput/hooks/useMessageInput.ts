@@ -1,10 +1,10 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { $getRoot, $createParagraphNode, $createTextNode, type LexicalEditor } from "lexical"
 import { sdk } from "../../../lib/api/sdkClient"
 import { useSession } from "../../../state/SessionContext"
 import { useToast } from "../../../state/ToastContext"
 import { useMessages } from "../../../state/MessagesContext"
-import { createOptimisticUserMessage, removeOptimisticMessages } from "../../../lib/messagesStore"
+import { createOptimisticUserMessage, removeMessage } from "../../../lib/messagesStore"
 import { loadDraftSession, saveDraftSession } from "../../../state/repo/draftRepo"
 
 interface UseMessageInputOptions {
@@ -23,7 +23,6 @@ interface UseMessageInputOptions {
 export function useMessageInput({
   sessionID,
   editor,
-  isEmpty,
   selectedProviderId,
   selectedModelId,
   selectedAgent,
@@ -36,6 +35,7 @@ export function useMessageInput({
   const { showToast } = useToast()
   const { setSessionIdle } = useSession()
   const { addMessage, setMessages, getQuestionsBySession, rejectQuestion } = useMessages()
+  const seq = useRef(0)
 
   const lastFailedMessage = sessionID ? (failedMap[sessionID] ?? null) : null
 
@@ -52,159 +52,157 @@ export function useMessageInput({
     })
   }, [])
 
-  const handleSubmit = useCallback(async () => {
-    if (!sessionID || isEmpty) return
+  const submitText = useCallback(
+    async (saved: string, source: "editor" | "quick_phrase") => {
+      if (!sessionID) return
+      const text = saved.trim()
+      if (!text) return
+      const id = ++seq.current
+      const command = text.startsWith("/")
+      const optimistic = !command && source === "editor" ? createOptimisticUserMessage(sessionID, text) : null
 
-    setSessionIdle(sessionID, false)
+      setSessionIdle(sessionID, false)
 
-    let savedMessage = ""
-    editor.getEditorState().read(() => {
-      const root = $getRoot()
-      savedMessage = root.getTextContent()
-    })
-
-    try {
-      const trimmedMessage = savedMessage.trim()
-      const isCommand = trimmedMessage.startsWith("/")
-
-      editor.update(() => {
-        const root = $getRoot()
-        root.clear()
-        const paragraph = $createParagraphNode()
-        root.append(paragraph)
-      })
-
-      setFailed(sessionID, null)
-      onMessageSent?.()
-
-      // Optimistic update: show user message immediately without waiting for SSE
-      if (!isCommand) {
-        addMessage(createOptimisticUserMessage(sessionID, trimmedMessage))
+      if (source === "editor") {
+        editor.update(() => {
+          const root = $getRoot()
+          root.clear()
+          const paragraph = $createParagraphNode()
+          root.append(paragraph)
+        })
+        setFailed(sessionID, null)
+        onMessageSent?.()
+        setTimeout(() => {
+          editor.focus()
+        }, 0)
       }
 
-      setTimeout(() => {
-        editor.focus()
-      }, 0)
+      if (optimistic) {
+        addMessage(optimistic)
+      }
 
-      if (isCommand) {
-        const commandParts = trimmedMessage.slice(1).split(/\s+/)
-        const commandName = commandParts[0]
-        const commandArgs = commandParts.slice(1).join(" ")
-
-        const requestBody: any = {
-          command: commandName,
-          // Server schema requires `arguments` even if empty
-          arguments: commandArgs,
-        }
-
-        if (selectedProviderId && selectedModelId) {
-          requestBody.model = `${selectedProviderId}/${selectedModelId}`
-        }
-
-        requestBody.agent = selectedAgent
-
-        if (selectedVariant) {
-          requestBody.variant = selectedVariant
-        }
-
-        const response = await sdk.session.command({
-          path: { id: sessionID },
-          body: requestBody,
-        })
-
-        if (response.error) {
-          const errorMsg =
-            "data" in response.error &&
-            response.error.data &&
-            typeof response.error.data === "object" &&
-            "message" in response.error.data
-              ? String(response.error.data.message)
-              : "Failed to execute command"
-          throw new Error(errorMsg)
-        }
-      } else {
-        const parts = extractMessageParts()
-
-        if (parts.length === 0) {
-          throw new Error("No message content")
-        }
-
-        const requestBody: any = {
-          parts,
-        }
-
-        if (selectedProviderId && selectedModelId) {
-          requestBody.model = {
-            providerID: selectedProviderId,
-            modelID: selectedModelId,
+      try {
+        if (command) {
+          const parts = text.slice(1).split(/\s+/)
+          const request: any = {
+            command: parts[0],
+            arguments: parts.slice(1).join(" "),
+            agent: selectedAgent,
+          }
+          if (selectedProviderId && selectedModelId) {
+            request.model = `${selectedProviderId}/${selectedModelId}`
+          }
+          if (selectedVariant) {
+            request.variant = selectedVariant
+          }
+          const response = await sdk.session.command({
+            path: { id: sessionID },
+            body: request,
+          })
+          if (response.error) {
+            const message =
+              "data" in response.error &&
+              response.error.data &&
+              typeof response.error.data === "object" &&
+              "message" in response.error.data
+                ? String(response.error.data.message)
+                : "Failed to execute command"
+            throw new Error(message)
           }
         }
 
-        requestBody.agent = selectedAgent
-
-        if (selectedVariant) {
-          requestBody.variant = selectedVariant
+        if (!command) {
+          const request: any = {
+            parts: source === "editor" ? extractMessageParts() : [{ type: "text", text }],
+            agent: selectedAgent,
+          }
+          if (request.parts.length === 0) {
+            throw new Error("No message content")
+          }
+          if (selectedProviderId && selectedModelId) {
+            request.model = {
+              providerID: selectedProviderId,
+              modelID: selectedModelId,
+            }
+          }
+          if (selectedVariant) {
+            request.variant = selectedVariant
+          }
+          const response = await sdk.session.prompt({
+            path: { id: sessionID },
+            body: request,
+          })
+          if (response.error) {
+            const message =
+              "data" in response.error &&
+              response.error.data &&
+              typeof response.error.data === "object" &&
+              "message" in response.error.data
+                ? String(response.error.data.message)
+                : "Failed to send message"
+            throw new Error(message)
+          }
         }
 
-        const response = await sdk.session.prompt({
-          path: { id: sessionID },
-          body: requestBody,
+        if (source === "editor") {
+          const activeDraft = await loadDraftSession()
+          if (activeDraft === sessionID) {
+            await saveDraftSession(null)
+          }
+        }
+      } catch (err) {
+        if (optimistic) {
+          setMessages((prev) => removeMessage(prev, optimistic.info.id))
+        }
+        if (id !== seq.current) return
+        const error = err instanceof Error ? err : new Error("Failed to send message")
+        console.error("[MessageInput] Failed to send message:", error)
+        if (source === "editor") {
+          setFailed(sessionID, saved)
+        }
+        showToast(error.message, {
+          title: "Failed to send message",
+          variant: "error",
+          duration: 8000,
         })
-
-        if (response.error) {
-          const errorMsg =
-            "data" in response.error &&
-            response.error.data &&
-            typeof response.error.data === "object" &&
-            "message" in response.error.data
-              ? String(response.error.data.message)
-              : "Failed to send message"
-          throw new Error(errorMsg)
-        }
+        onError?.(error)
+        setSessionIdle(sessionID, true)
       }
+    },
+    [
+      addMessage,
+      editor,
+      extractMessageParts,
+      onError,
+      onMessageSent,
+      selectedAgent,
+      selectedModelId,
+      selectedProviderId,
+      selectedVariant,
+      sessionID,
+      setFailed,
+      setMessages,
+      setSessionIdle,
+      showToast,
+    ],
+  )
 
-      if (sessionID) {
-        const activeDraft = await loadDraftSession()
-        if (activeDraft === sessionID) {
-          await saveDraftSession(null)
-        }
-      }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error("Failed to send message")
-      console.error("[MessageInput] Failed to send message:", error)
+  const handleSubmit = useCallback(async () => {
+    if (!sessionID) return
+    let saved = ""
+    editor.getEditorState().read(() => {
+      const root = $getRoot()
+      saved = root.getTextContent()
+    })
+    await submitText(saved, "editor")
+  }, [editor, sessionID, submitText])
 
-      // Restore failed message for retry
-      setFailed(sessionID, savedMessage)
-
-      // Remove optimistic message on failure
-      setMessages((prev) => removeOptimisticMessages(prev, sessionID))
-
-      showToast(error.message, {
-        title: "Failed to send message",
-        variant: "error",
-        duration: 8000,
-      })
-
-      onError?.(error)
-      setSessionIdle(sessionID, true)
-    }
-  }, [
-    sessionID,
-    isEmpty,
-    selectedProviderId,
-    selectedModelId,
-    selectedAgent,
-    selectedVariant,
-    onMessageSent,
-    onError,
-    setSessionIdle,
-    showToast,
-    editor,
-    extractMessageParts,
-    setFailed,
-    addMessage,
-    setMessages,
-  ])
+  const submitQuickPhrase = useCallback(
+    async (body: string) => {
+      await submitText(body, "quick_phrase")
+    },
+    [submitText],
+  )
 
   const handleRetry = useCallback(() => {
     if (lastFailedMessage && sessionID) {
@@ -283,13 +281,13 @@ export function useMessageInput({
         })
 
         if ((response as any).error) {
-          const errorData =
+          const data =
             (response as any).error && typeof (response as any).error === "object" && "data" in (response as any).error
               ? (response as any).error.data
               : null
           const msg =
-            errorData && typeof errorData === "object" && errorData !== null && "message" in errorData
-              ? String((errorData as any).message)
+            data && typeof data === "object" && data !== null && "message" in data
+              ? String((data as any).message)
               : "Failed to compact session"
           showToast(msg, {
             title: "Compaction failed",
@@ -313,6 +311,7 @@ export function useMessageInput({
   return {
     lastFailedMessage,
     handleSubmit,
+    submitQuickPhrase,
     handleRetry,
     handleAbort,
     handleCompact,

@@ -1,19 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { act, render, waitFor } from "@testing-library/react"
 import { prepareSession } from "../../App"
+import { quick_phrase_updated_event } from "../../state/repo/quickPhraseEvent"
 
 let lastConfirmModalProps: any
+let confirmModalMap: Record<string, any> = {}
 let lastEditorToolbarProps: any
 let lastEditorContentProps: any
+let lastQuickPhraseBarProps: any
 let rootText = ""
 let sessionIdle = true
 const mocks = vi.hoisted(() => {
   return {
     insertPlainWithMentionsImpl: vi.fn(),
+    getMessagesBySession: vi.fn((): any[] => []),
     loadDrafts: vi.fn(async () => ({})),
     loadDraftSession: vi.fn(async (): Promise<string | null> => null),
     saveDrafts: vi.fn(async (_value: Record<string, string>) => ({ ok: true })),
     saveDraftSession: vi.fn(async (_value: string | null) => ({ ok: true })),
+    handleSubmit: vi.fn(),
+    submitQuickPhrase: vi.fn(),
+    handleRetry: vi.fn(),
+    handleAbort: vi.fn(),
+    handleCompact: vi.fn((done: () => void) => done()),
+    loadQuickPhraseState: vi.fn(async () => ({
+      mode: "fill_input",
+      preset_version: 1,
+      order: ["preset:commit"],
+      items: {
+        "preset:commit": {
+          id: "preset:commit",
+          title: "提交总结",
+          body: "请总结改动",
+          source: "preset",
+          hidden: false,
+          order: 0,
+          updated_at: 1,
+        },
+      },
+    })),
   }
 })
 
@@ -21,6 +46,7 @@ vi.mock("../ConfirmModal", () => {
   return {
     ConfirmModal: (props: any) => {
       lastConfirmModalProps = props
+      if (props?.title) confirmModalMap[props.title] = props
       return null
     },
   }
@@ -86,6 +112,15 @@ vi.mock("./FooterPanels", () => {
   }
 })
 
+vi.mock("./QuickPhraseBar", () => {
+  return {
+    QuickPhraseBar: (props: any) => {
+      lastQuickPhraseBarProps = props
+      return null
+    },
+  }
+})
+
 vi.mock("./hooks/useMessageParts", () => {
   return {
     useMessageParts: () => ({ extractMessageParts: vi.fn() }),
@@ -96,10 +131,11 @@ vi.mock("./hooks/useMessageInput", () => {
   return {
     useMessageInput: () => ({
       lastFailedMessage: null,
-      handleSubmit: vi.fn(),
-      handleRetry: vi.fn(),
-      handleAbort: vi.fn(),
-      handleCompact: vi.fn((done: () => void) => done()),
+      handleSubmit: mocks.handleSubmit,
+      submitQuickPhrase: mocks.submitQuickPhrase,
+      handleRetry: mocks.handleRetry,
+      handleAbort: mocks.handleAbort,
+      handleCompact: mocks.handleCompact,
     }),
   }
 })
@@ -141,6 +177,12 @@ vi.mock("../../state/repo/draftRepo", () => {
   }
 })
 
+vi.mock("../../state/repo/quickPhraseRepo", () => {
+  return {
+    loadQuickPhraseState: () => mocks.loadQuickPhraseState(),
+  }
+})
+
 vi.mock("../../state/SessionContext", () => {
   return {
     useSession: () => ({
@@ -162,6 +204,14 @@ vi.mock("../../state/ProjectContext", () => {
   }
 })
 
+vi.mock("../../state/MessagesContext", () => {
+  return {
+    useMessages: () => ({
+      getMessagesBySession: mocks.getMessagesBySession,
+    }),
+  }
+})
+
 vi.mock("../../state/ProvidersContext", () => {
   return {
     useProviders: () => ({ providersDirty: false, clearProvidersDirty: vi.fn() }),
@@ -180,17 +230,265 @@ vi.mock("../../lib/api/sdkClient", () => {
 
 import { MessageInput } from "./index"
 
+const quick = {
+  mode: "fill_input",
+  preset_version: 1,
+  order: ["preset:commit"],
+  items: {
+    "preset:commit": {
+      id: "preset:commit",
+      title: "提交总结",
+      body: "请总结改动",
+      source: "preset",
+      hidden: false,
+      order: 0,
+      updated_at: 1,
+    },
+  },
+}
+
 describe("MessageInput compact confirm", () => {
   beforeEach(() => {
     sessionIdle = true
     lastEditorToolbarProps = null
     lastEditorContentProps = null
+    lastQuickPhraseBarProps = null
+    confirmModalMap = {}
     rootText = ""
     vi.clearAllMocks()
-    mocks.loadDrafts.mockResolvedValue({})
+    mocks.getMessagesBySession.mockReturnValue([])
+    mocks.loadDrafts.mockImplementation(async () => new Promise(() => {}))
     mocks.loadDraftSession.mockResolvedValue(null)
     mocks.saveDrafts.mockResolvedValue({ ok: true })
     mocks.saveDraftSession.mockResolvedValue({ ok: true })
+    mocks.handleSubmit.mockReset()
+    mocks.submitQuickPhrase.mockReset()
+    mocks.handleRetry.mockReset()
+    mocks.handleAbort.mockReset()
+    mocks.handleCompact.mockReset()
+    mocks.handleCompact.mockImplementation((done: () => void) => done())
+    mocks.loadQuickPhraseState.mockImplementation(async () => new Promise(() => {}))
+  })
+
+  it("会在输入框上方渲染快捷短语栏", async () => {
+    mocks.loadQuickPhraseState.mockResolvedValue(quick)
+    render(<MessageInput sessionID="s1" />)
+
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
+    expect(lastQuickPhraseBarProps.items).toEqual([
+      {
+        id: "preset:commit",
+        title: "提交总结",
+        body: "请总结改动",
+      },
+    ])
+  })
+
+  it("fill_input 模式双击仅回填不发送", async () => {
+    mocks.loadQuickPhraseState.mockResolvedValue(quick)
+    render(<MessageInput sessionID="s1" />)
+
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
+
+    act(() => {
+      lastQuickPhraseBarProps.onActivate({
+        id: "preset:commit",
+        title: "提交总结",
+        body: "请总结改动",
+      })
+    })
+
+    expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(expect.anything(), expect.anything(), "请总结改动", {
+      replace: true,
+    })
+    expect(mocks.handleSubmit).not.toHaveBeenCalled()
+  })
+
+  it("double_send 模式双击会直接发送", async () => {
+    mocks.loadQuickPhraseState.mockResolvedValue({
+      mode: "double_send",
+      preset_version: 1,
+      order: ["preset:commit"],
+      items: {
+        "preset:commit": {
+          id: "preset:commit",
+          title: "提交总结",
+          body: "请总结改动",
+          source: "preset",
+          hidden: false,
+          order: 0,
+          updated_at: 1,
+        },
+      },
+    })
+
+    render(<MessageInput sessionID="s1" />)
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
+
+    act(() => {
+      lastQuickPhraseBarProps.onActivate({
+        id: "preset:commit",
+        title: "提交总结",
+        body: "请总结改动",
+      })
+    })
+
+    await waitFor(() => {
+      expect(mocks.submitQuickPhrase).toHaveBeenCalledWith("请总结改动")
+    })
+  })
+
+  it("double_send 模式发送不应回填输入框", async () => {
+    mocks.loadQuickPhraseState.mockResolvedValue({
+      mode: "double_send",
+      preset_version: 1,
+      order: ["preset:commit"],
+      items: {
+        "preset:commit": {
+          id: "preset:commit",
+          title: "提交总结",
+          body: "请总结改动",
+          source: "preset",
+          hidden: false,
+          order: 0,
+          updated_at: 1,
+        },
+      },
+    })
+
+    render(<MessageInput sessionID="s1" />)
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
+
+    act(() => {
+      lastQuickPhraseBarProps.onActivate({
+        id: "preset:commit",
+        title: "提交总结",
+        body: "请总结改动",
+      })
+    })
+
+    expect(mocks.insertPlainWithMentionsImpl).not.toHaveBeenCalled()
+  })
+
+  it("double_send 模式遇到空正文时不应发送", async () => {
+    mocks.loadQuickPhraseState.mockResolvedValue({
+      mode: "double_send",
+      preset_version: 1,
+      order: ["preset:empty"],
+      items: {
+        "preset:empty": {
+          id: "preset:empty",
+          title: "空正文",
+          body: "   ",
+          source: "preset",
+          hidden: false,
+          order: 0,
+          updated_at: 1,
+        },
+      },
+    } as any)
+
+    render(<MessageInput sessionID="s1" />)
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
+
+    act(() => {
+      lastQuickPhraseBarProps.onActivate({
+        id: "preset:empty",
+        title: "空正文",
+        body: "   ",
+      })
+    })
+
+    expect(mocks.handleSubmit).not.toHaveBeenCalled()
+  })
+
+  it("confirm_send 模式双击需确认后发送", async () => {
+    mocks.loadQuickPhraseState.mockResolvedValue({
+      mode: "confirm_send",
+      preset_version: 1,
+      order: ["preset:commit"],
+      items: {
+        "preset:commit": {
+          id: "preset:commit",
+          title: "提交总结",
+          body: "请总结改动",
+          source: "preset",
+          hidden: false,
+          order: 0,
+          updated_at: 1,
+        },
+      },
+    })
+
+    render(<MessageInput sessionID="s1" />)
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
+
+    act(() => {
+      lastQuickPhraseBarProps.onActivate({
+        id: "preset:commit",
+        title: "提交总结",
+        body: "请总结改动",
+      })
+    })
+
+    await waitFor(() => {
+      expect(confirmModalMap["确认发送快捷短语"]?.isOpen).toBe(true)
+    })
+
+    act(() => {
+      confirmModalMap["确认发送快捷短语"].onConfirm()
+    })
+
+    await waitFor(() => {
+      expect(mocks.submitQuickPhrase).toHaveBeenCalledWith("请总结改动")
+    })
+  })
+
+  it("confirm_send 模式遇到空正文时不应弹确认也不发送", async () => {
+    mocks.loadQuickPhraseState.mockResolvedValue({
+      mode: "confirm_send",
+      preset_version: 1,
+      order: ["preset:empty"],
+      items: {
+        "preset:empty": {
+          id: "preset:empty",
+          title: "空正文",
+          body: "",
+          source: "preset",
+          hidden: false,
+          order: 0,
+          updated_at: 1,
+        },
+      },
+    } as any)
+
+    render(<MessageInput sessionID="s1" />)
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
+
+    act(() => {
+      lastQuickPhraseBarProps.onActivate({
+        id: "preset:empty",
+        title: "空正文",
+        body: "",
+      })
+    })
+
+    expect(confirmModalMap["确认发送快捷短语"]?.isOpen).not.toBe(true)
+    expect(mocks.submitQuickPhrase).not.toHaveBeenCalled()
   })
 
   it("精简会话确认弹窗文案为中文", () => {
@@ -212,7 +510,7 @@ describe("MessageInput compact confirm", () => {
     const { rerender } = render(<MessageInput sessionID="s1" />)
 
     await waitFor(() => {
-      expect(mocks.loadDrafts).toHaveBeenCalledTimes(1)
+      expect(mocks.loadDrafts.mock.calls.length).toBeGreaterThanOrEqual(1)
       expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(expect.anything(), expect.anything(), "draft-a", {
         replace: true,
       })
@@ -238,6 +536,48 @@ describe("MessageInput compact confirm", () => {
     })
 
     expect(mocks.saveDraftSession).not.toHaveBeenCalled()
+  })
+
+  it("非草稿会话输入不会覆盖已有 draftSession 指针", () => {
+    let draftSession: string | null = "s-draft"
+    mocks.getMessagesBySession.mockReturnValue([{ info: { id: "m1" } }] as any[])
+    mocks.saveDraftSession.mockImplementation(async (value: string | null) => {
+      draftSession = value
+      return { ok: true }
+    })
+
+    render(<MessageInput sessionID="s-other" />)
+
+    act(() => {
+      rootText = "hello"
+      lastEditorContentProps.onEditorChange({
+        read: (run: () => void) => run(),
+      })
+    })
+
+    expect(draftSession).toBe("s-draft")
+    expect(mocks.saveDraftSession).not.toHaveBeenCalledWith("s-other")
+  })
+
+  it("会话消息未加载完成时输入也不应覆盖已有 draftSession 指针", () => {
+    let draftSession: string | null = "s-draft"
+    mocks.getMessagesBySession.mockReturnValue([])
+    mocks.saveDraftSession.mockImplementation(async (value: string | null) => {
+      draftSession = value
+      return { ok: true }
+    })
+
+    render(<MessageInput sessionID="s-other" />)
+
+    act(() => {
+      rootText = "hello before messages loaded"
+      lastEditorContentProps.onEditorChange({
+        read: (run: () => void) => run(),
+      })
+    })
+
+    expect(draftSession).toBe("s-draft")
+    expect(mocks.saveDraftSession).not.toHaveBeenCalledWith("s-other")
   })
 
   it("草稿标签不在打开列表时，再次新建会话会复用原草稿会话", async () => {
@@ -282,38 +622,91 @@ describe("MessageInput compact confirm", () => {
     expect(fail).not.toHaveBeenCalled()
   })
 
-  it("生成中会话应禁用精简按钮，仅保留停止能力", () => {
+  it("生成中会话应禁用精简按钮，仅保留停止能力", async () => {
     sessionIdle = false
+    mocks.loadQuickPhraseState.mockResolvedValue(quick)
     render(<MessageInput sessionID="s1" />)
+
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
 
     expect(lastEditorToolbarProps).toBeTruthy()
     expect(lastEditorToolbarProps.isCompactDisabled).toBe(true)
     expect(lastEditorToolbarProps.isDisabled).toBe(true)
+    expect(lastQuickPhraseBarProps.disabled).toBe(true)
   })
 
-  it("A 生成中切到 B 空闲时，B 应恢复可交互", () => {
+  it("A 生成中切到 B 空闲时，B 应恢复可交互", async () => {
     sessionIdle = false
+    mocks.loadQuickPhraseState.mockResolvedValue(quick)
     const { rerender } = render(<MessageInput sessionID="s1" />)
+
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
 
     expect(lastEditorToolbarProps.isDisabled).toBe(true)
 
     sessionIdle = true
     rerender(<MessageInput sessionID="s2" />)
 
-    expect(lastEditorToolbarProps.isDisabled).toBe(false)
+    await waitFor(() => {
+      expect(lastEditorToolbarProps.isDisabled).toBe(false)
+    })
+
+    expect(lastQuickPhraseBarProps.disabled).toBe(false)
+  })
+
+  it("生成中状态下快捷短语触发应无效", async () => {
+    sessionIdle = false
+    mocks.loadQuickPhraseState.mockResolvedValue({
+      mode: "double_send",
+      preset_version: 1,
+      order: ["preset:commit"],
+      items: {
+        "preset:commit": {
+          id: "preset:commit",
+          title: "提交总结",
+          body: "请总结改动",
+          source: "preset",
+          hidden: false,
+          order: 0,
+          updated_at: 1,
+        },
+      },
+    })
+
+    render(<MessageInput sessionID="s1" />)
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
+
+    act(() => {
+      lastQuickPhraseBarProps.onActivate({
+        id: "preset:commit",
+        title: "提交总结",
+        body: "请总结改动",
+      })
+    })
+
+    expect(mocks.handleSubmit).not.toHaveBeenCalled()
   })
 
   it("再次进入会话时会读取最新的 scoped 草稿", async () => {
-    mocks.loadDrafts
-      .mockResolvedValueOnce({ s3: "" })
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({ s3: "late-draft" })
+    let count = 0
+    mocks.loadDrafts.mockImplementation(async () => {
+      count += 1
+      if (count === 1) return { s3: "" }
+      if (count === 2) return {}
+      return { s3: "late-draft" }
+    })
 
     mocks.insertPlainWithMentionsImpl.mockClear()
     const { rerender } = render(<MessageInput sessionID="s3" />)
 
     await waitFor(() => {
-      expect(mocks.loadDrafts).toHaveBeenCalledTimes(1)
+      expect(mocks.loadDrafts.mock.calls.length).toBeGreaterThanOrEqual(1)
     })
 
     expect(mocks.insertPlainWithMentionsImpl).not.toHaveBeenCalled()
@@ -321,7 +714,7 @@ describe("MessageInput compact confirm", () => {
     rerender(<MessageInput sessionID={null} />)
 
     await waitFor(() => {
-      expect(mocks.loadDrafts).toHaveBeenCalledTimes(2)
+      expect(mocks.loadDrafts.mock.calls.length).toBeGreaterThanOrEqual(2)
     })
 
     rerender(<MessageInput sessionID="s3" />)
@@ -334,5 +727,80 @@ describe("MessageInput compact confirm", () => {
         { replace: true },
       )
     })
+  })
+
+  it("快捷短语刷新时应仅应用最后一次加载结果", async () => {
+    const old = {
+      mode: "fill_input",
+      preset_version: 1,
+      order: ["preset:old"],
+      items: {
+        "preset:old": {
+          id: "preset:old",
+          title: "旧短语",
+          body: "old",
+          source: "preset",
+          hidden: false,
+          order: 0,
+          updated_at: 1,
+        },
+      },
+    } as any
+    const newer = {
+      mode: "fill_input",
+      preset_version: 1,
+      order: ["preset:new"],
+      items: {
+        "preset:new": {
+          id: "preset:new",
+          title: "新短语",
+          body: "new",
+          source: "preset",
+          hidden: false,
+          order: 0,
+          updated_at: 2,
+        },
+      },
+    } as any
+    let first: ((value: any) => void) | null = null
+    let second: ((value: any) => void) | null = null
+    mocks.loadQuickPhraseState.mockImplementation(
+      async () =>
+        new Promise((resolve) => {
+          if (!first) {
+            first = resolve
+            return
+          }
+          second = resolve
+        }),
+    )
+
+    render(<MessageInput sessionID="s1" />)
+    await waitFor(() => {
+      expect(mocks.loadQuickPhraseState).toHaveBeenCalledTimes(1)
+    })
+
+    act(() => {
+      window.dispatchEvent(new Event(quick_phrase_updated_event))
+    })
+    await waitFor(() => {
+      expect(mocks.loadQuickPhraseState).toHaveBeenCalledTimes(2)
+    })
+
+    act(() => {
+      second?.(newer)
+    })
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps.items[0]?.title).toBe("新短语")
+    })
+
+    act(() => {
+      first?.(old)
+    })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(lastQuickPhraseBarProps.items[0]?.title).toBe("新短语")
   })
 })

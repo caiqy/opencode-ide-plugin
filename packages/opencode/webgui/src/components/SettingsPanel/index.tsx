@@ -5,6 +5,7 @@ import { GeneralTab } from "../settings/GeneralTab"
 import { ApiKeysTab } from "../settings/ApiKeysTab"
 import { ModelsTab } from "../settings/ModelsTab"
 import { AdvancedTab } from "../settings/AdvancedTab"
+import { QuickPhrasesTab } from "../settings/QuickPhrasesTab"
 import { useProviders } from "../../state/ProvidersContext.tsx"
 import { useCustomApi } from "../../state/IdeBridgeContext"
 import { useSettingsForm } from "./hooks/useSettingsForm"
@@ -18,7 +19,7 @@ interface SettingsPanelProps {
   onClose: () => void
 }
 
-type TabType = "general" | "api-keys" | "models" | "advanced"
+type TabType = "general" | "api-keys" | "models" | "advanced" | "quick-phrases"
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("general")
@@ -174,6 +175,8 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 )}
 
                 {activeTab === "advanced" && <AdvancedTab formData={formData} setFormData={setFormData} />}
+
+                {activeTab === "quick-phrases" && <QuickPhrasesTab />}
               </>
             )}
           </div>

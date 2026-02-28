@@ -11,6 +11,7 @@ describe("TabBar", () => {
     expect(screen.getByRole("button", { name: /API\s*密钥/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /模型/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /高级/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /快捷短语/ })).toBeInTheDocument()
   })
 
   it("点击会触发 onTabChange", async () => {
@@ -20,5 +21,8 @@ describe("TabBar", () => {
 
     await user.click(screen.getByRole("button", { name: /模型/ }))
     expect(onTabChange).toHaveBeenCalledWith("models")
+
+    await user.click(screen.getByRole("button", { name: /快捷短语/ }))
+    expect(onTabChange).toHaveBeenCalledWith("quick-phrases")
   })
 })

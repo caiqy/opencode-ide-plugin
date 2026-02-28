@@ -72,7 +72,7 @@ vi.mock("../../../state/MessagesContext", () => {
 vi.mock("../../../lib/messagesStore", () => {
   return {
     createOptimisticUserMessage: vi.fn(() => ({ info: { id: "m1" }, parts: [] })),
-    removeOptimisticMessages: vi.fn((value: unknown) => value),
+    removeMessage: vi.fn((value: unknown) => value),
   }
 })
 
@@ -133,6 +133,39 @@ describe("useMessageInput", () => {
     )
   })
 
+  it("quick phrase send 不受 isEmpty 闭包影响", async () => {
+    mocks.root.getTextContent.mockReturnValue("")
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-quick",
+        editor,
+        isEmpty: true,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => []),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.submitQuickPhrase("请总结改动")
+    })
+
+    expect(mocks.prompt).toHaveBeenCalledTimes(1)
+    expect(mocks.command).not.toHaveBeenCalled()
+    expect(mocks.addMessage).not.toHaveBeenCalled()
+  })
+
   it("发送失败时不应清空 draftSessionId", async () => {
     mocks.command.mockRejectedValue(new Error("Failed to execute command"))
 
@@ -166,6 +199,144 @@ describe("useMessageInput", () => {
     expect(mocks.saveDraftSession).not.toHaveBeenCalled()
     expect(mocks.command).toHaveBeenCalledTimes(1)
     expect(mocks.showToast).toHaveBeenCalledTimes(1)
+  })
+
+  it("quick phrase 发送失败不进入重试链路", async () => {
+    mocks.prompt.mockRejectedValue(new Error("network"))
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-phrase",
+        editor,
+        isEmpty: true,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => []),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.submitQuickPhrase("请总结改动")
+    })
+
+    expect(result.current.lastFailedMessage).toBe(null)
+    expect(mocks.showToast).toHaveBeenCalledTimes(1)
+    expect(mocks.saveDraftSession).not.toHaveBeenCalled()
+    expect(mocks.setMessages).not.toHaveBeenCalled()
+  })
+
+  it("并发 quick phrase 仅处理最后一次失败/成功副作用", async () => {
+    let firstResolve: ((value: any) => void) | null = null
+    let secondResolve: ((value: any) => void) | null = null
+    mocks.prompt
+      .mockImplementationOnce(
+        async () =>
+          new Promise((resolve) => {
+            firstResolve = resolve
+          }),
+      )
+      .mockImplementationOnce(
+        async () =>
+          new Promise((resolve) => {
+            secondResolve = resolve
+          }),
+      )
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-race",
+        editor,
+        isEmpty: true,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => []),
+      }),
+    )
+
+    await act(async () => {
+      void result.current.submitQuickPhrase("old")
+      void result.current.submitQuickPhrase("new")
+    })
+
+    await act(async () => {
+      secondResolve?.({ data: {}, error: null })
+      firstResolve?.({ data: null, error: { data: { message: "late fail" } } })
+    })
+
+    expect(mocks.showToast).not.toHaveBeenCalled()
+  })
+
+  it("并发 editor 发送时旧请求失败也会清理自身 optimistic", async () => {
+    mocks.root.getTextContent.mockReturnValue("hello")
+    let firstReject: ((reason?: unknown) => void) | null = null
+    let secondResolve: ((value: any) => void) | null = null
+    mocks.prompt
+      .mockImplementationOnce(
+        async () =>
+          new Promise((_resolve, reject) => {
+            firstReject = reject
+          }),
+      )
+      .mockImplementationOnce(
+        async () =>
+          new Promise((resolve) => {
+            secondResolve = resolve
+          }),
+      )
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-editor-race",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "hello" }]),
+      }),
+    )
+
+    await act(async () => {
+      void result.current.handleSubmit()
+      void result.current.handleSubmit()
+    })
+
+    await act(async () => {
+      secondResolve?.({ data: {}, error: null })
+      firstReject?.(new Error("late fail"))
+    })
+
+    expect(mocks.setMessages).toHaveBeenCalled()
+    expect(mocks.showToast).not.toHaveBeenCalled()
   })
 
   it("普通消息发送成功后会清空匹配的 draftSessionId", async () => {
