@@ -33,4 +33,24 @@ describe("QuickPhraseBar", () => {
     expect(screen.getByRole("button", { name: "提交总结" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "展开" })).toBeDisabled()
   })
+
+  it("按下短语行时不会立即捕获指针", () => {
+    render(<QuickPhraseBar items={items} disabled={false} onActivate={vi.fn()} />)
+
+    const row = screen.getByTestId("quick-phrase-row")
+    const set = vi.fn()
+
+    Object.defineProperty(row, "setPointerCapture", {
+      value: set,
+      configurable: true,
+    })
+
+    fireEvent.pointerDown(row, {
+      button: 0,
+      pointerId: 1,
+      clientX: 100,
+    })
+
+    expect(set).not.toHaveBeenCalled()
+  })
 })

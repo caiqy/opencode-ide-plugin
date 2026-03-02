@@ -30,7 +30,6 @@ export function QuickPhraseBar({ items, mode = "fill_input", disabled, onActivat
         left: el.scrollLeft,
         moved: false,
       }
-      el.setPointerCapture(e.pointerId)
     },
     [expanded],
   )
@@ -40,7 +39,10 @@ export function QuickPhraseBar({ items, mode = "fill_input", disabled, onActivat
     if (!cur || !el || cur.id !== e.pointerId) return
     const delta = e.clientX - cur.x
     if (!cur.moved && Math.abs(delta) < 2) return
-    cur.moved = true
+    if (!cur.moved) {
+      cur.moved = true
+      el.setPointerCapture(e.pointerId)
+    }
     el.scrollLeft = cur.left - delta
     e.preventDefault()
   }, [])
