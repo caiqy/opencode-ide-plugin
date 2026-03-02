@@ -45,6 +45,7 @@ import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
 import { Truncate } from "@/tool/truncation"
+import { buildToolPermissionAsk } from "./tool-permission"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -433,11 +434,15 @@ export namespace SessionPrompt {
             } satisfies MessageV2.ToolPart)
           },
           async ask(req) {
-            await PermissionNext.ask({
-              ...req,
-              sessionID: sessionID,
-              ruleset: PermissionNext.merge(taskAgent.permission, session.permission ?? []),
-            })
+            await PermissionNext.ask(
+              buildToolPermissionAsk({
+                req,
+                sessionID,
+                messageID: assistantMessage.id,
+                callID: part.callID,
+                ruleset: PermissionNext.merge(taskAgent.permission, session.permission ?? []),
+              }),
+            )
           },
         }
         const result = await taskTool.execute(taskArgs, taskCtx).catch((error) => {
@@ -769,12 +774,15 @@ export namespace SessionPrompt {
         }
       },
       async ask(req) {
-        await PermissionNext.ask({
-          ...req,
-          sessionID: input.session.id,
-          tool: { messageID: input.processor.message.id, callID: options.toolCallId },
-          ruleset: PermissionNext.merge(input.agent.permission, input.session.permission ?? []),
-        })
+        await PermissionNext.ask(
+          buildToolPermissionAsk({
+            req,
+            sessionID: input.session.id,
+            messageID: input.processor.message.id,
+            callID: options.toolCallId,
+            ruleset: PermissionNext.merge(input.agent.permission, input.session.permission ?? []),
+          }),
+        )
       },
     })
 

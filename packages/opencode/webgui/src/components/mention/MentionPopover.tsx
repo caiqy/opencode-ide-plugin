@@ -62,9 +62,7 @@ export function MentionPopover({ query, position, onSelect, onClose, onRepositio
         style={{ top: position.top, left: position.left, transform, maxWidth: "calc(100vw - 16px)" }}
         data-mention-popover
       >
-        <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">
-          {query ? "No results found" : "Type to search..."}
-        </div>
+        <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">{query ? "未找到结果" : "输入以搜索…"}</div>
       </div>
     )
   }
@@ -78,7 +76,7 @@ export function MentionPopover({ query, position, onSelect, onClose, onRepositio
     >
       <div ref={listRef} className="max-h-64 overflow-y-auto" style={{ maxWidth: "calc(100vw - 16px)" }}>
         {isLoading && results.length === 0 ? (
-          <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">Loading...</div>
+          <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">加载中…</div>
         ) : (
           <div className="py-0.5">
             {results.map((result, index) => (
@@ -167,17 +165,17 @@ function MentionItem({ result, isSelected, index, onClick, onMouseEnter }: Menti
 
   const getTypeBadge = () => {
     if (special === "all-opened") {
-      return <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">Special</span>
+      return <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">特殊</span>
     }
     switch (metadata.type) {
       case "file":
-        return <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">File</span>
+        return <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">文件</span>
       case "directory":
-        return <span className="text-xs text-purple-600 dark:text-purple-400 font-medium">Dir</span>
+        return <span className="text-xs text-purple-600 dark:text-purple-400 font-medium">目录</span>
       case "agent":
-        return <span className="text-xs text-green-600 dark:text-green-400 font-medium">Agent</span>
+        return <span className="text-xs text-green-600 dark:text-green-400 font-medium">智能体</span>
       case "symbol":
-        return <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">Symbol</span>
+        return <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">符号</span>
     }
   }
 
@@ -206,7 +204,7 @@ function MentionItem({ result, isSelected, index, onClick, onMouseEnter }: Menti
           >
             @{metadata.display}
           </span>
-          {current && <span className="text-[10px] font-bold text-gray-900 dark:text-gray-100">current</span>}
+          {current && <span className="text-[10px] font-bold text-gray-900 dark:text-gray-100">当前</span>}
           {getTypeBadge()}
         </div>
         {metadata.path && metadata.type === "symbol" && (

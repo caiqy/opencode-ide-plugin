@@ -28,8 +28,8 @@ export function useFileAttachment(editor: LexicalEditor) {
         const mime = file.type || getMimeTypeFromExtension(ext)
 
         if (!isSupportedAttachmentType(mime)) {
-          showToast(`File type not supported: ${file.name}`, {
-            title: "Unsupported file type",
+          showToast(`不支持的文件类型：${file.name}`, {
+            title: "文件类型不支持",
             variant: "error",
             duration: 5000,
           })
@@ -57,8 +57,8 @@ export function useFileAttachment(editor: LexicalEditor) {
             }
           })
         } catch {
-          showToast(`Failed to read file: ${file.name}`, {
-            title: "File read error",
+          showToast(`读取文件失败：${file.name}`, {
+            title: "文件读取错误",
             variant: "error",
             duration: 5000,
           })

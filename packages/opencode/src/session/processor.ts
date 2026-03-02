@@ -15,6 +15,7 @@ import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
+import { buildToolPermissionAsk } from "./tool-permission"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -162,17 +163,23 @@ export namespace SessionProcessor {
                       )
                     ) {
                       const agent = await Agent.get(input.assistantMessage.agent)
-                      await PermissionNext.ask({
-                        permission: "doom_loop",
-                        patterns: [value.toolName],
-                        sessionID: input.assistantMessage.sessionID,
-                        metadata: {
-                          tool: value.toolName,
-                          input: value.input,
-                        },
-                        always: [value.toolName],
-                        ruleset: agent.permission,
-                      })
+                      await PermissionNext.ask(
+                        buildToolPermissionAsk({
+                          sessionID: input.assistantMessage.sessionID,
+                          messageID: input.assistantMessage.id,
+                          callID: match.callID,
+                          ruleset: agent.permission,
+                          req: {
+                            permission: "doom_loop",
+                            patterns: [value.toolName],
+                            metadata: {
+                              tool: value.toolName,
+                              input: value.input,
+                            },
+                            always: [value.toolName],
+                          },
+                        }),
+                      )
                     }
                   }
                   break

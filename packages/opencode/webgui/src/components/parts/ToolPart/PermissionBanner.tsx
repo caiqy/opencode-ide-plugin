@@ -10,11 +10,10 @@ interface PermissionBannerProps {
 
 export function PermissionBanner({ permission, isResponding, onRespond }: PermissionBannerProps) {
   const title = permission.metadata?.title as string | undefined
+  const summary = permission.permission === "doom_loop" ? title : "执行该工具需要授权"
   return (
     <div className="px-3 py-2 border-b border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20">
-      <div className="text-xs text-amber-800 dark:text-amber-200 font-medium mb-1">
-        {permission.permission === "doom_loop" ? title : "Permission required to run this tool"}
-      </div>
+      <div className="text-xs text-amber-800 dark:text-amber-200 font-medium mb-1">{summary}</div>
       <div className="flex gap-1.5">
         <button
           className="px-2 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
@@ -24,7 +23,7 @@ export function PermissionBanner({ permission, isResponding, onRespond }: Permis
           }}
           disabled={isResponding !== null}
         >
-          Accept once
+          本次允许
         </button>
         <button
           className="px-2 py-1 text-xs rounded bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
@@ -34,7 +33,7 @@ export function PermissionBanner({ permission, isResponding, onRespond }: Permis
           }}
           disabled={isResponding !== null}
         >
-          Always
+          始终允许
         </button>
         <button
           className="ml-auto px-2 py-1 text-xs rounded bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-700 disabled:opacity-50"
@@ -44,7 +43,7 @@ export function PermissionBanner({ permission, isResponding, onRespond }: Permis
           }}
           disabled={isResponding !== null}
         >
-          Reject
+          拒绝
         </button>
       </div>
     </div>

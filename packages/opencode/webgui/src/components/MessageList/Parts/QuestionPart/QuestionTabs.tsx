@@ -42,7 +42,7 @@ export function QuestionTabs({ tabs, activeTab, onTabChange, showConfirm }: Ques
               : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700",
           )}
         >
-          Confirm
+          确认
         </button>
       )}
     </div>

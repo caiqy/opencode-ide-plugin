@@ -194,6 +194,8 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
   const isExpandable = !isHeaderOnlyTool
   const shouldShowExpandedContent = isExpandable && isExpanded
+  const showPermission = Boolean(permission)
+  const expandedBorder = showPermission ? "" : "border-t border-gray-200 dark:border-gray-800"
 
   const subtaskSessionId = useMemo(() => {
     if (part.tool !== "task") return null
@@ -281,12 +283,16 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
         lineRange={lineRange}
       />
 
+      {/* Permission banner */}
+      {permission && (
+        <div className="border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
+          <PermissionBanner permission={permission} isResponding={isResponding} onRespond={onRespond} />
+        </div>
+      )}
+
       {/* Expanded content */}
       {shouldShowExpandedContent && (
-        <div className="border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 break-words [overflow-wrap:anywhere]">
-          {/* Permission banner */}
-          {permission && <PermissionBanner permission={permission} isResponding={isResponding} onRespond={onRespond} />}
-
+        <div className={`${expandedBorder} bg-gray-50 dark:bg-gray-950 break-words [overflow-wrap:anywhere]`}>
           {/* Output/Result (bash, todo, generic — not read/edit/write/apply_patch) */}
           {renderOutput()}
 

@@ -139,7 +139,7 @@ export function useMessageInput({
               typeof response.error.data === "object" &&
               "message" in response.error.data
                 ? String(response.error.data.message)
-                : "Failed to send message"
+                : "发送消息失败"
             throw new Error(message)
           }
         }
@@ -155,13 +155,13 @@ export function useMessageInput({
           setMessages((prev) => removeMessage(prev, optimistic.info.id))
         }
         if (id !== seq.current) return
-        const error = err instanceof Error ? err : new Error("Failed to send message")
+        const error = err instanceof Error ? err : new Error("发送消息失败")
         console.error("[MessageInput] Failed to send message:", error)
         if (source === "editor") {
           setFailed(sessionID, saved)
         }
         showToast(error.message, {
-          title: "Failed to send message",
+          title: "发送失败",
           variant: "error",
           duration: 8000,
         })
@@ -239,10 +239,10 @@ export function useMessageInput({
         editor.focus()
       }, 0)
     } catch (err) {
-      const error = err instanceof Error ? err : new Error("Failed to abort session")
+      const error = err instanceof Error ? err : new Error("终止会话失败")
       console.error("[MessageInput] Failed to abort session:", error)
       showToast(error.message, {
-        title: "Abort failed",
+        title: "终止失败",
         variant: "error",
         duration: 6000,
       })
@@ -254,8 +254,8 @@ export function useMessageInput({
     async (closeModal: () => void) => {
       if (!sessionID) return
       if (!selectedProviderId || !selectedModelId) {
-        showToast("Select a model before compacting the session.", {
-          title: "Model required",
+        showToast("请先选择模型再压缩会话。", {
+          title: "需要模型",
           variant: "warning",
           duration: 6000,
         })
@@ -266,8 +266,8 @@ export function useMessageInput({
       closeModal()
 
       try {
-        showToast("Session compaction started. You will see a notification when it completes.", {
-          title: "Compacting session",
+        showToast("会话压缩已开始，完成后会通知你。", {
+          title: "正在压缩会话",
           variant: "info",
           duration: 5000,
         })
@@ -288,18 +288,18 @@ export function useMessageInput({
           const msg =
             data && typeof data === "object" && data !== null && "message" in data
               ? String((data as any).message)
-              : "Failed to compact session"
+              : "压缩会话失败"
           showToast(msg, {
-            title: "Compaction failed",
+            title: "压缩失败",
             variant: "error",
             duration: 8000,
           })
         }
       } catch (err) {
-        const error = err instanceof Error ? err : new Error("Failed to compact session")
+        const error = err instanceof Error ? err : new Error("压缩会话失败")
         console.error("[MessageInput] Failed to compact session:", error)
         showToast(error.message, {
-          title: "Compaction failed",
+          title: "压缩失败",
           variant: "error",
           duration: 8000,
         })

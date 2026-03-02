@@ -103,15 +103,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
               {/* Error content */}
               <div className="flex-1 min-w-0">
-                <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Something went wrong</h1>
-                <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
-                  An unexpected error occurred in the application.
-                </p>
+                <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">出现异常</h1>
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">应用发生了未预期的错误。</p>
 
                 {/* Error details */}
                 <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded p-3 mb-4">
                   <h2 className="text-sm font-semibold text-red-900 dark:text-red-100 mb-1">
-                    Error: {this.state.error.message}
+                    错误：{this.state.error.message}
                   </h2>
                   {this.state.error.stack && (
                     <pre className="text-xs text-red-700 dark:text-red-300 overflow-x-auto whitespace-pre-wrap">
@@ -124,7 +122,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 {this.state.errorInfo?.componentStack && import.meta.env.DEV && (
                   <details className="mb-4">
                     <summary className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer hover:text-gray-900 dark:hover:text-gray-100">
-                      Component Stack
+                      组件堆栈
                     </summary>
                     <pre className="mt-2 text-xs text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-2 rounded overflow-x-auto whitespace-pre-wrap">
                       {this.state.errorInfo.componentStack}
@@ -138,13 +136,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                     onClick={this.reset}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors"
                   >
-                    Try Again
+                    重试
                   </button>
                   <button
                     onClick={() => window.location.reload()}
                     className="px-4 py-2 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm font-medium rounded transition-colors"
                   >
-                    Reload Page
+                    刷新页面
                   </button>
                 </div>
               </div>

@@ -41,7 +41,7 @@ export function RetryPart({ part }: RetryPartProps) {
           />
         </svg>
         <span className="text-xs font-medium text-orange-700 dark:text-orange-300 flex-1">
-          Retry attempt {part.attempt}
+          重试第 {part.attempt} 次
         </span>
         <svg
           viewBox="0 0 24 24"
@@ -64,16 +64,16 @@ export function RetryPart({ part }: RetryPartProps) {
         <div className="border-t border-orange-200 dark:border-orange-800 bg-white dark:bg-gray-950">
           {/* Error details */}
           <div className="px-3 py-2">
-            <div className="text-[10px] uppercase font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Error</div>
+            <div className="text-[10px] uppercase font-semibold text-gray-500 dark:text-gray-400 mb-1.5">错误</div>
             <div className="space-y-1">
               {part.error.status && (
                 <div className="text-xs text-gray-700 dark:text-gray-300">
-                  <span className="font-semibold">Status:</span> {part.error.status}
+                  <span className="font-semibold">状态：</span> {part.error.status}
                 </div>
               )}
               {part.error.code && (
                 <div className="text-xs text-gray-700 dark:text-gray-300">
-                  <span className="font-semibold">Code:</span> {part.error.code}
+                  <span className="font-semibold">代码：</span> {part.error.code}
                 </div>
               )}
               {part.error.message && (

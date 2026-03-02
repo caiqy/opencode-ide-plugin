@@ -63,7 +63,7 @@ export function CommandPopover({ query, position, onSelect, onClose, onRepositio
         data-command-popover
       >
         <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">
-          {query ? "No commands found" : "Type to search commands..."}
+          {query ? "未找到命令" : "输入以搜索命令…"}
         </div>
       </div>
     )
@@ -78,7 +78,7 @@ export function CommandPopover({ query, position, onSelect, onClose, onRepositio
     >
       <div ref={listRef} className="max-h-64 overflow-y-auto" style={{ maxWidth: "calc(100vw - 16px)" }}>
         {isLoading && results.length === 0 ? (
-          <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">Loading commands...</div>
+          <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">加载命令中…</div>
         ) : (
           <div className="py-0.5">
             {results.map((result, index) => (
@@ -108,12 +108,13 @@ interface CommandItemProps {
 
 function CommandItem({ result, isSelected, index, onClick, onMouseEnter }: CommandItemProps) {
   const { metadata } = result
-  const typeLabel = metadata.source === "skill" ? "Skill" : metadata.source === "mcp" ? "MCP" : "Command"
-  const badgeClass = metadata.source === "skill"
-    ? "text-emerald-600 dark:text-emerald-400"
-    : metadata.source === "mcp"
-      ? "text-indigo-600 dark:text-indigo-400"
-      : "text-amber-600 dark:text-amber-400"
+  const typeLabel = metadata.source === "skill" ? "技能" : metadata.source === "mcp" ? "MCP" : "命令"
+  const badgeClass =
+    metadata.source === "skill"
+      ? "text-emerald-600 dark:text-emerald-400"
+      : metadata.source === "mcp"
+        ? "text-indigo-600 dark:text-indigo-400"
+        : "text-amber-600 dark:text-amber-400"
 
   return (
     <div

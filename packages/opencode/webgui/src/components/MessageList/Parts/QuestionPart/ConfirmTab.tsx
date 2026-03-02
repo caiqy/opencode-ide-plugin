@@ -15,7 +15,7 @@ export function ConfirmTab({ questions, answers, onSubmit, onDismiss, isLoading 
   return (
     <div className="px-3 py-2">
       {/* Review header */}
-      <div className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">Review your answers</div>
+      <div className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">复核你的答案</div>
 
       {/* Summary of answers */}
       <div className="space-y-2 mb-4">
@@ -37,7 +37,7 @@ export function ConfirmTab({ questions, answers, onSubmit, onDismiss, isLoading 
               {hasAnswer ? (
                 <div className="text-sm text-gray-800 dark:text-gray-200">{questionAnswers.join(", ")}</div>
               ) : (
-                <div className="text-sm text-amber-600 dark:text-amber-400">(not answered)</div>
+                <div className="text-sm text-amber-600 dark:text-amber-400">（未作答）</div>
               )}
             </div>
           )
@@ -56,23 +56,19 @@ export function ConfirmTab({ questions, answers, onSubmit, onDismiss, isLoading 
               : "bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed",
           )}
         >
-          {isLoading ? "Submitting..." : "Submit"}
+          {isLoading ? "提交中…" : "提交"}
         </button>
         <button
           onClick={onDismiss}
           disabled={isLoading}
           className="px-3 py-1.5 text-xs rounded font-medium bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
         >
-          Dismiss
+          忽略
         </button>
       </div>
 
       {/* Help text */}
-      {!allAnswered && (
-        <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-          Please answer all questions before submitting.
-        </p>
-      )}
+      {!allAnswered && <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">请先回答所有问题再提交。</p>}
     </div>
   )
 }

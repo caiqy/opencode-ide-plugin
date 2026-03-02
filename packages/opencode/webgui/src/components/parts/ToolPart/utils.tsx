@@ -150,7 +150,7 @@ export function getToolDisplayName(
         if (Array.isArray(todos)) {
           const completed = todos.filter((t: Todo) => t.status === "completed").length
           const total = todos.length
-          display = completed === 0 ? `${toolLabel}：共 ${total}` : `${toolLabel}：已完成 ${completed}/${total}`
+          display = completed === 0 ? `${toolLabel}：共 ${total} 项` : `${toolLabel}：已完成 ${completed}/${total}`
         }
       } catch {
         // If parsing fails, keep original title

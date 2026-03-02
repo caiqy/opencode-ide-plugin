@@ -220,7 +220,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
     <div className="my-0.5 border rounded-lg border-blue-300 dark:border-blue-700 overflow-hidden bg-gray-50 dark:bg-gray-900">
       {/* Header */}
       <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
-        <div className="text-xs font-medium text-blue-700 dark:text-blue-300">Question from assistant</div>
+        <div className="text-xs font-medium text-blue-700 dark:text-blue-300">来自助手的问题</div>
       </div>
 
       {/* Tabs (only show if multiple questions or multi-select) */}
@@ -263,7 +263,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
                 onClick={handlePrevious}
                 className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
               >
-                ← Previous
+                ← 上一步
               </button>
             )}
             {!isConfirmTab && (
@@ -271,20 +271,20 @@ export function QuestionPart({ request }: QuestionPartProps) {
                 onClick={handleNext}
                 className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
               >
-                Next →
+                下一步 →
               </button>
             )}
           </div>
 
           <div className="flex gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <span>{isConfirmTab ? "Review" : `${activeTab + 1}/${questions.length}`}</span>
+            <span>{isConfirmTab ? "复核" : `${activeTab + 1}/${questions.length}`}</span>
             <span>•</span>
             <button
               onClick={handleDismiss}
               disabled={isLoading}
               className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
             >
-              Dismiss
+              忽略
             </button>
           </div>
         </div>
@@ -298,7 +298,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
             disabled={isLoading}
             className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
           >
-            Dismiss
+            忽略
           </button>
         </div>
       )}

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import { fireEvent } from "@testing-library/react"
+import { waitFor } from "@testing-library/react"
 
 const mocks = vi.hoisted(() => ({
   isOpen: vi.fn(),
@@ -185,5 +186,59 @@ describe("ToolPart", () => {
     expect(screen.getByText("查看：")).toBeInTheDocument()
     expect(screen.getByText("a.ts")).toBeInTheDocument()
     expect(screen.getByText("(1-2 行)")).toBeInTheDocument()
+  })
+
+  it("header-only 工具在有权限请求时也显示授权栏", () => {
+    mocks.getPermissionForCall.mockReturnValue({
+      id: "perm-header",
+      permission: "glob",
+      metadata: {},
+    })
+
+    const part = {
+      id: "p6",
+      type: "tool",
+      callID: "c6",
+      tool: "glob",
+      state: {
+        status: "running",
+        input: { pattern: "**/*.ts" },
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("执行该工具需要授权")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "本次允许" })).toBeInTheDocument()
+  })
+
+  it("权限操作按钮触发 respondPermission", async () => {
+    const makePart = (id: string, callID: string) =>
+      ({
+        id,
+        type: "tool",
+        callID,
+        tool: "glob",
+        state: {
+          status: "running",
+          input: { pattern: "**/*anthropic*.ts" },
+        },
+      }) as any
+
+    mocks.getPermissionForCall.mockReturnValue({ id: "perm-once", permission: "glob", metadata: {} })
+    const view = render(<ToolPart part={makePart("p7", "c7")} sessionID="s1" messageID="m1" />)
+
+    fireEvent.click(screen.getByRole("button", { name: "本次允许" }))
+    await waitFor(() => expect(mocks.respondPermission).toHaveBeenCalledWith("perm-once", "once"))
+
+    mocks.getPermissionForCall.mockReturnValue({ id: "perm-always", permission: "glob", metadata: {} })
+    view.rerender(<ToolPart part={makePart("p8", "c8")} sessionID="s1" messageID="m1" />)
+    fireEvent.click(screen.getByRole("button", { name: "始终允许" }))
+    await waitFor(() => expect(mocks.respondPermission).toHaveBeenCalledWith("perm-always", "always"))
+
+    mocks.getPermissionForCall.mockReturnValue({ id: "perm-reject", permission: "glob", metadata: {} })
+    view.rerender(<ToolPart part={makePart("p9", "c9")} sessionID="s1" messageID="m1" />)
+    fireEvent.click(screen.getByRole("button", { name: "拒绝" }))
+    await waitFor(() => expect(mocks.respondPermission).toHaveBeenCalledWith("perm-reject", "reject"))
   })
 })
