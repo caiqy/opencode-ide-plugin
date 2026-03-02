@@ -35,10 +35,11 @@ describe("quickPhraseRepo", () => {
   })
 
   it("loadQuickPhraseState 合并旧数据并清理非法字段", async () => {
+    const preset = quick_phrase_preset.items[0]!.id
     vi.mocked(scopedStateGetJSON).mockResolvedValue({
       mode: "confirm_send",
       preset_version: 0,
-      order: ["custom:1", "preset:commit", "ghost"],
+      order: ["custom:1", preset, "ghost"],
       items: {
         "custom:1": {
           id: "custom:1",
@@ -49,8 +50,8 @@ describe("quickPhraseRepo", () => {
           order: 0,
           updated_at: 7,
         },
-        "preset:commit": {
-          id: "preset:commit",
+        [preset]: {
+          id: preset,
           title: "旧标题",
           body: "旧正文",
           source: "preset",
@@ -68,7 +69,8 @@ describe("quickPhraseRepo", () => {
 
     expect(value.mode).toBe("confirm_send")
     expect(value.items["custom:1"]?.title).toBe("我的短语")
-    expect(value.items["preset:commit"]?.hidden).toBe(true)
+    expect(value.items[preset]?.title).toBe(quick_phrase_preset.items[0]!.title)
+    expect(value.items[preset]?.hidden).toBe(true)
     expect(value.items["ghost"]).toBeUndefined()
     expect(value.order.includes("custom:1")).toBe(true)
     expect(quick_phrase_preset.items.every((item) => item.id in value.items)).toBe(true)

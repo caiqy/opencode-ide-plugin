@@ -15,7 +15,7 @@ describe("ScrollToBottomButton", () => {
     render(<ScrollToBottomButton visible={true} onClick={() => {}} />)
 
     const button = screen.getByRole("button", { name: "滚动到底部" })
-    expect(button).toHaveClass("w-5")
-    expect(button).toHaveClass("h-5")
+    expect(button).toHaveClass("w-[30px]")
+    expect(button).toHaveClass("h-[30px]")
   })
 })
