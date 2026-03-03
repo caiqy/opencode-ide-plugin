@@ -213,6 +213,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                                 append(URLEncoder.encode(session.baseUrl, StandardCharsets.UTF_8))
                                                 append("&ideBridgeToken=")
                                                 append(URLEncoder.encode(session.token, StandardCharsets.UTF_8))
+                                                append("&jcefScrollMultiplier=4")
                                             }
                                             
                                             // Load the URL with bridge params
