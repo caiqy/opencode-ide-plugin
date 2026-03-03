@@ -28,4 +28,14 @@ describe("VariantSelector", () => {
 
     expect(onSelect).toHaveBeenCalledWith("high")
   })
+
+  it("展示 minimal 变体为中文", async () => {
+    const user = userEvent.setup()
+    render(<VariantSelector variants={["minimal", "low", "medium"]} selectedVariant={undefined} onSelect={vi.fn()} />)
+
+    await user.click(screen.getByTitle("选择推理强度"))
+    expect(screen.getByText("极低")).toBeInTheDocument()
+    expect(screen.getByText("低")).toBeInTheDocument()
+    expect(screen.getByText("中")).toBeInTheDocument()
+  })
 })
