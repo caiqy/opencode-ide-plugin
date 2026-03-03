@@ -40,11 +40,9 @@ export function SessionErrorPart({ part }: SessionErrorPartProps) {
           </div>
           <div>
             <div className="text-[10px] uppercase font-bold tracking-wider text-red-600 dark:text-red-400 mb-0.5">
-              Session Error
+              会话错误
             </div>
-            <div className="text-sm text-red-700 dark:text-red-300">
-              {part.message}
-            </div>
+            <div className="text-sm text-red-700 dark:text-red-300">{part.message}</div>
           </div>
         </div>
 
@@ -69,11 +67,10 @@ export function SessionErrorPart({ part }: SessionErrorPartProps) {
               <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
               <path d="M16 16h5v5" />
             </svg>
-            Retry
+            重试
           </button>
         )}
       </div>
     </div>
   )
 }
-

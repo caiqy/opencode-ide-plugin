@@ -36,7 +36,7 @@ describe("getToolDisplayName", () => {
       { content: "a", status: "pending" },
       { content: "b", status: "pending" },
     ])
-    expect(getToolDisplayName("todowrite", undefined, "Update", output)).toBe("更新任务列表：共 2")
+    expect(getToolDisplayName("todowrite", undefined, "Update", output)).toBe("更新任务列表：共 2 项")
   })
 
   it("task/question 工具调用应展示中文名", () => {
