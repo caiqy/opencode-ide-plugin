@@ -10,15 +10,6 @@ export interface AutoScrollOptions {
 }
 
 export function createAutoScroll(options: AutoScrollOptions) {
-  // 读取 JCEF 滚动倍数参数
-  const scrollMultiplier = (() => {
-    const params = new URLSearchParams(window.location.search)
-    const value = params.get("jcefScrollMultiplier")
-    if (!value) return undefined
-    const parsed = parseFloat(value)
-    return parsed > 0 ? parsed : undefined
-  })()
-
   let scroll: HTMLElement | undefined
   let settling = false
   let settleTimer: ReturnType<typeof setTimeout> | undefined
@@ -115,27 +106,14 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handleWheel = (e: WheelEvent) => {
-    // 检查嵌套滚动区域
+    if (e.deltaY >= 0) return
+    // If the user is scrolling within a nested scrollable region (tool output,
+    // code block, etc), don't treat it as leaving the "follow bottom" mode.
+    // Those regions opt in via `data-scrollable`.
     const el = scroll
     const target = e.target instanceof Element ? e.target : undefined
     const nested = target?.closest("[data-scrollable]")
     if (el && nested && nested !== el) return
-
-    // JCEF 滚动放大
-    if (scrollMultiplier && el) {
-      e.preventDefault()
-      const delta = e.deltaY * scrollMultiplier
-      el.scrollBy({ top: delta, behavior: "auto" })
-
-      // 向上滚动时标记用户交互
-      if (e.deltaY < 0) {
-        stop()
-      }
-      return
-    }
-
-    // 原有逻辑：向上滚动时标记用户交互
-    if (e.deltaY >= 0) return
     stop()
   }
 
@@ -245,12 +223,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
       if (!el) return
 
       updateOverflowAnchor(el)
-      // 修改：如果有 scrollMultiplier，使用非 passive 模式以便 preventDefault
-      const wheelOptions: AddEventListenerOptions = { passive: !scrollMultiplier }
-      el.addEventListener("wheel", handleWheel, wheelOptions)
+      el.addEventListener("wheel", handleWheel, { passive: true })
 
       cleanup = () => {
-        el.removeEventListener("wheel", handleWheel, wheelOptions)
+        el.removeEventListener("wheel", handleWheel)
       }
     },
     contentRef: (el: HTMLElement | undefined) => setStore("contentRef", el),
