@@ -1,12 +1,44 @@
 import { useEffect, useMemo, useRef, useCallback, useState } from "react"
 import type { Message } from "../../../state/MessagesContext"
 
+function readJcefScrollMultiplier() {
+  if (typeof window === "undefined") return
+  const value = new URLSearchParams(window.location.search).get("jcefScrollMultiplier")
+  if (!value) return
+  const parsed = Number.parseFloat(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return
+  return parsed
+}
+
+function normalizeDelta(e: WheelEvent, container: HTMLElement) {
+  if (e.deltaMode === 1) return e.deltaY * 16
+  if (e.deltaMode === 2) return e.deltaY * container.clientHeight
+  return e.deltaY
+}
+
+function nestedScrollable(container: HTMLElement, target: EventTarget | null) {
+  let node = target instanceof HTMLElement ? target : undefined
+  while (node && node !== container) {
+    const style = window.getComputedStyle(node)
+    const overflow = style.overflowY
+    if (
+      (overflow === "auto" || overflow === "scroll" || overflow === "overlay") &&
+      node.scrollHeight > node.clientHeight + 1
+    ) {
+      return true
+    }
+    node = node.parentElement ?? undefined
+  }
+  return false
+}
+
 export function useMessageScroll(
   sessionID: string | null | undefined,
   sortedMessages: Message[],
   isIdle: boolean,
   isReasoning: boolean,
 ) {
+  const multiplier = useMemo(() => readJcefScrollMultiplier(), [])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const isUserAtBottomRef = useRef(true)
@@ -148,6 +180,13 @@ export function useMessageScroll(
       if (e.deltaY < -2) {
         userScrolledRef.current = true
       }
+
+      if (!multiplier) return
+      if (nestedScrollable(container, e.target)) return
+      const delta = normalizeDelta(e, container)
+      if (!delta) return
+      e.preventDefault()
+      container.scrollBy({ top: delta * multiplier, behavior: "auto" })
     }
 
     let lastTouchY: number | undefined
@@ -163,15 +202,16 @@ export function useMessageScroll(
       lastTouchY = currentY
     }
 
-    container.addEventListener("wheel", handleWheel, { passive: true })
+    const wheelOptions: AddEventListenerOptions = { passive: !multiplier }
+    container.addEventListener("wheel", handleWheel, wheelOptions)
     container.addEventListener("touchstart", handleTouchStart, { passive: true })
     container.addEventListener("touchmove", handleTouchMove, { passive: true })
     return () => {
-      container.removeEventListener("wheel", handleWheel)
+      container.removeEventListener("wheel", handleWheel, wheelOptions)
       container.removeEventListener("touchstart", handleTouchStart)
       container.removeEventListener("touchmove", handleTouchMove)
     }
-  }, [sessionID])
+  }, [sessionID, multiplier])
 
   useEffect(() => {
     const container = messagesContainerRef.current?.parentElement as HTMLElement | null

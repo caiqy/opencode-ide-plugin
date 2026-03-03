@@ -239,6 +239,27 @@ describe("useMessageScroll", () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(2)
   })
 
+  it("JetBrains 传入 jcefScrollMultiplier 时应放大主消息区滚轮位移", () => {
+    window.history.replaceState({}, "", "?jcefScrollMultiplier=4")
+
+    const { getByTestId } = render(
+      <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const scrollBy = vi.fn()
+    Object.defineProperty(parent, "scrollBy", {
+      configurable: true,
+      value: scrollBy,
+    })
+
+    fireEvent.wheel(parent, { deltaY: 10, deltaMode: 0 })
+
+    expect(scrollBy).toHaveBeenCalledWith({ top: 40, behavior: "auto" })
+
+    window.history.replaceState({}, "", "/")
+  })
+
   it("切换 session 后重置滚动状态", () => {
     const { rerender, getByTestId } = render(
       <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
