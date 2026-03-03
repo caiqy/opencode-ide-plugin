@@ -1,131 +1,48 @@
-# Changelog
+# 变更记录
 
-All notable changes to the OpenCode VSCode extension will be documented in this file.
+## 2026-02-24 及之前（合并）
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec2.0.0.html).
+- 完成 WebGUI 基础体验重构：新增命令/技能斜杠补全、头部/底部布局优化、工具面板精简与聊天可读性提升。
+- 建立 UI 状态持久化链路：收藏模型、主题、设置与关键会话状态可跨会话/重启恢复，VSCode 端补齐 `storageGet/storageSet`。
+- 推进交互稳定性修复：优化流式输出跟随滚动、修复用户消息偶发空白、修复撤销/重做行为、强化 Service Worker 重试策略。
+- 完成中文化与文案统一：逐步覆盖主要界面、推理强度、空状态及工具相关提示文本。
+- 增强高级会话能力：上线子任务抽屉、任务进度头、默认深色主题及会话 agent/model/variant 恢复。
+- 完成会话标签体系建设：支持拖拽、重命名、右键菜单、自动滚动、数量限制与视觉优化，并修复启动竞态与同步问题。
+- 优化消息与工具呈现细节：增强 Read 行号范围展示、路径与补丁链接可读性，改进问题消息 Markdown 渲染与中止后的状态清理。
+- 维护宿主侧兼容性：移除 `gui-only` 变体、同步上游 `ide-plugin` 更新，并移除全局 `unhandledRejection` 副作用。
 
-### [26.2.15] - 2026-02-15
+## 2026-02-25
 
-- Update OpenCode to v1.2.1
-- Release new variant of plugin with GUI only, without packaged OpenCode binaries, uses OpenCode from PATH or OPENCODE_BIN
+- WebGUI 将标签状态接入 `uiBridgeState v3`（`openTabs/activeTab`），实现跨桥接持久化。
+- WebGUI 采用真实会话优先 + 可复用草稿标签，并修复启动覆盖与长文本溢出问题。
+- 新增 config-file 菜单动作，并通过 bridge 打通 WebGUI 与宿主侧调用。
+- 子任务抽屉支持左边缘拖拽调宽，修复普通消息复制失效场景。
 
-### [26.2.8] - 2026-02-08
+## 2026-02-26
 
-- Favorites models
-- Improved resource extraction to use deterministic paths and cleanup stale temp files
-- Fixed drag&drop file in Remote-SSH on Windows and Linux
-- Multi instance management fix
-- Enhance CSP handling for Remote-SSH compatibility
+- WebGUI 支持文本与推理增量实时流式显示，提升对话反馈速度。
+- 修复草稿会话持久化/恢复链路，解决删除会话后标签残留与空状态异常。
+- 修复启动阶段偶发白屏与标签循环问题，并将运行时存储迁移到 `globalState`。
+- 临时禁用 `minVersion` 校验，降低版本门槛导致的阻塞。
 
-### [26.2.7] - 2026-02-07
+## 2026-02-27
 
-- Add command execution support with / command prefix
-- Fixed empty plugin content when dragging plugin between sidebars
-- Fix drag&drop for v1.108+ - needs shift key hold
-- Enhance error handling to differentiate external errors from extension-specific ones
-- Changed communication between UI <-> IDE to HTTP + SSE
+- 推进并完成 scoped storage 硬切换，统一 WebGUI 与宿主侧存储语义。
+- 修复可复用草稿会话指针在迁移过程中的保持问题。
 
-### [26.2.1] - 2026-02-01
+## 2026-02-28
 
-- Fix for Copy to clipboard button
-- Improved positioning of reference popup (@ action)
-- Fixed empty plugin content when dragging plugin between sidebars
-- Updated OpenCode to v1.1.48
+- WebGUI 新增快捷短语能力，并将短语发送流程与主输入流程隔离。
+- 修复会话水合竞态、草稿切换误报与滚动控件细节，完成快捷短语 UI 打磨。
+- 设置读写切换到全局配置 API，并默认开启配置快照。
+- 对齐 VSCode 扩展身份与打包流程，适配新的发布者与标识符配置。
 
-### [26.1.29] - 2026-01-29
+## 2026-03-02
 
-- Fixed copy & paste in VS Code for Mac OS
+- 修复折叠状态下快捷短语双击失效。
+- 绑定工具权限请求流程并补齐相关提示中文化。
 
-### [26.1.27] - 2026-01-27
+## 2026-03-03
 
-- apply_patch tool fallback count for Changed Files panel
-- removed forbidden getPluginId()
-- fixed not showing tooltips
-
-### [26.1.24] - 2026-01-24
-
-- Share / Unshare session
-- Added button"Copy to clipboard" message content
-- Removed rendering internal message "patch" - thanks to caiqy
-- Files changed panel now provide stats from OpenCode server - thanks to caiqy
-- Improved availability of "Retry" button for failed session
-- Updated OpenCode to v1.1.34
-
-### [26.1.17] - 2026-01-17
-
-- Added support for "Question" tool
-- Added model "variants" - reasoning effort
-- Fixed Agents modes list
-- Fixed some models name on Recent list
-- Updated OpenCode to v1.1.24
-
-### [26.1.11] - 2026-01-11
-
-- Session errors now display in the chat instead of toast
-- Session Retry: Added retry functionality for failed sessions
-- Updated OpenCode to v1.1.11
-
-### [26.1.5] - 2026-01-05
-
-- Updated OpenCode to v1.1.2
-
-### [26.1.2] - 2026-01-02
-
-- OAuth Instructions: Support for provider-specific instructions during OAuth flow
-- Token Usage Stats: Display token usage breakdown and cost in a popover for assistant messages
-- Updated OpenCode to v1.0.223
-
-## [25.12.29] - 2025-12-29
-
-- Updated OpenCode to v1.0.207
-
-## [25.12.21] - 2025-12-21
-
-- Updated OpenCode to v1.0.184
-
-## [25.12.16] - 2025-12-16
-
-- Updated OpenCode to v1.0.163
-
-## [25.12.5] - 2025-12-05
-
-- Auto refresh files in IDE on edit/write
-- New panel with all modified files in session
-- New panel with all TODOs in session
-- Fixed placement of Model/Agent selector
-- Updated OpenCode to v1.0.133
-
-## [25.11.30] - 2025-11-30
-
-- Updated OpenCode to v1.0.121
-- Fixed working directory as server start directory, not git root
-
-## [25.11.24] - 2025-11-24
-
-- UI improvements
-
-## [25.11.20] - 2025-11-20
-
-- Providers can be configured from Settings panel - can be added/removed, also OAuth
-- Fixed context size bug when session what aborted
-- Fix session error toasts and display session state messages
-- Updated OpenCode to v1.0.80
-
-## [25.11.19] - 2025-11-19
-
-- Updated OpenCode to v1.0.78
-
-## [25.11.18] - 2025-11-18
-
-### Added
-
-- First release of the OpenCode VSCode plugin, based on OpenCode v1.0.68
-
-### Features
-
-- **Backend Management**: Automatic extraction and launching of opencode binaries
-- **UI Integration**: Embedded web UI using VSCode's Webview API
-- **IDE Commands**: Context menu actions for adding files/folders to terminal context
-- **File Operations**: Drag-and-drop support and path insertion utilities
-- **Cross-Platform**: Support for Windows, macOS, and Linux with appropriate binaries
+- 补齐最小模型变体翻译，并继续本地化会话错误与工具展示文案。
+- 新增 host-aware restart action，按当前宿主上下文提供更准确的重启入口。
