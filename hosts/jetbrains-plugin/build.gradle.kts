@@ -4,7 +4,7 @@ plugins {
     kotlin("jvm") version "1.9.23"
 }
 
-group = "paviko.opencode"
+group = "qtkj.opencode"
 version = findProperty("plugin.version")?.toString() ?: "26.2.15"
 
 repositories {
