@@ -246,10 +246,11 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
       updateOverflowAnchor(el)
       // 修改：如果有 scrollMultiplier，使用非 passive 模式以便 preventDefault
-      el.addEventListener("wheel", handleWheel, { passive: !scrollMultiplier })
+      const wheelOptions: AddEventListenerOptions = { passive: !scrollMultiplier }
+      el.addEventListener("wheel", handleWheel, wheelOptions)
 
       cleanup = () => {
-        el.removeEventListener("wheel", handleWheel)
+        el.removeEventListener("wheel", handleWheel, wheelOptions)
       }
     },
     contentRef: (el: HTMLElement | undefined) => setStore("contentRef", el),
