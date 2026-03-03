@@ -10,6 +10,7 @@ export interface SessionHandlers {
   openUrl: (url: string) => Promise<void>
   reloadPath: (path: string) => Promise<void>
   clipboardWrite: (text: string) => Promise<void>
+  restartHost?: () => Promise<void>
   storageGet?: (scope: StorageScope, keys: string[]) => Promise<Record<string, string | undefined>>
   storageSet?: (scope: StorageScope, key: string, value: string) => Promise<void>
 }
@@ -18,6 +19,7 @@ type StorageScope = "global" | "workspace" | "mem"
 
 interface SessionMetadata {
   minVersion?: string
+  restartMode?: "window" | "ide"
 }
 
 interface Session {
@@ -184,6 +186,7 @@ class IdeBridgeServer {
     try {
       const data: Record<string, any> = {}
       if (session.metadata.minVersion) data.minVersion = session.metadata.minVersion
+      if (session.metadata.restartMode) data.restartMode = session.metadata.restartMode
       const connected = JSON.stringify(data)
       res.write(`event: connected\ndata: ${connected}\n\n`)
     } catch (e) {
@@ -243,6 +246,19 @@ class IdeBridgeServer {
             this.replyOk(session, id)
           } else {
             this.replyError(session, id, "Missing text")
+          }
+          break
+
+        case "restartHost":
+          if (!session.handlers.restartHost) {
+            this.replyError(session, id, "restartHost not supported")
+            break
+          }
+          try {
+            await session.handlers.restartHost()
+            this.replyOk(session, id)
+          } catch (e) {
+            this.replyError(session, id, `restartHost failed: ${e}`)
           }
           break
 

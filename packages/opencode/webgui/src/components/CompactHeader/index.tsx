@@ -48,17 +48,55 @@ const CompactHeader = forwardRef<
   const [isSharing, setIsSharing] = useState(false)
   const [sharingSessionId, setSharingSessionId] = useState<string | null>(null)
   const [restoring, setRestoring] = useState(false)
+  const [restartMode, setRestartMode] = useState<"window" | "ide" | null>(ideBridge.restartMode)
+  const [restartConfirmOpen, setRestartConfirmOpen] = useState(false)
+  const [restarting, setRestarting] = useState(false)
   const activeRef = useRef("")
   const sessionsEverLoaded = useRef(false)
   if (isLoading) sessionsEverLoaded.current = true
   activeRef.current = tabStore.activeTab
 
   const isShared = !!currentSession?.share?.url
+  const canRestart = restartMode === "window" || restartMode === "ide"
+
+  useEffect(() => {
+    const syncRestartMode = () => {
+      if (ideBridge.restartMode === "window" || ideBridge.restartMode === "ide") {
+        setRestartMode(ideBridge.restartMode)
+        return
+      }
+      setRestartMode(null)
+    }
+
+    syncRestartMode()
+    window.addEventListener("opencode:idebridge-connected", syncRestartMode)
+    return () => {
+      window.removeEventListener("opencode:idebridge-connected", syncRestartMode)
+    }
+  }, [])
 
   const handleOpenConfigFile = useCallback(() => {
     void ideBridge.request("ensureAndOpenFile", { path: "~/.config/opencode/opencode.jsonc" }).catch(() => {
       toast.showToast("打开配置文件失败", { variant: "error" })
     })
+  }, [toast])
+
+  const handleOpenRestartConfirm = useCallback(() => {
+    setRestartConfirmOpen(true)
+  }, [])
+
+  const handleRestartConfirm = useCallback(async () => {
+    setRestarting(true)
+    try {
+      const res = await ideBridge.request("restartHost")
+      if (res.ok !== true) {
+        toast.showToast("重启失败，请稍后重试", { variant: "error" })
+      }
+    } catch {
+      toast.showToast("重启失败，请稍后重试", { variant: "error" })
+    }
+    setRestarting(false)
+    setRestartConfirmOpen(false)
   }, [toast])
 
   const handleToggleShare = useCallback(async () => {
@@ -407,6 +445,8 @@ const CompactHeader = forwardRef<
             toggleTheme={toggleTheme}
             onOpenCommandPalette={onOpenCommandPalette}
             onOpenConfigFile={handleOpenConfigFile}
+            canRestart={canRestart}
+            onRestart={handleOpenRestartConfirm}
             onOpenSettings={() => setIsSettingsOpen(true)}
             onNewSession={onNewSession}
             onToggleHistory={dropdown.toggleDropdown}
@@ -464,6 +504,20 @@ const CompactHeader = forwardRef<
         cancelText="取消"
         variant="danger"
         isLoading={actions.isDeleting}
+      />
+
+      <ConfirmModal
+        isOpen={restartConfirmOpen}
+        onClose={() => setRestartConfirmOpen(false)}
+        onConfirm={() => {
+          void handleRestartConfirm()
+        }}
+        title="确认重启插件"
+        message={restartMode === "ide" ? "将重启 IDE 以重新加载插件，是否继续？" : "将重载窗口并重启插件，是否继续？"}
+        confirmText="重启"
+        cancelText="取消"
+        variant="warning"
+        isLoading={restarting}
       />
 
       {/* Settings panel */}

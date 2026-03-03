@@ -37,6 +37,11 @@ data class SessionInfo(val baseUrl: String, val token: String, val sessionId: St
 object IdeBridge {
     private val LOG = Logger.getInstance(IdeBridge::class.java)
     private val gson = Gson()
+
+    @Volatile
+    internal var restartHook: () -> Unit = {
+        ApplicationManager.getApplication().restart()
+    }
     
     private var server: HttpServer? = null
     private var port: Int = 0
@@ -235,6 +240,7 @@ object IdeBridge {
         try {
             val data = JsonObject().apply {
                 addProperty("minVersion", minVersion)
+                addProperty("restartMode", "ide")
             }
             val writer = OutputStreamWriter(exchange.responseBody)
             writer.write("event: connected\ndata: ${gson.toJson(data)}\n\n")
@@ -336,6 +342,15 @@ object IdeBridge {
                         replyOk(session, id)
                     } else {
                         replyError(session, id, "Missing text")
+                    }
+                }
+
+                "restartHost" -> {
+                    try {
+                        restartHook()
+                        replyOk(session, id)
+                    } catch (e: Exception) {
+                        replyError(session, id, "restartHost failed: $e")
                     }
                 }
 

@@ -134,11 +134,15 @@ export class WebviewController {
           clipboardWrite: async (text) => {
             await vscode.env.clipboard.writeText(text)
           },
+          restartHost: async () => {
+            await vscode.commands.executeCommand("workbench.action.reloadWindow")
+          },
           storageGet: this.storageGet,
           storageSet: this.storageSet,
         },
         {
           minVersion: vscode.workspace.getConfiguration("opencode").get<string>("minVersion", "1.1.1"),
+          restartMode: "window",
         },
       )
       this.bridgeSessionId = session.sessionId

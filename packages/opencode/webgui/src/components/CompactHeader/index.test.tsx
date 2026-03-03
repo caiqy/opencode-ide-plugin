@@ -52,6 +52,7 @@ const mocks = vi.hoisted(() => ({
   sdkShare: vi.fn(),
   sdkUnshare: vi.fn(),
   ideBridgeRequest: vi.fn(),
+  ideBridgeRestartMode: "window" as "window" | "ide" | null,
   tabBarProps: null as null | {
     onClose: (id: string) => void
     onCloseOtherTabs: (id: string) => void
@@ -122,6 +123,9 @@ vi.mock("../../lib/api/sdkClient", () => ({
 vi.mock("../../lib/ideBridge", () => ({
   ideBridge: {
     request: (...args: unknown[]) => mocks.ideBridgeRequest(...args),
+    get restartMode() {
+      return mocks.ideBridgeRestartMode
+    },
   },
 }))
 
@@ -186,6 +190,7 @@ describe("CompactHeader", () => {
     mocks.sdkShare.mockResolvedValue({ data: null })
     mocks.sdkUnshare.mockResolvedValue({ data: null })
     mocks.ideBridgeRequest.mockResolvedValue({ ok: true })
+    mocks.ideBridgeRestartMode = "window"
 
     mocks.useTheme.mockReturnValue({ theme: "light", toggleTheme: vi.fn() })
 
@@ -992,6 +997,108 @@ describe("CompactHeader", () => {
 
     expect(mocks.ideBridgeRequest).toHaveBeenCalledWith("ensureAndOpenFile", {
       path: "~/.config/opencode/opencode.jsonc",
+    })
+  })
+
+  it("点击重启插件后弹出确认框并调用 restartHost", async () => {
+    const user = userEvent.setup()
+    mocks.ideBridgeRestartMode = "window"
+    mocks.ideBridgeRequest.mockResolvedValue({ ok: true })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByTitle("更多选项"))
+    await user.click(screen.getByText("重启插件"))
+
+    expect(screen.getByText("确认重启插件")).toBeInTheDocument()
+    expect(screen.getByText("将重载窗口并重启插件，是否继续？")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "重启" }))
+
+    await waitFor(() => {
+      expect(mocks.ideBridgeRequest).toHaveBeenCalledWith("restartHost")
+    })
+  })
+
+  it("JetBrains 模式下显示重启 IDE 文案", async () => {
+    const user = userEvent.setup()
+    mocks.ideBridgeRestartMode = "ide"
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByTitle("更多选项"))
+    await user.click(screen.getByText("重启插件"))
+
+    expect(screen.getByText("将重启 IDE 以重新加载插件，是否继续？")).toBeInTheDocument()
+  })
+
+  it("restartHost 失败时显示错误 toast", async () => {
+    const user = userEvent.setup()
+    const showToast = vi.fn()
+    mocks.useToast.mockReturnValue({ showToast })
+    mocks.ideBridgeRestartMode = "window"
+    mocks.ideBridgeRequest.mockImplementation(async (type: string) => {
+      if (type === "restartHost") throw new Error("fail")
+      return { ok: true }
+    })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByTitle("更多选项"))
+    await user.click(screen.getByText("重启插件"))
+    await user.click(screen.getByRole("button", { name: "重启" }))
+
+    await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith("重启失败，请稍后重试", { variant: "error" })
+    })
+  })
+
+  it("restartHost 返回 ok=false 时显示错误 toast", async () => {
+    const user = userEvent.setup()
+    const showToast = vi.fn()
+    mocks.useToast.mockReturnValue({ showToast })
+    mocks.ideBridgeRestartMode = "window"
+    mocks.ideBridgeRequest.mockImplementation(async (type: string) => {
+      if (type === "restartHost") return { ok: false, error: "restartHost not supported" }
+      return { ok: true }
+    })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByTitle("更多选项"))
+    await user.click(screen.getByText("重启插件"))
+    await user.click(screen.getByRole("button", { name: "重启" }))
+
+    await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith("重启失败，请稍后重试", { variant: "error" })
     })
   })
 

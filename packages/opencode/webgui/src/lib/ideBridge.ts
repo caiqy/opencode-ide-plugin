@@ -21,6 +21,7 @@ class IdeBridge {
   ready = false
   customApi = true
   minVersion: string | null = null
+  restartMode: "window" | "ide" | null = null
   private queue: Message[] = []
   private handlers: Set<Handler> = new Set()
   private pending = new Map<string, { resolve: (m: Message) => void; reject: (e: any) => void }>()
@@ -60,6 +61,7 @@ class IdeBridge {
         if (typeof data.minVersion === "string") {
           this.minVersion = data.minVersion
         }
+        this.restartMode = data.restartMode === "window" || data.restartMode === "ide" ? data.restartMode : null
       } catch {}
       try {
         window.dispatchEvent(new Event("opencode:idebridge-connected"))

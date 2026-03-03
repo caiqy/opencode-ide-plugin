@@ -69,6 +69,29 @@ describe("CompactHeader/ActionButtons", () => {
     expect(configItem.compareDocumentPosition(settingsItem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it("支持重启时显示重启插件且位于配置文件下方", async () => {
+    const user = userEvent.setup()
+    const onRestart = vi.fn()
+    renderButtons({ canRestart: true, onRestart })
+
+    await user.click(screen.getByTitle("更多选项"))
+
+    const configItem = screen.getByText("配置文件").closest("button")!
+    const restartItem = screen.getByText("重启插件").closest("button")!
+    expect(configItem.compareDocumentPosition(restartItem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    await user.click(screen.getByText("重启插件"))
+    expect(onRestart).toHaveBeenCalledOnce()
+  })
+
+  it("不支持重启时不显示重启插件", async () => {
+    const user = userEvent.setup()
+    renderButtons({ canRestart: false })
+
+    await user.click(screen.getByTitle("更多选项"))
+    expect(screen.queryByText("重启插件")).not.toBeInTheDocument()
+  })
+
   it("点击配置文件触发 onOpenConfigFile", async () => {
     const user = userEvent.setup()
     const onOpenConfigFile = vi.fn()

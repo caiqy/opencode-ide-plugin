@@ -329,3 +329,52 @@ suite("IdeBridgeServer scoped storage", () => {
     assert.strictEqual(modelUpdateRes.ok, false)
   })
 })
+
+suite("IdeBridgeServer restartHost", () => {
+  let baseUrl: string
+  let token: string
+  let sessionId: string
+  let restartCalls: number
+  let restartErr: Error | null
+
+  setup(async () => {
+    restartCalls = 0
+    restartErr = null
+
+    const handlers: SessionHandlers = {
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+      restartHost: async () => {
+        if (restartErr) throw restartErr
+        restartCalls += 1
+      },
+    }
+
+    const session = await bridgeServer.createSession(handlers)
+    baseUrl = session.baseUrl
+    token = session.token
+    sessionId = session.sessionId
+  })
+
+  teardown(() => {
+    bridgeServer.removeSession(sessionId)
+  })
+
+  test("restartHost 路由到 handler 并返回 ok", async () => {
+    const res = await requestReply(baseUrl, token, { type: "restartHost", payload: {} })
+
+    assert.strictEqual(res.ok, true)
+    assert.strictEqual(restartCalls, 1)
+  })
+
+  test("restartHost handler 抛错时返回错误 reply", async () => {
+    restartErr = new Error("boom")
+    const res = await requestReply(baseUrl, token, { type: "restartHost", payload: {} })
+
+    assert.strictEqual(res.ok, false)
+    assert.strictEqual(typeof res.error, "string")
+    assert.strictEqual(String(res.error).includes("restartHost failed"), true)
+  })
+})
