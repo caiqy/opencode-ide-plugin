@@ -7,6 +7,7 @@ import { SettingsPanel } from "../SettingsPanel"
 import { useSessionDropdown } from "./hooks/useSessionDropdown"
 import { useSessionActions } from "./hooks/useSessionActions"
 import { StatusIndicator } from "./StatusIndicator"
+import { StatusPopover } from "./StatusPopover"
 import { ActionButtons } from "./ActionButtons"
 import { SessionDropdown } from "./SessionDropdown"
 import { TabBar } from "./TabBar"
@@ -51,7 +52,10 @@ const CompactHeader = forwardRef<
   const [restartMode, setRestartMode] = useState<"window" | "ide" | null>(ideBridge.restartMode)
   const [restartConfirmOpen, setRestartConfirmOpen] = useState(false)
   const [restarting, setRestarting] = useState(false)
+  const [statusOpen, setStatusOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const activeRef = useRef("")
+  const statusRef = useRef<HTMLButtonElement>(null)
   const sessionsEverLoaded = useRef(false)
   if (isLoading) sessionsEverLoaded.current = true
   activeRef.current = tabStore.activeTab
@@ -171,6 +175,33 @@ const CompactHeader = forwardRef<
   // Session dropdown management
   const dropdown = useSessionDropdown(sessions)
 
+  const handleToggleHistory = useCallback(() => {
+    setStatusOpen(false)
+    setMenuOpen(false)
+    dropdown.toggleDropdown()
+  }, [dropdown.toggleDropdown])
+
+  const handleStatusToggle = useCallback(() => {
+    setMenuOpen(false)
+    dropdown.closeDropdown()
+    setStatusOpen((prev) => !prev)
+  }, [dropdown.closeDropdown])
+
+  const handleStatusClose = useCallback(() => {
+    setStatusOpen(false)
+  }, [])
+
+  const handleMenuChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        setStatusOpen(false)
+        dropdown.closeDropdown()
+      }
+      setMenuOpen(open)
+    },
+    [dropdown.closeDropdown],
+  )
+
   // Session actions (edit, delete)
   const actions = useSessionActions({
     sessions,
@@ -182,9 +213,9 @@ const CompactHeader = forwardRef<
   useImperativeHandle(
     ref,
     () => ({
-      toggleSessionDropdown: dropdown.toggleDropdown,
+      toggleSessionDropdown: handleToggleHistory,
     }),
-    [dropdown.toggleDropdown],
+    [handleToggleHistory],
   )
 
   const switchWithRollback = useCallback(
@@ -439,7 +470,12 @@ const CompactHeader = forwardRef<
           data-testid="compact-header-right"
           ref={dropdown.dropdownRef}
         >
-          <StatusIndicator connectionState={connectionState} />
+          <StatusIndicator
+            buttonRef={statusRef}
+            connectionState={connectionState}
+            open={statusOpen}
+            onToggle={handleStatusToggle}
+          />
           <ActionButtons
             theme={theme}
             toggleTheme={toggleTheme}
@@ -449,11 +485,20 @@ const CompactHeader = forwardRef<
             onRestart={handleOpenRestartConfirm}
             onOpenSettings={() => setIsSettingsOpen(true)}
             onNewSession={onNewSession}
-            onToggleHistory={dropdown.toggleDropdown}
+            onToggleHistory={handleToggleHistory}
             isCreatingSession={isCreatingSession}
             isShared={isShared}
             isSharing={isSharing}
             onToggleShare={handleToggleShare}
+            menuOpen={menuOpen}
+            onMenuOpenChange={handleMenuChange}
+          />
+
+          <StatusPopover
+            open={statusOpen}
+            connectionState={connectionState}
+            onClose={handleStatusClose}
+            triggerRef={statusRef}
           />
 
           <SessionDropdown

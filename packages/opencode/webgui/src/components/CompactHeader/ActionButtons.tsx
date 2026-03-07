@@ -14,6 +14,8 @@ interface ActionButtonsProps {
   isShared: boolean
   isSharing: boolean
   onToggleShare: () => void
+  menuOpen?: boolean
+  onMenuOpenChange?: (open: boolean) => void
 }
 
 export function ActionButtons({
@@ -30,30 +32,38 @@ export function ActionButtons({
   isShared,
   isSharing,
   onToggleShare,
+  menuOpen,
+  onMenuOpenChange,
 }: ActionButtonsProps) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [local, setLocal] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const open = menuOpen ?? local
+
+  const setOpen = (value: boolean) => {
+    if (onMenuOpenChange) onMenuOpenChange(value)
+    if (!onMenuOpenChange) setLocal(value)
+  }
 
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsMenuOpen(false)
+        setOpen(false)
       }
     }
 
-    if (isMenuOpen) {
+    if (open) {
       document.addEventListener("mousedown", handleClickOutside)
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
     }
-  }, [isMenuOpen])
+  }, [open, onMenuOpenChange])
 
   const handleMenuItemClick = (action: () => void) => {
     action()
-    setIsMenuOpen(false)
+    setOpen(false)
   }
 
   return (
@@ -90,7 +100,7 @@ export function ActionButtons({
       {/* More menu button */}
       <div className="relative" ref={menuRef}>
         <button
-          onClick={() => setIsMenuOpen(!isMenuOpen)}
+          onClick={() => setOpen(!open)}
           className="w-5 h-5 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
           title="更多选项"
           data-tip="更多选项"
@@ -106,7 +116,7 @@ export function ActionButtons({
         </button>
 
         {/* Dropdown menu */}
-        {isMenuOpen && (
+        {open && (
           <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 py-1">
             {/* Theme toggle */}
             <button

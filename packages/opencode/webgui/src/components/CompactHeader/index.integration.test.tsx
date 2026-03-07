@@ -47,7 +47,23 @@ vi.mock("../SettingsPanel", () => ({
 }))
 
 vi.mock("./StatusIndicator", () => ({
-  StatusIndicator: () => null,
+  StatusIndicator: (props: { open?: boolean; onToggle?: () => void }) => (
+    <button type="button" title="状态点" aria-expanded={props.open ?? false} onClick={props.onToggle}>
+      状态点
+    </button>
+  ),
+}))
+
+vi.mock("./StatusPopover", () => ({
+  StatusPopover: (props: { open: boolean; onClose: () => void }) =>
+    props.open ? (
+      <div role="dialog" aria-label="状态面板">
+        <span>状态弹层</span>
+        <button type="button" onClick={props.onClose}>
+          关闭状态弹层
+        </button>
+      </div>
+    ) : null,
 }))
 
 vi.mock("./SessionDropdown", () => ({

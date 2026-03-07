@@ -102,4 +102,13 @@ describe("CompactHeader/ActionButtons", () => {
 
     expect(onOpenConfigFile).toHaveBeenCalledOnce()
   })
+
+  it("受控模式下通过 onMenuOpenChange 切换更多菜单", async () => {
+    const user = userEvent.setup()
+    const onMenuOpenChange = vi.fn()
+    renderButtons({ menuOpen: false, onMenuOpenChange })
+
+    await user.click(screen.getByTitle("更多选项"))
+    expect(onMenuOpenChange).toHaveBeenCalledWith(true)
+  })
 })

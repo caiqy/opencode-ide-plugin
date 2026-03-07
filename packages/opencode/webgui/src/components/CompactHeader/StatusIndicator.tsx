@@ -1,3 +1,4 @@
+import type { RefObject } from "react"
 import type { ConnectionState } from "../../lib/api/events"
 import { CONNECTION_COLORS, CONNECTION_TOOLTIPS } from "./utils"
 
@@ -6,6 +7,7 @@ interface StatusIndicatorProps {
   open?: boolean
   onToggle?: () => void
   controls?: string
+  buttonRef?: RefObject<HTMLButtonElement | null>
 }
 
 export function StatusIndicator({
@@ -13,6 +15,7 @@ export function StatusIndicator({
   open,
   onToggle,
   controls = "status-popover",
+  buttonRef,
 }: StatusIndicatorProps) {
   const tip = CONNECTION_TOOLTIPS[connectionState]
   const dot = (
@@ -38,6 +41,7 @@ export function StatusIndicator({
 
   return (
     <button
+      ref={buttonRef}
       type="button"
       className="flex h-5 w-5 items-center justify-center"
       title={tip}

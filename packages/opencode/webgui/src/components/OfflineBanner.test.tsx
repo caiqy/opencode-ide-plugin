@@ -21,4 +21,9 @@ describe("OfflineBanner", () => {
     fireEvent.click(screen.getByRole("button", { name: "立即重试" }))
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
+
+  it("connected 时不显示横幅", () => {
+    const { container } = render(<OfflineBanner connectionState={"connected" as any} />)
+    expect(container).toBeEmptyDOMElement()
+  })
 })

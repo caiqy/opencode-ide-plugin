@@ -93,7 +93,23 @@ vi.mock("../SettingsPanel", () => ({
 }))
 
 vi.mock("./StatusIndicator", () => ({
-  StatusIndicator: () => null,
+  StatusIndicator: (props: { open?: boolean; onToggle?: () => void }) => (
+    <button type="button" title="状态点" aria-expanded={props.open ?? false} onClick={props.onToggle}>
+      状态点
+    </button>
+  ),
+}))
+
+vi.mock("./StatusPopover", () => ({
+  StatusPopover: (props: { open: boolean; onClose: () => void }) =>
+    props.open ? (
+      <div role="dialog" aria-label="状态面板">
+        <span>状态弹层</span>
+        <button type="button" onClick={props.onClose}>
+          关闭状态弹层
+        </button>
+      </div>
+    ) : null,
 }))
 
 vi.mock("./SessionDropdown", () => ({
@@ -1123,5 +1139,68 @@ describe("CompactHeader", () => {
     await waitFor(() => {
       expect(showToast).toHaveBeenCalledWith("打开配置文件失败", { variant: "error" })
     })
+  })
+
+  it("点击状态点会打开并关闭状态弹层", async () => {
+    const user = userEvent.setup()
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByTitle("状态点"))
+    expect(screen.getByText("状态弹层")).toBeInTheDocument()
+    expect(screen.getByTitle("状态点")).toHaveAttribute("aria-expanded", "true")
+
+    await user.click(screen.getByRole("button", { name: "关闭状态弹层" }))
+    expect(screen.queryByText("状态弹层")).not.toBeInTheDocument()
+    expect(screen.getByTitle("状态点")).toHaveAttribute("aria-expanded", "false")
+  })
+
+  it("状态弹层与更多菜单互斥", async () => {
+    const user = userEvent.setup()
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByTitle("更多选项"))
+    expect(screen.getByText("配置文件")).toBeInTheDocument()
+
+    await user.click(screen.getByTitle("状态点"))
+    expect(screen.getByText("状态弹层")).toBeInTheDocument()
+    expect(screen.queryByText("配置文件")).not.toBeInTheDocument()
+  })
+
+  it("点击历史会话会关闭状态弹层", async () => {
+    const user = userEvent.setup()
+    const dropdown = createBaseDropdownMock()
+    mocks.useSessionDropdown.mockReturnValue(dropdown)
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByTitle("状态点"))
+    expect(screen.getByText("状态弹层")).toBeInTheDocument()
+
+    await user.click(screen.getByTitle("历史会话"))
+    expect(dropdown.toggleDropdown).toHaveBeenCalledOnce()
+    expect(screen.queryByText("状态弹层")).not.toBeInTheDocument()
   })
 })
