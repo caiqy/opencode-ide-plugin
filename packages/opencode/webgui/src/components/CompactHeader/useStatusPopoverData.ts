@@ -64,6 +64,11 @@ function box<T>(data: T, state: State, error: string | null, updatedAt: number |
   return { data, state, error, updatedAt }
 }
 
+function merge(input: Array<string | null>) {
+  const list = input.filter((item): item is string => Boolean(item))
+  return list.length > 0 ? list.join("; ") : null
+}
+
 function server(
   connectionState: ConnectionState,
   health: boolean | null,
@@ -84,6 +89,11 @@ function server(
       restartMode: ideBridge.restartMode,
     },
   }
+}
+
+function failed<T>(prev: Box<T>, fallback: T, err: string | null) {
+  if (prev.updatedAt && err) return box(prev.data, "stale", err, prev.updatedAt)
+  return box(prev.updatedAt ? prev.data : fallback, prev.updatedAt ? "stale" : "failed", err, prev.updatedAt)
 }
 
 async function healthy(connectionState: ConnectionState) {
@@ -121,6 +131,7 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
   const toggleMcp = useCallback(
     async (name: string) => {
       const status = data.mcp.data[name]?.status
+      if (status === "needs_auth" || status === "needs_client_registration") return
       const query = data.servers.data.directory ? { directory: data.servers.data.directory } : undefined
       if (status === "connected") await sdk.mcp.disconnect({ path: { name }, query })
       if (status !== "connected") await sdk.mcp.connect({ path: { name }, query })
@@ -141,6 +152,18 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
 
     setData((prev) => {
       const stamp = now()
+      const serverErr = merge([
+        projectRes.status === "rejected"
+          ? text(projectRes.reason, "Failed to load project")
+          : projectRes.value.error
+            ? text(projectRes.value.error, "Failed to load project")
+            : null,
+        pathRes.status === "rejected"
+          ? text(pathRes.reason, "Failed to load path")
+          : pathRes.value.error
+            ? text(pathRes.value.error, "Failed to load path")
+            : null,
+      ])
       const project =
         projectRes.status === "fulfilled" && projectRes.value.data
           ? projectRes.value.data.id
@@ -156,18 +179,17 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
           ? pathRes.value.data.directory
           : prev.servers.data.directory
       const health = healthRes.status === "fulfilled" ? healthRes.value : prev.servers.data.health
-      const servers = box(server(connectionState, health, project, worktree, directory), "ready", null, stamp)
+      const nextServer = server(connectionState, health, project, worktree, directory)
+      const servers = serverErr ? failed(prev.servers, nextServer, serverErr) : box(nextServer, "ready", null, stamp)
 
       const mcp = (() => {
         if (mcpRes.status === "rejected") {
           const err = text(mcpRes.reason, "Failed to load MCP status")
-          if (Object.keys(prev.mcp.data).length > 0) return box(prev.mcp.data, "stale", err, prev.mcp.updatedAt)
-          return box({}, "failed", err, prev.mcp.updatedAt)
+          return failed(prev.mcp, {}, err)
         }
         if (mcpRes.value.error || !mcpRes.value.data) {
           const err = text(mcpRes.value.error, "Failed to load MCP status")
-          if (Object.keys(prev.mcp.data).length > 0) return box(prev.mcp.data, "stale", err, prev.mcp.updatedAt)
-          return box({}, "failed", err, prev.mcp.updatedAt)
+          return failed(prev.mcp, {}, err)
         }
         const next = mcpRes.value.data as Record<string, McpState>
         return box(next, Object.keys(next).length > 0 ? "ready" : "empty", null, stamp)
@@ -176,13 +198,11 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
       const lsp = (() => {
         if (lspRes.status === "rejected") {
           const err = text(lspRes.reason, "Failed to load LSP status")
-          if (prev.lsp.data.length > 0) return box(prev.lsp.data, "stale", err, prev.lsp.updatedAt)
-          return box([], "failed", err, prev.lsp.updatedAt)
+          return failed(prev.lsp, [], err)
         }
         if (lspRes.value.error || !lspRes.value.data) {
           const err = text(lspRes.value.error, "Failed to load LSP status")
-          if (prev.lsp.data.length > 0) return box(prev.lsp.data, "stale", err, prev.lsp.updatedAt)
-          return box([], "failed", err, prev.lsp.updatedAt)
+          return failed(prev.lsp, [], err)
         }
         const next = lspRes.value.data as LspState[]
         return box(next, next.length > 0 ? "ready" : "empty", null, stamp)
@@ -191,13 +211,11 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
       const plugins = (() => {
         if (pluginRes.status === "rejected") {
           const err = text(pluginRes.reason, "Failed to load plugin config")
-          if (prev.plugins.data.length > 0) return box(prev.plugins.data, "stale", err, prev.plugins.updatedAt)
-          return box([], "failed", err, prev.plugins.updatedAt)
+          return failed(prev.plugins, [], err)
         }
         if (pluginRes.value.error || !pluginRes.value.data) {
           const err = text(pluginRes.value.error, "Failed to load plugin config")
-          if (prev.plugins.data.length > 0) return box(prev.plugins.data, "stale", err, prev.plugins.updatedAt)
-          return box([], "failed", err, prev.plugins.updatedAt)
+          return failed(prev.plugins, [], err)
         }
         const next = Array.isArray(pluginRes.value.data.plugin)
           ? pluginRes.value.data.plugin.filter((item): item is string => typeof item === "string")

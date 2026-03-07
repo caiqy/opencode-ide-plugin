@@ -150,6 +150,38 @@ describe("CompactHeader/useStatusPopoverData", () => {
     expect(view.result.current.mcp.state).toBe("ready")
   })
 
+  it("servers 分区首次失败时标记 failed", async () => {
+    mocks.projectCurrent.mockResolvedValueOnce(fail("project boom"))
+    mocks.pathGet.mockResolvedValueOnce(fail("path boom"))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.servers.state).toBe("failed")
+    })
+
+    expect(view.result.current.servers.error).toContain("project boom")
+  })
+
+  it("servers 分区刷新失败后保留旧快照并标记 stale", async () => {
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.servers.state).toBe("ready")
+    })
+
+    mocks.projectCurrent.mockResolvedValueOnce(fail("project boom"))
+    mocks.pathGet.mockResolvedValueOnce(fail("path boom"))
+
+    await act(async () => {
+      await view.result.current.refreshAll()
+    })
+
+    expect(view.result.current.servers.state).toBe("stale")
+    expect(view.result.current.servers.data.project).toBe("p1")
+    expect(view.result.current.servers.error).toContain("project boom")
+  })
+
   it("refreshMcp 只刷新 MCP 分区", async () => {
     const view = hook(true)
 

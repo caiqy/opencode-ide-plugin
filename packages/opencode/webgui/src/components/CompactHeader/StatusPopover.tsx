@@ -89,7 +89,9 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
                 onKeyDown={(e) => {
                   if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return
                   e.preventDefault()
-                  setTab(nextTab(item.id, e.key === "ArrowRight" ? 1 : -1))
+                  const id = nextTab(item.id, e.key === "ArrowRight" ? 1 : -1)
+                  setTab(id)
+                  queueMicrotask(() => document.getElementById(`status-tab-${id}`)?.focus())
                 }}
               >
                 {item.label}
@@ -101,6 +103,12 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
 
       <Panel tab={tab} id="servers">
         <div className="space-y-2 p-3 text-xs text-gray-700 dark:text-gray-200">
+          <StateBox
+            state={servers.state}
+            error={servers.error}
+            updatedAt={servers.updatedAt}
+            onRetry={data.refreshAll}
+          />
           <div>SSE 连接：{servers.summary.connection}</div>
           <div>IDE bridge：{servers.summary.bridge.ready ? "ready" : "not ready"}</div>
           <div>项目：{servers.summary.project ?? "未知"}</div>
@@ -120,13 +128,19 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
           <StateBox state={mcp.state} error={mcp.error} updatedAt={mcp.updatedAt} />
           {mcp.items.map((item) => (
             <div key={item.name} className="flex items-center justify-between gap-2">
-              <span>{item.name}</span>
+              <div className="flex flex-col gap-1">
+                <span>{item.name}</span>
+                {item.reason ? (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-400">{item.reason}</span>
+                ) : null}
+              </div>
               <label className="flex items-center gap-2">
                 <span>{item.status}</span>
                 <input
                   type="checkbox"
                   aria-label={`切换 ${item.name}`}
                   checked={item.enabled}
+                  disabled={item.disabled}
                   onChange={() => void data.toggleMcp(item.name)}
                 />
               </label>
@@ -137,7 +151,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
 
       <Panel tab={tab} id="lsp">
         <div className="space-y-2 p-3 text-xs text-gray-700 dark:text-gray-200">
-          <StateBox state={lsp.state} error={lsp.error} updatedAt={lsp.updatedAt} />
+          <StateBox state={lsp.state} error={lsp.error} updatedAt={lsp.updatedAt} onRetry={data.refreshAll} />
           {lsp.items.map((item) => (
             <div key={item.id}>{item.name}</div>
           ))}
@@ -146,7 +160,13 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
 
       <Panel tab={tab} id="plugins">
         <div className="space-y-2 p-3 text-xs text-gray-700 dark:text-gray-200">
-          <StateBox state={plugins.state} error={plugins.error} updatedAt={plugins.updatedAt} empty={plugins.empty} />
+          <StateBox
+            state={plugins.state}
+            error={plugins.error}
+            updatedAt={plugins.updatedAt}
+            empty={plugins.empty}
+            onRetry={data.refreshAll}
+          />
           {plugins.items.map((item) => (
             <div key={item}>{item}</div>
           ))}
@@ -165,8 +185,25 @@ function Panel(props: { tab: Tab; id: Tab; children: ReactNode }) {
   )
 }
 
-function StateBox(props: { state: string; error: string | null; updatedAt: number | null; empty?: string }) {
-  if (props.state === "failed") return <div>数据失败：{props.error}</div>
+function StateBox(props: {
+  state: string
+  error: string | null
+  updatedAt: number | null
+  empty?: string
+  onRetry?: () => void | Promise<void>
+}) {
+  if (props.state === "failed") {
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <span>数据失败：{props.error}</span>
+        {props.onRetry ? (
+          <button type="button" className="text-blue-600 dark:text-blue-400" onClick={() => void props.onRetry?.()}>
+            重试
+          </button>
+        ) : null}
+      </div>
+    )
+  }
   if (props.state === "stale") return <div>数据可能不是最新，上次更新于 {stamp(props.updatedAt)}</div>
   if (props.state === "empty") return <div>{props.empty ?? "暂无可展示数据"}</div>
   return null

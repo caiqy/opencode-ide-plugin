@@ -91,6 +91,13 @@ export function buildMcpView(input: Box<Record<string, McpData>>) {
       status: item.status,
       enabled: item.status === "connected",
       error: item.error,
+      disabled: item.status === "needs_auth" || item.status === "needs_client_registration",
+      reason:
+        item.status === "needs_auth"
+          ? "需要认证"
+          : item.status === "needs_client_registration"
+            ? (item.error ?? "需要客户端注册")
+            : undefined,
     })),
   }
 }

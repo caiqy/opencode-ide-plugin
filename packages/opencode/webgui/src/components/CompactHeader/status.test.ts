@@ -85,6 +85,7 @@ describe("CompactHeader/status", () => {
         alpha: { status: "connected" },
         beta: { status: "disabled" },
         gamma: { status: "failed", error: "bad" },
+        delta: { status: "needs_auth" },
       },
     })
 
@@ -92,5 +93,7 @@ describe("CompactHeader/status", () => {
     expect(view.items.find((item: { name: string }) => item.name === "alpha")?.enabled).toBe(true)
     expect(view.items.find((item: { name: string }) => item.name === "beta")?.enabled).toBe(false)
     expect(view.items.find((item: { name: string }) => item.name === "gamma")?.error).toBe("bad")
+    expect(view.items.find((item: { name: string }) => item.name === "delta")?.disabled).toBe(true)
+    expect(view.items.find((item: { name: string }) => item.name === "delta")?.reason).toContain("认证")
   })
 })

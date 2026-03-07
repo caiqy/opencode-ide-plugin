@@ -13,7 +13,48 @@ vi.mock("./useStatusPopoverData", () => ({
 
 import { StatusPopover } from "./StatusPopover"
 
-function data() {
+type View = {
+  connectionState: ConnectionState
+  servers: {
+    state: "ready" | "empty" | "failed" | "stale"
+    error: string | null
+    updatedAt: number | null
+    data: {
+      connectionState: ConnectionState
+      project: string | null
+      worktree: string | null
+      directory: string | null
+      health: boolean | null
+      bridge: { installed: boolean; ready: boolean; customApi: boolean; restartMode: "window" | "ide" | null }
+    }
+  }
+  mcp: {
+    state: "ready" | "empty" | "failed" | "stale"
+    error: string | null
+    updatedAt: number | null
+    data: Record<
+      string,
+      { status: "connected" | "disabled" | "failed" | "needs_auth" | "needs_client_registration"; error?: string }
+    >
+  }
+  lsp: {
+    state: "ready" | "empty" | "failed" | "stale"
+    error: string | null
+    updatedAt: number | null
+    data: Array<{ id: string; name: string; root: string; status: "connected" | "error" }>
+  }
+  plugins: {
+    state: "ready" | "empty" | "failed" | "stale"
+    error: string | null
+    updatedAt: number | null
+    data: string[]
+  }
+  refreshAll: ReturnType<typeof vi.fn>
+  refreshMcp: ReturnType<typeof vi.fn>
+  toggleMcp: ReturnType<typeof vi.fn>
+}
+
+function data(): View {
   return {
     connectionState: "connected" as ConnectionState,
     servers: {
@@ -111,6 +152,7 @@ describe("CompactHeader/StatusPopover", () => {
     servers.focus()
     await user.keyboard("{ArrowRight}")
     expect(screen.getByRole("tab", { name: "mcp" })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("tab", { name: "mcp" })).toHaveFocus()
 
     await user.keyboard("{Escape}")
     expect(onClose).toHaveBeenCalledOnce()
@@ -155,5 +197,43 @@ describe("CompactHeader/StatusPopover", () => {
     await user.click(screen.getByRole("button", { name: "手动刷新" }))
 
     expect(view.refreshMcp).toHaveBeenCalledOnce()
+  })
+
+  it("servers 失败时显示重试入口", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.servers = {
+      state: "failed",
+      error: "server boom",
+      updatedAt: null,
+      data: view.servers.data,
+    }
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    expect(screen.getByText(/数据失败：server boom/)).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "重试" }))
+    expect(view.refreshAll).toHaveBeenCalledOnce()
+  })
+
+  it("MCP 受限项显示禁用并说明原因", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.mcp = {
+      state: "ready",
+      error: null,
+      updatedAt: 1,
+      data: {
+        auth: { status: "needs_auth" },
+      },
+    }
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "mcp" }))
+    expect(screen.getByRole("checkbox", { name: "切换 auth" })).toBeDisabled()
+    expect(screen.getByText(/需要认证/)).toBeInTheDocument()
   })
 })
