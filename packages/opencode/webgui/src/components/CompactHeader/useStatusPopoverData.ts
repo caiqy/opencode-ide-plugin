@@ -114,18 +114,23 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
   })
 
   const refreshMcp = useCallback(async () => {
-    const res = await sdk.mcp.status()
-    setData((prev) => {
-      if (res.error || !res.data) {
-        const err = text(res.error, "Failed to load MCP status")
-        if (Object.keys(prev.mcp.data).length > 0)
-          return { ...prev, mcp: box(prev.mcp.data, "stale", err, prev.mcp.updatedAt) }
-        return { ...prev, mcp: box({}, "failed", err, prev.mcp.updatedAt) }
-      }
-      const next = res.data as Record<string, McpState>
-      const state = Object.keys(next).length > 0 ? "ready" : "empty"
-      return { ...prev, mcp: box(next, state, null, now()) }
-    })
+    try {
+      const res = await sdk.mcp.status()
+      setData((prev) => {
+        if (res.error || !res.data) {
+          const err = text(res.error, "Failed to load MCP status")
+          return { ...prev, mcp: failed(prev.mcp, {}, err) }
+        }
+        const next = res.data as Record<string, McpState>
+        const state = Object.keys(next).length > 0 ? "ready" : "empty"
+        return { ...prev, mcp: box(next, state, null, now()) }
+      })
+    } catch (err) {
+      setData((prev) => ({
+        ...prev,
+        mcp: failed(prev.mcp, {}, text(err, "Failed to load MCP status")),
+      }))
+    }
   }, [])
 
   const toggleMcp = useCallback(
@@ -133,11 +138,18 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
       const status = data.mcp.data[name]?.status
       if (status === "needs_auth" || status === "needs_client_registration") return
       const query = data.servers.data.directory ? { directory: data.servers.data.directory } : undefined
-      if (status === "connected") await sdk.mcp.disconnect({ path: { name }, query })
-      if (status !== "connected") await sdk.mcp.connect({ path: { name }, query })
-      await refreshMcp()
+      try {
+        if (status === "connected") await sdk.mcp.disconnect({ path: { name }, query })
+        if (status !== "connected") await sdk.mcp.connect({ path: { name }, query })
+        await refreshMcp()
+      } catch (err) {
+        setData((prev) => ({
+          ...prev,
+          mcp: failed(prev.mcp, prev.mcp.data, text(err, "Failed to toggle MCP")),
+        }))
+      }
     },
-    [data.mcp.data, refreshMcp],
+    [data.mcp.data, data.servers.data.directory, refreshMcp],
   )
 
   const refreshAll = useCallback(async () => {
@@ -163,6 +175,8 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
           : pathRes.value.error
             ? text(pathRes.value.error, "Failed to load path")
             : null,
+        healthRes.status === "rejected" ? text(healthRes.reason, "Failed to fetch health") : null,
+        healthRes.status === "fulfilled" && healthRes.value === false ? "Health check failed" : null,
       ])
       const project =
         projectRes.status === "fulfilled" && projectRes.value.data

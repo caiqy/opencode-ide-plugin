@@ -182,6 +182,35 @@ describe("CompactHeader/useStatusPopoverData", () => {
     expect(view.result.current.servers.error).toContain("project boom")
   })
 
+  it("health 异常会让 servers 分区进入 failed", async () => {
+    mocks.fetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ healthy: false, version: "1.0.0" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.servers.state).toBe("failed")
+    })
+
+    expect(view.result.current.servers.data.health).toBe(false)
+  })
+
+  it("health 请求 reject 时会让 servers 分区进入 failed", async () => {
+    mocks.fetch.mockRejectedValueOnce(new Error("health boom"))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.servers.state).toBe("failed")
+    })
+
+    expect(view.result.current.servers.error).toContain("health boom")
+  })
+
   it("refreshMcp 只刷新 MCP 分区", async () => {
     const view = hook(true)
 
@@ -201,6 +230,23 @@ describe("CompactHeader/useStatusPopoverData", () => {
     expect(view.result.current.mcp.data.alpha?.status).toBe("disabled")
   })
 
+  it("refreshMcp reject 时保留旧快照并标记 stale", async () => {
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.mcp.state).toBe("ready")
+    })
+
+    mocks.mcpStatus.mockRejectedValueOnce(new Error("mcp boom"))
+
+    await act(async () => {
+      await view.result.current.refreshMcp()
+    })
+
+    expect(view.result.current.mcp.state).toBe("stale")
+    expect(view.result.current.mcp.error).toContain("mcp boom")
+  })
+
   it("toggleMcp 会按当前状态切换并局部刷新", async () => {
     const view = hook(true)
 
@@ -217,5 +263,22 @@ describe("CompactHeader/useStatusPopoverData", () => {
     expect(mocks.mcpDisconnect).toHaveBeenCalledWith({ path: { name: "alpha" }, query: { directory: "D:/repo" } })
     expect(mocks.mcpStatus).toHaveBeenCalledTimes(2)
     expect(view.result.current.mcp.data.alpha?.status).toBe("disabled")
+  })
+
+  it("toggleMcp reject 时保留旧快照并标记 stale", async () => {
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.mcp.state).toBe("ready")
+    })
+
+    mocks.mcpDisconnect.mockRejectedValueOnce(new Error("toggle boom"))
+
+    await act(async () => {
+      await view.result.current.toggleMcp("alpha")
+    })
+
+    expect(view.result.current.mcp.state).toBe("stale")
+    expect(view.result.current.mcp.error).toContain("toggle boom")
   })
 })

@@ -107,6 +107,7 @@ describe("CompactHeader/StatusPopover", () => {
     expect(screen.getByRole("tab", { name: "servers" })).toHaveAttribute("aria-selected", "true")
     expect(screen.getByText("SSE 连接：connected")).toBeInTheDocument()
     expect(screen.getByText("IDE bridge：ready")).toBeInTheDocument()
+    expect(screen.getByText("健康检查：正常")).toBeInTheDocument()
   })
 
   it("显示 lsp 和 plugins 的只读内容", async () => {
@@ -197,6 +198,25 @@ describe("CompactHeader/StatusPopover", () => {
     await user.click(screen.getByRole("button", { name: "手动刷新" }))
 
     expect(view.refreshMcp).toHaveBeenCalledOnce()
+  })
+
+  it("MCP 失败项会展示错误原因", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.mcp = {
+      state: "ready",
+      error: null,
+      updatedAt: 1,
+      data: {
+        bad: { status: "failed", error: "boom" },
+      },
+    }
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "mcp" }))
+    expect(screen.getByText("boom")).toBeInTheDocument()
   })
 
   it("servers 失败时显示重试入口", async () => {

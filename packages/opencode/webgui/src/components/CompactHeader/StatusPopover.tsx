@@ -111,6 +111,9 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
           />
           <div>SSE 连接：{servers.summary.connection}</div>
           <div>IDE bridge：{servers.summary.bridge.ready ? "ready" : "not ready"}</div>
+          <div>
+            健康检查：{servers.summary.health === true ? "正常" : servers.summary.health === false ? "异常" : "未知"}
+          </div>
           <div>项目：{servers.summary.project ?? "未知"}</div>
           <div>路径：{servers.summary.directory ?? servers.summary.worktree ?? "未知"}</div>
           <div className="text-gray-500 dark:text-gray-400">{servers.note}</div>
