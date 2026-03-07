@@ -35,15 +35,13 @@ export namespace SessionCompaction {
     const context = input.model.limit.context
     if (context === 0) return false
 
-    const count =
-      input.tokens.total ||
-      input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
-
-    const reserved =
-      config.compaction?.reserved ?? Math.min(COMPACTION_BUFFER, ProviderTransform.maxOutputTokens(input.model))
-    const usable = input.model.limit.input
-      ? input.model.limit.input - reserved
-      : context - ProviderTransform.maxOutputTokens(input.model)
+    const count = Math.max(
+      input.tokens.total ?? 0,
+      input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write,
+    )
+    const output = ProviderTransform.maxOutputTokens(input.model)
+    const reserved = config.compaction?.reserved ?? Math.min(COMPACTION_BUFFER, output)
+    const usable = Math.min(context - output, input.model.limit.input ? input.model.limit.input - reserved : Infinity)
     return count >= usable
   }
 

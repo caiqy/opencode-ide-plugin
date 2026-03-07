@@ -363,12 +363,18 @@ export namespace SessionProcessor {
               stack: JSON.stringify(e.stack),
             })
             const error = MessageV2.fromError(e, { providerID: input.model.providerID })
-            if (MessageV2.ContextOverflowError.isInstance(error)) {
-              needsCompaction = true
+            const overflow = MessageV2.ContextOverflowError.isInstance(error)
+            const compact = overflow && !needsCompaction && input.assistantMessage.mode !== "compaction"
+            if (overflow) {
+              if (compact) needsCompaction = true
+              input.assistantMessage.error = error
               Bus.publish(Session.Event.Error, {
                 sessionID: input.sessionID,
                 error,
               })
+              if (!compact) {
+                SessionStatus.set(input.sessionID, { type: "idle" })
+              }
             } else {
               const retry = SessionRetry.retryable(error)
               if (retry !== undefined) {

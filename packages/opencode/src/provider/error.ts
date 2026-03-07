@@ -177,6 +177,24 @@ export namespace ProviderError {
       }
 
   export function parseAPICallError(input: { providerID: string; error: APICallError }): ParsedAPICallError {
+    const parsed = parseStreamError(input.error.cause) ?? parseStreamError(input.error.responseBody)
+    if (parsed?.type === "context_overflow") {
+      return parsed
+    }
+
+    const metadata = input.error.url ? { url: input.error.url } : undefined
+    if (parsed) {
+      return {
+        type: "api_error",
+        message: parsed.message,
+        statusCode: input.error.statusCode,
+        isRetryable: parsed.isRetryable,
+        responseHeaders: input.error.responseHeaders,
+        responseBody: parsed.responseBody,
+        metadata,
+      }
+    }
+
     const m = message(input.providerID, input.error)
     if (isOverflow(m) || input.error.statusCode === 413) {
       return {
@@ -186,7 +204,6 @@ export namespace ProviderError {
       }
     }
 
-    const metadata = input.error.url ? { url: input.error.url } : undefined
     return {
       type: "api_error",
       message: m,

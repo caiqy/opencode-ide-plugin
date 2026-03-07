@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
+import { handleSessionUiEvent } from "./App"
 import { switchSessionWithTabRollback } from "./state/switchSession"
 
 describe("switchSessionWithTabRollback", () => {
@@ -65,5 +66,49 @@ describe("switchSessionWithTabRollback", () => {
     expect(state.currentSessionId).toBe("s1")
     expect(state.activeTab).toBe("s1")
     expect(state.openTabs).toEqual(["s1", "s2"])
+  })
+})
+
+describe("handleSessionUiEvent", () => {
+  it("session.idle 会恢复对应会话的 idle 状态且不弹 toast", () => {
+    const showToast = vi.fn()
+    const setSessionIdle = vi.fn()
+
+    handleSessionUiEvent({
+      event: { type: "session.idle", properties: { sessionID: "s-1" } },
+      currentSessionId: "s-2",
+      setSessionIdle,
+      showToast,
+    })
+
+    expect(setSessionIdle).toHaveBeenCalledTimes(1)
+    expect(setSessionIdle).toHaveBeenCalledWith("s-1", true)
+    expect(showToast).not.toHaveBeenCalled()
+  })
+
+  it("session.compacted 仅对当前会话显示中文提示", () => {
+    const showToast = vi.fn()
+    const setSessionIdle = vi.fn()
+
+    handleSessionUiEvent({
+      event: { type: "session.compacted", properties: { sessionID: "s-1" } },
+      currentSessionId: "s-1",
+      setSessionIdle,
+      showToast,
+    })
+
+    handleSessionUiEvent({
+      event: { type: "session.compacted", properties: { sessionID: "s-2" } },
+      currentSessionId: "s-1",
+      setSessionIdle,
+      showToast,
+    })
+
+    expect(showToast).toHaveBeenCalledTimes(1)
+    expect(showToast).toHaveBeenCalledWith("会话历史已压缩以节省空间", {
+      title: "会话已压缩",
+      variant: "info",
+      duration: 5000,
+    })
   })
 })

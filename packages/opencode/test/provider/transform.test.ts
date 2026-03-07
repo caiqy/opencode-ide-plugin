@@ -397,6 +397,62 @@ describe("ProviderTransform.schema - gemini array items", () => {
   })
 })
 
+describe("ProviderTransform.schema - gemini compatibility", () => {
+  const geminiModel = {
+    providerID: "google",
+    api: {
+      id: "gemini-3-pro",
+    },
+  } as any
+
+  test("stringifies numeric enum for gemini builtin tool schema", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        priority: {
+          type: "integer",
+          enum: [0, 1, 2],
+        },
+      },
+      required: ["priority"],
+    } as any
+
+    const result = ProviderTransform.schema(geminiModel, schema) as any
+
+    expect(result.properties.priority.type).toBe("string")
+    expect(result.properties.priority.enum).toEqual(["0", "1", "2"])
+  })
+
+  test("drops dangling required and repairs nested array items for gemini mcp schema", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        rows: {
+          type: "array",
+          items: {
+            type: "array",
+          },
+        },
+        meta: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+          },
+          required: ["title", "missing"],
+        },
+      },
+      required: ["rows", "ghost"],
+    } as any
+
+    const result = ProviderTransform.schema(geminiModel, schema) as any
+
+    expect(result.required).toEqual(["rows"])
+    expect(result.properties.meta.required).toEqual(["title"])
+    expect(result.properties.rows.items.items).toBeDefined()
+    expect(result.properties.rows.items.items.type).toBe("string")
+  })
+})
+
 describe("ProviderTransform.schema - gemini nested array items", () => {
   const geminiModel = {
     providerID: "google",

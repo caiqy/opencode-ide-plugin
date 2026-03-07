@@ -824,6 +824,33 @@ export namespace MessageV2 {
     return result
   }
 
+  function provider(
+    parsed: ProviderError.ParsedAPICallError | ProviderError.ParsedStreamError,
+    cause: unknown,
+  ) {
+    if (parsed.type === "context_overflow") {
+      return new MessageV2.ContextOverflowError(
+        {
+          message: parsed.message,
+          responseBody: parsed.responseBody,
+        },
+        { cause },
+      ).toObject()
+    }
+
+    return new MessageV2.APIError(
+      {
+        message: parsed.message,
+        isRetryable: parsed.isRetryable,
+        responseBody: parsed.responseBody,
+        ...("statusCode" in parsed && parsed.statusCode !== undefined ? { statusCode: parsed.statusCode } : {}),
+        ...("responseHeaders" in parsed && parsed.responseHeaders ? { responseHeaders: parsed.responseHeaders } : {}),
+        ...("metadata" in parsed && parsed.metadata ? { metadata: parsed.metadata } : {}),
+      },
+      { cause },
+    ).toObject()
+  }
+
   export function fromError(e: unknown, ctx: { providerID: string }) {
     switch (true) {
       case e instanceof DOMException && e.name === "AbortError":
@@ -861,52 +888,14 @@ export namespace MessageV2 {
           providerID: ctx.providerID,
           error: e,
         })
-        if (parsed.type === "context_overflow") {
-          return new MessageV2.ContextOverflowError(
-            {
-              message: parsed.message,
-              responseBody: parsed.responseBody,
-            },
-            { cause: e },
-          ).toObject()
-        }
-
-        return new MessageV2.APIError(
-          {
-            message: parsed.message,
-            statusCode: parsed.statusCode,
-            isRetryable: parsed.isRetryable,
-            responseHeaders: parsed.responseHeaders,
-            responseBody: parsed.responseBody,
-            metadata: parsed.metadata,
-          },
-          { cause: e },
-        ).toObject()
+        return provider(parsed, e)
       case e instanceof Error:
         return new NamedError.Unknown({ message: e.toString() }, { cause: e }).toObject()
       default:
         try {
           const parsed = ProviderError.parseStreamError(e)
           if (parsed) {
-            if (parsed.type === "context_overflow") {
-              return new MessageV2.ContextOverflowError(
-                {
-                  message: parsed.message,
-                  responseBody: parsed.responseBody,
-                },
-                { cause: e },
-              ).toObject()
-            }
-            return new MessageV2.APIError(
-              {
-                message: parsed.message,
-                isRetryable: parsed.isRetryable,
-                responseBody: parsed.responseBody,
-              },
-              {
-                cause: e,
-              },
-            ).toObject()
+            return provider(parsed, e)
           }
         } catch {}
         return new NamedError.Unknown({ message: JSON.stringify(e) }, { cause: e }).toObject()

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     setMessages: vi.fn(),
     command: vi.fn(async (_input: unknown) => ({ data: {}, error: null })),
     prompt: vi.fn(async (_input: unknown) => ({ data: {}, error: null })),
+    summarize: vi.fn(async (_input: unknown): Promise<any> => ({ data: true, error: null })),
     abort: vi.fn(async (_input: unknown) => ({ data: true, error: null })),
     getQuestionsBySession: vi.fn(() => []),
     rejectQuestion: vi.fn(async (_requestID: string) => true),
@@ -38,7 +39,7 @@ vi.mock("../../../lib/api/sdkClient", () => {
         command: (input: unknown) => mocks.command(input),
         prompt: (input: unknown) => mocks.prompt(input),
         abort: (input: unknown) => mocks.abort(input),
-        summarize: vi.fn(async () => ({ data: true, error: null })),
+        summarize: (input: unknown) => mocks.summarize(input),
       },
     },
   }
@@ -91,10 +92,133 @@ describe("useMessageInput", () => {
     mocks.root.getTextContent.mockReturnValue("/status")
     mocks.command.mockResolvedValue({ data: {}, error: null })
     mocks.prompt.mockResolvedValue({ data: {}, error: null })
+    mocks.summarize.mockResolvedValue({ data: true, error: null })
     mocks.abort.mockResolvedValue({ data: true, error: null })
     mocks.getQuestionsBySession.mockReturnValue([])
     mocks.rejectQuestion.mockResolvedValue(true)
     mocks.loadDraftSession.mockResolvedValue(null)
+  })
+
+  it("prompt overflow 时展示后端返回文案并恢复 idle", async () => {
+    mocks.root.getTextContent.mockReturnValue("hello")
+    mocks.prompt.mockRejectedValueOnce({
+      data: { message: "上下文超出限制，请先压缩会话" },
+    })
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-overflow",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "hello" }]),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.handleSubmit()
+    })
+
+    expect(mocks.showToast).toHaveBeenCalledWith("上下文超出限制，请先压缩会话", {
+      title: "发送失败",
+      variant: "error",
+      duration: 8000,
+    })
+    expect(mocks.setSessionIdle).toHaveBeenNthCalledWith(1, "s-overflow", false)
+    expect(mocks.setSessionIdle).toHaveBeenLastCalledWith("s-overflow", true)
+  })
+
+  it("发送失败时保留原始 Error 对象给 onError", async () => {
+    mocks.root.getTextContent.mockReturnValue("hello")
+    const err = new Error("network down")
+    mocks.prompt.mockRejectedValueOnce(err)
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+    const onError = vi.fn()
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-error",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "hello" }]),
+        onError,
+      }),
+    )
+
+    await act(async () => {
+      await result.current.handleSubmit()
+    })
+
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0]?.[0]).toBe(err)
+    expect(mocks.showToast).toHaveBeenCalledWith("network down", {
+      title: "发送失败",
+      variant: "error",
+      duration: 8000,
+    })
+  })
+
+  it("summarize 返回错误时显示压缩失败 toast", async () => {
+    mocks.summarize.mockResolvedValueOnce({
+      data: null,
+      error: { data: { message: "压缩服务暂时不可用" } },
+    })
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-compact",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "hello" }]),
+      }),
+    )
+
+    const closeModal = vi.fn()
+
+    await act(async () => {
+      await result.current.handleCompact(closeModal)
+    })
+
+    expect(closeModal).toHaveBeenCalledTimes(1)
+    expect(mocks.showToast).toHaveBeenCalledWith("压缩服务暂时不可用", {
+      title: "压缩失败",
+      variant: "error",
+      duration: 8000,
+    })
   })
 
   it("命令发送成功后，若当前会话是草稿则清空 draftSessionId", async () => {

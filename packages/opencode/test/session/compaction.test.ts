@@ -1,12 +1,25 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import path from "path"
-import { SessionCompaction } from "../../src/session/compaction"
-import { Token } from "../../src/util/token"
-import { Instance } from "../../src/project/instance"
-import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
-import { Session } from "../../src/session"
 import type { Provider } from "../../src/provider/provider"
+
+mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({ Client: class {} }))
+mock.module("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({ StreamableHTTPClientTransport: class {} }))
+mock.module("@modelcontextprotocol/sdk/client/sse.js", () => ({ SSEClientTransport: class {} }))
+mock.module("@modelcontextprotocol/sdk/client/stdio.js", () => ({ StdioClientTransport: class {} }))
+mock.module("@modelcontextprotocol/sdk/client/auth.js", () => ({ UnauthorizedError: class extends Error {} }))
+mock.module("@modelcontextprotocol/sdk/types.js", () => ({
+  CallToolResultSchema: {},
+  ToolListChangedNotificationSchema: {},
+}))
+mock.module("../../src/webgui/embed.generated", () => ({ embeddedWebGui: [] }))
+mock.module("../../src/webgui/embed.generated.ts", () => ({ embeddedWebGui: [] }))
+
+const { SessionCompaction } = await import("../../src/session/compaction")
+const { Token } = await import("../../src/util/token")
+const { Instance } = await import("../../src/project/instance")
+const { Log } = await import("../../src/util/log")
+const { Session } = await import("../../src/session")
 
 Log.init({ print: false })
 
@@ -113,19 +126,49 @@ describe("session.compaction.isOverflow", () => {
     })
   })
 
-  // ─── Bug reproduction tests ───────────────────────────────────────────
-  // These tests demonstrate that when limit.input is set, isOverflow()
-  // does not subtract any headroom for the next model response. This means
-  // compaction only triggers AFTER we've already consumed the full input
-  // budget, leaving zero room for the next API call's output tokens.
+  test("reserves output headroom when limit.input is present", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const model = createModel({ context: 200_000, input: 200_000, output: 32_000 })
+        const tokens = { input: 150_000, output: 15_000, reasoning: 0, cache: { read: 10_000, write: 0 } }
+        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(true)
+      },
+    })
+  })
+
+  test("treats cache.read as part of auto-compaction threshold", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const model = createModel({ context: 100_000, output: 32_000 })
+        const tokens = {
+          total: 65_000,
+          input: 60_000,
+          output: 5_000,
+          reasoning: 0,
+          cache: { read: 4_000, write: 0 },
+        }
+        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(true)
+      },
+    })
+  })
+
+  // ─── Regression tests for the historical headroom bug ─────────────────
+  // These tests lock the behavior that once regressed: when limit.input is
+  // present, isOverflow() must still reserve output headroom instead of
+  // waiting until the full input budget is exhausted.
   //
-  // Compare: without limit.input, usable = context - output (reserves space).
-  // With limit.input, usable = limit.input (reserves nothing).
+  // Current behavior should agree across equivalent models:
+  // usable = min(context - output, limit.input - reserved)
+  // when limit.input exists, otherwise usable = context - output.
   //
   // Related issues: #10634, #8089, #11086, #12621
   // Open PRs: #6875, #12924
 
-  test("BUG: no headroom when limit.input is set — compaction should trigger near boundary but does not", async () => {
+  test("regression: limit.input models still reserve output headroom near the boundary", async () => {
     await using tmp = await tmpdir()
     await Instance.provide({
       directory: tmp.path,
@@ -138,11 +181,8 @@ describe("session.compaction.isOverflow", () => {
         // plus the model needs room to generate output — this WILL overflow.
         const tokens = { input: 180_000, output: 15_000, reasoning: 0, cache: { read: 3_000, write: 0 } }
         // count = 180K + 3K + 15K = 198K
-        // usable = limit.input = 200K (no output subtracted!)
-        // 198K > 200K = false → no compaction triggered
-
-        // WITHOUT limit.input: usable = 200K - 32K = 168K, and 198K > 168K = true ✓
-        // WITH limit.input: usable = 200K, and 198K > 200K = false ✗
+        // usable = min(200K - 32K, 200K - reserved) = 168K
+        // 198K >= 168K = true → compaction should trigger before the next turn overflows
 
         // With 198K used and only 2K headroom, the next turn will overflow.
         // Compaction MUST trigger here.
@@ -151,7 +191,7 @@ describe("session.compaction.isOverflow", () => {
     })
   })
 
-  test("BUG: without limit.input, same token count correctly triggers compaction", async () => {
+  test("regression: models without limit.input keep the same boundary behavior", async () => {
     await using tmp = await tmpdir()
     await Instance.provide({
       directory: tmp.path,
@@ -171,7 +211,7 @@ describe("session.compaction.isOverflow", () => {
     })
   })
 
-  test("BUG: asymmetry — limit.input model allows 30K more usage before compaction than equivalent model without it", async () => {
+  test("regression: equivalent models stay aligned when only limit.input differs", async () => {
     await using tmp = await tmpdir()
     await Instance.provide({
       directory: tmp.path,
