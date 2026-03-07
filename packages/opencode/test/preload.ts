@@ -3,14 +3,17 @@
 import os from "os"
 import path from "path"
 import fs from "fs/promises"
-import fsSync from "fs"
 import { afterAll } from "bun:test"
+import { cleanupTestDir } from "./fixture/cleanup"
 
 // Set XDG env vars FIRST, before any src/ imports
 const dir = path.join(os.tmpdir(), "opencode-test-data-" + process.pid)
+
 await fs.mkdir(dir, { recursive: true })
-afterAll(() => {
-  fsSync.rmSync(dir, { recursive: true, force: true })
+afterAll(async () => {
+  const { Database } = await import("../src/storage/db")
+  Database.close()
+  await cleanupTestDir(dir)
 })
 
 process.env["XDG_DATA_HOME"] = path.join(dir, "share")

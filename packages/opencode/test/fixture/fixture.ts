@@ -3,6 +3,7 @@ import * as fs from "fs/promises"
 import os from "os"
 import path from "path"
 import type { Config } from "../../src/config/config"
+import { cleanupTestDir } from "./cleanup"
 
 // Strip null bytes from paths (defensive fix for CI environment issues)
 function sanitizePath(p: string): string {
@@ -36,7 +37,7 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
   const result = {
     [Symbol.asyncDispose]: async () => {
       await options?.dispose?.(dirpath)
-      // await fs.rm(dirpath, { recursive: true, force: true })
+      await cleanupTestDir(realpath)
     },
     path: realpath,
     extra: extra as T,

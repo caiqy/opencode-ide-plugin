@@ -6,6 +6,7 @@ import { useToast } from "./state/ToastContext"
 import { MessageInput } from "./components/MessageInput"
 import { MessageList } from "./components/MessageList"
 import { ChatLoadGuard } from "./components/ChatLoadGuard"
+import type { Toast } from "./components/Toast"
 import { MessagesProvider, useMessages } from "./state/MessagesContext"
 import { ThemeProvider } from "./state/ThemeContext"
 import { CompactHeader } from "./components/CompactHeader"
@@ -26,6 +27,31 @@ import { loadDraftSession, saveDraftSession } from "./state/repo/draftRepo"
 import { switchSessionWithTabRollback } from "./state/switchSession"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
+
+export function handleSessionUiEvent(input: {
+  event: ServerEvent
+  currentSessionId: string | null | undefined
+  setSessionIdle: (sessionID: string, idle: boolean) => void
+  showToast: (message: string, options?: Partial<Omit<Toast, "id" | "message">>) => string
+}) {
+  if (input.event.type === "session.idle") {
+    const { sessionID } = input.event.properties
+    console.log("[App] session.idle event:", { sessionID, currentSessionID: input.currentSessionId })
+    console.log("[App] Session became idle, updating idle map")
+    input.setSessionIdle(sessionID, true)
+    return
+  }
+
+  if (input.event.type !== "session.compacted") return
+  const { sessionID } = input.event.properties
+  if (input.currentSessionId !== sessionID) return
+  console.log("[App] Session compacted:", sessionID)
+  input.showToast("会话历史已压缩以节省空间", {
+    title: "会话已压缩",
+    variant: "info",
+    duration: 5000,
+  })
+}
 
 export async function prepareSession(input: {
   draft: string | null
@@ -396,29 +422,14 @@ function AppContent() {
         showToast("已连接到 OpenCode 服务器", { variant: "success", duration: 3000 })
       }
 
-      // Handle session.idle events to show/hide typing indicator
-      // Note: session.idle event only fires when session BECOMES idle (no idle boolean in payload)
-      if (event.type === "session.idle") {
-        const { sessionID } = event.properties
-        console.log("[App] session.idle event:", { sessionID, currentSessionID: currentSession?.id })
-        console.log("[App] Session became idle, updating idle map")
-        setSessionIdle(sessionID, true)
-      }
-
       // session.error is handled in MessagesContext.tsx to show a persistent message
 
-      // Handle session compaction
-      if (event.type === "session.compacted") {
-        const { sessionID } = event.properties
-        if (currentSession?.id === sessionID) {
-          console.log("[App] Session compacted:", sessionID)
-          showToast("会话历史已压缩以节省空间", {
-            title: "会话已压缩",
-            variant: "info",
-            duration: 5000,
-          })
-        }
-      }
+      handleSessionUiEvent({
+        event,
+        currentSessionId: currentSession?.id,
+        setSessionIdle,
+        showToast,
+      })
     },
     [currentSession?.id, setSessionIdle, showToast],
   )

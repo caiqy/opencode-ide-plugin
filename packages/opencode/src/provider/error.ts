@@ -19,6 +19,7 @@ export namespace ProviderError {
     /context window exceeds limit/i, // MiniMax
     /exceeded model token limit/i, // Kimi For Coding, Moonshot
     /context[_ ]length[_ ]exceeded/i, // Generic fallback
+    /request entity too large/i, // HTTP 413
   ]
 
   function isOpenAiErrorRetryable(e: APICallError) {
@@ -75,6 +76,18 @@ export namespace ProviderError {
           return `${msg}: ${errMsg}`
         }
       } catch {}
+
+      // If responseBody is HTML (e.g. from a gateway or proxy error page),
+      // provide a human-readable message instead of dumping raw markup
+      if (/^\s*<!doctype|^\s*<html/i.test(e.responseBody)) {
+        if (e.statusCode === 401) {
+          return "Unauthorized: request was blocked by a gateway or proxy. Your authentication token may be missing or expired — try running `opencode auth login <your provider URL>` to re-authenticate."
+        }
+        if (e.statusCode === 403) {
+          return "Forbidden: request was blocked by a gateway or proxy. You may not have permission to access this resource — check your account and provider settings."
+        }
+        return msg
+      }
 
       return `${msg}: ${e.responseBody}`
     }).trim()
@@ -164,8 +177,26 @@ export namespace ProviderError {
       }
 
   export function parseAPICallError(input: { providerID: string; error: APICallError }): ParsedAPICallError {
+    const parsed = parseStreamError(input.error.cause) ?? parseStreamError(input.error.responseBody)
+    if (parsed?.type === "context_overflow") {
+      return parsed
+    }
+
+    const metadata = input.error.url ? { url: input.error.url } : undefined
+    if (parsed) {
+      return {
+        type: "api_error",
+        message: parsed.message,
+        statusCode: input.error.statusCode,
+        isRetryable: parsed.isRetryable,
+        responseHeaders: input.error.responseHeaders,
+        responseBody: parsed.responseBody,
+        metadata,
+      }
+    }
+
     const m = message(input.providerID, input.error)
-    if (isOverflow(m)) {
+    if (isOverflow(m) || input.error.statusCode === 413) {
       return {
         type: "context_overflow",
         message: m,
@@ -173,7 +204,6 @@ export namespace ProviderError {
       }
     }
 
-    const metadata = input.error.url ? { url: input.error.url } : undefined
     return {
       type: "api_error",
       message: m,

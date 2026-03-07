@@ -911,6 +911,73 @@ describe("session.message-v2.fromError", () => {
     expect(MessageV2.APIError.isInstance(result)).toBe(true)
   })
 
+  test("keeps gemini overflow api errors as ContextOverflowError", () => {
+    const cause = {
+      type: "error",
+      error: {
+        code: "context_length_exceeded",
+      },
+    }
+    const error = Object.assign(
+      new APICallError({
+        message: "Bad Request",
+        url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent",
+        requestBodyValues: {},
+        statusCode: 400,
+        responseHeaders: { "content-type": "application/json" },
+        isRetryable: true,
+      }),
+      { cause },
+    )
+
+    const result = MessageV2.fromError(error, { providerID: "google" })
+
+    expect(result).toStrictEqual({
+      name: "ContextOverflowError",
+      data: {
+        message: "Input exceeds context window of this model",
+        responseBody: JSON.stringify(cause),
+      },
+    })
+  })
+
+  test("keeps non-overflow provider failures as APIError", () => {
+    const cause = {
+      type: "error",
+      error: {
+        code: "invalid_prompt",
+        message: "Prompt rejected by provider",
+      },
+    }
+    const error = Object.assign(
+      new APICallError({
+        message: "Bad Request",
+        url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent",
+        requestBodyValues: {},
+        statusCode: 400,
+        responseHeaders: { "content-type": "application/json" },
+        isRetryable: true,
+      }),
+      { cause },
+    )
+
+    const result = MessageV2.fromError(error, { providerID: "google" })
+
+    expect(result).toStrictEqual({
+      name: "APIError",
+      data: {
+        message: "Prompt rejected by provider",
+        statusCode: 400,
+        isRetryable: false,
+        responseHeaders: { "content-type": "application/json" },
+        responseBody: JSON.stringify(cause),
+        metadata: {
+          url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent",
+        },
+      },
+    })
+  })
+
   test("serializes unknown inputs", () => {
     const result = MessageV2.fromError(123, { providerID: "test" })
 

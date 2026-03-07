@@ -7,6 +7,18 @@ import { useMessages } from "../../../state/MessagesContext"
 import { createOptimisticUserMessage, removeMessage } from "../../../lib/messagesStore"
 import { loadDraftSession, saveDraftSession } from "../../../state/repo/draftRepo"
 
+function errorMessage(input: unknown, fallback: string) {
+  if (input instanceof Error && input.message) return input.message
+  if (!input || typeof input !== "object") return fallback
+  const msg = "message" in input ? input.message : null
+  if (typeof msg === "string" && msg.length > 0) return msg
+  const data = "data" in input ? input.data : null
+  if (!data || typeof data !== "object") return fallback
+  const nested = "message" in data ? data.message : null
+  if (typeof nested === "string" && nested.length > 0) return nested
+  return fallback
+}
+
 interface UseMessageInputOptions {
   sessionID: string | null
   editor: LexicalEditor
@@ -100,14 +112,7 @@ export function useMessageInput({
             body: request,
           })
           if (response.error) {
-            const message =
-              "data" in response.error &&
-              response.error.data &&
-              typeof response.error.data === "object" &&
-              "message" in response.error.data
-                ? String(response.error.data.message)
-                : "Failed to execute command"
-            throw new Error(message)
+            throw new Error(errorMessage(response.error, "Failed to execute command"))
           }
         }
 
@@ -133,14 +138,7 @@ export function useMessageInput({
             body: request,
           })
           if (response.error) {
-            const message =
-              "data" in response.error &&
-              response.error.data &&
-              typeof response.error.data === "object" &&
-              "message" in response.error.data
-                ? String(response.error.data.message)
-                : "发送消息失败"
-            throw new Error(message)
+            throw new Error(errorMessage(response.error, "发送消息失败"))
           }
         }
 
@@ -155,18 +153,19 @@ export function useMessageInput({
           setMessages((prev) => removeMessage(prev, optimistic.info.id))
         }
         if (id !== seq.current) return
-        const error = err instanceof Error ? err : new Error("发送消息失败")
+        const msg = errorMessage(err, "发送消息失败")
+        const error = err instanceof Error ? err : new Error(msg)
         console.error("[MessageInput] Failed to send message:", error)
+        setSessionIdle(sessionID, true)
         if (source === "editor") {
           setFailed(sessionID, saved)
         }
-        showToast(error.message, {
+        showToast(msg, {
           title: "发送失败",
           variant: "error",
           duration: 8000,
         })
         onError?.(error)
-        setSessionIdle(sessionID, true)
       }
     },
     [
