@@ -30,12 +30,15 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
   const data = useStatusPopoverData({ open, connectionState })
   const refs = triggerRef ? ([triggerRef] as unknown as RefObject<HTMLElement>[]) : []
 
-  const close = useCallback(() => {
-    onClose()
-    queueMicrotask(() => triggerRef?.current?.focus())
-  }, [onClose, triggerRef])
+  const close = useCallback(
+    (focus = true) => {
+      onClose()
+      if (focus) queueMicrotask(() => triggerRef?.current?.focus())
+    },
+    [onClose, triggerRef],
+  )
 
-  useClickOutside(ref, close, {
+  useClickOutside(ref, () => close(false), {
     enabled: open,
     excludeRefs: refs,
   })
@@ -43,6 +46,11 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
   useEffect(() => {
     if (!open) return
     setTab(DEFAULT_STATUS_TAB)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    queueMicrotask(() => document.getElementById(`status-tab-${DEFAULT_STATUS_TAB}`)?.focus())
   }, [open])
 
   useEffect(() => {
@@ -111,9 +119,6 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
           />
           <div>SSE 连接：{servers.summary.connection}</div>
           <div>IDE bridge：{servers.summary.bridge.ready ? "ready" : "not ready"}</div>
-          <div>
-            健康检查：{servers.summary.health === true ? "正常" : servers.summary.health === false ? "异常" : "未知"}
-          </div>
           <div>项目：{servers.summary.project ?? "未知"}</div>
           <div>路径：{servers.summary.directory ?? servers.summary.worktree ?? "未知"}</div>
           <div className="text-gray-500 dark:text-gray-400">{servers.note}</div>
@@ -124,7 +129,12 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
         <div className="space-y-2 p-3 text-xs text-gray-700 dark:text-gray-200">
           <div className="flex items-center justify-between">
             <span>MCP</span>
-            <button type="button" className="text-blue-600 dark:text-blue-400" onClick={() => void data.refreshMcp()}>
+            <button
+              type="button"
+              className="text-blue-600 dark:text-blue-400 disabled:text-gray-400"
+              disabled={data.mcpRefreshing}
+              onClick={() => void data.refreshMcp()}
+            >
               {mcp.refreshLabel}
             </button>
           </div>
@@ -143,7 +153,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
                   type="checkbox"
                   aria-label={`切换 ${item.name}`}
                   checked={item.enabled}
-                  disabled={item.disabled}
+                  disabled={item.disabled || data.mcpBusy[item.name] === true}
                   onChange={() => void data.toggleMcp(item.name)}
                 />
               </label>

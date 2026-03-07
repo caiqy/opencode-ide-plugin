@@ -14,7 +14,6 @@ const mocks = vi.hoisted(() => ({
   bridgeReady: true,
   bridgeCustomApi: true,
   bridgeRestartMode: "window" as "window" | "ide" | null,
-  fetch: vi.fn(),
 }))
 
 vi.mock("../../lib/api/sdkClient", () => ({
@@ -64,6 +63,14 @@ function fail(msg: string) {
   return { data: null, error: { message: msg } }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
 function hook(open: boolean, connectionState: ConnectionState = "connected") {
   return renderHook(
     ({ open, connectionState }: { open: boolean; connectionState: ConnectionState }) =>
@@ -83,24 +90,18 @@ describe("CompactHeader/useStatusPopoverData", () => {
     mocks.configGet.mockReset()
     mocks.projectCurrent.mockReset()
     mocks.pathGet.mockReset()
-    mocks.fetch.mockReset()
     mocks.bridgeInstalled = true
     mocks.bridgeReady = true
     mocks.bridgeCustomApi = true
     mocks.bridgeRestartMode = "window"
 
     mocks.mcpStatus.mockResolvedValue(ok({ alpha: { status: "connected" } }))
+    mocks.mcpConnect.mockResolvedValue(ok({}))
+    mocks.mcpDisconnect.mockResolvedValue(ok({}))
     mocks.lspStatus.mockResolvedValue(ok([{ id: "ts", name: "TypeScript", root: "D:/repo", status: "connected" }]))
     mocks.configGet.mockResolvedValue(ok({ plugin: ["foo", "bar"] }))
     mocks.projectCurrent.mockResolvedValue(ok({ id: "p1", worktree: "D:/repo", time: { created: 1 } }))
     mocks.pathGet.mockResolvedValue(ok({ state: "ready", config: "cfg", worktree: "D:/repo", directory: "D:/repo" }))
-    mocks.fetch.mockResolvedValue(
-      new Response(JSON.stringify({ healthy: true, version: "1.0.0" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    )
-    vi.stubGlobal("fetch", mocks.fetch)
   })
 
   it("在打开弹层时聚合首版所需数据", async () => {
@@ -115,7 +116,6 @@ describe("CompactHeader/useStatusPopoverData", () => {
       expect(mocks.configGet).toHaveBeenCalledTimes(1)
       expect(mocks.projectCurrent).toHaveBeenCalledTimes(1)
       expect(mocks.pathGet).toHaveBeenCalledTimes(1)
-      expect(mocks.fetch).toHaveBeenCalledWith("/global/health")
       expect(view.result.current.servers.state).toBe("ready")
     })
 
@@ -180,35 +180,6 @@ describe("CompactHeader/useStatusPopoverData", () => {
     expect(view.result.current.servers.state).toBe("stale")
     expect(view.result.current.servers.data.project).toBe("p1")
     expect(view.result.current.servers.error).toContain("project boom")
-  })
-
-  it("health 异常会让 servers 分区进入 failed", async () => {
-    mocks.fetch.mockResolvedValueOnce(
-      new Response(JSON.stringify({ healthy: false, version: "1.0.0" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    )
-
-    const view = hook(true)
-
-    await waitFor(() => {
-      expect(view.result.current.servers.state).toBe("failed")
-    })
-
-    expect(view.result.current.servers.data.health).toBe(false)
-  })
-
-  it("health 请求 reject 时会让 servers 分区进入 failed", async () => {
-    mocks.fetch.mockRejectedValueOnce(new Error("health boom"))
-
-    const view = hook(true)
-
-    await waitFor(() => {
-      expect(view.result.current.servers.state).toBe("failed")
-    })
-
-    expect(view.result.current.servers.error).toContain("health boom")
   })
 
   it("refreshMcp 只刷新 MCP 分区", async () => {
@@ -280,5 +251,112 @@ describe("CompactHeader/useStatusPopoverData", () => {
 
     expect(view.result.current.mcp.state).toBe("stale")
     expect(view.result.current.mcp.error).toContain("toggle boom")
+  })
+
+  it("toggleMcp resolved error 时保留旧快照并标记 stale", async () => {
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.mcp.state).toBe("ready")
+    })
+
+    mocks.mcpDisconnect.mockResolvedValueOnce(fail("toggle error"))
+
+    await act(async () => {
+      await view.result.current.toggleMcp("alpha")
+    })
+
+    expect(view.result.current.mcp.state).toBe("stale")
+    expect(view.result.current.mcp.error).toContain("toggle error")
+    expect(mocks.mcpStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it("连接状态变化时会重拉并忽略旧请求结果", async () => {
+    const project = deferred<ReturnType<typeof ok>>()
+    const path = deferred<ReturnType<typeof ok>>()
+    const mcp = deferred<ReturnType<typeof ok>>()
+    const lsp = deferred<ReturnType<typeof ok>>()
+    const cfg = deferred<ReturnType<typeof ok>>()
+
+    mocks.projectCurrent
+      .mockImplementationOnce(() => project.promise)
+      .mockResolvedValueOnce(ok({ id: "p2", worktree: "D:/repo2", time: { created: 2 } }))
+    mocks.pathGet
+      .mockImplementationOnce(() => path.promise)
+      .mockResolvedValueOnce(ok({ state: "ready", config: "cfg", worktree: "D:/repo2", directory: "D:/repo2" }))
+    mocks.mcpStatus
+      .mockImplementationOnce(() => mcp.promise)
+      .mockResolvedValueOnce(ok({ alpha: { status: "disabled" } }))
+    mocks.lspStatus
+      .mockImplementationOnce(() => lsp.promise)
+      .mockResolvedValueOnce(ok([{ id: "go", name: "Go", root: "D:/repo2", status: "connected" }]))
+    mocks.configGet.mockImplementationOnce(() => cfg.promise).mockResolvedValueOnce(ok({ plugin: ["bar"] }))
+
+    const view = hook(true, "connected")
+    view.rerender({ open: true, connectionState: "disconnected" })
+
+    await waitFor(() => {
+      expect(mocks.projectCurrent).toHaveBeenCalledTimes(2)
+      expect(view.result.current.connectionState).toBe("disconnected")
+    })
+
+    project.resolve(ok({ id: "p1", worktree: "D:/repo", time: { created: 1 } }))
+    path.resolve(ok({ state: "ready", config: "cfg", worktree: "D:/repo", directory: "D:/repo" }))
+    mcp.resolve(ok({ alpha: { status: "connected" } }))
+    lsp.resolve(ok([{ id: "ts", name: "TypeScript", root: "D:/repo", status: "connected" }]))
+    cfg.resolve(ok({ plugin: ["foo"] }))
+    await waitFor(() => {
+      expect(view.result.current.servers.data.connectionState).toBe("disconnected")
+      expect(view.result.current.servers.data.project).toBe("p2")
+      expect(view.result.current.plugins.data).toEqual(["bar"])
+    })
+  })
+
+  it("重复切换同一个 MCP 只发起一次请求", async () => {
+    const gate = deferred<void>()
+    mocks.mcpDisconnect.mockImplementationOnce(() => gate.promise)
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.mcp.state).toBe("ready")
+    })
+
+    act(() => {
+      void view.result.current.toggleMcp("alpha")
+      void view.result.current.toggleMcp("alpha")
+    })
+
+    expect(mocks.mcpDisconnect).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      gate.resolve(undefined)
+      await Promise.resolve()
+    })
+  })
+
+  it("refreshAll 的旧 MCP 结果不会覆盖更晚的 refreshMcp", async () => {
+    const full = deferred<ReturnType<typeof ok>>()
+    mocks.mcpStatus
+      .mockImplementationOnce(() => full.promise)
+      .mockResolvedValueOnce(ok({ alpha: { status: "disabled" } }))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(mocks.mcpStatus).toHaveBeenCalledTimes(1)
+    })
+
+    await act(async () => {
+      await view.result.current.refreshMcp()
+    })
+
+    expect(view.result.current.mcp.data.alpha?.status).toBe("disabled")
+
+    await act(async () => {
+      full.resolve(ok({ alpha: { status: "connected" } }))
+      await Promise.resolve()
+    })
+
+    expect(view.result.current.mcp.data.alpha?.status).toBe("disabled")
   })
 })

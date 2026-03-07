@@ -76,7 +76,7 @@
 
 ## 明确适配
 
-新增一层局部“状态弹层适配层”，建议落在 header 附近的 hook 或 provider 内。它统一负责聚合 `connectionState`、`ideBridge`、SDK 数据与 health 请求，再输出给状态点、弹层和各 tab。
+新增一层局部“状态弹层适配层”，建议落在 header 附近的 hook 或 provider 内。它统一负责聚合 `connectionState`、`ideBridge` 与 SDK 数据，再输出给状态点、弹层和各 tab。
 
 各 tab 只读取适配层产出的 view model，不直接散落访问底层数据源。这样可以把状态语义、降级规则和刷新策略收敛到一处，避免同一状态在不同区域被各自解释。
 
@@ -88,7 +88,7 @@
 
 ### 聚合
 
-适配层至少统一聚合四类输入：连接状态、IDE bridge 状态、SDK 可读数据、health 请求结果。它负责把原始输入压平成 UI 可消费的最小模型，而不是把底层对象原样透传到 tab。
+适配层至少统一聚合三类输入：连接状态、IDE bridge 状态、SDK 可读数据。它负责把原始输入压平成 UI 可消费的最小模型，而不是把底层对象原样透传到 tab。
 
 优先复用 `ProjectContext`、`IdeBridgeContext` 等现有状态来源。只有这些来源未覆盖的数据，才补局部读取，避免重复真相源。
 
@@ -154,7 +154,7 @@
 
 建议将每个 tab 或聚合分区的输入统一映射为四类结果：`ready`、`empty`、`failed`、`stale`。弹层外单独保留 SSE 传输连接语义：`connecting`、`connected`、`disconnected`、`error`。
 
-总状态派生规则以 SSE `connectionState` 为主真相，它只表示传输连接是否建立。`ideBridge` 只作为 `servers` tab 的次级状态与动作 gating 来源，`fetch("/global/health")` 只在已连接前提下补充 `servers` 子状态，不改写 `OfflineBanner` 的触发条件。`plugins` 使用 `sdk.config.get()` / `/config` 返回的当前实例合并配置，不读取 `sdk.global.config.get()` / `/global/config`。
+总状态派生规则以 SSE `connectionState` 为主真相，它只表示传输连接是否建立。`ideBridge` 只作为 `servers` tab 的次级状态与动作 gating 来源，`servers` 首版只承载 SSE 连接状态、IDE bridge 状态与当前 project/path 摘要。`plugins` 使用 `sdk.config.get()` / `/config` 返回的当前实例合并配置，不读取 `sdk.global.config.get()` / `/global/config`。
 
 ### 来源分层
 
@@ -167,7 +167,7 @@
 先统一四类 SSE 连接语义，再在弹层内部叠加 tab 或聚合分区自己的加载结果语义。
 
 1. `connecting`：SSE 正在建立连接。状态点与 `OfflineBanner` 继续表达传输连接进行中，弹层内容区可显示基础加载骨架。
-2. `connected`：SSE 已连接。状态点显示传输连接正常，弹层再按各 tab 自身的 `ready`、`empty`、`failed`、`stale` 决定内容表达；此时 `ideBridge` 与 health 只影响 `servers` 局部表达。
+2. `connected`：SSE 已连接。状态点显示传输连接正常，弹层再按各 tab 自身的 `ready`、`empty`、`failed`、`stale` 决定内容表达；此时 `ideBridge` 只影响 `servers` 局部表达。
 3. `disconnected`：SSE 未连接。状态点仍可见，弹层以 `servers` 为主入口解释不可用原因，`OfflineBanner` 按现有规则显示离线提示。
 4. `error`：SSE 传输连接本身出错。它只表示连接层异常，不复用为弹层内部聚合失败语义。
 
@@ -214,7 +214,7 @@
 
 状态点触发器使用 button 语义。Enter 与 Space 均可打开或关闭弹层，并正确暴露 `aria-haspopup`、`aria-expanded` 与弹层关联关系。
 
-弹层关闭后，焦点回到触发该弹层的状态点按钮。Esc、外部点击与再次点击触发器都应走同一套关闭路径，避免焦点丢失。
+弹层关闭后，按 Esc 或再次点击状态点触发器时，焦点回到状态点按钮。若用户通过点击外部控件关闭，焦点保持在用户点击的目标上，不强制拉回触发器。
 
 ### 处理浮层
 
@@ -242,18 +242,18 @@ header 右侧多个浮层遵循互斥打开规则。互斥范围至少包含 `St
 
 ## 制定测试
 
-测试分为三层：状态映射测试、tab 渲染测试、交互回归测试。重点覆盖固定结构、降级规则和禁用态说明。
+测试分为三层：状态映射测试、tab 渲染测试、交互回归测试。重点覆盖固定结构、降级规则、禁用态说明与按关闭来源区分的焦点处理。
 
 ### 映射测试
 
-1. `connectionState`、`ideBridge`、SDK 数据与 health 请求可被统一聚合为稳定的 view model，并明确拆分传输连接语义与弹层内部结果语义。
-2. 总状态派生以 SSE `connectionState` 为主真相，`ideBridge` 只影响 `servers` 次级状态与动作 gating，health 只补充已连接场景下的 `servers` 子状态。
+1. `connectionState`、`ideBridge` 与 SDK 数据可被统一聚合为稳定的 view model，并明确拆分传输连接语义与弹层内部结果语义。
+2. 总状态派生以 SSE `connectionState` 为主真相，`ideBridge` 只影响 `servers` 次级状态与动作 gating；`servers` 首版只包含 SSE 连接状态、IDE bridge 状态与 project/path 摘要。
 3. 缺失字段不会导致 tab 消失，只会进入空态或失败态。
 4. 四个 tab 输出顺序固定，始终为 `servers → mcp → lsp → plugins`，默认激活 `servers`。
 5. `servers` 只包含连接状态、bridge 状态、project/path 摘要，不混入多 server 管理字段。
 6. `plugins` 只基于 `sdk.config.get()` / `/config` 返回的当前实例合并配置中的 `config.plugin[]` 生成列表，不读取 `sdk.global.config.get()` / `/global/config`，也不推导运行态或异常态。
 7. `lsp` 只基于已连接列表渲染，不推导初始化失败或不可用等更细状态。
-8. `OfflineBanner` 继续只跟随 App 层现有 `connectionState` 触发，不被 header 局部适配层或 health 结果改写；tab 的 `failed` 或 `stale` 不会被回写成连接层 `error`。
+8. `OfflineBanner` 继续只跟随 App 层现有 `connectionState` 触发，不被 header 局部适配层改写；tab 的 `failed` 或 `stale` 不会被回写成连接层 `error`。
 
 ### 渲染测试
 
@@ -269,12 +269,12 @@ header 右侧多个浮层遵循互斥打开规则。互斥范围至少包含 `St
 ### 交互测试
 
 1. button 触发器可被键盘聚焦，Enter 与 Space 都能开关弹层。
-2. `aria-expanded` 会随开关同步变化，弹层关闭后焦点回到触发器。
+2. `aria-expanded` 会随开关同步变化；按 Esc 或再次点击状态点关闭时，焦点回到触发器；点击外部控件关闭时，焦点留在用户点击目标。
 3. tab 切换只切内容，不改变固定顺序。
 4. header 右侧多个浮层互斥打开，范围包含 `StatusPopover`、`SessionDropdown`、`ActionButtons` 更多菜单。
 5. 单 tab `failed` 不会影响其它 tab 查看，且分区错误不会升级成连接层 `error` 或整个弹层失败。
 6. 失败态支持重试时，重试行为经由适配层统一调度。
-7. Esc、外部点击与状态点再次点击都可关闭弹层。
+7. Esc、外部点击与状态点再次点击都可关闭弹层；其中 Esc 与再次点击状态点会回焦到触发器，外部点击关闭时不强制改写焦点目标。
 
 ---
 

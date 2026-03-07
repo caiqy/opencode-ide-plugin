@@ -24,7 +24,6 @@ type View = {
       project: string | null
       worktree: string | null
       directory: string | null
-      health: boolean | null
       bridge: { installed: boolean; ready: boolean; customApi: boolean; restartMode: "window" | "ide" | null }
     }
   }
@@ -52,6 +51,8 @@ type View = {
   refreshAll: ReturnType<typeof vi.fn>
   refreshMcp: ReturnType<typeof vi.fn>
   toggleMcp: ReturnType<typeof vi.fn>
+  mcpBusy: Record<string, boolean>
+  mcpRefreshing: boolean
 }
 
 function data(): View {
@@ -66,7 +67,6 @@ function data(): View {
         project: "p1",
         worktree: "D:/repo",
         directory: "D:/repo",
-        health: true,
         bridge: { installed: true, ready: true, customApi: true, restartMode: "window" as const },
       },
     },
@@ -91,6 +91,8 @@ function data(): View {
     refreshAll: vi.fn(),
     refreshMcp: vi.fn().mockResolvedValue(undefined),
     toggleMcp: vi.fn().mockResolvedValue(undefined),
+    mcpBusy: {},
+    mcpRefreshing: false,
   }
 }
 
@@ -107,7 +109,15 @@ describe("CompactHeader/StatusPopover", () => {
     expect(screen.getByRole("tab", { name: "servers" })).toHaveAttribute("aria-selected", "true")
     expect(screen.getByText("SSE 连接：connected")).toBeInTheDocument()
     expect(screen.getByText("IDE bridge：ready")).toBeInTheDocument()
-    expect(screen.getByText("健康检查：正常")).toBeInTheDocument()
+    expect(screen.queryByText(/健康检查/)).not.toBeInTheDocument()
+  })
+
+  it("打开后把焦点移到默认 tab", async () => {
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "servers" })).toHaveFocus()
+    })
   })
 
   it("显示 lsp 和 plugins 的只读内容", async () => {
@@ -158,6 +168,7 @@ describe("CompactHeader/StatusPopover", () => {
     await user.keyboard("{Escape}")
     expect(onClose).toHaveBeenCalledOnce()
     await waitFor(() => expect(trigger).toHaveFocus())
+    trigger.remove()
   })
 
   it("点击外部会关闭弹层", async () => {
@@ -172,6 +183,29 @@ describe("CompactHeader/StatusPopover", () => {
 
     await user.click(screen.getByRole("button", { name: "outside" }))
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it("点击外部控件关闭时不抢回 trigger 焦点", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const trigger = document.createElement("button")
+    trigger.textContent = "trigger"
+    document.body.appendChild(trigger)
+    const triggerRef = { current: trigger }
+
+    render(
+      <div>
+        <button type="button">outside</button>
+        <StatusPopover open={true} connectionState="connected" onClose={onClose} triggerRef={triggerRef} />
+      </div>,
+    )
+
+    const outside = screen.getByRole("button", { name: "outside" })
+    await user.click(outside)
+    expect(onClose).toHaveBeenCalledOnce()
+    await waitFor(() => expect(outside).toHaveFocus())
+    expect(trigger).not.toHaveFocus()
+    trigger.remove()
   })
 
   it("MCP 开关只调用 adapter action", async () => {
@@ -255,5 +289,19 @@ describe("CompactHeader/StatusPopover", () => {
     await user.click(screen.getByRole("tab", { name: "mcp" }))
     expect(screen.getByRole("checkbox", { name: "切换 auth" })).toBeDisabled()
     expect(screen.getByText(/需要认证/)).toBeInTheDocument()
+  })
+
+  it("MCP 忙碌时禁用对应开关和刷新按钮", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.mcpBusy = { alpha: true }
+    view.mcpRefreshing = true
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "mcp" }))
+    expect(screen.getByRole("checkbox", { name: "切换 alpha" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "手动刷新" })).toBeDisabled()
   })
 })

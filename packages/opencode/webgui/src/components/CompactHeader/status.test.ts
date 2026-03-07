@@ -18,7 +18,6 @@ describe("CompactHeader/status", () => {
         project: "p1",
         worktree: "D:/repo",
         directory: "D:/repo",
-        health: true,
         bridge: {
           installed: true,
           ready: true,
@@ -33,6 +32,7 @@ describe("CompactHeader/status", () => {
     expect(view.summary.directory).toBe("D:/repo")
     expect(view.summary.connection).toBe("connected")
     expect(view.summary.bridge.ready).toBe(true)
+    expect(view.summary).not.toHaveProperty("health")
     expect(view.note).toContain("不提供多 server 管理")
   })
 

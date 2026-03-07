@@ -4,9 +4,9 @@
 
 **Goal:** 让 CompactHeader 的状态点升级为可交互状态弹层入口，在 WebGUI 中对齐 app 端的状态信息浏览体验。
 
-**Architecture:** 方案继续在 `packages/opencode/webgui/src/components/CompactHeader` 内局部闭环，但首版先收紧为仓库现有 API 真能支撑的能力。新增一个本地状态适配层（例如 `useStatusPopoverData.ts`）统一聚合 `connectionState`、`ideBridge`、`fetch("/global/health")` 和 `sdk` 数据，并明确拆成两层语义：SSE 传输状态继续沿用 `connectionState`，分区级 / 弹层级数据状态单独表达 `ready/empty/failed/stale`；`status.ts` 只做 tab 顺序与 view model 映射，`StatusPopover.tsx` 负责自身交互语义（含 Escape、外部点击、focus restore）并通过 hook 暴露的 action 触发 MCP 操作，`CompactHeader/index.tsx` 只负责 open 状态接线与右侧浮层互斥。
+**Architecture:** 方案继续在 `packages/opencode/webgui/src/components/CompactHeader` 内局部闭环，但首版先收紧为仓库现有 API 真能支撑的能力。新增一个本地状态适配层（例如 `useStatusPopoverData.ts`）统一聚合 `connectionState`、`ideBridge`、`sdk.mcp.status()`、`sdk.lsp.status()`、`sdk.config.get()`、`sdk.project.current()`、`sdk.path.get()`，并明确拆成两层语义：SSE 传输状态继续沿用 `connectionState`，分区级 / 弹层级数据状态单独表达 `ready/empty/failed/stale`；`status.ts` 只做 tab 顺序与 view model 映射，`StatusPopover.tsx` 负责自身交互语义（含 Escape、外部点击、focus restore）并通过 hook 暴露的 action 触发 MCP 操作，其中 `Esc` 与再次点击触发器关闭后回到状态点按钮，外部点击关闭时保持焦点落在用户点击目标；`CompactHeader/index.tsx` 只负责 open 状态接线与右侧浮层互斥。
 
-**Tech Stack:** React、TypeScript、Vitest、Testing Library、`fetch("/global/health")`、`sdk.mcp.status/connect/disconnect`、`sdk.lsp.status()`、`sdk.config.get()`、`sdk.project.current()`、`sdk.path.get()`。
+**Tech Stack:** React、TypeScript、Vitest、Testing Library、`sdk.mcp.status/connect/disconnect`、`sdk.lsp.status()`、`sdk.config.get()`、`sdk.project.current()`、`sdk.path.get()`。
 
 ---
 
@@ -65,7 +65,7 @@ git commit -m "feat(webgui): make status indicator interactive"
 
 在 `useStatusPopoverData.test.tsx` 先定义状态聚合契约，覆盖这些首版能力：
 
-1. `refreshAll()` 只在弹层从关闭变打开时触发一次，同一轮里会聚合 `connectionState`、`ideBridge` 已安装/是否 ready、`fetch("/global/health")`、`sdk.mcp.status()`、`sdk.lsp.status()`、`sdk.config.get()`、`sdk.project.current()`、`sdk.path.get()`；tab 切换本身不自动重拉。
+1. `refreshAll()` 只在弹层从关闭变打开时触发一次，同一轮里会聚合 `connectionState`、`ideBridge` 已安装/是否 ready、`sdk.mcp.status()`、`sdk.lsp.status()`、`sdk.config.get()`、`sdk.project.current()`、`sdk.path.get()`；tab 切换本身不自动重拉。
 2. `servers` 数据只产出 OpenCode SSE 连接状态、IDE bridge 状态、project/path 摘要，不出现多 server 管理字段。
 3. `useStatusPopoverData` 要同时产出两层状态：SSE 传输层继续暴露 `connectionState`，`servers/mcp/lsp/plugins` 四个分区再各自暴露 `ready/empty/failed/stale` 之类的数据状态，不能把局部请求失败、旧快照陈旧和 SSE 连接错误混成一个字段。
 4. 同一次刷新里各数据源独立结算：单个 tab 失败不会阻塞其它 tab 成功落地，hook 要分别保留 `servers/mcp/lsp/plugins` 的最近成功快照与各自错误，而不是一次整体失败。
@@ -84,7 +84,7 @@ Expected: FAIL（`useStatusPopoverData.ts` 尚不存在）。
 
 **Step 3: 写最小实现**
 
-新增 `useStatusPopoverData.ts`，把状态拉取和本地快照都收敛在这里：统一装配 `connectionState`、IDE bridge 摘要、`health`、`mcp/lsp/plugins`、`project/path`，并暴露 `refreshAll()`、`refreshMcp()`、`toggleMcp(name)`、SSE 传输状态以及分区级 `ready/empty/failed/stale/error/updatedAt`。这里不要引入 UI JSX，也不要让各 tab 直接各自发请求；实现上用独立 settle 流保住单分区失败不拖垮整轮结果。
+新增 `useStatusPopoverData.ts`，把状态拉取和本地快照都收敛在这里：统一装配 `connectionState`、IDE bridge 摘要、`mcp/lsp/plugins`、`project/path`，并暴露 `refreshAll()`、`refreshMcp()`、`toggleMcp(name)`、SSE 传输状态以及分区级 `ready/empty/failed/stale/error/updatedAt`。这里不要引入 UI JSX，也不要让各 tab 直接各自发请求；实现上用独立 settle 流保住单分区失败不拖垮整轮结果，并给 MCP 结果补统一时序保护，避免 `refreshAll()` 覆盖更晚完成的 `refreshMcp()` / `toggleMcp(name)` 结果。
 
 **Step 4: 再跑测试确认通过**
 
@@ -174,7 +174,7 @@ git commit -m "feat(webgui): add status popover view models"
 4. 打开弹层时触发一次 `refreshAll()`，tab 切换只切 view 不自动重拉。
 5. 旧快照存在且新请求失败时，按分区显示陈旧提示或数据失败，而不是把局部失败描述成“连接错误”或整窗清空。
 6. 支持 tab 键聚焦、方向键切 tab、Escape 关闭，关键节点有 `dialog` / `tablist` / `tabpanel` 语义，`tab` 与 `tabpanel` 之间有稳定 id / `aria-controls` / `aria-labelledby` 关联。
-7. 关闭后焦点回到触发器，且这些关闭语义由 `StatusPopover` 自身负责，不依赖 header 重复实现。
+7. 通过 `Esc`、再次点击触发器关闭后，焦点回到状态点按钮；外部点击关闭时不强制回焦，保持在用户点击目标，且这些关闭语义由 `StatusPopover` 自身负责，不依赖 header 重复实现。
 
 **Step 2: 运行测试确认失败**
 
@@ -188,7 +188,7 @@ Expected: FAIL（`StatusPopover.tsx` 尚不存在）。
 
 **Step 3: 写最小实现**
 
-新增 `StatusPopover.tsx`，先只实现最小可读版本：使用本地 state 控制当前 tab，打开时触发一次 `refreshAll()`，切 tab 不重拉；调用 `useStatusPopoverData` 和 `status.ts` 渲染四个面板，把 SSE 连接状态与分区 stale/empty/failed 提示分别接出来，并由组件自身处理 Escape、外部点击和 focus restore，但先不接 MCP 开关与刷新。
+新增 `StatusPopover.tsx`，先只实现最小可读版本：使用本地 state 控制当前 tab，打开时触发一次 `refreshAll()`，切 tab 不重拉；调用 `useStatusPopoverData` 和 `status.ts` 渲染四个面板，把 SSE 连接状态与分区 stale/empty/failed 提示分别接出来，并由组件自身处理 `Esc`、外部点击、再次点击触发器关闭后的 focus restore，其中 `Esc` 与再次点击触发器关闭后把焦点送回状态点按钮，外部点击关闭时不改写用户当前点击目标，但先不接 MCP 开关与刷新。
 
 **Step 4: 再跑测试确认通过**
 
@@ -285,7 +285,7 @@ git commit -m "feat(webgui): add mcp controls to status popover"
 - header 右侧浮层保持互斥：打开 `StatusPopover` 时会关闭 `SessionDropdown` 和 `ActionButtons` 的更多菜单；重新打开这些右侧浮层时也会关闭 `StatusPopover`
 - header 右侧布局仍保留状态点、更多菜单、新建会话按钮
 
-同时在 `StatusIndicator.test.tsx` 补一个“打开时 `aria-expanded=true` 且 `aria-controls` 指向弹层 id”的集成断言，避免只测 click 不测状态同步；测试文案要明确这里同步的是弹层开合与 SSE 连接状态展示，不把某个 tab 的请求失败写成连接错误。在 `StatusPopover.test.tsx` 补 Esc、外部点击关闭后焦点回到触发器的回归断言，并把局部失败描述成分区数据失败或 stale；在 `OfflineBanner.test.tsx` 补一条回归断言，确认本次改造不改变 `OfflineBanner` 现有触发条件，且局部数据失败不会误触发离线横幅。
+同时在 `StatusIndicator.test.tsx` 补一个“打开时 `aria-expanded=true` 且 `aria-controls` 指向弹层 id”的集成断言，避免只测 click 不测状态同步；测试文案要明确这里同步的是弹层开合与 SSE 连接状态展示，不把某个 tab 的请求失败写成连接错误。在 `StatusPopover.test.tsx` 补关闭回焦回归断言：`Esc`、再次点击触发器关闭后焦点回到触发器，外部点击关闭时保持在用户点击目标，并把局部失败描述成分区数据失败或 stale；在 `OfflineBanner.test.tsx` 补一条回归断言，确认本次改造不改变 `OfflineBanner` 现有触发条件，且局部数据失败不会误触发离线横幅。
 
 **Step 2: 运行测试确认失败**
 
@@ -303,7 +303,7 @@ Expected: FAIL（`CompactHeader/index.tsx` 还没有弹层状态与挂载逻辑�
 
 - 不改动现有 session / action / restart / share 逻辑
 - 弹层默认关闭，点击状态点切换
-- `CompactHeader/index.tsx` 只负责 open 状态接线，以及和 `SessionDropdown`、`ActionButtons` 更多菜单做互斥；不要在 header 里重复实现 popover 内部的 Escape、外部点击、focus restore 逻辑
+- `CompactHeader/index.tsx` 只负责 open 状态接线，以及和 `SessionDropdown`、`ActionButtons` 更多菜单做互斥；不要在 header 里重复实现 popover 内部关闭后的 focus 规则：`Esc` 与再次点击触发器回到状态点按钮，外部点击则保持在用户点击目标
 - 现有 header 能力不回归
 
 如果现有 `ActionButtons` 更多菜单还不能被外部关闭，这一步要做最小改动让它可受控，或至少暴露关闭接口给 header 复用，但不要顺手重写更多菜单实现。

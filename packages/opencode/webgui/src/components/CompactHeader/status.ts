@@ -14,7 +14,6 @@ type ServerData = {
   project: string | null
   worktree: string | null
   directory: string | null
-  health: boolean | null
   bridge: {
     installed: boolean
     ready: boolean
@@ -54,7 +53,6 @@ export function buildServerView(input: Box<ServerData>) {
       project: input.data.project,
       worktree: input.data.worktree,
       directory: input.data.directory,
-      health: input.data.health,
       bridge: input.data.bridge,
     },
     note: "首版仅展示当前连接、IDE bridge 与项目路径摘要，不提供多 server 管理。",

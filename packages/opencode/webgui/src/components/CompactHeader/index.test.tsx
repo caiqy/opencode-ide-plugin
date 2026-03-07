@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ConnectionState } from "../../lib/api/events"
 
@@ -444,7 +444,7 @@ describe("CompactHeader", () => {
     expect(pruneTabs).toHaveBeenCalledWith(new Set(["s1", "s-current"]))
   })
 
-  it("switches to restored activeTab when currentSession is null", () => {
+  it("switches to restored activeTab when currentSession is null", async () => {
     const switchSession = vi.fn().mockResolvedValue(undefined)
     const openTab = vi.fn()
 
@@ -483,7 +483,12 @@ describe("CompactHeader", () => {
       />,
     )
 
-    expect(switchSession).toHaveBeenCalledWith("s2")
+    await waitFor(() => {
+      expect(switchSession).toHaveBeenCalledWith("s2")
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
     expect(openTab).not.toHaveBeenCalled()
   })
 
@@ -778,7 +783,7 @@ describe("CompactHeader", () => {
     expect(switchSession).not.toHaveBeenCalled()
   })
 
-  it("close other tabs 会尝试切换到保留会话", () => {
+  it("close other tabs 会尝试切换到保留会话", async () => {
     const switchSession = vi.fn().mockResolvedValue(undefined)
     const showToast = vi.fn()
 
@@ -817,9 +822,18 @@ describe("CompactHeader", () => {
       />,
     )
 
+    await waitFor(() => {
+      expect(switchSession).toHaveBeenCalledWith("s2")
+    })
     if (!mocks.tabBarProps) throw new Error("tab bar props not captured")
-    mocks.tabBarProps.onCloseOtherTabs("s1")
-    expect(switchSession).toHaveBeenCalledWith("s1")
+    const tabs = mocks.tabBarProps
+    await tabs.onCloseOtherTabs("s1")
+    await waitFor(() => {
+      expect(switchSession).toHaveBeenLastCalledWith("s1")
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
     expect(showToast).not.toHaveBeenCalled()
   })
 
