@@ -1,0 +1,96 @@
+type Tab = "servers" | "mcp" | "lsp" | "plugins"
+
+type State = "ready" | "empty" | "failed" | "stale"
+
+type Box<T> = {
+  state: State
+  data: T
+  error: string | null
+  updatedAt: number | null
+}
+
+type ServerData = {
+  connectionState: "connecting" | "connected" | "disconnected" | "error"
+  project: string | null
+  worktree: string | null
+  directory: string | null
+  health: boolean | null
+  bridge: {
+    installed: boolean
+    ready: boolean
+    customApi: boolean
+    restartMode: "window" | "ide" | null
+  }
+}
+
+type McpData = {
+  status: "connected" | "disabled" | "failed" | "needs_auth" | "needs_client_registration"
+  error?: string
+}
+
+type LspData = {
+  id: string
+  name: string
+  root: string
+  status: "connected" | "error"
+}
+
+export const DEFAULT_STATUS_TAB: Tab = "servers"
+
+export const STATUS_TABS: Array<{ id: Tab; label: string }> = [
+  { id: "servers", label: "servers" },
+  { id: "mcp", label: "mcp" },
+  { id: "lsp", label: "lsp" },
+  { id: "plugins", label: "plugins" },
+]
+
+export function buildServerView(input: Box<ServerData>) {
+  return {
+    state: input.state,
+    error: input.error,
+    updatedAt: input.updatedAt,
+    summary: {
+      connection: input.data.connectionState,
+      project: input.data.project,
+      worktree: input.data.worktree,
+      directory: input.data.directory,
+      health: input.data.health,
+      bridge: input.data.bridge,
+    },
+    note: "首版仅展示当前连接、IDE bridge 与项目路径摘要，不提供多 server 管理。",
+  }
+}
+
+export function buildPluginView(input: Box<string[]>) {
+  return {
+    state: input.state,
+    error: input.error,
+    updatedAt: input.updatedAt,
+    items: input.data,
+    empty: "当前实例中未配置已配置插件。",
+  }
+}
+
+export function buildLspView(input: Box<LspData[]>) {
+  return {
+    state: input.state,
+    error: input.error,
+    updatedAt: input.updatedAt,
+    items: input.data,
+  }
+}
+
+export function buildMcpView(input: Box<Record<string, McpData>>) {
+  return {
+    state: input.state,
+    error: input.error,
+    updatedAt: input.updatedAt,
+    refreshLabel: "手动刷新",
+    items: Object.entries(input.data).map(([name, item]) => ({
+      name,
+      status: item.status,
+      enabled: item.status === "connected",
+      error: item.error,
+    })),
+  }
+}
