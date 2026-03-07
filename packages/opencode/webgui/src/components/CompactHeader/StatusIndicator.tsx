@@ -3,17 +3,52 @@ import { CONNECTION_COLORS, CONNECTION_TOOLTIPS } from "./utils"
 
 interface StatusIndicatorProps {
   connectionState: ConnectionState
+  open?: boolean
+  onToggle?: () => void
+  controls?: string
 }
 
-export function StatusIndicator({ connectionState }: StatusIndicatorProps) {
+export function StatusIndicator({
+  connectionState,
+  open,
+  onToggle,
+  controls = "status-popover",
+}: StatusIndicatorProps) {
   const tip = CONNECTION_TOOLTIPS[connectionState]
-  return (
-    <div
-      className={`w-2 h-2 rounded-full ${CONNECTION_COLORS[connectionState]} ${
+  const dot = (
+    <span
+      className={`h-2 w-2 rounded-full ${CONNECTION_COLORS[connectionState]} ${
         connectionState === "connecting" || connectionState === "error" ? "animate-pulse" : ""
       }`}
+    />
+  )
+
+  if (!onToggle) {
+    return (
+      <div
+        className="flex h-5 w-5 items-center justify-center"
+        title={tip}
+        data-tip={tip}
+        aria-label={`连接状态：${tip}`}
+      >
+        {dot}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      className="flex h-5 w-5 items-center justify-center"
       title={tip}
       data-tip={tip}
-    />
+      aria-label={`连接状态：${tip}`}
+      aria-haspopup="dialog"
+      aria-expanded={open ?? false}
+      aria-controls={controls}
+      onClick={onToggle}
+    >
+      {dot}
+    </button>
   )
 }
