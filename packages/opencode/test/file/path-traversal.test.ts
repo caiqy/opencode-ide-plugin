@@ -29,6 +29,12 @@ describe("Filesystem.contains", () => {
     expect(Filesystem.contains("/project", "/project-other/file")).toBe(false)
     expect(Filesystem.contains("/project", "/projectfile")).toBe(false)
   })
+
+  test("blocks mixed absolute paths on win32", () => {
+    if (process.platform !== "win32") return
+    expect(Filesystem.contains("C:\\project", "/etc/passwd")).toBe(false)
+    expect(Filesystem.contains("C:\\project", "/tmp/other-project")).toBe(false)
+  })
 })
 
 /*
