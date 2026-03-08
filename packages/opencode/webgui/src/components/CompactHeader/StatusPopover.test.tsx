@@ -105,18 +105,22 @@ describe("CompactHeader/StatusPopover", () => {
     render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
 
     expect(mocks.useStatusPopoverData).toHaveBeenCalledWith({ open: true, connectionState: "connected" })
-    expect(screen.getAllByRole("tab").map((item) => item.textContent)).toEqual(["servers", "mcp", "lsp", "plugins"])
-    expect(screen.getByRole("tab", { name: "servers" })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("dialog", { name: "状态面板" })).toHaveClass("right-2")
+    expect(screen.getAllByRole("tab").map((item) => item.textContent)).toEqual(["Server", "MCP", "LSP", "Plugins"])
+    expect(screen.getByRole("tab", { name: "Server" })).toHaveAttribute("aria-selected", "true")
     expect(screen.getByText("SSE 连接：connected")).toBeInTheDocument()
     expect(screen.getByText("IDE bridge：ready")).toBeInTheDocument()
+    expect(screen.queryByText(/项目：/)).not.toBeInTheDocument()
     expect(screen.queryByText(/健康检查/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/首版仅展示当前连接/)).not.toBeInTheDocument()
+    expect(screen.getByText("SSE 连接：connected").closest("div.space-y-2")).toHaveClass("pr-4")
   })
 
   it("打开后把焦点移到默认 tab", async () => {
     render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: "servers" })).toHaveFocus()
+      expect(screen.getByRole("tab", { name: "Server" })).toHaveFocus()
     })
   })
 
@@ -124,10 +128,10 @@ describe("CompactHeader/StatusPopover", () => {
     const user = userEvent.setup()
     render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
 
-    await user.click(screen.getByRole("tab", { name: "lsp" }))
+    await user.click(screen.getByRole("tab", { name: "LSP" }))
     expect(screen.getByText("TypeScript")).toBeInTheDocument()
 
-    await user.click(screen.getByRole("tab", { name: "plugins" }))
+    await user.click(screen.getByRole("tab", { name: "Plugins" }))
     expect(screen.getByText("foo")).toBeInTheDocument()
   })
 
@@ -144,7 +148,7 @@ describe("CompactHeader/StatusPopover", () => {
     const user = userEvent.setup()
     render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
 
-    await user.click(screen.getByRole("tab", { name: "plugins" }))
+    await user.click(screen.getByRole("tab", { name: "Plugins" }))
     expect(screen.getByText(/数据可能不是最新/)).toBeInTheDocument()
     expect(screen.queryByText(/连接错误/)).not.toBeInTheDocument()
   })
@@ -159,11 +163,11 @@ describe("CompactHeader/StatusPopover", () => {
 
     render(<StatusPopover open={true} connectionState="connected" onClose={onClose} triggerRef={triggerRef} />)
 
-    const servers = screen.getByRole("tab", { name: "servers" })
+    const servers = screen.getByRole("tab", { name: "Server" })
     servers.focus()
     await user.keyboard("{ArrowRight}")
-    expect(screen.getByRole("tab", { name: "mcp" })).toHaveAttribute("aria-selected", "true")
-    expect(screen.getByRole("tab", { name: "mcp" })).toHaveFocus()
+    expect(screen.getByRole("tab", { name: "MCP" })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("tab", { name: "MCP" })).toHaveFocus()
 
     await user.keyboard("{Escape}")
     expect(onClose).toHaveBeenCalledOnce()
@@ -215,7 +219,7 @@ describe("CompactHeader/StatusPopover", () => {
 
     render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
 
-    await user.click(screen.getByRole("tab", { name: "mcp" }))
+    await user.click(screen.getByRole("tab", { name: "MCP" }))
     await user.click(screen.getByRole("checkbox", { name: "切换 alpha" }))
 
     expect(view.toggleMcp).toHaveBeenCalledWith("alpha")
@@ -228,8 +232,11 @@ describe("CompactHeader/StatusPopover", () => {
 
     render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
 
-    await user.click(screen.getByRole("tab", { name: "mcp" }))
-    await user.click(screen.getByRole("button", { name: "手动刷新" }))
+    await user.click(screen.getByRole("tab", { name: "MCP" }))
+    const btn = screen.getByRole("button", { name: "手动刷新" })
+    expect(btn).toHaveClass("rounded")
+    expect(btn).toHaveClass("border")
+    await user.click(btn)
 
     expect(view.refreshMcp).toHaveBeenCalledOnce()
   })
@@ -249,7 +256,7 @@ describe("CompactHeader/StatusPopover", () => {
 
     render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
 
-    await user.click(screen.getByRole("tab", { name: "mcp" }))
+    await user.click(screen.getByRole("tab", { name: "MCP" }))
     expect(screen.getByText("boom")).toBeInTheDocument()
   })
 
@@ -286,7 +293,7 @@ describe("CompactHeader/StatusPopover", () => {
 
     render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
 
-    await user.click(screen.getByRole("tab", { name: "mcp" }))
+    await user.click(screen.getByRole("tab", { name: "MCP" }))
     expect(screen.getByRole("checkbox", { name: "切换 auth" })).toBeDisabled()
     expect(screen.getByText(/需要认证/)).toBeInTheDocument()
   })
@@ -300,7 +307,7 @@ describe("CompactHeader/StatusPopover", () => {
 
     render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
 
-    await user.click(screen.getByRole("tab", { name: "mcp" }))
+    await user.click(screen.getByRole("tab", { name: "MCP" }))
     expect(screen.getByRole("checkbox", { name: "切换 alpha" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "手动刷新" })).toBeDisabled()
   })

@@ -37,10 +37,10 @@ type LspData = {
 export const DEFAULT_STATUS_TAB: Tab = "servers"
 
 export const STATUS_TABS: Array<{ id: Tab; label: string }> = [
-  { id: "servers", label: "servers" },
-  { id: "mcp", label: "mcp" },
-  { id: "lsp", label: "lsp" },
-  { id: "plugins", label: "plugins" },
+  { id: "servers", label: "Server" },
+  { id: "mcp", label: "MCP" },
+  { id: "lsp", label: "LSP" },
+  { id: "plugins", label: "Plugins" },
 ]
 
 export function buildServerView(input: Box<ServerData>) {

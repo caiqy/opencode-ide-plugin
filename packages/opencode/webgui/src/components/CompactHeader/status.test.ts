@@ -6,6 +6,7 @@ describe("CompactHeader/status", () => {
   it("固定 tab 顺序并默认进入 servers", () => {
     expect(DEFAULT_STATUS_TAB).toBe("servers")
     expect(STATUS_TABS.map((item: { id: string }) => item.id)).toEqual(["servers", "mcp", "lsp", "plugins"])
+    expect(STATUS_TABS.map((item: { label: string }) => item.label)).toEqual(["Server", "MCP", "LSP", "Plugins"])
   })
 
   it("buildServerView 只映射连接状态、bridge 和项目路径摘要", () => {

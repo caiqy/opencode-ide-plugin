@@ -77,7 +77,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
       id="status-popover"
       role="dialog"
       aria-label="状态面板"
-      className="absolute right-0 top-full z-50 mt-2 w-[360px] rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-800 dark:bg-gray-950"
+      className="absolute right-2 top-full z-50 mt-2 w-[360px] rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-800 dark:bg-gray-950"
     >
       <div className="border-b border-gray-200 px-2 py-2 dark:border-gray-800" role="tablist" aria-label="状态标签页">
         <div className="flex gap-1">
@@ -110,7 +110,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
       </div>
 
       <Panel tab={tab} id="servers">
-        <div className="space-y-2 p-3 text-xs text-gray-700 dark:text-gray-200">
+        <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
           <StateBox
             state={servers.state}
             error={servers.error}
@@ -119,19 +119,17 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
           />
           <div>SSE 连接：{servers.summary.connection}</div>
           <div>IDE bridge：{servers.summary.bridge.ready ? "ready" : "not ready"}</div>
-          <div>项目：{servers.summary.project ?? "未知"}</div>
           <div>路径：{servers.summary.directory ?? servers.summary.worktree ?? "未知"}</div>
-          <div className="text-gray-500 dark:text-gray-400">{servers.note}</div>
         </div>
       </Panel>
 
       <Panel tab={tab} id="mcp">
-        <div className="space-y-2 p-3 text-xs text-gray-700 dark:text-gray-200">
+        <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
           <div className="flex items-center justify-between">
             <span>MCP</span>
             <button
               type="button"
-              className="text-blue-600 dark:text-blue-400 disabled:text-gray-400"
+              className="rounded border border-gray-300 px-2 py-1 text-blue-600 dark:border-gray-700 dark:text-blue-400 disabled:text-gray-400"
               disabled={data.mcpRefreshing}
               onClick={() => void data.refreshMcp()}
             >
@@ -163,7 +161,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
       </Panel>
 
       <Panel tab={tab} id="lsp">
-        <div className="space-y-2 p-3 text-xs text-gray-700 dark:text-gray-200">
+        <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
           <StateBox state={lsp.state} error={lsp.error} updatedAt={lsp.updatedAt} onRetry={data.refreshAll} />
           {lsp.items.map((item) => (
             <div key={item.id}>{item.name}</div>
@@ -172,7 +170,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
       </Panel>
 
       <Panel tab={tab} id="plugins">
-        <div className="space-y-2 p-3 text-xs text-gray-700 dark:text-gray-200">
+        <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
           <StateBox
             state={plugins.state}
             error={plugins.error}
