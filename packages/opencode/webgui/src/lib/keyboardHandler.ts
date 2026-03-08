@@ -141,19 +141,25 @@ export class KeyboardHandler {
         // Otherwise, let VSCode handle them (forwarded below).
         if (inEditable || hasSelection) {
           if (ev.code === "KeyC") {
+            let ok = false
             try {
-              document.execCommand("copy")
+              ok = document.execCommand("copy")
             } catch {}
-            stop(ev)
-            return
+            if (ok) {
+              stop(ev)
+              return
+            }
           }
 
           if (ev.code === "KeyX") {
+            let ok = false
             try {
-              document.execCommand("cut")
+              ok = document.execCommand("cut")
             } catch {}
-            stop(ev)
-            return
+            if (ok) {
+              stop(ev)
+              return
+            }
           }
 
           if (ev.code === "KeyV") {

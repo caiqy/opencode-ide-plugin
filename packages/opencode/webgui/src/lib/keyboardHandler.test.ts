@@ -82,4 +82,36 @@ describe("KeyboardHandler", () => {
       metaKey: true,
     })
   })
+
+  it("当 Ctrl+C 的 execCommand(copy) 失败时不应阻止默认行为", () => {
+    const el = createEditable()
+    el.value = "hello"
+    el.setSelectionRange(0, 5)
+
+    const prev = Reflect.get(document, "execCommand")
+    const cmd = vi.fn(() => false)
+    Object.defineProperty(document, "execCommand", {
+      value: cmd,
+      configurable: true,
+    })
+    const handler = new KeyboardHandler()
+    const ev = new KeyboardEvent("keydown", {
+      key: "c",
+      code: "KeyC",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+
+    el.dispatchEvent(ev)
+
+    expect(cmd).toHaveBeenCalledWith("copy")
+    expect(ev.defaultPrevented).toBe(false)
+
+    handler.destroy()
+    Object.defineProperty(document, "execCommand", {
+      value: prev,
+      configurable: true,
+    })
+  })
 })
