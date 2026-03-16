@@ -63,6 +63,7 @@ import type {
   McpLocalConfig,
   McpRemoteConfig,
   McpStatusResponses,
+  McpToolsResponses,
   OutputFormat,
   Part as Part2,
   PartDeleteErrors,
@@ -2946,6 +2947,38 @@ export class Auth2 extends HeyApiClient {
 }
 
 export class Mcp extends HeyApiClient {
+  /**
+   * Get MCP tools by server
+   *
+   * List tools exposed by an MCP server and whether each tool is enabled.
+   */
+  public tools<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpToolsResponses, unknown, ThrowOnError>({
+      url: "/mcp/{name}/tools",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * Get MCP status
    *

@@ -5,6 +5,7 @@ import { DEFAULT_STATUS_TAB, STATUS_TABS, buildLspView, buildMcpView, buildPlugi
 import { useStatusPopoverData } from "./useStatusPopoverData"
 
 type Tab = (typeof STATUS_TABS)[number]["id"]
+const TOOL_HINT = "已保存，将在下一轮回复生效"
 
 interface StatusPopoverProps {
   open: boolean
@@ -26,7 +27,10 @@ function nextTab(tab: Tab, dir: 1 | -1) {
 
 export function StatusPopover({ open, connectionState, onClose, triggerRef }: StatusPopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
+  const tid = useRef<number | null>(null)
   const [tab, setTab] = useState<Tab>(DEFAULT_STATUS_TAB)
+  const [show, setShow] = useState<Record<string, boolean>>({})
+  const [hint, setHint] = useState<string | null>(null)
   const data = useStatusPopoverData({ open, connectionState })
   const refs = triggerRef ? ([triggerRef] as unknown as RefObject<HTMLElement>[]) : []
 
@@ -46,6 +50,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
   useEffect(() => {
     if (!open) return
     setTab(DEFAULT_STATUS_TAB)
+    setShow({})
   }, [open])
 
   useEffect(() => {
@@ -64,6 +69,22 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
     return () => document.removeEventListener("keydown", onKey)
   }, [close, open])
 
+  useEffect(
+    () => () => {
+      if (tid.current !== null) window.clearTimeout(tid.current)
+    },
+    [],
+  )
+
+  const save = useCallback(() => {
+    setHint(TOOL_HINT)
+    if (tid.current !== null) window.clearTimeout(tid.current)
+    tid.current = window.setTimeout(() => {
+      setHint(null)
+      tid.current = null
+    }, 1800)
+  }, [])
+
   const servers = useMemo(() => buildServerView(data.servers), [data.servers])
   const mcp = useMemo(() => buildMcpView(data.mcp), [data.mcp])
   const lsp = useMemo(() => buildLspView(data.lsp), [data.lsp])
@@ -77,7 +98,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
       id="status-popover"
       role="dialog"
       aria-label="状态面板"
-      className="absolute right-2 top-full z-50 mt-2 w-[360px] rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-800 dark:bg-gray-950"
+      className="modern-card absolute right-2 top-full z-50 mt-2 flex max-h-[60vh] w-[360px] flex-col"
     >
       <div className="border-b border-gray-200 px-2 py-2 dark:border-gray-800" role="tablist" aria-label="状态标签页">
         <div className="flex gap-1">
@@ -109,80 +130,136 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
         </div>
       </div>
 
-      <Panel tab={tab} id="servers">
-        <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
-          <StateBox
-            state={servers.state}
-            error={servers.error}
-            updatedAt={servers.updatedAt}
-            onRetry={data.refreshAll}
-          />
-          <div>SSE 连接：{servers.summary.connection}</div>
-          <div>IDE bridge：{servers.summary.bridge.ready ? "ready" : "not ready"}</div>
-          <div>路径：{servers.summary.directory ?? servers.summary.worktree ?? "未知"}</div>
-        </div>
-      </Panel>
-
-      <Panel tab={tab} id="mcp">
-        <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
-          <div className="flex items-center justify-between">
-            <span>MCP</span>
-            <button
-              type="button"
-              className="rounded border border-gray-300 px-2 py-1 text-blue-600 dark:border-gray-700 dark:text-blue-400 disabled:text-gray-400"
-              disabled={data.mcpRefreshing}
-              onClick={() => void data.refreshMcp()}
-            >
-              {mcp.refreshLabel}
-            </button>
+      <div data-testid="status-scroll" className="min-h-0 overflow-y-auto">
+        <Panel tab={tab} id="servers">
+          <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
+            <StateBox
+              state={servers.state}
+              error={servers.error}
+              updatedAt={servers.updatedAt}
+              onRetry={data.refreshAll}
+            />
+            <div>SSE 连接：{servers.summary.connection}</div>
+            <div>IDE bridge：{servers.summary.bridge.ready ? "ready" : "not ready"}</div>
+            <div>路径：{servers.summary.directory ?? servers.summary.worktree ?? "未知"}</div>
           </div>
-          <StateBox state={mcp.state} error={mcp.error} updatedAt={mcp.updatedAt} />
-          {mcp.items.map((item) => (
-            <div key={item.name} className="flex items-center justify-between gap-2">
-              <div className="flex flex-col gap-1">
-                <span>{item.name}</span>
-                {item.reason ? (
-                  <span className="text-[11px] text-amber-600 dark:text-amber-400">{item.reason}</span>
-                ) : null}
-              </div>
-              <label className="flex items-center gap-2">
-                <span>{item.status}</span>
-                <input
-                  type="checkbox"
-                  aria-label={`切换 ${item.name}`}
-                  checked={item.enabled}
-                  disabled={item.disabled || data.mcpBusy[item.name] === true}
-                  onChange={() => void data.toggleMcp(item.name)}
-                />
-              </label>
+        </Panel>
+
+        <Panel tab={tab} id="mcp">
+          <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
+            <div className="flex items-center justify-between">
+              <span>MCP</span>
+              <button
+                type="button"
+                className="rounded border border-gray-300 px-2 py-1 text-blue-600 dark:border-gray-700 dark:text-blue-400 disabled:text-gray-400"
+                disabled={data.mcpRefreshing}
+                onClick={() => void data.refreshMcp()}
+              >
+                {data.mcpRefreshing ? "刷新中..." : mcp.refreshLabel}
+              </button>
             </div>
-          ))}
-        </div>
-      </Panel>
+            <StateBox state={mcp.state} error={mcp.error} updatedAt={mcp.updatedAt} />
+            {hint ? <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{hint}</div> : null}
+            {mcp.items.map((item) => {
+              const on = show[item.name] === true
+              return (
+                <div
+                  key={item.name}
+                  className="space-y-2 border-b border-gray-100 pb-2 last:border-0 last:pb-0 dark:border-gray-900"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-col gap-1">
+                      <span>{item.name}</span>
+                      {item.reason ? (
+                        <span className="text-[11px] text-amber-600 dark:text-amber-400">{item.reason}</span>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {item.tools.length > 0 ? (
+                        <button
+                          type="button"
+                          className="text-[11px] text-gray-500 dark:text-gray-400"
+                          aria-label={`${on ? "收起" : "展开"}工具 ${item.name}`}
+                          aria-expanded={on}
+                          onClick={() =>
+                            setShow((prev) => ({
+                              ...prev,
+                              [item.name]: !(prev[item.name] === true),
+                            }))
+                          }
+                        >
+                          {on ? "收起" : "展开"}
+                        </button>
+                      ) : null}
+                      <span>{item.status}</span>
+                      <Switch
+                        label={`切换 ${item.name}`}
+                        checked={item.enabled}
+                        disabled={item.disabled || data.mcpBusy[item.name] === true}
+                        onToggle={() => void data.toggleMcp(item.name)}
+                      />
+                    </div>
+                  </div>
+                  {on
+                    ? item.tools.map((tool) => {
+                        const busy = data.mcpToolBusy[item.name]?.[tool.id] === true
+                        return (
+                          <div
+                            key={tool.id}
+                            className="ml-3 flex items-center justify-between gap-2 border-l border-gray-200 pl-2 dark:border-gray-800"
+                          >
+                            <span className="text-[11px] text-gray-600 dark:text-gray-300">{tool.name}</span>
+                            <div className="flex items-center gap-2">
+                              {busy ? (
+                                <span className="text-[11px] text-blue-600 dark:text-blue-400">更新中...</span>
+                              ) : null}
+                              <Switch
+                                label={`切换 ${tool.name}`}
+                                checked={tool.enabled}
+                                disabled={busy}
+                                onToggle={() => {
+                                  void (async () => {
+                                    const ok = await data.toggleTool(item.name, tool.id, !tool.enabled)
+                                    if (!ok) return
+                                    save()
+                                  })()
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })
+                    : null}
+                </div>
+              )
+            })}
+          </div>
+        </Panel>
 
-      <Panel tab={tab} id="lsp">
-        <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
-          <StateBox state={lsp.state} error={lsp.error} updatedAt={lsp.updatedAt} onRetry={data.refreshAll} />
-          {lsp.items.map((item) => (
-            <div key={item.id}>{item.name}</div>
-          ))}
-        </div>
-      </Panel>
+        <Panel tab={tab} id="lsp">
+          <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
+            <StateBox state={lsp.state} error={lsp.error} updatedAt={lsp.updatedAt} onRetry={data.refreshAll} />
+            {lsp.items.map((item) => (
+              <div key={item.id}>{item.name}</div>
+            ))}
+          </div>
+        </Panel>
 
-      <Panel tab={tab} id="plugins">
-        <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
-          <StateBox
-            state={plugins.state}
-            error={plugins.error}
-            updatedAt={plugins.updatedAt}
-            empty={plugins.empty}
-            onRetry={data.refreshAll}
-          />
-          {plugins.items.map((item) => (
-            <div key={item}>{item}</div>
-          ))}
-        </div>
-      </Panel>
+        <Panel tab={tab} id="plugins">
+          <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
+            <StateBox
+              state={plugins.state}
+              error={plugins.error}
+              updatedAt={plugins.updatedAt}
+              empty={plugins.empty}
+              onRetry={data.refreshAll}
+            />
+            {plugins.items.map((item) => (
+              <div key={item}>{item}</div>
+            ))}
+          </div>
+        </Panel>
+      </div>
     </div>
   )
 }
@@ -218,4 +295,23 @@ function StateBox(props: {
   if (props.state === "stale") return <div>数据可能不是最新，上次更新于 {stamp(props.updatedAt)}</div>
   if (props.state === "empty") return <div>{props.empty ?? "暂无可展示数据"}</div>
   return null
+}
+
+function Switch(props: { label: string; checked: boolean; disabled?: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-label={props.label}
+      aria-checked={props.checked}
+      disabled={props.disabled}
+      className={`flex h-5 w-9 items-center rounded-full p-[2px] transition ${props.checked ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-700"} disabled:cursor-not-allowed disabled:opacity-60`}
+      onClick={props.onToggle}
+    >
+      <span
+        aria-hidden="true"
+        className={`h-4 w-4 rounded-full bg-white transition ${props.checked ? "translate-x-4" : "translate-x-0"}`}
+      />
+    </button>
+  )
 }

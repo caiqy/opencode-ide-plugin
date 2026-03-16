@@ -25,6 +25,11 @@ type ServerData = {
 type McpData = {
   status: "connected" | "disabled" | "failed" | "needs_auth" | "needs_client_registration"
   error?: string
+  tools?: Array<{
+    id: string
+    name: string
+    enabled: boolean
+  }>
 }
 
 type LspData = {
@@ -89,6 +94,7 @@ export function buildMcpView(input: Box<Record<string, McpData>>) {
       status: item.status,
       enabled: item.status === "connected",
       error: item.error,
+      tools: Array.isArray(item.tools) ? item.tools : [],
       disabled: item.status === "needs_auth" || item.status === "needs_client_registration",
       reason:
         item.status === "needs_auth"

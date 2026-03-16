@@ -4,10 +4,12 @@ import type { ConnectionState } from "../../lib/api/events"
 
 const mocks = vi.hoisted(() => ({
   mcpStatus: vi.fn(),
+  mcpTools: vi.fn(),
   mcpConnect: vi.fn(),
   mcpDisconnect: vi.fn(),
   lspStatus: vi.fn(),
   configGet: vi.fn(),
+  configUpdate: vi.fn(),
   projectCurrent: vi.fn(),
   pathGet: vi.fn(),
   bridgeInstalled: true,
@@ -20,6 +22,7 @@ vi.mock("../../lib/api/sdkClient", () => ({
   sdk: {
     mcp: {
       status: (...args: unknown[]) => mocks.mcpStatus(...args),
+      tools: (...args: unknown[]) => mocks.mcpTools(...args),
       connect: (...args: unknown[]) => mocks.mcpConnect(...args),
       disconnect: (...args: unknown[]) => mocks.mcpDisconnect(...args),
     },
@@ -28,6 +31,7 @@ vi.mock("../../lib/api/sdkClient", () => ({
     },
     config: {
       get: (...args: unknown[]) => mocks.configGet(...args),
+      update: (...args: unknown[]) => mocks.configUpdate(...args),
     },
     project: {
       current: (...args: unknown[]) => mocks.projectCurrent(...args),
@@ -84,10 +88,12 @@ function hook(open: boolean, connectionState: ConnectionState = "connected") {
 describe("CompactHeader/useStatusPopoverData", () => {
   beforeEach(() => {
     mocks.mcpStatus.mockReset()
+    mocks.mcpTools.mockReset()
     mocks.mcpConnect.mockReset()
     mocks.mcpDisconnect.mockReset()
     mocks.lspStatus.mockReset()
     mocks.configGet.mockReset()
+    mocks.configUpdate.mockReset()
     mocks.projectCurrent.mockReset()
     mocks.pathGet.mockReset()
     mocks.bridgeInstalled = true
@@ -96,10 +102,27 @@ describe("CompactHeader/useStatusPopoverData", () => {
     mocks.bridgeRestartMode = "window"
 
     mocks.mcpStatus.mockResolvedValue(ok({ alpha: { status: "connected" } }))
+    mocks.mcpTools.mockImplementation((options: { path: { name: string } }) =>
+      ok({
+        server: options.path.name,
+        connected: options.path.name === "alpha",
+        tools:
+          options.path.name === "alpha"
+            ? [
+                {
+                  id: "alpha.read",
+                  name: "Read",
+                  enabled: true,
+                },
+              ]
+            : [],
+      }),
+    )
     mocks.mcpConnect.mockResolvedValue(ok({}))
     mocks.mcpDisconnect.mockResolvedValue(ok({}))
     mocks.lspStatus.mockResolvedValue(ok([{ id: "ts", name: "TypeScript", root: "D:/repo", status: "connected" }]))
-    mocks.configGet.mockResolvedValue(ok({ plugin: ["foo", "bar"] }))
+    mocks.configGet.mockResolvedValue(ok({ plugin: ["foo", "bar"], tools: {} }))
+    mocks.configUpdate.mockResolvedValue(ok({ plugin: ["foo", "bar"], tools: {} }))
     mocks.projectCurrent.mockResolvedValue(ok({ id: "p1", worktree: "D:/repo", time: { created: 1 } }))
     mocks.pathGet.mockResolvedValue(ok({ state: "ready", config: "cfg", worktree: "D:/repo", directory: "D:/repo" }))
   })
@@ -201,6 +224,70 @@ describe("CompactHeader/useStatusPopoverData", () => {
     expect(view.result.current.mcp.data.alpha?.status).toBe("disabled")
   })
 
+  it("refreshAll 与 refreshMcp 都会拉取 connected server 的工具列表", async () => {
+    mocks.mcpStatus
+      .mockResolvedValueOnce(ok({ alpha: { status: "connected" }, beta: { status: "disabled" } }))
+      .mockResolvedValueOnce(ok({ alpha: { status: "connected" }, beta: { status: "disabled" } }))
+    mocks.mcpTools.mockImplementation((options: { path: { name: string } }) =>
+      ok({
+        server: options.path.name,
+        connected: true,
+        tools: [
+          {
+            id: `${options.path.name}.read`,
+            name: "Read",
+            enabled: true,
+          },
+        ],
+      }),
+    )
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.mcp.state).toBe("ready")
+      expect(view.result.current.mcp.data.alpha?.tools?.[0]?.id).toBe("alpha.read")
+      expect(view.result.current.mcp.data.beta?.tools).toEqual([])
+    })
+
+    expect(mocks.mcpTools).toHaveBeenCalledTimes(1)
+    expect(mocks.mcpTools).toHaveBeenCalledWith({ path: { name: "alpha" } })
+
+    await act(async () => {
+      await view.result.current.refreshMcp()
+    })
+
+    expect(mocks.mcpTools).toHaveBeenCalledTimes(2)
+  })
+
+  it("refreshMcp 期间 mcpRefreshing 为 true", async () => {
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.mcp.state).toBe("ready")
+    })
+
+    const gate = deferred<{ data: Record<string, { status: "connected" }>; error: null }>()
+    mocks.mcpStatus.mockImplementationOnce(() => gate.promise)
+
+    act(() => {
+      void view.result.current.refreshMcp()
+    })
+
+    await waitFor(() => {
+      expect(view.result.current.mcpRefreshing).toBe(true)
+    })
+
+    await act(async () => {
+      gate.resolve(ok({ alpha: { status: "connected" } }))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(view.result.current.mcpRefreshing).toBe(false)
+    })
+  })
+
   it("refreshMcp reject 时保留旧快照并标记 stale", async () => {
     const view = hook(true)
 
@@ -269,6 +356,123 @@ describe("CompactHeader/useStatusPopoverData", () => {
     expect(view.result.current.mcp.state).toBe("stale")
     expect(view.result.current.mcp.error).toContain("toggle error")
     expect(mocks.mcpStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it("toggleTool 只锁当前工具 busy", async () => {
+    mocks.mcpTools.mockResolvedValueOnce(
+      ok({
+        server: "alpha",
+        connected: true,
+        tools: [
+          {
+            id: "alpha.read",
+            name: "Read",
+            enabled: true,
+          },
+          {
+            id: "alpha.write",
+            name: "Write",
+            enabled: true,
+          },
+        ],
+      }),
+    )
+    const gate = deferred<ReturnType<typeof ok>>()
+    mocks.configUpdate.mockImplementationOnce(() => gate.promise)
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.mcp.data.alpha?.tools?.length).toBe(2)
+    })
+
+    act(() => {
+      void view.result.current.toggleTool("alpha", "alpha.read", false)
+    })
+
+    await waitFor(() => {
+      expect(view.result.current.mcpToolBusy.alpha?.["alpha.read"]).toBe(true)
+      expect(view.result.current.mcpToolBusy.alpha?.["alpha.write"]).toBeUndefined()
+    })
+
+    await act(async () => {
+      gate.resolve(ok({ plugin: ["foo", "bar"], tools: { "alpha.read": false } }))
+      await Promise.resolve()
+    })
+  })
+
+  it("toggleTool 成功后更新 tools 配置并刷新 MCP 工具数据", async () => {
+    mocks.mcpTools
+      .mockResolvedValueOnce(
+        ok({
+          server: "alpha",
+          connected: true,
+          tools: [
+            {
+              id: "alpha.read",
+              name: "Read",
+              enabled: true,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        ok({
+          server: "alpha",
+          connected: true,
+          tools: [
+            {
+              id: "alpha.read",
+              name: "Read",
+              enabled: false,
+            },
+          ],
+        }),
+      )
+    mocks.configGet.mockResolvedValue(ok({ plugin: ["foo", "bar"], tools: {} }))
+    mocks.configUpdate.mockResolvedValue(ok({ plugin: ["foo", "bar"], tools: { "alpha.read": false } }))
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.mcp.data.alpha?.tools?.[0]?.enabled).toBe(true)
+    })
+
+    let res = false
+    await act(async () => {
+      res = await view.result.current.toggleTool("alpha", "alpha.read", false)
+    })
+
+    expect(res).toBe(true)
+    expect(mocks.configUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          tools: expect.objectContaining({
+            "alpha.read": false,
+          }),
+        }),
+      }),
+    )
+    expect(mocks.mcpTools).toHaveBeenCalledTimes(2)
+    expect(view.result.current.mcp.data.alpha?.tools?.[0]?.enabled).toBe(false)
+  })
+
+  it("toggleTool 失败时回滚并标记 stale", async () => {
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.mcp.data.alpha?.tools?.[0]?.enabled).toBe(true)
+    })
+
+    mocks.configUpdate.mockRejectedValueOnce(new Error("tool boom"))
+
+    let res = true
+    await act(async () => {
+      res = await view.result.current.toggleTool("alpha", "alpha.read", false)
+    })
+
+    expect(res).toBe(false)
+    expect(view.result.current.mcp.state).toBe("stale")
+    expect(view.result.current.mcp.error).toContain("tool boom")
+    expect(view.result.current.mcp.data.alpha?.tools?.[0]?.enabled).toBe(true)
   })
 
   it("连接状态变化时会重拉并忽略旧请求结果", async () => {

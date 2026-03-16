@@ -291,6 +291,12 @@ export namespace MCP {
     return commands
   }
 
+  function canon(client: string, tool: string) {
+    const a = client.replace(/[^a-zA-Z0-9_-]/g, "_")
+    const b = tool.replace(/[^a-zA-Z0-9_-]/g, "_")
+    return a + "_" + b
+  }
+
   export async function add(name: string, mcp: Config.Mcp) {
     const s = await state()
     const result = await create(name, mcp)
@@ -634,12 +640,52 @@ export namespace MCP {
       const entry = isMcpConfigured(mcpConfig) ? mcpConfig : undefined
       const timeout = entry?.timeout ?? defaultTimeout
       for (const mcpTool of toolsResult.tools) {
-        const sanitizedClientName = clientName.replace(/[^a-zA-Z0-9_-]/g, "_")
-        const sanitizedToolName = mcpTool.name.replace(/[^a-zA-Z0-9_-]/g, "_")
-        result[sanitizedClientName + "_" + sanitizedToolName] = await convertMcpTool(mcpTool, client, timeout)
+        result[canon(clientName, mcpTool.name)] = await convertMcpTool(mcpTool, client, timeout)
       }
     }
     return result
+  }
+
+  export async function toolsByServer(name: string) {
+    const s = await state()
+    const client = s.clients[name]
+    if (!client) {
+      return {
+        connected: false,
+        tools: [] as Array<{ id: string; name: string }>,
+      }
+    }
+    if (s.status[name]?.status !== "connected") {
+      return {
+        connected: false,
+        tools: [] as Array<{ id: string; name: string }>,
+      }
+    }
+
+    const result = await client.listTools().catch((e) => {
+      log.error("failed to get tools", { clientName: name, error: e.message })
+      s.status[name] = {
+        status: "failed",
+        error: e instanceof Error ? e.message : String(e),
+      }
+      delete s.clients[name]
+      return undefined
+    })
+
+    if (!result) {
+      return {
+        connected: false,
+        tools: [] as Array<{ id: string; name: string }>,
+      }
+    }
+
+    return {
+      connected: true,
+      tools: result.tools.map((tool) => ({
+        id: canon(name, tool.name),
+        name: tool.name,
+      })),
+    }
   }
 
   export async function prompts() {

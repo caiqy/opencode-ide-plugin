@@ -6,6 +6,13 @@ import { ideBridge } from "../../lib/ideBridge"
 type McpState = {
   status: "connected" | "disabled" | "failed" | "needs_auth" | "needs_client_registration"
   error?: string
+  tools: McpTool[]
+}
+
+type McpTool = {
+  id: string
+  name: string
+  enabled: boolean
 }
 
 type LspState = {
@@ -52,6 +59,7 @@ type Props = {
 const now = () => Date.now()
 
 function text(err: unknown, fallback: string) {
+  if (typeof err === "string" && err) return err
   if (!err || typeof err !== "object") return fallback
   if ("message" in err && typeof err.message === "string" && err.message) return err.message
   const data = err as { error?: { message?: unknown } }
@@ -61,6 +69,39 @@ function text(err: unknown, fallback: string) {
 
 function box<T>(data: T, state: State, error: string | null, updatedAt: number | null): Box<T> {
   return { data, state, error, updatedAt }
+}
+
+function tools(input: unknown) {
+  if (!input || typeof input !== "object") return []
+  const data = (input as { tools?: unknown }).tools
+  if (!Array.isArray(data)) return []
+  return data
+    .filter(
+      (item): item is McpTool =>
+        Boolean(item) &&
+        typeof item === "object" &&
+        typeof (item as { id?: unknown }).id === "string" &&
+        typeof (item as { name?: unknown }).name === "string" &&
+        typeof (item as { enabled?: unknown }).enabled === "boolean",
+    )
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      enabled: item.enabled,
+    }))
+}
+
+function mcp(input: Record<string, { status: McpState["status"]; error?: string }>) {
+  return Object.fromEntries(
+    Object.entries(input).map(([name, item]) => [
+      name,
+      {
+        status: item.status,
+        error: item.error,
+        tools: [],
+      },
+    ]),
+  ) as Record<string, McpState>
 }
 
 function merge(input: Array<string | null>) {
@@ -101,6 +142,7 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
   const mseq = useRef(0)
   const pull = useRef(0)
   const lock = useRef<Record<string, boolean>>({})
+  const tlock = useRef<Record<string, Record<string, boolean>>>({})
   const [data, setData] = useState<Data>({
     servers: box(server(connectionState, null, null, null), "empty", null, null),
     mcp: box({}, "empty", null, null),
@@ -108,14 +150,73 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
     plugins: box([], "empty", null, null),
   })
   const [busy, setBusy] = useState<Record<string, boolean>>({})
+  const [tbusy, setTBusy] = useState<Record<string, Record<string, boolean>>>({})
   const [refreshing, setRefreshing] = useState(false)
+
+  const loadMcp = useCallback(async () => {
+    try {
+      const res = await sdk.mcp.status()
+      if (res.error || !res.data) {
+        return {
+          data: null,
+          error: text(res.error, "Failed to load MCP status"),
+        }
+      }
+
+      const next = mcp(res.data as Record<string, { status: McpState["status"]; error?: string }>)
+      const list = Object.entries(next).flatMap(([name, item]) => (item.status === "connected" ? [name] : []))
+      if (list.length === 0) return { data: next, error: null }
+
+      const api = sdk.mcp as typeof sdk.mcp & {
+        tools: (input: { path: { name: string } }) => Promise<{ data: unknown; error: unknown }>
+      }
+      const all = await Promise.allSettled(list.map((name) => api.tools({ path: { name } })))
+      const bad = all.findIndex((item) => item.status === "rejected" || item.value.error || !item.value.data)
+      if (bad > -1) {
+        const item = all[bad]
+        if (item.status === "rejected") {
+          return {
+            data: null,
+            error: text(item.reason, "Failed to load MCP tools"),
+          }
+        }
+        return {
+          data: null,
+          error: text(item.value.error, "Failed to load MCP tools"),
+        }
+      }
+
+      const row = all.map((item, idx) => {
+        if (item.status !== "fulfilled" || !item.value.data) return [list[idx], [] as McpTool[]] as const
+        return [list[idx], tools(item.value.data)] as const
+      })
+      const data = row.reduce<Record<string, McpState>>((acc, item) => {
+        const name = item[0]
+        if (!acc[name]) return acc
+        return {
+          ...acc,
+          [name]: {
+            ...acc[name],
+            tools: item[1],
+          },
+        }
+      }, next)
+
+      return { data, error: null }
+    } catch (err) {
+      return {
+        data: null,
+        error: text(err, "Failed to load MCP status"),
+      }
+    }
+  }, [])
 
   const refreshMcp = useCallback(async () => {
     pull.current += 1
     setRefreshing(true)
     const id = ++mseq.current
     try {
-      const res = await sdk.mcp.status()
+      const res = await loadMcp()
       setData((prev) => {
         if (id !== mseq.current) return prev
         if (res.error || !res.data) {
@@ -138,7 +239,46 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
       pull.current = Math.max(0, pull.current - 1)
       if (pull.current === 0) setRefreshing(false)
     }
-  }, [])
+  }, [loadMcp])
+
+  const toggleTool = useCallback(
+    async (name: string, tool: string, enabled: boolean) => {
+      if (tlock.current[name]?.[tool]) return false
+      tlock.current[name] = {
+        ...(tlock.current[name] ?? {}),
+        [tool]: true,
+      }
+      setTBusy({ ...tlock.current })
+      try {
+        const cfg = await sdk.config.get()
+        if (cfg.error || !cfg.data) throw cfg.error
+        const res = await sdk.config.update({
+          body: {
+            tools: {
+              ...(cfg.data.tools ?? {}),
+              [tool]: enabled,
+            },
+          },
+        })
+        if (res.error) throw res.error
+        await refreshMcp()
+        return true
+      } catch (err) {
+        setData((prev) => ({
+          ...prev,
+          mcp: failed(prev.mcp, prev.mcp.data, text(err, "Failed to toggle MCP tool")),
+        }))
+        return false
+      } finally {
+        if (tlock.current[name]) {
+          delete tlock.current[name][tool]
+          if (Object.keys(tlock.current[name]).length === 0) delete tlock.current[name]
+        }
+        setTBusy({ ...tlock.current })
+      }
+    },
+    [refreshMcp],
+  )
 
   const toggleMcp = useCallback(
     async (name: string) => {
@@ -174,7 +314,7 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
     const [projectRes, pathRes, mcpRes, lspRes, pluginRes] = await Promise.allSettled([
       sdk.project.current(),
       sdk.path.get(),
-      sdk.mcp.status(),
+      loadMcp(),
       sdk.lsp.status(),
       sdk.config.get(),
     ])
@@ -255,7 +395,7 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
 
       return { servers, mcp, lsp, plugins }
     })
-  }, [])
+  }, [loadMcp])
 
   useEffect(() => {
     if (open && !prev.current) void refreshAll()
@@ -288,7 +428,9 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
     refreshAll,
     refreshMcp,
     toggleMcp,
+    toggleTool,
     mcpBusy: busy,
+    mcpToolBusy: tbusy,
     mcpRefreshing: refreshing,
   }
 }

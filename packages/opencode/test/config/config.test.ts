@@ -583,16 +583,75 @@ Nested command template`,
   })
 })
 
-test("updates config and writes to file", async () => {
+test("updates config and writes opencode.json by default", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const newConfig = { model: "updated/model" }
-      await Config.update(newConfig as any)
+      await Config.update({ model: "updated/model" } as any)
 
-      const writtenConfig = await Filesystem.readJson(path.join(tmp.path, "config.json"))
-      expect(writtenConfig.model).toBe("updated/model")
+      const written = await Filesystem.readJson(path.join(tmp.path, "opencode.json"))
+      expect(written.model).toBe("updated/model")
+      expect(await Filesystem.exists(path.join(tmp.path, "config.json"))).toBe(false)
+    },
+  })
+})
+
+test("updates existing opencode.json when jsonc is absent", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        model: "existing/model",
+      })
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      await Config.update({ username: "updated-user" } as any)
+
+      const written = await Filesystem.readJson(path.join(tmp.path, "opencode.json"))
+      expect(written.model).toBe("existing/model")
+      expect(written.username).toBe("updated-user")
+      expect(await Filesystem.exists(path.join(tmp.path, "config.json"))).toBe(false)
+    },
+  })
+})
+
+test("updates existing opencode.json when json and jsonc both exist", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(
+        dir,
+        {
+          $schema: "https://opencode.ai/config.json",
+          model: "jsonc/model",
+        },
+        "opencode.jsonc",
+      )
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        model: "json/model",
+      })
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      await Config.update({ username: "updated-user" } as any)
+
+      const config = await Config.get()
+
+      const jsonc = await Filesystem.readJson(path.join(tmp.path, "opencode.jsonc"))
+      const json = await Filesystem.readJson(path.join(tmp.path, "opencode.json"))
+
+      expect(jsonc.model).toBe("jsonc/model")
+      expect(jsonc.username).toBeUndefined()
+      expect(json.model).toBe("json/model")
+      expect(json.username).toBe("updated-user")
+      expect(config.username).toBe("updated-user")
+      expect(await Filesystem.exists(path.join(tmp.path, "config.json"))).toBe(false)
     },
   })
 })

@@ -4218,6 +4218,35 @@ export type FileStatusResponses = {
 
 export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
 
+export type McpToolsData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/mcp/{name}/tools"
+}
+
+export type McpToolsResponses = {
+  /**
+   * MCP tools
+   */
+  200: {
+    server: string
+    connected: boolean
+    tools: Array<{
+      id: string
+      name: string
+      enabled: boolean
+    }>
+  }
+}
+
+export type McpToolsResponse = McpToolsResponses[keyof McpToolsResponses]
+
 export type McpStatusData = {
   body?: never
   path?: never

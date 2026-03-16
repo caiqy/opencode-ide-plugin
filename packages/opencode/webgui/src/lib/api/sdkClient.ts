@@ -129,6 +129,30 @@ async function globalConfigUpdate(options: { body: Partial<Config> }): Promise<A
   }
 }
 
+async function mcpTools(options: { path: { name: string } }): Promise<ApiResult<unknown>> {
+  try {
+    const response = await fetch(`/mcp/${encodeURIComponent(options.path.name)}/tools`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    })
+
+    if (!response.ok) {
+      return {
+        error: { message: "Failed to load MCP tools" },
+        data: null,
+      }
+    }
+
+    const data = await response.json()
+    return { data, error: null }
+  } catch (error) {
+    return {
+      error: { message: error instanceof Error ? error.message : "Unknown error" },
+      data: null,
+    }
+  }
+}
+
 /**
  * Extended SDK client with state management methods
  * TODO: Remove once SDK is regenerated with Stainless
@@ -185,6 +209,11 @@ export const sdk = {
     },
   }) as typeof baseClient.session & {
     retry: (options: { path: { sessionID: string } }) => Promise<any>
+  },
+  mcp: Object.assign(baseClient.mcp, {
+    tools: mcpTools,
+  }) as typeof baseClient.mcp & {
+    tools: (options: { path: { name: string } }) => Promise<ApiResult<unknown>>
   },
   config: {
     get: baseClient.config.get.bind(baseClient.config),

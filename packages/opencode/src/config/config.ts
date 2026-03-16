@@ -1288,7 +1288,8 @@ export namespace Config {
   }
 
   export async function update(config: Info) {
-    const filepath = path.join(Instance.directory, "config.json")
+    const files = ["opencode.json", "opencode.jsonc"].map((file) => path.join(Instance.directory, file))
+    const filepath = files.find((file) => existsSync(file)) ?? files[0]
     const existing = await loadFile(filepath)
     await Filesystem.writeJson(filepath, mergeDeep(existing, config))
     await Instance.dispose()
