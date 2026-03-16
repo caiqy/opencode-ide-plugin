@@ -14,6 +14,7 @@ import { tmpdir } from "../fixture/fixture"
 import type { Agent } from "../../src/agent/agent"
 import type { MessageV2 } from "../../src/session/message-v2"
 import { SessionID, MessageID } from "../../src/session/schema"
+import { createEventResponse } from "../fixture/sse"
 
 describe("session.llm.hasToolCalls", () => {
   test("returns false for empty messages array", () => {
@@ -201,28 +202,6 @@ async function loadFixture(providerID: string, modelID: string) {
   return { provider, model }
 }
 
-function createEventStream(chunks: unknown[], includeDone = false) {
-  const lines = chunks.map((chunk) => `data: ${typeof chunk === "string" ? chunk : JSON.stringify(chunk)}`)
-  if (includeDone) {
-    lines.push("data: [DONE]")
-  }
-  const payload = lines.join("\n\n") + "\n\n"
-  const encoder = new TextEncoder()
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(encoder.encode(payload))
-      controller.close()
-    },
-  })
-}
-
-function createEventResponse(chunks: unknown[], includeDone = false) {
-  return new Response(createEventStream(chunks, includeDone), {
-    status: 200,
-    headers: { "Content-Type": "text/event-stream" },
-  })
-}
-
 describe("session.llm.stream", () => {
   test("sends temperature, tokens, and reasoning options for openai-compatible models", async () => {
     const server = state.server
@@ -230,8 +209,8 @@ describe("session.llm.stream", () => {
       throw new Error("Server not initialized")
     }
 
-    const providerID = "alibaba"
-    const modelID = "qwen-plus"
+    const providerID = ProviderID.make("alibaba")
+    const modelID = ModelID.make("qwen-plus")
     const fixture = await loadFixture(providerID, modelID)
     const provider = fixture.provider
     const model = fixture.model
@@ -332,8 +311,8 @@ describe("session.llm.stream", () => {
       throw new Error("Server not initialized")
     }
 
-    const providerID = "alibaba"
-    const modelID = "qwen-plus"
+    const providerID = ProviderID.make("alibaba")
+    const modelID = ModelID.make("qwen-plus")
     const fixture = await loadFixture(providerID, modelID)
     const model = fixture.model
 
@@ -368,8 +347,8 @@ describe("session.llm.stream", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const resolved = await Provider.getModel(providerID, model.id)
-        const sessionID = "session-test-tools"
+        const resolved = await Provider.getModel(providerID, ModelID.make(model.id))
+        const sessionID = SessionID.make("session-test-tools")
         const agent = {
           name: "test",
           mode: "primary",
@@ -378,7 +357,7 @@ describe("session.llm.stream", () => {
         } satisfies Agent.Info
 
         const user = {
-          id: "user-tools",
+          id: MessageID.make("user-tools"),
           sessionID,
           role: "user",
           time: { created: Date.now() },

@@ -29,6 +29,9 @@ jobs:
       - name: Set up Bun
         uses: ./.github/actions/setup-bun
 
+      - name: Replay gate before release
+        run: bun --cwd packages/opencode run test:anthropic:replay
+
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:

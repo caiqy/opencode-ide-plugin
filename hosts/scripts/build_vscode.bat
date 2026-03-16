@@ -124,6 +124,10 @@ if "%SKIP_BINARIES%"=="false" (
             ) else (
                 call hosts\scripts\build_opencode.bat
             )
+            if errorlevel 1 (
+                echo [ERROR] Backend binary build failed.
+                exit /b 1
+            )
         ) else (
             echo [ERROR] Backend build script not found at hosts\scripts\build_opencode.bat
             exit /b 1
@@ -182,9 +186,28 @@ set "TIMESTAMP=%YEAR%%MONTH%%DAY%-%HOUR%%MINUTE%"
 
 echo [INFO] Checking for required binaries...
 set "MISSING_BINARIES=false"
+set "SINGLE_ARCH=amd64"
+set "BUN_ARCH="
+for /f %%A in ('bun -e "process.stdout.write(process.arch)" 2^>nul') do set "BUN_ARCH=%%A"
+if /I "%BUN_ARCH%"=="arm64" set "SINGLE_ARCH=arm64"
+if /I "%BUN_ARCH%"=="x64" set "SINGLE_ARCH=amd64"
+if "%BUN_ARCH%"=="" (
+    if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "SINGLE_ARCH=arm64"
+    if /I "%PROCESSOR_ARCHITEW6432%"=="ARM64" set "SINGLE_ARCH=arm64"
+)
 if "%SINGLE_PLATFORM%"=="true" (
-    if not exist "resources\bin\windows\amd64\opencode.exe" (
-        echo [WARN] Missing binary: resources\bin\windows\amd64\opencode.exe
+    if not exist "resources\bin\windows\%SINGLE_ARCH%\opencode.exe" (
+        echo [WARN] Missing binary: resources\bin\windows\%SINGLE_ARCH%\opencode.exe
+        if /I "%SINGLE_ARCH%"=="amd64" (
+            if exist "resources\bin\windows\arm64\opencode.exe" (
+                echo [INFO] Found windows\arm64 binary. Possible shell/runtime arch mismatch.
+            )
+        )
+        if /I "%SINGLE_ARCH%"=="arm64" (
+            if exist "resources\bin\windows\amd64\opencode.exe" (
+                echo [INFO] Found windows\amd64 binary. Possible shell/runtime arch mismatch.
+            )
+        )
         set "MISSING_BINARIES=true"
     )
 ) else (
@@ -210,11 +233,21 @@ if "%SINGLE_PLATFORM%"=="true" (
     )
 )
 if "%MISSING_BINARIES%"=="true" (
-    if "%SINGLE_PLATFORM%"=="true" (
-        echo [WARN] Current-platform binary is missing. The extension may not run on this machine.
+    if "%SKIP_BINARIES%"=="false" (
+        if "%SINGLE_PLATFORM%"=="true" (
+            echo [ERROR] Current-platform binary is missing. Packaging aborted.
+        ) else (
+            echo [ERROR] Some binaries are missing. Packaging aborted.
+            echo [ERROR] Run 'hosts\scripts\build_opencode.bat' from the repository root and retry.
+        )
+        exit /b 1
     ) else (
-        echo [WARN] Some binaries are missing. The extension may not work on all platforms.
-        echo [WARN] Run 'hosts\scripts\build_opencode.bat' from the repository root to build all binaries.
+        if "%SINGLE_PLATFORM%"=="true" (
+            echo [WARN] Current-platform binary is missing. The extension may not run on this machine.
+        ) else (
+            echo [WARN] Some binaries are missing. The extension may not work on all platforms.
+            echo [WARN] Run 'hosts\scripts\build_opencode.bat' from the repository root to build all binaries.
+        )
     )
 )
 

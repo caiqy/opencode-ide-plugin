@@ -106,6 +106,77 @@ export namespace Provider {
     })
   }
 
+  function normalizeAnthropic(res: Response) {
+    if (!res.body) return res
+    if (!res.headers.get("content-type")?.includes("text/event-stream")) return res
+
+    const fix = (event: string) => {
+      const lines = event.split(/\r?\n/)
+      const out = lines
+        .map((line) => {
+          if (!line.startsWith("data: ")) return line
+          const raw = line.slice(6)
+          let json: unknown
+          try {
+            json = JSON.parse(raw)
+          } catch {
+            return line
+          }
+
+          if (!json || typeof json !== "object") return line
+          const rec = json as Record<string, unknown>
+
+          if (rec.type !== "content_block_start") return line
+          if (!rec.content_block || typeof rec.content_block !== "object") return line
+
+          const block = rec.content_block as Record<string, unknown>
+          if (block.type !== "text") return line
+          if (typeof block.text === "string") return line
+
+          return `data: ${JSON.stringify({
+            ...rec,
+            content_block: {
+              ...block,
+              text: "",
+            },
+          })}`
+        })
+        .filter((line) => line.length > 0)
+
+      return out.join("\n")
+    }
+
+    let buf = ""
+    const body = res.body
+      .pipeThrough(new TextDecoderStream())
+      .pipeThrough(
+        new TransformStream<string, string>({
+          transform(chunk, ctrl) {
+            buf += chunk
+            const parts = buf.split(/\r?\n\r?\n/)
+            buf = parts.pop() ?? ""
+            for (const part of parts) {
+              const fixed = fix(part)
+              if (fixed.length > 0) ctrl.enqueue(`${fixed}\n\n`)
+            }
+          },
+          flush(ctrl) {
+            if (buf.length > 0) {
+              const fixed = fix(buf)
+              if (fixed.length > 0) ctrl.enqueue(fixed)
+            }
+          },
+        }),
+      )
+      .pipeThrough(new TextEncoderStream())
+
+    return new Response(body, {
+      headers: new Headers(res.headers),
+      status: res.status,
+      statusText: res.statusText,
+    })
+  }
+
   const BUNDLED_PROVIDERS: Record<string, (options: any) => SDK> = {
     "@ai-sdk/amazon-bedrock": createAmazonBedrock,
     "@ai-sdk/anthropic": createAnthropic,
@@ -1227,8 +1298,10 @@ export namespace Provider {
           timeout: false,
         })
 
-        if (!chunkAbortCtl) return res
-        return wrapSSE(res, chunkTimeout, chunkAbortCtl)
+        const out = model.api.npm === "@ai-sdk/anthropic" ? normalizeAnthropic(res) : res
+
+        if (!chunkAbortCtl) return out
+        return wrapSSE(out, chunkTimeout, chunkAbortCtl)
       }
 
       const bundledFn = BUNDLED_PROVIDERS[model.api.npm]

@@ -631,9 +631,10 @@ export function fromAnthropicChunk(chunk: string): CommonChunk | string {
   if (json.type === "content_block_start") {
     const cb = json.content_block
     if (cb?.type === "text") {
+      const text = typeof cb.text === "string" ? cb.text : ""
       out.choices.push({
         index: json.index ?? 0,
-        delta: { role: "assistant", content: "" },
+        delta: { role: "assistant", content: text },
         finish_reason: null,
       })
     } else if (cb?.type === "tool_use") {

@@ -48,6 +48,13 @@ jobs:
       - name: Run unit tests
         run: bun turbo test
 
+      # keep existing unit coverage; append anthropic compatibility gates
+      - name: Run anthropic contract tests
+        run: bun --cwd packages/console/app run test:anthropic
+
+      - name: Run anthropic replay tests
+        run: bun --cwd packages/opencode run test:anthropic:replay
+
   e2e:
     name: e2e (${{ matrix.settings.name }})
     needs: unit

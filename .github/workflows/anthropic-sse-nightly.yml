@@ -1,0 +1,30 @@
+name: anthropic-sse-nightly
+
+on:
+  schedule:
+    - cron: "15 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nightly:
+    name: nightly anthropic sse
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      # PR 仅阻断 contract/replay；nightly 额外阻断 mutation
+      - name: Run anthropic replay tests
+        run: bun --cwd packages/opencode run test:anthropic:replay
+
+      - name: Run anthropic mutation tests
+        run: bun --cwd packages/opencode run test:anthropic:mutation

@@ -1,0 +1,237 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
+import path from "path"
+import { tool, type ToolSet } from "ai"
+import z from "zod"
+import { LLM } from "../../src/session/llm"
+import { Instance } from "../../src/project/instance"
+import { Provider } from "../../src/provider/provider"
+import { ModelsDev } from "../../src/provider/models"
+import { ProviderID, ModelID } from "../../src/provider/schema"
+import { Filesystem } from "../../src/util/filesystem"
+import { tmpdir } from "../fixture/fixture"
+import { createEventResponse } from "../fixture/sse"
+import type { Agent } from "../../src/agent/agent"
+import type { MessageV2 } from "../../src/session/message-v2"
+import { SessionID, MessageID } from "../../src/session/schema"
+
+type Capture = {
+  url: URL
+  headers: Headers
+  body: Record<string, unknown>
+}
+
+const state = {
+  server: null as ReturnType<typeof Bun.serve> | null,
+  queue: [] as Array<{ path: string; response: Response; resolve: (value: Capture) => void }>,
+}
+
+function deferred<T>() {
+  const result = {} as { promise: Promise<T>; resolve: (value: T) => void }
+  result.promise = new Promise((resolve) => {
+    result.resolve = resolve
+  })
+  return result
+}
+
+function waitRequest(pathname: string, response: Response) {
+  const pending = deferred<Capture>()
+  state.queue.push({ path: pathname, response, resolve: pending.resolve })
+  return pending.promise
+}
+
+async function loadFixture(providerID: string, modelID: string) {
+  const fixturePath = path.join(import.meta.dir, "../tool/fixtures/models-api.json")
+  const data = await Filesystem.readJson<Record<string, ModelsDev.Provider>>(fixturePath)
+  const provider = data[providerID]
+  if (!provider) throw new Error(`Missing provider in fixture: ${providerID}`)
+  const model = provider.models[modelID]
+  if (!model) throw new Error(`Missing model in fixture: ${modelID}`)
+  return { provider, model }
+}
+
+async function loadChunks(name: string) {
+  const file = path.join(import.meta.dir, `../fixtures/anthropic-sse/${name}.jsonl`)
+  const text = await Bun.file(file).text()
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as unknown)
+    .map((chunk) => {
+      if (!chunk || typeof chunk !== "object") return chunk
+      const rec = chunk as Record<string, unknown>
+      if (typeof rec.type !== "string") return chunk
+      return {
+        event: rec.type,
+        data: chunk,
+      }
+    })
+}
+
+function countTypeErr(part: unknown) {
+  if (!part || typeof part !== "object") return 0
+  const rec = part as Record<string, unknown>
+  const t = rec.type
+  if (t !== "error") return 0
+  const err = rec.error
+  const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+  return msg.includes("AI_TypeValidationError") ? 1 : 0
+}
+
+async function run(name: string, tools: ToolSet = {}) {
+  const server = state.server
+  if (!server) throw new Error("Server not initialized")
+
+  const providerID = "anthropic"
+  const modelID = "claude-3-5-sonnet-20241022"
+  const fixture = await loadFixture(providerID, modelID)
+  const chunks = await loadChunks(name)
+  const request = waitRequest("/messages", createEventResponse(chunks))
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          enabled_providers: [providerID],
+          provider: {
+            [providerID]: {
+              options: {
+                apiKey: "test-anthropic-key",
+                baseURL: `${server.url.origin}/v1`,
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  return await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const resolved = await Provider.getModel(ProviderID.make(providerID), ModelID.make(fixture.model.id))
+      const sessionID = SessionID.make(`session-${name}`)
+      const agent = {
+        name: "test",
+        mode: "primary",
+        options: {},
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        temperature: 0.4,
+        topP: 0.9,
+      } satisfies Agent.Info
+
+      const user = {
+        id: MessageID.make(`user-${name}`),
+        sessionID,
+        role: "user",
+        time: { created: Date.now() },
+        agent: agent.name,
+        model: { providerID: ProviderID.make(providerID), modelID: resolved.id },
+      } satisfies MessageV2.User
+
+      const stream = await LLM.stream({
+        user,
+        sessionID,
+        model: resolved,
+        agent,
+        system: ["You are a helpful assistant."],
+        abort: new AbortController().signal,
+        messages: [{ role: "user", content: "Hello" }],
+        tools,
+      })
+
+      let done = false
+      let text = ""
+      let calls = 0
+      let input: unknown
+      let typeErrs = 0
+      let thrown = ""
+
+      try {
+        for await (const part of stream.fullStream) {
+          typeErrs += countTypeErr(part)
+          if (!part || typeof part !== "object") continue
+          const rec = part as Record<string, unknown>
+          const t = rec.type
+          if (t === "text-delta" && typeof rec.text === "string") text += rec.text
+          if (typeof t === "string" && t.includes("tool-call")) {
+            calls += 1
+            if (input === undefined) input = rec.input
+          }
+        }
+        done = true
+      } catch (err) {
+        thrown = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+        if (thrown.includes("AI_TypeValidationError")) typeErrs += 1
+      }
+
+      const capture = await request
+      expect(capture.url.pathname.endsWith("/messages")).toBe(true)
+
+      return { done, text, calls, input, typeErrs, thrown }
+    },
+  })
+}
+
+beforeAll(() => {
+  state.server = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const next = state.queue.shift()
+      if (!next) return new Response("unexpected request", { status: 500 })
+
+      const url = new URL(req.url)
+      const body = (await req.json()) as Record<string, unknown>
+      next.resolve({ url, headers: req.headers, body })
+
+      if (!url.pathname.endsWith(next.path)) return new Response("not found", { status: 404 })
+      return next.response
+    },
+  })
+})
+
+beforeEach(() => {
+  state.queue.length = 0
+})
+
+afterAll(() => {
+  state.server?.stop()
+})
+
+describe("session.llm.anthropic.replay", () => {
+  test("normal replay should finish with text output", async () => {
+    const out = await run("normal")
+    expect(out.typeErrs).toBe(0)
+    expect(out.thrown).toBe("")
+    expect(out.done).toBe(true)
+    expect(out.text).toBe("Hello")
+  })
+
+  test("missing-text replay should not throw AI_TypeValidationError", async () => {
+    const out = await run("missing-text")
+    expect(out.typeErrs).toBe(0)
+    expect(out.thrown).toBe("")
+    expect(out.done).toBe(true)
+    expect(out.text.includes("你好")).toBe(true)
+  })
+
+  test("tool-mixed replay should preserve tool calls", async () => {
+    const tools = {
+      question: tool({
+        description: "answer question",
+        inputSchema: z.object({ q: z.string() }),
+        execute: async () => "ok",
+      }),
+    } satisfies ToolSet
+
+    const out = await run("tool-mixed", tools)
+    expect(out.typeErrs).toBe(0)
+    expect(out.thrown).toBe("")
+    expect(out.done).toBe(true)
+    expect(out.calls > 0).toBe(true)
+    const q = out.input && typeof out.input === "object" ? (out.input as Record<string, unknown>).q : undefined
+    expect(q).toBe("hi")
+  })
+})
