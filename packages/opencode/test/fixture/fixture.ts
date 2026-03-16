@@ -3,11 +3,31 @@ import * as fs from "fs/promises"
 import os from "os"
 import path from "path"
 import type { Config } from "../../src/config/config"
-import { cleanupTestDir } from "./cleanup"
 
 // Strip null bytes from paths (defensive fix for CI environment issues)
 function sanitizePath(p: string): string {
   return p.replace(/\0/g, "")
+}
+
+function exists(dir: string) {
+  return fs
+    .stat(dir)
+    .then(() => true)
+    .catch(() => false)
+}
+
+function clean(dir: string) {
+  return fs.rm(dir, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  })
+}
+
+async function stop(dir: string) {
+  if (!(await exists(dir))) return
+  await $`git fsmonitor--daemon stop`.cwd(dir).quiet().nothrow()
 }
 
 type TmpDirOptions<T> = {
@@ -21,6 +41,9 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
   await fs.mkdir(dirpath, { recursive: true })
   if (options?.git) {
     await $`git init`.cwd(dirpath).quiet()
+    await $`git config core.fsmonitor false`.cwd(dirpath).quiet()
+    await $`git config user.email "test@opencode.test"`.cwd(dirpath).quiet()
+    await $`git config user.name "Test"`.cwd(dirpath).quiet()
     await $`git commit --allow-empty -m "root commit ${dirpath}"`.cwd(dirpath).quiet()
   }
   if (options?.config) {
@@ -32,12 +55,16 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
       }),
     )
   }
-  const extra = await options?.init?.(dirpath)
   const realpath = sanitizePath(await fs.realpath(dirpath))
+  const extra = await options?.init?.(realpath)
   const result = {
     [Symbol.asyncDispose]: async () => {
-      await options?.dispose?.(dirpath)
-      await cleanupTestDir(realpath)
+      try {
+        await options?.dispose?.(realpath)
+      } finally {
+        if (options?.git) await stop(realpath).catch(() => undefined)
+        await clean(realpath).catch(() => undefined)
+      }
     },
     path: realpath,
     extra: extra as T,

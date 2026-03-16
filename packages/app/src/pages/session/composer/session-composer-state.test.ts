@@ -1,43 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { PermissionRequest, QuestionRequest, Session } from "@opencode-ai/sdk/v2/client"
-import { composerLocked, sessionLoading } from "./session-composer-loading"
+import { todoState } from "./session-composer-state"
 import { sessionPermissionRequest, sessionQuestionRequest } from "./session-request-tree"
-
-describe("sessionLoading", () => {
-  test("returns false without session id", () => {
-    expect(sessionLoading(undefined, {}, false, false)).toBe(false)
-  })
-
-  test("returns true before first load starts", () => {
-    expect(sessionLoading("ses_1", {}, false, false)).toBe(true)
-  })
-
-  test("returns true while load is in flight", () => {
-    expect(sessionLoading("ses_1", {}, true, true)).toBe(true)
-  })
-
-  test("returns false when session messages exist", () => {
-    expect(sessionLoading("ses_1", { ses_1: [] }, false, true)).toBe(false)
-  })
-
-  test("returns false after load fails and settles", () => {
-    expect(sessionLoading("ses_1", {}, false, true)).toBe(false)
-  })
-})
-
-describe("composerLocked", () => {
-  test("returns true when blocked", () => {
-    expect(composerLocked(true, false)).toBe(true)
-  })
-
-  test("returns true when loading", () => {
-    expect(composerLocked(false, true)).toBe(true)
-  })
-
-  test("returns false only when interactive", () => {
-    expect(composerLocked(false, false)).toBe(false)
-  })
-})
 
 const session = (input: { id: string; parentID?: string }) =>
   ({
@@ -138,5 +102,27 @@ describe("sessionQuestionRequest", () => {
     }
 
     expect(sessionQuestionRequest(sessions, questions, "root")?.id).toBe("q-grand")
+  })
+})
+
+describe("todoState", () => {
+  test("hides when there are no todos", () => {
+    expect(todoState({ count: 0, done: false, live: true })).toBe("hide")
+  })
+
+  test("opens while the session is still working", () => {
+    expect(todoState({ count: 2, done: false, live: true })).toBe("open")
+  })
+
+  test("closes completed todos after a running turn", () => {
+    expect(todoState({ count: 2, done: true, live: true })).toBe("close")
+  })
+
+  test("clears stale todos when the turn ends", () => {
+    expect(todoState({ count: 2, done: false, live: false })).toBe("clear")
+  })
+
+  test("clears completed todos when the session is no longer live", () => {
+    expect(todoState({ count: 2, done: true, live: false })).toBe("clear")
   })
 })

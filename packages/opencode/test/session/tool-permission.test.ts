@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import { PermissionNext } from "../../src/permission/next"
+import { MessageID, SessionID } from "../../src/session/schema"
 import { buildToolPermissionAsk } from "../../src/session/tool-permission"
 
 describe("session tool permission payload", () => {
   test("buildToolPermissionAsk 包含 tool messageID/callID 绑定", () => {
     const ruleset = PermissionNext.fromConfig({ glob: "ask" })
     const payload = buildToolPermissionAsk({
-      sessionID: "session_1",
-      messageID: "message_1",
+      sessionID: SessionID.make("session_1"),
+      messageID: MessageID.make("message_1"),
       callID: "call_1",
       ruleset,
       req: {
@@ -19,7 +20,7 @@ describe("session tool permission payload", () => {
     })
 
     expect(payload.tool).toEqual({
-      messageID: "message_1",
+      messageID: MessageID.make("message_1"),
       callID: "call_1",
     })
   })
@@ -27,8 +28,8 @@ describe("session tool permission payload", () => {
   test("buildToolPermissionAsk 保留原权限请求字段", () => {
     const ruleset = PermissionNext.fromConfig({ edit: "ask" })
     const payload = buildToolPermissionAsk({
-      sessionID: "session_2",
-      messageID: "message_2",
+      sessionID: SessionID.make("session_2"),
+      messageID: MessageID.make("message_2"),
       callID: "call_2",
       ruleset,
       req: {
@@ -39,7 +40,7 @@ describe("session tool permission payload", () => {
       },
     })
 
-    expect(payload.sessionID).toBe("session_2")
+    expect(payload.sessionID).toBe(SessionID.make("session_2"))
     expect(payload.ruleset).toBe(ruleset)
     expect(payload.permission).toBe("edit")
     expect(payload.patterns).toEqual(["/tmp/a.ts"])

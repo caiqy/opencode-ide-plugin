@@ -1,64 +1,19 @@
 #!/usr/bin/env bun
 
-import solidPlugin from "./solid-plugin"
-import path from "path"
 import { $ } from "bun"
+import fs from "fs"
+import path from "path"
 import { fileURLToPath } from "url"
-import { createRequire } from "module"
+import solidPlugin from "@opentui/solid/bun-plugin"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const require = createRequire(import.meta.url)
 const dir = path.resolve(__dirname, "..")
 
 process.chdir(dir)
 
-import pkg from "../package.json"
 import { Script } from "@opencode-ai/script"
-import fs from "fs/promises"
-import nodefs from "fs"
-import { installs, targets as pick } from "./targets"
-
-await $`bun run build:webgui`
-
-const webGuiDir = path.join(dir, "webgui-dist")
-const embedOutput = path.join(dir, "src/webgui/embed.generated.ts")
-
-async function listWebGuiFiles(current: string) {
-  const entries = await fs.readdir(current, { withFileTypes: true })
-  const files: { path: string; data: string }[] = []
-  for (const entry of entries) {
-    const absolute = path.join(current, entry.name)
-    if (entry.isDirectory()) {
-      const nested = await listWebGuiFiles(absolute)
-      files.push(...nested)
-      continue
-    }
-    const relative = path.relative(webGuiDir, absolute).split(path.sep).join("/")
-    const file = Bun.file(absolute)
-    const buffer = Buffer.from(await file.arrayBuffer())
-    files.push({ path: relative, data: buffer.toString("base64") })
-  }
-  return files
-}
-
-async function generateEmbeddedWebGui() {
-  const indexFile = Bun.file(path.join(webGuiDir, "index.html"))
-  if (!(await indexFile.exists())) {
-    await Bun.write(embedOutput, "export const embeddedWebGui = [] as const\n")
-    return
-  }
-  const items = await listWebGuiFiles(webGuiDir)
-  const lines = [
-    "export const embeddedWebGui = [",
-    ...items.map((item) => `  { path: ${JSON.stringify(item.path)}, data: ${JSON.stringify(item.data)} },`),
-    "] as const",
-    "",
-  ]
-  await Bun.write(embedOutput, lines.join("\n"))
-}
-
-await generateEmbeddedWebGui()
+import pkg from "../package.json"
 
 const modelsUrl = process.env.OPENCODE_MODELS_URL || "https://models.dev"
 // Fetch and generate models.dev snapshot
@@ -72,7 +27,11 @@ await Bun.write(
 console.log("Generated models-snapshot.ts")
 
 // Load migrations from migration directories
-const migrationDirs = (await fs.readdir(path.join(dir, "migration"), { withFileTypes: true }))
+const migrationDirs = (
+  await fs.promises.readdir(path.join(dir, "migration"), {
+    withFileTypes: true,
+  })
+)
   .filter((entry) => entry.isDirectory() && /^\d{4}\d{2}\d{2}\d{2}\d{2}\d{2}/.test(entry.name))
   .map((entry) => entry.name)
   .sort()
@@ -92,22 +51,105 @@ const migrations = await Promise.all(
           Number(match[6]),
         )
       : 0
-    return { sql, timestamp }
+    return { sql, timestamp, name }
   }),
 )
 console.log(`Loaded ${migrations.length} migrations`)
 
+const singleFlag = process.argv.includes("--single")
+const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
-const targets = pick(process.argv)
 
-await fs.rm("dist", { recursive: true, force: true })
+const allTargets: {
+  os: string
+  arch: "arm64" | "x64"
+  abi?: "musl"
+  avx2?: false
+}[] = [
+  {
+    os: "linux",
+    arch: "arm64",
+  },
+  {
+    os: "linux",
+    arch: "x64",
+  },
+  {
+    os: "linux",
+    arch: "x64",
+    avx2: false,
+  },
+  {
+    os: "linux",
+    arch: "arm64",
+    abi: "musl",
+  },
+  {
+    os: "linux",
+    arch: "x64",
+    abi: "musl",
+  },
+  {
+    os: "linux",
+    arch: "x64",
+    abi: "musl",
+    avx2: false,
+  },
+  {
+    os: "darwin",
+    arch: "arm64",
+  },
+  {
+    os: "darwin",
+    arch: "x64",
+  },
+  {
+    os: "darwin",
+    arch: "x64",
+    avx2: false,
+  },
+  {
+    os: "win32",
+    arch: "arm64",
+  },
+  {
+    os: "win32",
+    arch: "x64",
+  },
+  {
+    os: "win32",
+    arch: "x64",
+    avx2: false,
+  },
+]
+
+const targets = singleFlag
+  ? allTargets.filter((item) => {
+      if (item.os !== process.platform || item.arch !== process.arch) {
+        return false
+      }
+
+      // When building for the current platform, prefer a single native binary by default.
+      // Baseline binaries require additional Bun artifacts and can be flaky to download.
+      if (item.avx2 === false) {
+        return baselineFlag
+      }
+
+      // also skip abi-specific builds for the same reason
+      if (item.abi !== undefined) {
+        return false
+      }
+
+      return true
+    })
+  : allTargets
+
+await $`rm -rf dist`
 
 const binaries: Record<string, string> = {}
 if (!skipInstall) {
-  for (const item of installs(targets)) {
-    await $`bun install --os=${item.os} --cpu=${item.arch} @opentui/core@${pkg.dependencies["@opentui/core"]}`
-    await $`bun install --os=${item.os} --cpu=${item.arch} @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
-  }
+  await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]}`
+  await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
 }
 for (const item of targets) {
   const name = [
@@ -121,10 +163,11 @@ for (const item of targets) {
     .filter(Boolean)
     .join("-")
   console.log(`building ${name}`)
-  await fs.mkdir(`dist/${name}/bin`, { recursive: true })
+  await $`mkdir -p dist/${name}/bin`
 
-  const opentuiCoreEntry = require.resolve("@opentui/core")
-  const parserWorker = nodefs.realpathSync(path.join(path.dirname(opentuiCoreEntry), "parser.worker.js"))
+  const localPath = path.resolve(dir, "node_modules/@opentui/core/parser.worker.js")
+  const rootPath = path.resolve(dir, "../../node_modules/@opentui/core/parser.worker.js")
+  const parserWorker = fs.realpathSync(fs.existsSync(localPath) ? localPath : rootPath)
   const workerPath = "./src/cli/cmd/tui/worker.ts"
 
   // Use platform-specific bunfs root path based on target OS
@@ -135,7 +178,6 @@ for (const item of targets) {
     conditions: ["browser"],
     tsconfig: "./tsconfig.json",
     plugins: [solidPlugin],
-    sourcemap: "external",
     compile: {
       autoloadBunfig: false,
       autoloadDotenv: false,
@@ -157,7 +199,7 @@ for (const item of targets) {
     },
   })
 
-  await fs.rm(`./dist/${name}/bin/tui`, { recursive: true, force: true })
+  await $`rm -rf ./dist/${name}/bin/tui`
   await Bun.file(`dist/${name}/package.json`).write(
     JSON.stringify(
       {

@@ -18,7 +18,7 @@ afterEach(async () => {
 
 describe("webgui app route", () => {
   test("serves embedded index from /app", async () => {
-    const response = await Server.App().request("/app")
+    const response = await Server.createApp({}).request("/app")
     const text = await response.text()
     const expected = decoded("index.html").toString("utf8")
 
@@ -31,7 +31,7 @@ describe("webgui app route", () => {
     const assetPath = embeddedWebGui.find((item) => item.path.endsWith(".js"))?.path
     if (!assetPath) throw new Error("Missing embedded js asset")
 
-    const response = await Server.App().request(`/app/${assetPath}`)
+    const response = await Server.createApp({}).request(`/app/${assetPath}`)
     const text = await response.text()
     const expected = decoded(assetPath).toString("utf8")
 

@@ -1,6 +1,5 @@
 import { MessageV2 } from "./message-v2"
 import { Log } from "@/util/log"
-import { Identifier } from "@/id/id"
 import { Session } from "."
 import { Agent } from "@/agent/agent"
 import { Snapshot } from "@/snapshot"
@@ -15,7 +14,8 @@ import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
-import { buildToolPermissionAsk } from "./tool-permission"
+import { PartID } from "./schema"
+import type { SessionID, MessageID } from "./schema"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -26,7 +26,7 @@ export namespace SessionProcessor {
 
   export function create(input: {
     assistantMessage: MessageV2.Assistant
-    sessionID: string
+    sessionID: SessionID
     model: Provider.Model
     abort: AbortSignal
   }) {
@@ -65,7 +65,7 @@ export namespace SessionProcessor {
                     continue
                   }
                   const reasoningPart = {
-                    id: Identifier.ascending("part"),
+                    id: PartID.ascending(),
                     messageID: input.assistantMessage.id,
                     sessionID: input.assistantMessage.sessionID,
                     type: "reasoning" as const,
@@ -111,7 +111,7 @@ export namespace SessionProcessor {
 
                 case "tool-input-start":
                   const part = await Session.updatePart({
-                    id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
+                    id: toolcalls[value.id]?.id ?? PartID.ascending(),
                     messageID: input.assistantMessage.id,
                     sessionID: input.assistantMessage.sessionID,
                     type: "tool",
@@ -163,23 +163,17 @@ export namespace SessionProcessor {
                       )
                     ) {
                       const agent = await Agent.get(input.assistantMessage.agent)
-                      await PermissionNext.ask(
-                        buildToolPermissionAsk({
-                          sessionID: input.assistantMessage.sessionID,
-                          messageID: input.assistantMessage.id,
-                          callID: match.callID,
-                          ruleset: agent.permission,
-                          req: {
-                            permission: "doom_loop",
-                            patterns: [value.toolName],
-                            metadata: {
-                              tool: value.toolName,
-                              input: value.input,
-                            },
-                            always: [value.toolName],
-                          },
-                        }),
-                      )
+                      await PermissionNext.ask({
+                        permission: "doom_loop",
+                        patterns: [value.toolName],
+                        sessionID: input.assistantMessage.sessionID,
+                        metadata: {
+                          tool: value.toolName,
+                          input: value.input,
+                        },
+                        always: [value.toolName],
+                        ruleset: agent.permission,
+                      })
                     }
                   }
                   break
@@ -240,7 +234,7 @@ export namespace SessionProcessor {
                 case "start-step":
                   snapshot = await Snapshot.track()
                   await Session.updatePart({
-                    id: Identifier.ascending("part"),
+                    id: PartID.ascending(),
                     messageID: input.assistantMessage.id,
                     sessionID: input.sessionID,
                     snapshot,
@@ -258,7 +252,7 @@ export namespace SessionProcessor {
                   input.assistantMessage.cost += usage.cost
                   input.assistantMessage.tokens = usage.tokens
                   await Session.updatePart({
-                    id: Identifier.ascending("part"),
+                    id: PartID.ascending(),
                     reason: value.finishReason,
                     snapshot: await Snapshot.track(),
                     messageID: input.assistantMessage.id,
@@ -272,7 +266,7 @@ export namespace SessionProcessor {
                     const patch = await Snapshot.patch(snapshot)
                     if (patch.files.length) {
                       await Session.updatePart({
-                        id: Identifier.ascending("part"),
+                        id: PartID.ascending(),
                         messageID: input.assistantMessage.id,
                         sessionID: input.sessionID,
                         type: "patch",
@@ -296,7 +290,7 @@ export namespace SessionProcessor {
 
                 case "text-start":
                   currentText = {
-                    id: Identifier.ascending("part"),
+                    id: PartID.ascending(),
                     messageID: input.assistantMessage.id,
                     sessionID: input.assistantMessage.sessionID,
                     type: "text",
@@ -363,18 +357,12 @@ export namespace SessionProcessor {
               stack: JSON.stringify(e.stack),
             })
             const error = MessageV2.fromError(e, { providerID: input.model.providerID })
-            const overflow = MessageV2.ContextOverflowError.isInstance(error)
-            const compact = overflow && !needsCompaction && input.assistantMessage.mode !== "compaction"
-            if (overflow) {
-              if (compact) needsCompaction = true
-              input.assistantMessage.error = error
+            if (MessageV2.ContextOverflowError.isInstance(error)) {
+              needsCompaction = true
               Bus.publish(Session.Event.Error, {
                 sessionID: input.sessionID,
                 error,
               })
-              if (!compact) {
-                SessionStatus.set(input.sessionID, { type: "idle" })
-              }
             } else {
               const retry = SessionRetry.retryable(error)
               if (retry !== undefined) {
@@ -401,7 +389,7 @@ export namespace SessionProcessor {
             const patch = await Snapshot.patch(snapshot)
             if (patch.files.length) {
               await Session.updatePart({
-                id: Identifier.ascending("part"),
+                id: PartID.ascending(),
                 messageID: input.assistantMessage.id,
                 sessionID: input.sessionID,
                 type: "patch",
