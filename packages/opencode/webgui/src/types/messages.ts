@@ -56,7 +56,21 @@ export interface QuestionRequestPart {
   request: QuestionRequest
 }
 
-export type WebguiPart = Part | SessionErrorPart | QuestionRequestPart
+export type TaskResultParsed = {
+  hasTag: boolean
+  hasContent: boolean
+  text: string
+}
+
+export type WebguiToolPart = Extract<Part, { type: "tool" }> & {
+  parsed?: {
+    task_result?: TaskResultParsed
+  }
+}
+
+type NonToolPart = Exclude<Part, { type: "tool" }>
+
+export type WebguiPart = NonToolPart | WebguiToolPart | SessionErrorPart | QuestionRequestPart
 
 // SDK's Message is the discriminated union (UserMessage | AssistantMessage)
 // Webgui structure wraps this with parts array

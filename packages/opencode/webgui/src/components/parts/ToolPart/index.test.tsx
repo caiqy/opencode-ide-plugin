@@ -167,6 +167,99 @@ describe("ToolPart", () => {
     expect(screen.getByText("委派子任务：Demo Task [ 2 工具调用 / 已完成 ]")).toBeInTheDocument()
   })
 
+  it("task 工具仅渲染 task_result 标签内 Markdown", () => {
+    const part = {
+      id: "p10",
+      type: "tool",
+      callID: "c10",
+      tool: "task",
+      state: {
+        status: "completed",
+        output: "task_id: s1\n<task_result># 标题\n- a</task_result>",
+      },
+      parsed: {
+        task_result: {
+          hasTag: true,
+          hasContent: true,
+          text: "# 标题\n- a",
+        },
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("标题")).toBeInTheDocument()
+    expect(screen.getByText("a")).toBeInTheDocument()
+    expect(screen.queryByText(/task_id:/)).not.toBeInTheDocument()
+  })
+
+  it("task 在 parsed 缺失时使用 output 兜底解析", () => {
+    const part = {
+      id: "p13",
+      type: "tool",
+      callID: "c13",
+      tool: "task",
+      state: {
+        status: "completed",
+        output: "task_id: x\n<task_result>fallback</task_result>",
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("fallback")).toBeInTheDocument()
+    expect(screen.queryByText(/task_id:/)).not.toBeInTheDocument()
+    expect(screen.queryByText("无可展示内容")).not.toBeInTheDocument()
+  })
+
+  it("task_result 缺失或空内容时显示空状态", () => {
+    const part = {
+      id: "p11",
+      type: "tool",
+      callID: "c11",
+      tool: "task",
+      state: {
+        status: "completed",
+        output: "task_id: s1",
+      },
+      parsed: {
+        task_result: {
+          hasTag: false,
+          hasContent: false,
+          text: "",
+        },
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("无可展示内容")).toBeInTheDocument()
+    expect(screen.queryByText(/task_id:/)).not.toBeInTheDocument()
+  })
+
+  it("task 处于 running/pending 时不展示空状态", () => {
+    const part = {
+      id: "p12",
+      type: "tool",
+      callID: "c12",
+      tool: "task",
+      state: {
+        status: "running",
+      },
+      parsed: {
+        task_result: {
+          hasTag: false,
+          hasContent: false,
+          text: "",
+        },
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.queryByText("无可展示内容")).not.toBeInTheDocument()
+  })
+
   it("read 文件输出包含 type 文本片段时仍显示行号范围", () => {
     const part = {
       id: "p5",

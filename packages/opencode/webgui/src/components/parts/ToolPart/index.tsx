@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react"
+import type { TaskResultParsed } from "../../../types/messages"
 import { DiffModal } from "../../DiffModal"
 import { IconButton } from "../../common"
 import { useMessages } from "../../../state/MessagesContext"
@@ -12,7 +13,9 @@ import { EditTool } from "./EditTool"
 import { TodoTool } from "./TodoTool"
 import { GenericOutput } from "./GenericOutput"
 import { ErrorDisplay } from "./ErrorDisplay"
+import { TaskTool } from "./TaskTool"
 import { getToolDisplayName, getBorderColor, getToolLabel } from "./utils"
+import { parseTaskResult } from "../../../lib/task-result"
 
 interface ToolPartProps {
   part: {
@@ -31,6 +34,9 @@ interface ToolPartProps {
         start: number
         end?: number
       }
+    }
+    parsed?: {
+      task_result?: TaskResultParsed
     }
   }
   sessionID?: string
@@ -177,9 +183,23 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
       return <TodoTool output={part.state.output!} />
     }
 
+    if (part.tool === "task") return null
+
     // Generic output for all other tools
     return <GenericOutput output={part.state.output!} />
   }
+
+  const parsed =
+    part.tool === "task" && part.state.status === "completed"
+      ? (part.parsed?.task_result ?? parseTaskResult(typeof part.state.output === "string" ? part.state.output : ""))
+      : null
+
+  const task = parsed
+    ? {
+        empty: parsed.hasContent !== true,
+        text: parsed.text,
+      }
+    : null
 
   // apply_patch: show patch content from current schema (patchText), fallback to legacy field (patch)
   const applyPatchContent =
@@ -293,6 +313,8 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
       {/* Expanded content */}
       {shouldShowExpandedContent && (
         <div className={`${expandedBorder} bg-gray-50 dark:bg-gray-950 break-words [overflow-wrap:anywhere]`}>
+          {task ? <TaskTool text={task.text} empty={task.empty} /> : null}
+
           {/* Output/Result (bash, todo, generic — not read/edit/write/apply_patch) */}
           {renderOutput()}
 

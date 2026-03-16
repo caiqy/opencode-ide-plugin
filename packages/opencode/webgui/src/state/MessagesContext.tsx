@@ -19,6 +19,7 @@ import * as Store from "../lib/messagesStore"
 import { sdk } from "../lib/api/sdkClient"
 import { useSession } from "./SessionContext"
 import { reloadPath } from "../lib/ideBridge"
+import { adaptPart } from "../lib/task-part"
 
 // Re-export types for convenience
 export type { Message, Part, WebguiPart, SDKMessage, QuestionRequest, QuestionRequestPart } from "../types/messages"
@@ -111,6 +112,19 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const setSessionIdle = session.setSessionIdle
   const reasoningPartsBySessionRef = useRef<Map<string, Set<string>>>(new Map())
 
+  const normalizePart = useCallback((part: WebguiPart): WebguiPart => {
+    if (part.type !== "tool") return part
+    return adaptPart(part)
+  }, [])
+
+  const normalizeMsg = useCallback(
+    (msg: Message): Message => ({
+      ...msg,
+      parts: msg.parts.map((part) => normalizePart(part)),
+    }),
+    [normalizePart],
+  )
+
   const updateReasoningFromPart = useCallback(
     (part: Extract<Part, { type: "reasoning" }>) => {
       const sessionID = part.sessionID
@@ -175,9 +189,12 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   )
 
   // Add or update a message
-  const addMessage = useCallback((message: Message) => {
-    setMessages((prev) => Store.upsertMessage(prev, message))
-  }, [])
+  const addMessage = useCallback(
+    (message: Message) => {
+      setMessages((prev) => Store.upsertMessage(prev, normalizeMsg(message)))
+    },
+    [normalizeMsg],
+  )
 
   // Add an error message for a session (synthetic message)
   const addSessionError = useCallback((sessionID: string, error: unknown) => {
@@ -257,14 +274,35 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   }, [])
 
   // Add a part to a message
-  const addPart = useCallback((messageID: string, part: WebguiPart) => {
-    setMessages((prev) => Store.upsertPart(prev, messageID, part))
-  }, [])
+  const addPart = useCallback(
+    (messageID: string, part: WebguiPart) => {
+      setMessages((prev) => Store.upsertPart(prev, messageID, normalizePart(part)))
+    },
+    [normalizePart],
+  )
 
   // Update a specific part in a message
-  const updatePart = useCallback((messageID: string, partID: string, update: Partial<WebguiPart>) => {
-    setMessages((prev) => Store.updatePart(prev, messageID, partID, update))
-  }, [])
+  const updatePart = useCallback(
+    (messageID: string, partID: string, update: Partial<WebguiPart>) => {
+      setMessages((prev) => {
+        const next = Store.updatePart(prev, messageID, partID, update)
+        const mi = next.findIndex((msg) => msg.info.id === messageID)
+        if (mi < 0) return next
+        const msg = next[mi]
+        const pi = msg.parts.findIndex((part) => part.id === partID)
+        if (pi < 0) return next
+        const part = msg.parts[pi]
+        const row = normalizePart(part)
+        if (row === part) return next
+        const list = [...next]
+        const parts = [...msg.parts]
+        parts[pi] = row
+        list[mi] = { ...msg, parts }
+        return list
+      })
+    },
+    [normalizePart],
+  )
 
   // Remove a part from a message
   const removePart = useCallback((messageID: string, partID: string) => {
@@ -502,7 +540,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
           return null
         }
 
-        const loadedMessages = (response.data ?? []) as unknown as Message[]
+        const loadedMessages = ((response.data ?? []) as unknown as Message[]).map((msg) => normalizeMsg(msg))
         console.log("[MessagesContext] Messages loaded:", loadedMessages.length)
         // SDK response is already in the correct format: Array<{ info: Message, parts: Array<Part> }>
         // Cast needed because sdk.session.messages returns non-v2 types, but they're structurally identical
@@ -560,7 +598,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         return null
       }
     },
-    [setSessionIdle, syncSessionReasoningFromMessages],
+    [normalizeMsg, setSessionIdle, syncSessionReasoningFromMessages],
   )
 
   // Permission events
