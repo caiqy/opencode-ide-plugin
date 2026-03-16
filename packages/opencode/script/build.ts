@@ -56,6 +56,44 @@ const migrations = await Promise.all(
 )
 console.log(`Loaded ${migrations.length} migrations`)
 
+const gui = path.join(dir, "webgui")
+const out = path.join(dir, "webgui-dist")
+const emb = path.join(dir, "src/webgui/embed.generated.ts")
+
+console.log("Building webgui...")
+await $`bun run --cwd ${gui} build`
+
+const walk = async (root: string): Promise<string[]> => {
+  const list = await fs.promises.readdir(root, { withFileTypes: true })
+  const next = await Promise.all(
+    list.map(async (item) => {
+      const file = path.join(root, item.name)
+      if (item.isDirectory()) return walk(file)
+      return [file]
+    }),
+  )
+  return next.flat()
+}
+
+const rows = await Promise.all(
+  (await walk(out)).sort().map(async (file) => {
+    const rel = path.relative(out, file).replaceAll("\\", "/")
+    const data = Buffer.from(await Bun.file(file).arrayBuffer()).toString("base64")
+    return { rel, data }
+  }),
+)
+
+await Bun.write(
+  emb,
+  [
+    "export const embeddedWebGui = [",
+    ...rows.map((item) => `  { path: ${JSON.stringify(item.rel)}, data: ${JSON.stringify(item.data)} },`),
+    "] as const",
+    "",
+  ].join("\n"),
+)
+console.log(`Embedded ${rows.length} webgui files`)
+
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
