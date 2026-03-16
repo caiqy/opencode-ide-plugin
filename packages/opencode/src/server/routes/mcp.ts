@@ -273,5 +273,72 @@ export const McpRoutes = lazy(() =>
         await MCP.disconnect(name)
         return c.json(true)
       },
+    )
+    .patch(
+      "/:name/enabled",
+      describeRoute({
+        description: "Set MCP server enabled state with persistence",
+        operationId: "mcp.setEnabled",
+        responses: {
+          200: {
+            description: "MCP server enabled state updated",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator("param", z.object({ name: z.string() })),
+      validator("json", z.object({ enabled: z.boolean() })),
+      async (c) => {
+        const { name } = c.req.valid("param")
+        const { enabled } = c.req.valid("json")
+        // Guard: verify server exists in config before acting
+        const mcpStatus = await MCP.status()
+        if (!(name in mcpStatus)) {
+          return c.json({ error: `MCP server not found: ${name}` }, 404)
+        }
+        await MCP.setEnabled(name, enabled)
+        return c.json(true)
+      },
+    )
+    .patch(
+      "/:name/tools/:toolId",
+      describeRoute({
+        description: "Set a single MCP tool enabled state with persistence",
+        operationId: "mcp.setToolEnabled",
+        responses: {
+          200: {
+            description: "MCP tool enabled state updated",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator("param", z.object({ name: z.string(), toolId: z.string() })),
+      validator("json", z.object({ enabled: z.boolean() })),
+      async (c) => {
+        const { name, toolId } = c.req.valid("param")
+        const { enabled } = c.req.valid("json")
+        // Guard: verify the toolId belongs to the named server.
+        // MCP.toolsByServer already exists at packages/opencode/src/mcp/index.ts
+        const serverTools = await MCP.toolsByServer(name)
+        if (!serverTools.connected) {
+          return c.json({ error: `MCP server not connected: ${name}` }, 404)
+        }
+        const toolExists = serverTools.tools.some((t) => t.id === toolId)
+        if (!toolExists) {
+          return c.json({ error: `Tool ${toolId} not found on server ${name}` }, 404)
+        }
+        await MCP.setToolEnabled(toolId, enabled)
+        return c.json(true)
+      },
     ),
 )
