@@ -196,6 +196,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
                         label={`切换 ${item.name}`}
                         checked={item.enabled}
                         disabled={item.disabled || data.mcpBusy[item.name] === true}
+                        loading={data.mcpBusy[item.name] === true}
                         onToggle={() => void data.toggleMcp(item.name)}
                       />
                     </div>
@@ -209,23 +210,19 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
                             className="ml-3 flex items-center justify-between gap-2 border-l border-gray-200 pl-2 dark:border-gray-800"
                           >
                             <span className="text-[11px] text-gray-600 dark:text-gray-300">{tool.name}</span>
-                            <div className="flex items-center gap-2">
-                              {busy ? (
-                                <span className="text-[11px] text-blue-600 dark:text-blue-400">更新中...</span>
-                              ) : null}
-                              <Switch
-                                label={`切换 ${tool.name}`}
-                                checked={tool.enabled}
-                                disabled={busy}
-                                onToggle={() => {
-                                  void (async () => {
-                                    const ok = await data.toggleTool(item.name, tool.id, !tool.enabled)
-                                    if (!ok) return
-                                    save()
-                                  })()
-                                }}
-                              />
-                            </div>
+                            <Switch
+                              label={`切换 ${tool.name}`}
+                              checked={tool.enabled}
+                              disabled={busy}
+                              loading={busy}
+                              onToggle={() => {
+                                void (async () => {
+                                  const ok = await data.toggleTool(item.name, tool.id, !tool.enabled)
+                                  if (!ok) return
+                                  save()
+                                })()
+                              }}
+                            />
                           </div>
                         )
                       })
@@ -297,7 +294,13 @@ function StateBox(props: {
   return null
 }
 
-function Switch(props: { label: string; checked: boolean; disabled?: boolean; onToggle: () => void }) {
+function Switch(props: {
+  label: string
+  checked: boolean
+  disabled?: boolean
+  loading?: boolean
+  onToggle: () => void
+}) {
   return (
     <button
       type="button"
@@ -308,10 +311,19 @@ function Switch(props: { label: string; checked: boolean; disabled?: boolean; on
       className={`flex h-5 w-9 items-center rounded-full p-[2px] transition ${props.checked ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-700"} disabled:cursor-not-allowed disabled:opacity-60`}
       onClick={props.onToggle}
     >
-      <span
-        aria-hidden="true"
-        className={`h-4 w-4 rounded-full bg-white transition ${props.checked ? "translate-x-4" : "translate-x-0"}`}
-      />
+      {props.loading ? (
+        <span
+          aria-hidden="true"
+          className={`h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin transition ${
+            props.checked ? "translate-x-4" : "translate-x-0"
+          }`}
+        />
+      ) : (
+        <span
+          aria-hidden="true"
+          className={`h-4 w-4 rounded-full bg-white transition ${props.checked ? "translate-x-4" : "translate-x-0"}`}
+        />
+      )}
     </button>
   )
 }

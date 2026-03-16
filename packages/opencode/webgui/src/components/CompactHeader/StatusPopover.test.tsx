@@ -384,7 +384,7 @@ describe("CompactHeader/StatusPopover", () => {
     expect(screen.getByText(/需要认证/)).toBeInTheDocument()
   })
 
-  it("MCP tool busy 只禁用当前 tool 开关并展示 loading", async () => {
+  it("MCP tool busy 只禁用当前 tool 开关并展示 spinner", async () => {
     const user = userEvent.setup()
     const view = data()
     view.mcpToolBusy = { alpha: { "alpha.read": true } }
@@ -394,9 +394,37 @@ describe("CompactHeader/StatusPopover", () => {
 
     await user.click(screen.getByRole("tab", { name: "MCP" }))
     await user.click(screen.getByRole("button", { name: "展开工具 alpha" }))
-    expect(screen.getByRole("switch", { name: "切换 alpha.read" })).toBeDisabled()
-    expect(screen.getByRole("switch", { name: "切换 alpha.write" })).toBeEnabled()
-    expect(screen.getByText("更新中...")).toBeInTheDocument()
+
+    const busySwitch = screen.getByRole("switch", { name: "切换 alpha.read" })
+    const idleSwitch = screen.getByRole("switch", { name: "切换 alpha.write" })
+
+    expect(busySwitch).toBeDisabled()
+    expect(idleSwitch).toBeEnabled()
+
+    const spinner = busySwitch.querySelector(".animate-spin")
+    expect(spinner).toBeInTheDocument()
+
+    const idleKnob = idleSwitch.querySelector(".animate-spin")
+    expect(idleKnob).not.toBeInTheDocument()
+
+    expect(screen.queryByText("更新中...")).not.toBeInTheDocument()
+  })
+
+  it("MCP server busy 只禁用当前 server 开关并展示 spinner", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.mcpBusy = { alpha: true }
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "MCP" }))
+
+    const sw = screen.getByRole("switch", { name: "切换 alpha" })
+    expect(sw).toBeDisabled()
+
+    const spinner = sw.querySelector(".animate-spin")
+    expect(spinner).toBeInTheDocument()
   })
 
   it("MCP 工具列表默认收起并可展开收起", async () => {
