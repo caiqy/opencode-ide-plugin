@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   mcpTools: vi.fn(),
   mcpConnect: vi.fn(),
   mcpDisconnect: vi.fn(),
+  mcpSetEnabled: vi.fn(),
+  mcpSetToolEnabled: vi.fn(),
   lspStatus: vi.fn(),
   configGet: vi.fn(),
   configUpdate: vi.fn(),
@@ -25,6 +27,8 @@ vi.mock("../../lib/api/sdkClient", () => ({
       tools: (...args: unknown[]) => mocks.mcpTools(...args),
       connect: (...args: unknown[]) => mocks.mcpConnect(...args),
       disconnect: (...args: unknown[]) => mocks.mcpDisconnect(...args),
+      setEnabled: (...args: unknown[]) => mocks.mcpSetEnabled(...args),
+      setToolEnabled: (...args: unknown[]) => mocks.mcpSetToolEnabled(...args),
     },
     lsp: {
       status: (...args: unknown[]) => mocks.lspStatus(...args),
@@ -91,6 +95,8 @@ describe("CompactHeader/useStatusPopoverData", () => {
     mocks.mcpTools.mockReset()
     mocks.mcpConnect.mockReset()
     mocks.mcpDisconnect.mockReset()
+    mocks.mcpSetEnabled.mockReset()
+    mocks.mcpSetToolEnabled.mockReset()
     mocks.lspStatus.mockReset()
     mocks.configGet.mockReset()
     mocks.configUpdate.mockReset()
@@ -120,6 +126,8 @@ describe("CompactHeader/useStatusPopoverData", () => {
     )
     mocks.mcpConnect.mockResolvedValue(ok({}))
     mocks.mcpDisconnect.mockResolvedValue(ok({}))
+    mocks.mcpSetEnabled.mockResolvedValue(ok({}))
+    mocks.mcpSetToolEnabled.mockResolvedValue(ok({}))
     mocks.lspStatus.mockResolvedValue(ok([{ id: "ts", name: "TypeScript", root: "D:/repo", status: "connected" }]))
     mocks.configGet.mockResolvedValue(ok({ plugin: ["foo", "bar"], tools: {} }))
     mocks.configUpdate.mockResolvedValue(ok({ plugin: ["foo", "bar"], tools: {} }))
@@ -318,7 +326,11 @@ describe("CompactHeader/useStatusPopoverData", () => {
       await view.result.current.toggleMcp("alpha")
     })
 
-    expect(mocks.mcpDisconnect).toHaveBeenCalledWith({ path: { name: "alpha" }, query: { directory: "D:/repo" } })
+    expect(mocks.mcpSetEnabled).toHaveBeenCalledWith({
+      path: { name: "alpha" },
+      body: { enabled: false },
+    })
+    expect(mocks.mcpDisconnect).not.toHaveBeenCalled()
     expect(mocks.mcpStatus).toHaveBeenCalledTimes(2)
     expect(view.result.current.mcp.data.alpha?.status).toBe("disabled")
   })
@@ -330,7 +342,7 @@ describe("CompactHeader/useStatusPopoverData", () => {
       expect(view.result.current.mcp.state).toBe("ready")
     })
 
-    mocks.mcpDisconnect.mockRejectedValueOnce(new Error("toggle boom"))
+    mocks.mcpSetEnabled.mockRejectedValueOnce(new Error("toggle boom"))
 
     await act(async () => {
       await view.result.current.toggleMcp("alpha")
@@ -347,7 +359,7 @@ describe("CompactHeader/useStatusPopoverData", () => {
       expect(view.result.current.mcp.state).toBe("ready")
     })
 
-    mocks.mcpDisconnect.mockResolvedValueOnce(fail("toggle error"))
+    mocks.mcpSetEnabled.mockResolvedValueOnce(fail("toggle error"))
 
     await act(async () => {
       await view.result.current.toggleMcp("alpha")
@@ -378,7 +390,7 @@ describe("CompactHeader/useStatusPopoverData", () => {
       }),
     )
     const gate = deferred<ReturnType<typeof ok>>()
-    mocks.configUpdate.mockImplementationOnce(() => gate.promise)
+    mocks.mcpSetToolEnabled.mockImplementationOnce(() => gate.promise)
     const view = hook(true)
 
     await waitFor(() => {
@@ -429,7 +441,7 @@ describe("CompactHeader/useStatusPopoverData", () => {
         }),
       )
     mocks.configGet.mockResolvedValue(ok({ plugin: ["foo", "bar"], tools: {} }))
-    mocks.configUpdate.mockResolvedValue(ok({ plugin: ["foo", "bar"], tools: { "alpha.read": false } }))
+    mocks.mcpSetToolEnabled.mockResolvedValue(ok({}))
     const view = hook(true)
 
     await waitFor(() => {
@@ -442,15 +454,11 @@ describe("CompactHeader/useStatusPopoverData", () => {
     })
 
     expect(res).toBe(true)
-    expect(mocks.configUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.objectContaining({
-          tools: expect.objectContaining({
-            "alpha.read": false,
-          }),
-        }),
-      }),
-    )
+    expect(mocks.mcpSetToolEnabled).toHaveBeenCalledWith({
+      path: { name: "alpha", toolId: "alpha.read" },
+      body: { enabled: false },
+    })
+    expect(mocks.configUpdate).not.toHaveBeenCalled()
     expect(mocks.mcpTools).toHaveBeenCalledTimes(2)
     expect(view.result.current.mcp.data.alpha?.tools?.[0]?.enabled).toBe(false)
   })
@@ -462,7 +470,7 @@ describe("CompactHeader/useStatusPopoverData", () => {
       expect(view.result.current.mcp.data.alpha?.tools?.[0]?.enabled).toBe(true)
     })
 
-    mocks.configUpdate.mockRejectedValueOnce(new Error("tool boom"))
+    mocks.mcpSetToolEnabled.mockRejectedValueOnce(new Error("tool boom"))
 
     let res = true
     await act(async () => {
@@ -530,7 +538,7 @@ describe("CompactHeader/useStatusPopoverData", () => {
       void view.result.current.toggleMcp("alpha")
     })
 
-    expect(mocks.mcpDisconnect).toHaveBeenCalledTimes(1)
+    expect(mocks.mcpSetEnabled).toHaveBeenCalledTimes(1)
 
     await act(async () => {
       gate.resolve(undefined)

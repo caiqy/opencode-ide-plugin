@@ -143,12 +143,9 @@ const useMcpToggle = (input: {
 
     try {
       const status = input.sync.data.mcp[name]
-      const enabled = status?.status !== "connected"
-      await fetch(`${input.sdk.url}/mcp/${encodeURIComponent(name)}/enabled`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-      })
+      await (status?.status === "connected"
+        ? input.sdk.client.mcp.disconnect({ name })
+        : input.sdk.client.mcp.connect({ name }))
       const result = await input.sdk.client.mcp.status()
       if (result.data) input.sync.set("mcp", result.data)
     } catch (err) {

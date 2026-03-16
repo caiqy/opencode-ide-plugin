@@ -5,7 +5,6 @@ import { DEFAULT_STATUS_TAB, STATUS_TABS, buildLspView, buildMcpView, buildPlugi
 import { useStatusPopoverData } from "./useStatusPopoverData"
 
 type Tab = (typeof STATUS_TABS)[number]["id"]
-const TOOL_HINT = "已保存，将在下一轮回复生效"
 
 interface StatusPopoverProps {
   open: boolean
@@ -27,10 +26,8 @@ function nextTab(tab: Tab, dir: 1 | -1) {
 
 export function StatusPopover({ open, connectionState, onClose, triggerRef }: StatusPopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
-  const tid = useRef<number | null>(null)
   const [tab, setTab] = useState<Tab>(DEFAULT_STATUS_TAB)
   const [show, setShow] = useState<Record<string, boolean>>({})
-  const [hint, setHint] = useState<string | null>(null)
   const data = useStatusPopoverData({ open, connectionState })
   const refs = triggerRef ? ([triggerRef] as unknown as RefObject<HTMLElement>[]) : []
 
@@ -68,22 +65,6 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
   }, [close, open])
-
-  useEffect(
-    () => () => {
-      if (tid.current !== null) window.clearTimeout(tid.current)
-    },
-    [],
-  )
-
-  const save = useCallback(() => {
-    setHint(TOOL_HINT)
-    if (tid.current !== null) window.clearTimeout(tid.current)
-    tid.current = window.setTimeout(() => {
-      setHint(null)
-      tid.current = null
-    }, 1800)
-  }, [])
 
   const servers = useMemo(() => buildServerView(data.servers), [data.servers])
   const mcp = useMemo(() => buildMcpView(data.mcp), [data.mcp])
@@ -159,7 +140,6 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
               </button>
             </div>
             <StateBox state={mcp.state} error={mcp.error} updatedAt={mcp.updatedAt} />
-            {hint ? <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{hint}</div> : null}
             {mcp.items.map((item) => {
               const on = show[item.name] === true
               return (
@@ -217,9 +197,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
                               loading={busy}
                               onToggle={() => {
                                 void (async () => {
-                                  const ok = await data.toggleTool(item.name, tool.id, !tool.enabled)
-                                  if (!ok) return
-                                  save()
+                                  await data.toggleTool(item.name, tool.id, !tool.enabled)
                                 })()
                               }}
                             />

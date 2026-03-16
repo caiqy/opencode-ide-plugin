@@ -3,6 +3,14 @@ import { sdk } from "./sdkClient"
 
 type Mcp = typeof sdk.mcp & {
   tools: (input: { path: { name: string } }) => Promise<{ data: unknown; error: { message: string } | null }>
+  setEnabled: (input: { path: { name: string }; body: { enabled: boolean } }) => Promise<{
+    data: unknown
+    error: { message: string } | null
+  }>
+  setToolEnabled: (input: {
+    path: { name: string; toolId: string }
+    body: { enabled: boolean }
+  }) => Promise<{ data: unknown; error: { message: string } | null }>
 }
 
 function url(input: unknown) {
@@ -69,5 +77,46 @@ describe("sdkClient mcp tools wrapper", () => {
 
     expect(res.data).toBeNull()
     expect(res.error).toEqual({ message: "boom" })
+  })
+
+  it("sdk.mcp.setEnabled 请求 PATCH /mcp/:name/enabled", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(true), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+
+    const api = sdk.mcp as Mcp
+    await api.setEnabled({ path: { name: "x" }, body: { enabled: false } })
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(url(fetch.mock.calls[0][0])).toContain("/mcp/x/enabled")
+    expect(fetch.mock.calls[0][1]).toMatchObject({
+      method: "PATCH",
+      body: JSON.stringify({ enabled: false }),
+    })
+  })
+
+  it("sdk.mcp.setToolEnabled 请求 PATCH /mcp/:name/tools/:toolId", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(true), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+
+    const api = sdk.mcp as Mcp
+    await api.setToolEnabled({
+      path: { name: "x", toolId: "x.read" },
+      body: { enabled: false },
+    })
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(url(fetch.mock.calls[0][0])).toContain("/mcp/x/tools/x.read")
+    expect(fetch.mock.calls[0][1]).toMatchObject({
+      method: "PATCH",
+      body: JSON.stringify({ enabled: false }),
+    })
   })
 })

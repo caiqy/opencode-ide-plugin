@@ -241,6 +241,18 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
     }
   }, [loadMcp])
 
+  const api = sdk.mcp as typeof sdk.mcp & {
+    tools: (input: { path: { name: string } }) => Promise<{ data: unknown; error: unknown }>
+    setEnabled: (input: {
+      path: { name: string }
+      body: { enabled: boolean }
+    }) => Promise<{ data: unknown; error: unknown }>
+    setToolEnabled: (input: {
+      path: { name: string; toolId: string }
+      body: { enabled: boolean }
+    }) => Promise<{ data: unknown; error: unknown }>
+  }
+
   const toggleTool = useCallback(
     async (name: string, tool: string, enabled: boolean) => {
       if (tlock.current[name]?.[tool]) return false
@@ -250,15 +262,9 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
       }
       setTBusy({ ...tlock.current })
       try {
-        const cfg = await sdk.config.get()
-        if (cfg.error || !cfg.data) throw cfg.error
-        const res = await sdk.config.update({
-          body: {
-            tools: {
-              ...(cfg.data.tools ?? {}),
-              [tool]: enabled,
-            },
-          },
+        const res = await api.setToolEnabled({
+          path: { name, toolId: tool },
+          body: { enabled },
         })
         if (res.error) throw res.error
         await refreshMcp()
@@ -277,7 +283,7 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
         setTBusy({ ...tlock.current })
       }
     },
-    [refreshMcp],
+    [api, refreshMcp],
   )
 
   const toggleMcp = useCallback(
@@ -286,12 +292,11 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
       if (status === "needs_auth" || status === "needs_client_registration" || lock.current[name]) return
       lock.current[name] = true
       setBusy({ ...lock.current })
-      const query = data.servers.data.directory ? { directory: data.servers.data.directory } : undefined
       try {
-        const res =
-          status === "connected"
-            ? await sdk.mcp.disconnect({ path: { name }, query })
-            : await sdk.mcp.connect({ path: { name }, query })
+        const res = await api.setEnabled({
+          path: { name },
+          body: { enabled: status !== "connected" },
+        })
         if (res.error) throw res.error
         await refreshMcp()
       } catch (err) {
@@ -304,7 +309,7 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
         setBusy({ ...lock.current })
       }
     },
-    [data.mcp.data, data.servers.data.directory, refreshMcp],
+    [api, data.mcp.data, refreshMcp],
   )
 
   const refreshAll = useCallback(async () => {

@@ -269,7 +269,7 @@ describe("CompactHeader/StatusPopover", () => {
     expect(view.toggleTool).toHaveBeenCalledWith("alpha", "alpha.read", false)
   })
 
-  it("MCP tool 切换成功后显示下一轮生效提示", async () => {
+  it("MCP tool 切换成功后不显示下一轮生效提示", async () => {
     const user = userEvent.setup()
     const view = data()
     view.toggleTool = vi.fn().mockResolvedValue(true)
@@ -281,7 +281,7 @@ describe("CompactHeader/StatusPopover", () => {
     await user.click(screen.getByRole("button", { name: "展开工具 alpha" }))
     await user.click(screen.getByRole("switch", { name: "切换 alpha.read" }))
 
-    expect(screen.getByText("已保存，将在下一轮回复生效")).toBeInTheDocument()
+    expect(screen.queryByText("已保存，将在下一轮回复生效")).not.toBeInTheDocument()
   })
 
   it("MCP tool 切换失败后不显示下一轮生效提示", async () => {

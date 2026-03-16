@@ -153,6 +153,65 @@ async function mcpTools(options: { path: { name: string } }): Promise<ApiResult<
   }
 }
 
+async function mcpSetEnabled(options: {
+  path: { name: string }
+  body: { enabled: boolean }
+}): Promise<ApiResult<unknown>> {
+  try {
+    const response = await fetch(`/mcp/${encodeURIComponent(options.path.name)}/enabled`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options.body),
+    })
+
+    if (!response.ok) {
+      return {
+        error: { message: "Failed to update MCP state" },
+        data: null,
+      }
+    }
+
+    const data = await response.json()
+    return { data, error: null }
+  } catch (error) {
+    return {
+      error: { message: error instanceof Error ? error.message : "Unknown error" },
+      data: null,
+    }
+  }
+}
+
+async function mcpSetToolEnabled(options: {
+  path: { name: string; toolId: string }
+  body: { enabled: boolean }
+}): Promise<ApiResult<unknown>> {
+  try {
+    const response = await fetch(
+      `/mcp/${encodeURIComponent(options.path.name)}/tools/${encodeURIComponent(options.path.toolId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options.body),
+      },
+    )
+
+    if (!response.ok) {
+      return {
+        error: { message: "Failed to update MCP tool" },
+        data: null,
+      }
+    }
+
+    const data = await response.json()
+    return { data, error: null }
+  } catch (error) {
+    return {
+      error: { message: error instanceof Error ? error.message : "Unknown error" },
+      data: null,
+    }
+  }
+}
+
 /**
  * Extended SDK client with state management methods
  * TODO: Remove once SDK is regenerated with Stainless
@@ -212,8 +271,15 @@ export const sdk = {
   },
   mcp: Object.assign(baseClient.mcp, {
     tools: mcpTools,
+    setEnabled: mcpSetEnabled,
+    setToolEnabled: mcpSetToolEnabled,
   }) as typeof baseClient.mcp & {
     tools: (options: { path: { name: string } }) => Promise<ApiResult<unknown>>
+    setEnabled: (options: { path: { name: string }; body: { enabled: boolean } }) => Promise<ApiResult<unknown>>
+    setToolEnabled: (options: {
+      path: { name: string; toolId: string }
+      body: { enabled: boolean }
+    }) => Promise<ApiResult<unknown>>
   },
   config: {
     get: baseClient.config.get.bind(baseClient.config),

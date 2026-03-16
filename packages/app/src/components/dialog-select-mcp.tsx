@@ -29,13 +29,12 @@ export const DialogSelectMcp: Component = () => {
     if (loading()) return
     setLoading(name)
     try {
-      const currentStatus = sync.data.mcp[name]
-      const enabled = currentStatus?.status !== "connected"
-      await fetch(`${sdk.url}/mcp/${encodeURIComponent(name)}/enabled`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-      })
+      const status = sync.data.mcp[name]
+      if (status?.status === "connected") {
+        await sdk.client.mcp.disconnect({ name })
+      } else {
+        await sdk.client.mcp.connect({ name })
+      }
 
       const result = await sdk.client.mcp.status()
       if (result.data) sync.set("mcp", result.data)
