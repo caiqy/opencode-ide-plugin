@@ -612,6 +612,46 @@ export namespace MCP {
     s.status[name] = { status: "disabled" }
   }
 
+  /**
+   * Toggle an MCP server on/off with persistence.
+   * Validates the server exists in config, then writes the `enabled` field
+   * to the project config file without triggering Instance.dispose().
+   * Then connects or disconnects the client in memory.
+   */
+  export async function setEnabled(name: string, enabled: boolean): Promise<void> {
+    // Guard: ensure server is defined in config before writing
+    const cfg = await Config.get()
+    const mcpConfig = cfg.mcp?.[name]
+    if (!mcpConfig || !isMcpConfigured(mcpConfig)) {
+      log.error("setEnabled: MCP server not found in config", { name })
+      return
+    }
+
+    // 1. Persist to config file (no Instance.dispose())
+    await Config.patchProjectField(["mcp", name, "enabled"], enabled)
+
+    // 2. Update in-memory connection state
+    if (enabled) {
+      await connect(name)
+    } else {
+      await disconnect(name)
+    }
+  }
+
+  /**
+   * Toggle a single MCP tool on/off with persistence.
+   * Uses an in-memory overlay so Config.get() immediately reflects the change,
+   * and also writes through to the project config file for persistence.
+   * Does NOT trigger Instance.dispose().
+   */
+  export async function setToolEnabled(toolId: string, enabled: boolean): Promise<void> {
+    // 1. Update in-memory overlay so Config.get() returns correct value immediately
+    Config.setToolsOverlay(Instance.directory, toolId, enabled)
+
+    // 2. Persist to config file (no Instance.dispose())
+    await Config.patchProjectField(["tools", toolId], enabled)
+  }
+
   export async function tools() {
     const result: Record<string, Tool> = {}
     const s = await state()
