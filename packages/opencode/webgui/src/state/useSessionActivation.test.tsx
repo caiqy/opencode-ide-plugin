@@ -39,18 +39,22 @@ vi.mock("../lib/ideBridge", () => {
 import { sdk } from "../lib/api/sdkClient"
 import { ideBridge } from "../lib/ideBridge"
 import { MessagesProvider } from "./MessagesContext"
+import { useMessages } from "./MessagesContext"
 import { SessionProvider, useSession } from "./SessionContext"
 import { useSessionActivation } from "./useSessionActivation"
 
 let sessionApi: ReturnType<typeof useSession> | null = null
+let messagesApi: ReturnType<typeof useMessages> | null = null
+let activate: ((sessionID?: string | null) => Promise<void>) | null = null
 
 function Capture() {
   sessionApi = useSession()
+  messagesApi = useMessages()
   return null
 }
 
 function ActivationHarness() {
-  useSessionActivation()
+  activate = useSessionActivation()
   return null
 }
 
@@ -72,7 +76,9 @@ function deferred<T>() {
 
 describe("useSessionActivation", () => {
   beforeEach(() => {
+    activate = null
     sessionApi = null
+    messagesApi = null
     localStorage.clear()
     vi.resetAllMocks()
     ;(ideBridge.isInstalled as any).mockReturnValue(false)
@@ -177,6 +183,302 @@ describe("useSessionActivation", () => {
     expect(sdk.session.messages).toHaveBeenCalledTimes(1)
   })
 
+  it("最近一页没有 user 消息时会继续向前加载，直到恢复最后一次 user 选择", async () => {
+    const older = deferred<any>()
+
+    ;(sdk.session.messages as any)
+      .mockResolvedValueOnce({
+        error: null,
+        data: Array.from({ length: 50 }, (_, i) => ({
+          info: {
+            id: `a${i + 1}`,
+            sessionID: "s1",
+            role: "assistant",
+            time: { created: i + 2 },
+          },
+          parts: [],
+        })),
+        response: {
+          headers: new Headers({ "X-Next-Cursor": "c1" }),
+        },
+      })
+      .mockReturnValueOnce(older.promise)
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sdk.session.messages).toHaveBeenNthCalledWith(1, { path: { id: "s1" }, query: { limit: 50 } })
+      expect(sdk.session.messages).toHaveBeenNthCalledWith(2, {
+        path: { id: "s1" },
+        query: { before: "c1", limit: 50 },
+      })
+    })
+
+    expect(messagesApi!.getSessionPagination("s1").olderLoading).toBe(false)
+    expect(messagesApi!.getSessionPagination("s1").complete).toBe(false)
+    expect(messagesApi!.getMessagesBySession("s1").some((m) => m.info.id === "u0")).toBe(false)
+
+    older.resolve({
+      error: null,
+      data: [
+        {
+          info: {
+            id: "u0",
+            sessionID: "s1",
+            role: "user",
+            time: { created: 1 },
+            agent: "plan",
+            model: { providerID: "anthropic", modelID: "claude-4-sonnet" },
+            variant: "high",
+          },
+          parts: [],
+        },
+      ],
+      response: {
+        headers: new Headers(),
+      },
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.currentSession?.id).toBe("s1")
+      expect(sessionApi!.selectedAgent).toBe("plan")
+      expect(sessionApi!.selectedProviderId).toBe("anthropic")
+      expect(sessionApi!.selectedModelId).toBe("claude-4-sonnet")
+      expect(sessionApi!.selectedVariant).toBe("high")
+    })
+
+    expect(messagesApi!.getSessionPagination("s1").olderLoading).toBe(false)
+    expect(messagesApi!.getSessionPagination("s1").complete).toBe(false)
+    expect(messagesApi!.getMessagesBySession("s1").some((m) => m.info.id === "u0")).toBe(false)
+  })
+
+  it("older 页与前页重复但 cursor 前进时仍会继续扫描，直到找到更早的 user selection", async () => {
+    ;(sdk.session.messages as any)
+      .mockResolvedValueOnce({
+        error: null,
+        data: Array.from({ length: 50 }, (_, i) => ({
+          info: {
+            id: `a${i + 1}`,
+            sessionID: "s1",
+            role: "assistant",
+            time: { created: i + 2 },
+          },
+          parts: [],
+        })),
+        response: {
+          headers: new Headers({ "X-Next-Cursor": "c1" }),
+        },
+      })
+      .mockResolvedValueOnce({
+        error: null,
+        // 服务端可能重叠返回：与上一页完全重复，但 cursor 仍会向前推进
+        data: Array.from({ length: 50 }, (_, i) => ({
+          info: {
+            id: `a${i + 1}`,
+            sessionID: "s1",
+            role: "assistant",
+            time: { created: i + 2 },
+          },
+          parts: [],
+        })),
+        response: {
+          headers: new Headers({ "X-Next-Cursor": "c2" }),
+        },
+      })
+      .mockResolvedValueOnce({
+        error: null,
+        data: [
+          {
+            info: {
+              id: "u0",
+              sessionID: "s1",
+              role: "user",
+              time: { created: 1 },
+              agent: "plan",
+              model: { providerID: "anthropic", modelID: "claude-4-sonnet" },
+              variant: "high",
+            },
+            parts: [],
+          },
+        ],
+        response: {
+          headers: new Headers(),
+        },
+      })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(messagesApi).toBeTruthy()
+      expect(activate).toBeTruthy()
+    })
+
+    await act(async () => {
+      await activate!("s1")
+    })
+
+    expect(sdk.session.messages).toHaveBeenNthCalledWith(1, { path: { id: "s1" }, query: { limit: 50 } })
+    expect(sdk.session.messages).toHaveBeenNthCalledWith(2, { path: { id: "s1" }, query: { before: "c1", limit: 50 } })
+    expect(sdk.session.messages).toHaveBeenNthCalledWith(3, { path: { id: "s1" }, query: { before: "c2", limit: 50 } })
+
+    expect(sessionApi!.selectedAgent).toBe("plan")
+    expect(sessionApi!.selectedProviderId).toBe("anthropic")
+    expect(sessionApi!.selectedModelId).toBe("claude-4-sonnet")
+    expect(sessionApi!.selectedVariant).toBe("high")
+
+    // 后台扫描不应污染 UI 历史分页状态，也不应把 older 页落到可见消息列表
+    expect(messagesApi!.getSessionPagination("s1").olderLoading).toBe(false)
+    expect(messagesApi!.getSessionPagination("s1").complete).toBe(false)
+    expect(messagesApi!.getMessagesBySession("s1").some((m) => m.info.id === "u0")).toBe(false)
+  })
+
+  it("后台扫描有最大页数上限，避免激活阶段无限请求", async () => {
+    const max = 10
+    ;(sdk.session.messages as any).mockImplementation(({ query }: { query: { before?: string; limit: number } }) => {
+      if (!query.before) {
+        return Promise.resolve({
+          error: null,
+          data: [
+            {
+              info: {
+                id: "a0",
+                sessionID: "s1",
+                role: "assistant",
+                time: { created: 100 },
+              },
+              parts: [],
+            },
+          ],
+          response: {
+            headers: new Headers({ "X-Next-Cursor": "c1" }),
+          },
+        })
+      }
+
+      const n = Number(String(query.before).slice(1))
+      if (n >= 30) {
+        return Promise.resolve({
+          error: null,
+          data: [],
+          response: {
+            headers: new Headers(),
+          },
+        })
+      }
+
+      return Promise.resolve({
+        error: null,
+        data: [
+          {
+            info: {
+              id: `o${n}`,
+              sessionID: "s1",
+              role: "assistant",
+              time: { created: 100 + n },
+            },
+            parts: [],
+          },
+        ],
+        response: {
+          headers: new Headers({ "X-Next-Cursor": `c${n + 1}` }),
+        },
+      })
+    })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(messagesApi).toBeTruthy()
+      expect(activate).toBeTruthy()
+    })
+
+    await act(async () => {
+      await activate!("s1")
+    })
+
+    // latest 1 次 + older 扫描最多 max 页
+    expect(sdk.session.messages).toHaveBeenCalledTimes(1 + max)
+    expect(messagesApi!.getSessionPagination("s1").olderLoading).toBe(false)
+  })
+
+  it("向前翻页恢复 selection 失败时保留当前选择并给出提示", async () => {
+    ;(sdk.session.messages as any)
+      .mockResolvedValueOnce({
+        error: null,
+        data: Array.from({ length: 50 }, (_, i) => ({
+          info: {
+            id: `a${i + 1}`,
+            sessionID: "s1",
+            role: "assistant",
+            time: { created: i + 2 },
+          },
+          parts: [],
+        })),
+        response: {
+          headers: new Headers({ "X-Next-Cursor": "c1" }),
+        },
+      })
+      .mockResolvedValueOnce({
+        error: { message: "boom" },
+      })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    await act(async () => {
+      await sessionApi!.setSelectedVariant("medium")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.selectedVariant).toBe("medium")
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.currentSession?.id).toBe("s1")
+      expect(sessionApi!.selectionSessionId).toBe("s1")
+      expect(sessionApi!.selectedVariant).toBe("medium")
+      expect(sessionApi!.selectionRestoreNotice).toContain("未能恢复")
+    })
+  })
+
   it("切到 s2 后 s1 的晚到响应不会覆盖当前选择", async () => {
     ;(sdk.session.list as any).mockResolvedValue({
       data: [
@@ -214,7 +516,7 @@ describe("useSessionActivation", () => {
     })
 
     await waitFor(() => {
-      expect(sdk.session.messages).toHaveBeenCalledWith({ path: { id: "s1" } })
+      expect(sdk.session.messages).toHaveBeenCalledWith({ path: { id: "s1" }, query: { limit: 50 } })
     })
 
     await act(async () => {
@@ -222,7 +524,7 @@ describe("useSessionActivation", () => {
     })
 
     await waitFor(() => {
-      expect(sdk.session.messages).toHaveBeenCalledWith({ path: { id: "s2" } })
+      expect(sdk.session.messages).toHaveBeenCalledWith({ path: { id: "s2" }, query: { limit: 50 } })
     })
 
     await act(async () => {
@@ -279,6 +581,203 @@ describe("useSessionActivation", () => {
       expect(sessionApi!.selectedProviderId).toBe("openai")
       expect(sessionApi!.selectedModelId).toBe("gpt-4.1")
       expect(sessionApi!.selectedVariant).toBe("medium")
+    })
+  })
+
+  it("首次激活失败后 retry 应恢复 selection", async () => {
+    ;(sdk.session.messages as any).mockResolvedValueOnce({ error: { message: "boom" } }).mockResolvedValueOnce({
+      error: null,
+      data: [
+        {
+          info: {
+            id: "u1",
+            sessionID: "s1",
+            role: "user",
+            time: { created: 1 },
+            agent: "plan",
+            model: { providerID: "anthropic", modelID: "claude-4-sonnet" },
+            variant: "high",
+          },
+          parts: [],
+        },
+      ],
+    })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(activate).toBeTruthy()
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sdk.session.messages).toHaveBeenCalledTimes(1)
+      expect(sessionApi!.currentSession?.id).toBe("s1")
+      expect(sessionApi!.selectedAgent).toBe("build")
+      expect(sessionApi!.selectedProviderId).toBe("openai")
+      expect(sessionApi!.selectedModelId).toBe("gpt-4.1")
+      expect(sessionApi!.selectedVariant).not.toBe("high")
+    })
+
+    await act(async () => {
+      await activate?.("s1")
+    })
+
+    await waitFor(() => {
+      expect(sdk.session.messages).toHaveBeenCalledTimes(2)
+      expect(sessionApi!.selectedAgent).toBe("plan")
+      expect(sessionApi!.selectedProviderId).toBe("anthropic")
+      expect(sessionApi!.selectedModelId).toBe("claude-4-sonnet")
+      expect(sessionApi!.selectedVariant).toBe("high")
+    })
+  })
+
+  it("没有可恢复 user 选择时也会结束当前会话的 selection pending", async () => {
+    ;(sdk.session.messages as any).mockResolvedValue({ error: null, data: [] })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.currentSession?.id).toBe("s1")
+      expect(sessionApi!.selectionSessionId).toBe("s1")
+    })
+  })
+
+  it("已有可见消息但 latest 拉取失败时，也会结束 selection pending 并给出提示", async () => {
+    ;(sdk.session.messages as any).mockResolvedValue({ error: { message: "boom" } })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(messagesApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    act(() => {
+      messagesApi!.addMessage({
+        info: {
+          id: "m1",
+          sessionID: "s1",
+          role: "assistant",
+          time: { created: 1 },
+        },
+        parts: [],
+      } as any)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.currentSession?.id).toBe("s1")
+      expect(sessionApi!.selectionSessionId).toBe("s1")
+      expect(sessionApi!.selectionRestoreNotice).toContain("未能恢复")
+    })
+  })
+
+  it("已有本地缓存的 user 选择时，latest 失败也会直接用缓存恢复", async () => {
+    ;(sdk.session.messages as any).mockResolvedValue({ error: { message: "boom" } })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(messagesApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    act(() => {
+      messagesApi!.addMessage({
+        info: {
+          id: "u-cache",
+          sessionID: "s1",
+          role: "user",
+          time: { created: 1 },
+          agent: "plan",
+          model: { providerID: "anthropic", modelID: "claude-4-sonnet" },
+          variant: "high",
+        },
+        parts: [],
+      } as any)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.currentSession?.id).toBe("s1")
+      expect(sessionApi!.selectionSessionId).toBe("s1")
+      expect(sessionApi!.selectedAgent).toBe("plan")
+      expect(sessionApi!.selectedProviderId).toBe("anthropic")
+      expect(sessionApi!.selectedModelId).toBe("claude-4-sonnet")
+      expect(sessionApi!.selectedVariant).toBe("high")
+      expect(sessionApi!.selectionRestoreNotice).toBeNull()
+    })
+  })
+
+  it("latest 失败且没有本地缓存时，也会结束 selection pending 并给出提示", async () => {
+    ;(sdk.session.messages as any).mockResolvedValue({ error: { message: "boom" } })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.currentSession?.id).toBe("s1")
+      expect(sessionApi!.selectionSessionId).toBe("s1")
+      expect(sessionApi!.selectionRestoreNotice).toContain("未能恢复")
     })
   })
 })

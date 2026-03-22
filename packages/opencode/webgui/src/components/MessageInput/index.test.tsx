@@ -1,3 +1,4 @@
+import { createRef } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { act, render, waitFor } from "@testing-library/react"
 import { prepareSession } from "../../App"
@@ -10,6 +11,8 @@ let lastEditorContentProps: any
 let lastQuickPhraseBarProps: any
 let rootText = ""
 let sessionIdle = true
+let selectionSessionId: string | null = null
+let currentSessionId: string | null = null
 const mocks = vi.hoisted(() => {
   return {
     insertPlainWithMentionsImpl: vi.fn(),
@@ -188,6 +191,7 @@ vi.mock("../../state/SessionContext", () => {
   return {
     useSession: () => ({
       isIdle: sessionIdle,
+      currentSession: currentSessionId ? { id: currentSessionId } : null,
       selectedProviderId: "openai",
       selectedModelId: "gpt-4.1",
       selectedAgent: "build",
@@ -195,6 +199,7 @@ vi.mock("../../state/SessionContext", () => {
       setSelectedAgent: vi.fn(),
       selectedVariant: undefined,
       setSelectedVariant: vi.fn(),
+      selectionSessionId,
     }),
   }
 })
@@ -252,6 +257,8 @@ const quick = {
 describe("MessageInput compact confirm", () => {
   beforeEach(() => {
     sessionIdle = true
+    selectionSessionId = null
+    currentSessionId = null
     lastEditorToolbarProps = null
     lastEditorContentProps = null
     lastQuickPhraseBarProps = null
@@ -525,6 +532,84 @@ describe("MessageInput compact confirm", () => {
       expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(expect.anything(), expect.anything(), "draft-b", {
         replace: true,
       })
+    })
+  })
+
+  it("切换会话时会先同步清空旧草稿，避免闪回上一会话内容", async () => {
+    let done: ((value: Record<string, string>) => void) | null = null
+    mocks.loadDrafts.mockImplementationOnce(async () => ({ s1: "draft-a" }))
+    mocks.loadDrafts.mockImplementationOnce(
+      async () =>
+        new Promise((resolve) => {
+          done = resolve
+        }),
+    )
+    mocks.insertPlainWithMentionsImpl.mockClear()
+
+    const { rerender } = render(<MessageInput sessionID="s1" />)
+
+    await waitFor(() => {
+      expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(expect.anything(), expect.anything(), "draft-a", {
+        replace: true,
+      })
+    })
+
+    mocks.insertPlainWithMentionsImpl.mockClear()
+    rerender(<MessageInput sessionID="s2" />)
+
+    expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(expect.anything(), expect.anything(), "", {
+      replace: true,
+    })
+
+    act(() => {
+      done?.({ s1: "draft-a" })
+    })
+  })
+
+  it("切换会话后若用户已输入，晚到草稿不会覆盖当前输入", async () => {
+    let done: ((value: Record<string, string>) => void) | null = null
+    mocks.loadDrafts.mockImplementationOnce(async () => ({ s1: "draft-a" }))
+    mocks.loadDrafts.mockImplementationOnce(
+      async () =>
+        new Promise((resolve) => {
+          done = resolve
+        }),
+    )
+    mocks.insertPlainWithMentionsImpl.mockClear()
+
+    const { rerender } = render(<MessageInput sessionID="s1" />)
+
+    await waitFor(() => {
+      expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(expect.anything(), expect.anything(), "draft-a", {
+        replace: true,
+      })
+    })
+
+    mocks.insertPlainWithMentionsImpl.mockClear()
+    rerender(<MessageInput sessionID="s2" />)
+
+    expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(expect.anything(), expect.anything(), "", {
+      replace: true,
+    })
+
+    mocks.insertPlainWithMentionsImpl.mockClear()
+    act(() => {
+      rootText = "fresh"
+      lastEditorContentProps.onEditorChange({
+        read: (run: () => void) => run(),
+      })
+    })
+
+    act(() => {
+      done?.({ s2: "old" })
+    })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mocks.insertPlainWithMentionsImpl).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), "old", {
+      replace: true,
     })
   })
 
@@ -806,5 +891,61 @@ describe("MessageInput compact confirm", () => {
       await Promise.resolve()
     })
     expect(lastQuickPhraseBarProps.items[0]?.title).toBe("新短语")
+  })
+
+  it("会话切换后 selection 尚未恢复时，工具栏进入占位态", async () => {
+    selectionSessionId = "s1"
+    currentSessionId = "s2"
+
+    render(<MessageInput sessionID="s2" />)
+
+    await waitFor(() => {
+      expect(lastEditorToolbarProps.selectionPending).toBe(true)
+    })
+  })
+
+  it("selection pending 期间会阻断输入与发送，避免沿用旧会话配置", async () => {
+    selectionSessionId = "s1"
+    currentSessionId = "s2"
+
+    render(<MessageInput sessionID="s2" />)
+
+    await waitFor(() => {
+      expect(lastEditorToolbarProps.selectionPending).toBe(true)
+      expect(lastEditorToolbarProps.isDisabled).toBe(true)
+      expect(lastEditorToolbarProps.isButtonDisabled).toBe(true)
+    })
+  })
+
+  it("selection pending 时，外部 insertPlainWithMentions 不会写入输入框", async () => {
+    selectionSessionId = "s1"
+    currentSessionId = "s2"
+    const ref = createRef<any>()
+
+    render(<MessageInput ref={ref} sessionID="s2" />)
+
+    await waitFor(() => {
+      expect(lastEditorToolbarProps.selectionPending).toBe(true)
+    })
+
+    mocks.insertPlainWithMentionsImpl.mockClear()
+    act(() => {
+      ref.current?.insertPlainWithMentions("from-outside")
+    })
+
+    expect(mocks.insertPlainWithMentionsImpl).not.toHaveBeenCalled()
+  })
+
+  it("首次激活会话且 selection 尚未恢复时，也会进入 pending", async () => {
+    selectionSessionId = null
+    currentSessionId = "s2"
+
+    render(<MessageInput sessionID="s2" />)
+
+    await waitFor(() => {
+      expect(lastEditorToolbarProps.selectionPending).toBe(true)
+      expect(lastEditorToolbarProps.isDisabled).toBe(true)
+      expect(lastEditorToolbarProps.isButtonDisabled).toBe(true)
+    })
   })
 })

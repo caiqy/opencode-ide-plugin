@@ -40,7 +40,10 @@ const CompactHeader = forwardRef<
     switchSession,
     updateSessionTitle,
     deleteSession,
+    hasMore,
     isLoading,
+    isLoadingMore,
+    loadMoreSessions,
   } = useSession()
   const tabStore = useTabStore()
   const toast = useToast()
@@ -389,7 +392,8 @@ const CompactHeader = forwardRef<
       }
       if (currentSession?.id !== tabStore.activeTab && !restoring) {
         const target = tabStore.activeTab
-        const targetMissing = sessionsEverLoaded.current && !isLoading && !sessions.some((s) => s.id === target)
+        const targetMissing =
+          sessionsEverLoaded.current && !isLoading && !hasMore && !sessions.some((s) => s.id === target)
         if (targetMissing) return
         setRestoring(true)
         void switchWithRollback(target, undefined, () => {
@@ -428,13 +432,13 @@ const CompactHeader = forwardRef<
   }, [currentSession?.id, tabStore.loaded, tabStore.activeTab, tabStore.openTabs, tabStore.openTab])
 
   useEffect(() => {
-    if (!tabStore.loaded || !sessionsEverLoaded.current || isLoading) return
+    if (!tabStore.loaded || !sessionsEverLoaded.current || isLoading || hasMore) return
     const ids = new Set(sessions.map((s) => s.id))
     if (currentSession?.id) {
       ids.add(currentSession.id)
     }
     tabStore.pruneTabs(ids)
-  }, [currentSession?.id, sessions, tabStore.loaded, tabStore.openTabs, tabStore.pruneTabs, isLoading])
+  }, [currentSession?.id, hasMore, sessions, tabStore.loaded, tabStore.openTabs, tabStore.pruneTabs, isLoading])
 
   return (
     <>
@@ -506,7 +510,9 @@ const CompactHeader = forwardRef<
             currentSessionId={currentSession?.id}
             filteredSessions={dropdown.filteredSessions}
             isDropdownOpen={dropdown.isDropdownOpen}
+            hasMore={hasMore}
             isSelectMode={dropdown.isSelectMode}
+            isLoadingMore={isLoadingMore}
             selectedSessions={dropdown.selectedSessions}
             selectedSessionIndex={dropdown.selectedSessionIndex}
             searchQuery={dropdown.searchQuery}
@@ -529,6 +535,7 @@ const CompactHeader = forwardRef<
             onBulkDeleteStart={handleBulkDeleteStart}
             onCheckboxChange={dropdown.handleSessionCheckboxChange}
             onKeyDown={(e) => dropdown.handleKeyDown(e, handleSessionSelect)}
+            onLoadMore={loadMoreSessions}
             onToggleShare={handleToggleShareSession}
           />
         </div>

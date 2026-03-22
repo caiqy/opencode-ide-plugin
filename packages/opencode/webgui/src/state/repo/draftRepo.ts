@@ -2,6 +2,8 @@ import { scopedStateGetJSON, scopedStateSetJSON } from "../scopedStorage"
 
 const draftsKey = "opencode:webgui:workspace:drafts:v1"
 const draftSessionKey = "opencode:webgui:workspace:draft_session:v1"
+let cache: Record<string, string> | null = null
+let dirty = false
 
 function map(input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {} as Record<string, string>
@@ -13,13 +15,41 @@ function map(input: unknown) {
   )
 }
 
+function same(a: Record<string, string>, b: Record<string, string>) {
+  const ak = Object.keys(a)
+  const bk = Object.keys(b)
+  if (ak.length !== bk.length) return false
+  return ak.every((key) => a[key] === b[key])
+}
+
+export function resetDraftRepoForTest() {
+  cache = null
+  dirty = false
+}
+
 export async function loadDrafts() {
-  const value = await scopedStateGetJSON<unknown>("workspace", draftsKey, {})
-  return map(value)
+  const next = map(await scopedStateGetJSON<unknown>("workspace", draftsKey, {}))
+  if (!dirty) {
+    cache = next
+    return next
+  }
+  if (!cache) {
+    cache = next
+    dirty = false
+    return next
+  }
+  if (same(cache, next)) {
+    dirty = false
+    return next
+  }
+  return cache
 }
 
 export async function saveDrafts(value: Record<string, string>) {
-  return scopedStateSetJSON("workspace", draftsKey, map(value))
+  const next = map(value)
+  cache = next
+  dirty = true
+  return scopedStateSetJSON("workspace", draftsKey, next)
 }
 
 export async function loadDraftSession() {

@@ -12,7 +12,8 @@ function isToolPart(part: WebguiPart): part is Extract<WebguiPart, { type: "tool
 
 export function SubtaskDrawer() {
   const { isOpen, sessionId, title, parent, closeSubtaskDrawer } = useSubtaskDrawer()
-  const { loadSessionMessages, getMessagesBySession } = useMessages()
+  const { ensureSession, getMessagesBySession, isSessionLoadError } = useMessages()
+  const [ready, setReady] = useState<{ key: string | null; done: boolean }>({ key: null, done: false })
 
   const toolStats = useMemo(() => {
     if (!sessionId) {
@@ -60,11 +61,27 @@ export function SubtaskDrawer() {
   const currentToolLabel =
     toolStats.currentToolLabel === "空闲" && isParentCompleted ? "已完成" : toolStats.currentToolLabel
 
+  const key = isOpen && sessionId ? sessionId : null
+  const cold = !sessionId || getMessagesBySession(sessionId).length === 0
+  const done = ready.key === key ? ready.done : false
+  const err = !!key && isSessionLoadError(key)
+  const load = !!key && cold && !done && !err
+
+  const retry = useCallback(() => {
+    if (!key) return
+    void ensureSession(key).then((value) => {
+      if (value === null) return
+      setReady({ key, done: true })
+    })
+  }, [ensureSession, key])
+
   const headerSummary = useMemo(() => {
     const toolName = getToolLabel("task")
     const base = `${toolName}${title ? `：${title}` : ""}`
-    return `${base} [ ${toolStats.totalCalls} 工具调用 / ${currentToolLabel} ]`
-  }, [toolStats.totalCalls, currentToolLabel, title])
+    if (load) return `${base} [ 正在加载子任务… ]`
+    if (err) return `${base} [ 子任务加载失败 ]`
+    return `${base} [ 已加载 ${toolStats.totalCalls} 个工具调用 / ${currentToolLabel} ]`
+  }, [err, load, toolStats.totalCalls, currentToolLabel, title])
 
   useEffect(() => {
     if (!isOpen) return
@@ -77,10 +94,26 @@ export function SubtaskDrawer() {
   }, [isOpen, closeSubtaskDrawer])
 
   useEffect(() => {
-    if (!isOpen) return
-    if (!sessionId) return
-    void loadSessionMessages(sessionId)
-  }, [isOpen, sessionId, loadSessionMessages])
+    if (!key) {
+      setReady({ key: null, done: false })
+      return
+    }
+    if (!cold) {
+      void ensureSession(key)
+      return
+    }
+    let live = true
+    void ensureSession(key)
+      .then((value) => {
+        if (!live) return
+        if (value === null) return
+        setReady({ key, done: true })
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [cold, ensureSession, key])
 
   if (!isOpen || !sessionId) return null
 
@@ -106,7 +139,26 @@ export function SubtaskDrawer() {
         />
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3">
-        <SubtaskMessageList sessionID={sessionId} />
+        {load ? (
+          <div
+            data-testid="subtask-drawer-loading"
+            className="h-full min-h-24 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400"
+          >
+            正在加载子任务…
+          </div>
+        ) : err ? (
+          <div className="h-full min-h-24 flex flex-col items-center justify-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+            <div>子任务加载失败</div>
+            <button
+              className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200"
+              onClick={retry}
+            >
+              重试加载
+            </button>
+          </div>
+        ) : (
+          <SubtaskMessageList sessionID={sessionId} />
+        )}
       </div>
     </ResizableDrawer>
   )
@@ -159,9 +211,11 @@ function ResizableDrawer({
 
   useEffect(() => {
     return () => {
+      drag.current = null
       document.removeEventListener("pointermove", onMove)
       document.removeEventListener("pointerup", onEnd)
       document.removeEventListener("pointercancel", onEnd)
+      document.body.style.userSelect = ""
     }
   }, [onMove, onEnd])
 

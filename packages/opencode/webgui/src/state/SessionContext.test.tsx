@@ -80,8 +80,10 @@ vi.mock("../lib/api/events", () => {
 
 import { sdk } from "../lib/api/sdkClient"
 import { ideBridge } from "../lib/ideBridge"
+import { resetDraftRepoForTest } from "./repo/draftRepo"
 import { resetScopedStateForTest, scopedStateGetJSON, scopedStateSetJSON } from "./scopedStorage"
 import { SessionProvider, useSession } from "./SessionContext"
+import { SESSION_LIST_LIMIT, SESSION_LIST_PAGE_SIZE } from "./sessionPaging"
 
 const selectionKey = "opencode:webgui:workspace:last_selection:v1"
 const draftsKey = "opencode:webgui:workspace:drafts:v1"
@@ -91,11 +93,34 @@ function wrapper(props: { children: ReactNode }) {
   return <SessionProvider>{props.children}</SessionProvider>
 }
 
+function session(id: string, created: number) {
+  return {
+    id,
+    title: id,
+    parentID: null,
+    time: {
+      created,
+      updated: created,
+    },
+  } as any
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (err?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe("SessionContext migration", () => {
   beforeEach(() => {
     vi.resetAllMocks()
     events.reset()
     resetScopedStateForTest()
+    resetDraftRepoForTest()
     ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
@@ -177,6 +202,36 @@ describe("SessionContext migration", () => {
 
     expect(sdk.session.retry).toHaveBeenCalledWith({
       path: { sessionID: "s1" },
+    })
+  })
+
+  it("retrySession 遇到结构化 error 时应恢复 idle 并暴露错误", async () => {
+    ;(sdk.session.retry as any).mockResolvedValueOnce({ data: null, error: new Error("boom") })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await act(async () => {
+      await result.current.retrySession("s1")
+    })
+
+    await waitFor(() => {
+      expect(result.current.error?.message).toBe("boom")
+      expect(result.current.isSessionIdle("s1")).toBe(true)
+    })
+  })
+
+  it("retrySession 遇到 { error: { message } } 时应展示真实错误文案", async () => {
+    ;(sdk.session.retry as any).mockResolvedValueOnce({ data: null, error: { message: "boom" } })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await act(async () => {
+      await result.current.retrySession("s1")
+    })
+
+    await waitFor(() => {
+      expect(result.current.error?.message).toBe("boom")
+      expect(result.current.isSessionIdle("s1")).toBe(true)
     })
   })
 
@@ -376,6 +431,93 @@ describe("SessionContext migration", () => {
     })
   })
 
+  it("初始化恢复出的 variant 在切走再切回模型后仍会保留", async () => {
+    ;(ideBridge.isInstalled as any).mockReturnValue(true)
+    ;(ideBridge.storageGet as any).mockImplementation(async () => {
+      return {
+        [selectionKey]: JSON.stringify({
+          agent: "build",
+          provider_id: "anthropic",
+          model_id: "claude-4-sonnet",
+          variant: "high",
+          updated_at: 123,
+          agent_model_map: {},
+        }),
+      }
+    })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe("anthropic")
+      expect(result.current.selectedModelId).toBe("claude-4-sonnet")
+      expect(result.current.selectedVariant).toBe("high")
+    })
+
+    await act(async () => {
+      await result.current.setSelectedModel("openai", "gpt-4.1")
+    })
+
+    await act(async () => {
+      await result.current.setSelectedModel("anthropic", "claude-4-sonnet")
+    })
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe("anthropic")
+      expect(result.current.selectedModelId).toBe("claude-4-sonnet")
+      expect(result.current.selectedVariant).toBe("high")
+    })
+  })
+
+  it("setSelectedAgent 切到其他模型时会同步切换该模型的 variant", async () => {
+    ;(ideBridge.isInstalled as any).mockReturnValue(true)
+    ;(ideBridge.storageGet as any).mockImplementation(async () => {
+      return {
+        [selectionKey]: JSON.stringify({
+          agent: "build",
+          provider_id: "openai",
+          model_id: "gpt-4.1",
+          variant: null,
+          updated_at: 123,
+          agent_model_map: {
+            plan: {
+              provider_id: "anthropic",
+              model_id: "claude-4-sonnet",
+            },
+          },
+        }),
+      }
+    })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.selectedAgent).toBe("build")
+      expect(result.current.selectedProviderId).toBe("openai")
+      expect(result.current.selectedModelId).toBe("gpt-4.1")
+      expect(result.current.selectedVariant).toBeUndefined()
+    })
+
+    await act(async () => {
+      await result.current.setSelectedVariant("medium")
+    })
+
+    await waitFor(() => {
+      expect(result.current.selectedVariant).toBe("medium")
+    })
+
+    await act(async () => {
+      await result.current.setSelectedAgent("plan")
+    })
+
+    await waitFor(() => {
+      expect(result.current.selectedAgent).toBe("plan")
+      expect(result.current.selectedProviderId).toBe("anthropic")
+      expect(result.current.selectedModelId).toBe("claude-4-sonnet")
+      expect(result.current.selectedVariant).toBeUndefined()
+    })
+  })
+
   it("变更 agent/model/variant 后会写回 host storage", async () => {
     ;(ideBridge.isInstalled as any).mockReturnValue(true)
     ;(ideBridge.storageGet as any).mockResolvedValue({})
@@ -466,6 +608,7 @@ describe("SessionContext virtual API removed", () => {
     vi.resetAllMocks()
     events.reset()
     resetScopedStateForTest()
+    resetDraftRepoForTest()
     ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
@@ -513,6 +656,7 @@ describe("SessionContext session 状态查询", () => {
     vi.resetAllMocks()
     events.reset()
     resetScopedStateForTest()
+    resetDraftRepoForTest()
     ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
@@ -546,11 +690,394 @@ describe("SessionContext session 状态查询", () => {
   })
 })
 
+describe("SessionContext session paging", () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    events.reset()
+    resetScopedStateForTest()
+    resetDraftRepoForTest()
+    ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.config.providers as any).mockResolvedValue({ data: { providers: [] }, error: null })
+    ;(ideBridge.isInstalled as any).mockReturnValue(false)
+    ;(ideBridge.storageGet as any).mockResolvedValue({})
+    ;(ideBridge.storageSet as any).mockResolvedValue(true)
+  })
+
+  it("mount 时带 roots 与 limit 拉取主会话", async () => {
+    ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
+
+    renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(sdk.session.list).toHaveBeenCalledWith({ roots: true, limit: SESSION_LIST_LIMIT })
+    })
+  })
+
+  it("loadMoreSessions 会扩大 limit 并再次请求", async () => {
+    ;(sdk.session.list as any)
+      .mockResolvedValueOnce({
+        data: Array.from({ length: SESSION_LIST_LIMIT }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: Array.from({ length: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT)
+      expect(result.current.hasMore).toBe(true)
+    })
+
+    await act(async () => {
+      await result.current.loadMoreSessions()
+    })
+
+    expect(sdk.session.list).toHaveBeenNthCalledWith(1, { roots: true, limit: SESSION_LIST_LIMIT })
+    expect(sdk.session.list).toHaveBeenNthCalledWith(2, {
+      roots: true,
+      limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE,
+    })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE)
+      expect(result.current.hasMore).toBe(true)
+    })
+  })
+
+  it("分页结果保持后端返回顺序，不按 created 重新洗牌", async () => {
+    ;(sdk.session.list as any).mockResolvedValueOnce({
+      data: [
+        {
+          id: "recently-updated-old",
+          title: "old",
+          parentID: null,
+          time: { created: 1, updated: 300 },
+        },
+        {
+          id: "newer-created",
+          title: "new",
+          parentID: null,
+          time: { created: 200, updated: 200 },
+        },
+      ],
+      error: null,
+    })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions.map((item) => item.id)).toEqual(["recently-updated-old", "newer-created"])
+    })
+  })
+
+  it("session.updated 会按 updated 时间重排已存在会话", async () => {
+    ;(sdk.session.list as any).mockResolvedValueOnce({
+      data: [
+        {
+          id: "s-2",
+          title: "second",
+          parentID: null,
+          time: { created: 2, updated: 200 },
+        },
+        {
+          id: "s-1",
+          title: "first",
+          parentID: null,
+          time: { created: 1, updated: 100 },
+        },
+      ],
+      error: null,
+    })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions.map((item) => item.id)).toEqual(["s-2", "s-1"])
+    })
+
+    act(() => {
+      events.emit("session.updated", {
+        type: "session.updated",
+        properties: {
+          info: {
+            id: "s-1",
+            title: "first",
+            parentID: null,
+            time: { created: 1, updated: 300 },
+          },
+        },
+      })
+    })
+
+    await waitFor(() => {
+      expect(result.current.sessions.map((item) => item.id)).toEqual(["s-1", "s-2"])
+    })
+  })
+
+  it("初始加载只更新 isLoading，不更新 isLoadingMore", async () => {
+    const gate = deferred<any>()
+    ;(sdk.session.list as any).mockImplementationOnce(() => gate.promise)
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(true)
+      expect(result.current.isLoadingMore).toBe(false)
+    })
+
+    await act(async () => {
+      gate.resolve({ data: [], error: null })
+      await gate.promise
+    })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+      expect(result.current.isLoadingMore).toBe(false)
+    })
+  })
+
+  it("loadMoreSessions 只更新 isLoadingMore，不更新 isLoading", async () => {
+    const gate = deferred<any>()
+    ;(sdk.session.list as any)
+      .mockResolvedValueOnce({
+        data: Array.from({ length: SESSION_LIST_LIMIT }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+      .mockImplementationOnce(() => gate.promise)
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT)
+      expect(result.current.isLoading).toBe(false)
+      expect(result.current.isLoadingMore).toBe(false)
+    })
+
+    let next!: Promise<void>
+
+    await act(async () => {
+      next = result.current.loadMoreSessions()
+    })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+      expect(result.current.isLoadingMore).toBe(true)
+    })
+
+    await act(async () => {
+      gate.resolve({
+        data: Array.from({ length: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+      await next
+    })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+      expect(result.current.isLoadingMore).toBe(false)
+    })
+  })
+
+  it("初始加载与 loadMore 并发时晚到旧响应不会覆盖更大窗口", async () => {
+    const first = deferred<any>()
+    const more = deferred<any>()
+    ;(sdk.session.list as any)
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => more.promise)
+      .mockResolvedValueOnce({
+        data: Array.from({ length: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE * 2 }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(true)
+    })
+
+    let next!: Promise<void>
+
+    await act(async () => {
+      next = result.current.loadMoreSessions()
+    })
+
+    await waitFor(() => {
+      expect(result.current.isLoadingMore).toBe(true)
+      expect(sdk.session.list).toHaveBeenNthCalledWith(2, {
+        roots: true,
+        limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE,
+      })
+    })
+
+    await act(async () => {
+      more.resolve({
+        data: Array.from({ length: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+      await next
+    })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE)
+    })
+
+    await act(async () => {
+      first.resolve({
+        data: Array.from({ length: SESSION_LIST_LIMIT }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+      await first.promise
+    })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE)
+    })
+
+    await act(async () => {
+      await result.current.loadMoreSessions()
+    })
+
+    expect(sdk.session.list).toHaveBeenNthCalledWith(3, {
+      roots: true,
+      limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE * 2,
+    })
+  })
+
+  it("返回条数小于 limit 时 hasMore 为 false", async () => {
+    ;(sdk.session.list as any).mockResolvedValue({ data: [session("s-1", 1)], error: null })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(1)
+      expect(result.current.hasMore).toBe(false)
+    })
+  })
+
+  it("请求失败时保留已有 sessions", async () => {
+    ;(sdk.session.list as any)
+      .mockResolvedValueOnce({
+        data: Array.from({ length: SESSION_LIST_LIMIT }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+      .mockRejectedValueOnce(new Error("boom"))
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT)
+    })
+
+    const prev = result.current.sessions
+
+    await act(async () => {
+      await result.current.loadMoreSessions()
+    })
+
+    await waitFor(() => {
+      expect(result.current.error?.message).toBe("boom")
+      expect(result.current.sessions).toEqual(prev)
+    })
+  })
+
+  it("loadMoreSessions 失败后重试仍请求同一分页窗口", async () => {
+    ;(sdk.session.list as any)
+      .mockResolvedValueOnce({
+        data: Array.from({ length: SESSION_LIST_LIMIT }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce({
+        data: Array.from({ length: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT)
+    })
+
+    await act(async () => {
+      await result.current.loadMoreSessions()
+    })
+
+    await waitFor(() => {
+      expect(result.current.error?.message).toBe("boom")
+      expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT)
+    })
+
+    await act(async () => {
+      await result.current.loadMoreSessions()
+    })
+
+    expect(sdk.session.list).toHaveBeenNthCalledWith(2, {
+      roots: true,
+      limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE,
+    })
+    expect(sdk.session.list).toHaveBeenNthCalledWith(3, {
+      roots: true,
+      limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE,
+    })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE)
+    })
+  })
+
+  it("连续触发两次 loadMoreSessions 时会复用同一次请求", async () => {
+    const gate = deferred<any>()
+    ;(sdk.session.list as any)
+      .mockResolvedValueOnce({
+        data: Array.from({ length: SESSION_LIST_LIMIT }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+      .mockImplementationOnce(() => gate.promise)
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT)
+    })
+
+    let a!: Promise<void>
+    let b!: Promise<void>
+
+    await act(async () => {
+      a = result.current.loadMoreSessions()
+      b = result.current.loadMoreSessions()
+
+      expect(a).toBe(b)
+      expect(sdk.session.list).toHaveBeenCalledTimes(2)
+      expect(sdk.session.list).toHaveBeenNthCalledWith(2, {
+        roots: true,
+        limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE,
+      })
+
+      gate.resolve({
+        data: Array.from({ length: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+
+      await Promise.all([a, b])
+    })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE)
+    })
+  })
+})
+
 describe("SessionContext session.deleted scoped draft cleanup", () => {
   beforeEach(() => {
     vi.resetAllMocks()
     events.reset()
     resetScopedStateForTest()
+    resetDraftRepoForTest()
     ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })

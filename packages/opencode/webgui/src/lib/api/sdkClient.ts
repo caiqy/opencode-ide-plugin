@@ -3,7 +3,7 @@
  * Configured to connect to the OpenCode server at the default location
  */
 
-import { createOpencodeClient, type Config, type Provider } from "@opencode-ai/sdk/client"
+import { createOpencodeClient, type Config, type Provider, type Session } from "@opencode-ai/sdk/client"
 
 // Create a single SDK client instance on current origin
 const baseClient = createOpencodeClient({
@@ -69,6 +69,12 @@ type ApiResult<T> = {
   error: { message: string } | null
 }
 
+type SessionListOptions = {
+  limit?: number
+  directory?: string
+  roots?: boolean
+}
+
 function retryParts(input: any[]) {
   return input
     .filter((part) => ["text", "file", "agent", "subtask"].includes(part.type))
@@ -120,6 +126,35 @@ async function globalConfigUpdate(options: { body: Partial<Config> }): Promise<A
     }
 
     const data = (await response.json()) as Config
+    return { data, error: null }
+  } catch (error) {
+    return {
+      error: { message: error instanceof Error ? error.message : "Unknown error" },
+      data: null,
+    }
+  }
+}
+
+async function sessionList(options: SessionListOptions = {}): Promise<ApiResult<Session[]>> {
+  try {
+    const query = new URLSearchParams()
+    if (options.directory) query.set("directory", options.directory)
+    if (typeof options.limit === "number") query.set("limit", String(options.limit))
+    if (typeof options.roots === "boolean") query.set("roots", String(options.roots))
+    const suffix = query.size > 0 ? `?${query.toString()}` : ""
+    const response = await fetch(`/session${suffix}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    })
+
+    if (!response.ok) {
+      return {
+        error: { message: "Failed to load sessions" },
+        data: null,
+      }
+    }
+
+    const data = (await response.json()) as Session[]
     return { data, error: null }
   } catch (error) {
     return {
@@ -225,8 +260,16 @@ export const sdk = {
     },
   }),
   session: Object.assign(baseClient.session, {
+    list: sessionList,
     retry: async (options: { path: { sessionID: string } }) => {
       try {
+        const session = await baseClient.session.get({
+          path: { id: options.path.sessionID },
+        })
+        if (session.error || !session.data) {
+          return { error: { message: errorMessage(session.error, "Failed to load session") }, data: null }
+        }
+
         const messages = await baseClient.session.messages({
           path: { id: options.path.sessionID },
         })
@@ -235,7 +278,26 @@ export const sdk = {
         }
 
         const sorted = [...messages.data].sort((a, b) => a.info.time.created - b.info.time.created)
-        const latest = [...sorted].reverse().find((item) => item.info.role === "user")
+        const cut = session.data.revert
+          ? sorted.findIndex((item) => item.info.id === session.data.revert?.messageID)
+          : -1
+        const visible =
+          cut < 0
+            ? sorted
+            : sorted.flatMap((item, index) => {
+                if (index < cut) return [item]
+                if (index > cut) return []
+                if (!session.data.revert?.partID) return []
+                const part = item.parts.findIndex((x) => x.id === session.data.revert?.partID)
+                if (part <= 0) return []
+                return [
+                  {
+                    ...item,
+                    parts: item.parts.slice(0, part),
+                  },
+                ]
+              })
+        const latest = [...visible].reverse().find((item) => item.info.role === "user")
         if (!latest) return { error: { message: "No user message to retry" }, data: null }
         const info = latest.info as {
           agent?: string
@@ -267,6 +329,7 @@ export const sdk = {
       }
     },
   }) as typeof baseClient.session & {
+    list: (options?: SessionListOptions) => Promise<ApiResult<Session[]>>
     retry: (options: { path: { sessionID: string } }) => Promise<any>
   },
   mcp: Object.assign(baseClient.mcp, {

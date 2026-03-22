@@ -6,11 +6,22 @@ vi.mock("../scopedStorage", () => ({
 }))
 
 import { scopedStateGetJSON, scopedStateSetJSON } from "../scopedStorage"
-import { cleanupDeletedSessionDraft } from "./draftRepo"
+import { cleanupDeletedSessionDraft, loadDrafts, resetDraftRepoForTest, saveDrafts } from "./draftRepo"
 
 describe("draftRepo", () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    resetDraftRepoForTest()
+  })
+
+  it("晚到的旧 drafts 不会覆盖本会话刚保存的新 drafts", async () => {
+    vi.mocked(scopedStateSetJSON).mockResolvedValue({ ok: true })
+    vi.mocked(scopedStateGetJSON).mockResolvedValue({ s2: "old" })
+
+    await saveDrafts({ s2: "fresh" })
+    const value = await loadDrafts()
+
+    expect(value).toEqual({ s2: "fresh" })
   })
 
   it("删除命中 draft_session 时清理 drafts 并置空 draft_session", async () => {

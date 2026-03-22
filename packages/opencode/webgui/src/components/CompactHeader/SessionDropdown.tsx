@@ -6,7 +6,9 @@ interface SessionDropdownProps {
   currentSessionId: string | undefined
   filteredSessions: Session[]
   isDropdownOpen: boolean
+  hasMore: boolean
   isSelectMode: boolean
+  isLoadingMore: boolean
   selectedSessions: Set<string>
   selectedSessionIndex: number
   searchQuery: string
@@ -29,6 +31,7 @@ interface SessionDropdownProps {
   onBulkDeleteStart: () => void
   onCheckboxChange: (sessionId: string, checked: boolean) => void
   onKeyDown: (e: React.KeyboardEvent) => void
+  onLoadMore: () => void
   onToggleShare: (sessionId: string, e: React.MouseEvent) => void
 }
 
@@ -37,7 +40,9 @@ export function SessionDropdown({
   currentSessionId,
   filteredSessions,
   isDropdownOpen,
+  hasMore,
   isSelectMode,
+  isLoadingMore,
   selectedSessions,
   selectedSessionIndex,
   searchQuery,
@@ -60,6 +65,7 @@ export function SessionDropdown({
   onBulkDeleteStart,
   onCheckboxChange,
   onKeyDown,
+  onLoadMore,
   onToggleShare,
 }: SessionDropdownProps) {
   if (!isDropdownOpen) return null
@@ -134,6 +140,19 @@ export function SessionDropdown({
         onKeyDown={onKeyDown}
         onToggleShare={onToggleShare}
       />
+
+      {hasMore && (
+        <div className="p-2 border-t border-gray-200 dark:border-gray-800">
+          <button
+            type="button"
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+            className="w-full px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-300"
+          >
+            {isLoadingMore ? "加载中…" : "加载更多"}
+          </button>
+        </div>
+      )}
 
       {/* Bulk delete button (shown in select mode when sessions are selected) */}
       {isSelectMode && selectedSessions.size > 0 && (

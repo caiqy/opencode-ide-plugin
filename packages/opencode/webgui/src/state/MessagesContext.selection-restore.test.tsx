@@ -41,7 +41,7 @@ function Capture() {
   return null
 }
 
-describe("MessagesContext loadSessionMessages", () => {
+describe("MessagesContext session loading", () => {
   beforeEach(() => {
     mocks.restoreSelections.mockReset()
     mocks.setReasoning.mockReset()
@@ -50,7 +50,7 @@ describe("MessagesContext loadSessionMessages", () => {
     api = null
   })
 
-  it("loadSessionMessages 只返回数据且不触发 restoreSelections", async () => {
+  it("ensureSession 只返回最近页数据且不触发 restoreSelections", async () => {
     ;(sdk.session.messages as any).mockResolvedValue({
       error: null,
       data: [
@@ -89,6 +89,9 @@ describe("MessagesContext loadSessionMessages", () => {
           parts: [],
         },
       ],
+      response: {
+        headers: new Headers(),
+      },
     })
 
     render(
@@ -99,7 +102,7 @@ describe("MessagesContext loadSessionMessages", () => {
 
     let loaded: unknown
     await act(async () => {
-      loaded = await api!.loadSessionMessages("s1")
+      loaded = await (api as any).ensureSession("s1")
     })
 
     expect(mocks.restoreSelections).not.toHaveBeenCalled()
@@ -111,7 +114,7 @@ describe("MessagesContext loadSessionMessages", () => {
     expect(api!.isSessionLoadError("s1")).toBe(false)
   })
 
-  it("当接口返回空数组时保留本地 session 消息且不触发 restoreSelections", async () => {
+  it("当最近页返回空数组时保留本地 session 消息且不触发 restoreSelections", async () => {
     const localMessage = {
       info: {
         id: "local-u1",
@@ -124,6 +127,9 @@ describe("MessagesContext loadSessionMessages", () => {
     ;(sdk.session.messages as any).mockResolvedValue({
       error: null,
       data: [],
+      response: {
+        headers: new Headers(),
+      },
     })
 
     render(
@@ -138,7 +144,7 @@ describe("MessagesContext loadSessionMessages", () => {
 
     let loaded: unknown
     await act(async () => {
-      loaded = await api!.loadSessionMessages("s1")
+      loaded = await (api as any).ensureSession("s1")
     })
 
     expect(loaded).toEqual([])
@@ -165,7 +171,7 @@ describe("MessagesContext loadSessionMessages", () => {
 
     let run: Promise<unknown> = Promise.resolve()
     await act(async () => {
-      run = api!.loadSessionMessages("s2")
+      run = (api as any).ensureSession("s2")
     })
 
     await waitFor(() => {
@@ -183,16 +189,12 @@ describe("MessagesContext loadSessionMessages", () => {
     expect(api!.isSessionLoadError("s2")).toBe(true)
   })
 
-  it("同会话并发加载时晚到旧响应不应覆盖最新消息", async () => {
-    let first: ((value: unknown) => void) | null = null
-    let second: ((value: unknown) => void) | null = null
-    let count = 0
+  it("同会话并发加载最近页时应复用同一请求", async () => {
+    let resolve: ((value: unknown) => void) | null = null
     ;(sdk.session.messages as any).mockImplementation(
       () =>
-        new Promise((resolve) => {
-          if (count === 0) first = resolve
-          if (count === 1) second = resolve
-          count += 1
+        new Promise((r) => {
+          resolve = r
         }),
     )
 
@@ -205,12 +207,14 @@ describe("MessagesContext loadSessionMessages", () => {
     let runA: Promise<unknown> = Promise.resolve()
     let runB: Promise<unknown> = Promise.resolve()
     await act(async () => {
-      runA = api!.loadSessionMessages("s3")
-      runB = api!.loadSessionMessages("s3")
+      runA = (api as any).loadLatest("s3")
+      runB = (api as any).loadLatest("s3")
     })
 
+    expect(sdk.session.messages).toHaveBeenCalledTimes(1)
+
     await act(async () => {
-      second?.({
+      resolve?.({
         error: null,
         data: [
           {
@@ -223,35 +227,15 @@ describe("MessagesContext loadSessionMessages", () => {
             parts: [],
           },
         ],
+        response: {
+          headers: new Headers(),
+        },
       })
-      await runB
-    })
-
-    await waitFor(() => {
-      expect(api!.getMessagesBySession("s3").map((msg) => msg.info.id)).toEqual(["new-u1"])
-    })
-    const idleCalls = mocks.setSessionIdle.mock.calls.length
-
-    await act(async () => {
-      first?.({
-        error: null,
-        data: [
-          {
-            info: {
-              id: "old-u1",
-              sessionID: "s3",
-              role: "user",
-              time: { created: 1 },
-            },
-            parts: [],
-          },
-        ],
-      })
-      await runA
+      await Promise.all([runA, runB])
     })
 
     expect(api!.getMessagesBySession("s3").map((msg) => msg.info.id)).toEqual(["new-u1"])
-    expect(mocks.setSessionIdle.mock.calls.length).toBe(idleCalls)
+    expect(mocks.setSessionIdle).toHaveBeenCalledTimes(1)
   })
 
   it("加载期间收到 message.updated 时应保留实时更新并合并快照缺失消息", async () => {
@@ -272,7 +256,7 @@ describe("MessagesContext loadSessionMessages", () => {
 
     let run: Promise<unknown> = Promise.resolve()
     await act(async () => {
-      run = api!.loadSessionMessages("s4")
+      run = (api as any).loadLatest("s4")
     })
 
     act(() => {
@@ -307,6 +291,9 @@ describe("MessagesContext loadSessionMessages", () => {
             parts: [],
           },
         ],
+        response: {
+          headers: new Headers(),
+        },
       })
       await run
     })

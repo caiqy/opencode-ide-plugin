@@ -56,6 +56,20 @@ describe("sdk migration baseline", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
         new Response(
+          JSON.stringify({
+            id: "s1",
+            slug: "s1",
+            projectID: "p1",
+            directory: "/tmp",
+            title: "t",
+            version: "1",
+            time: { created: 1, updated: 2 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
           JSON.stringify([
             {
               info: {
@@ -93,23 +107,122 @@ describe("sdk migration baseline", () => {
     const r = await sdk.session.retry({ path: { sessionID: "s1" } })
 
     expect(r.error).toBeNull()
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
 
     const req1 = fetchMock.mock.calls[0][0] as Request
-    expect(req1.url).toContain("/session/s1/message")
+    expect(req1.url).toContain("/session/s1")
     expect(req1.url).not.toContain("/app" + "/api")
 
     const req2 = fetchMock.mock.calls[1][0] as Request
     expect(req2.url).toContain("/session/s1/message")
     expect(req2.url).not.toContain("/app" + "/api")
-    expect(req2.method).toBe("POST")
 
-    const body = JSON.parse(await req2.text()) as {
+    const req3 = fetchMock.mock.calls[2][0] as Request
+    expect(req3.url).toContain("/session/s1/message")
+    expect(req3.url).not.toContain("/app" + "/api")
+    expect(req3.method).toBe("POST")
+
+    const body = JSON.parse(await req3.text()) as {
       parts: Array<{ type: string; text?: string }>
       agent?: string
       model?: { providerID: string; modelID: string }
     }
     expect(body.parts).toEqual([{ type: "text", text: "hello", id: "p1" }])
+    expect(body.agent).toBe("build")
+    expect(body.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" })
+  })
+
+  it("session.retry respects revert boundary from session.get", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "s1",
+            slug: "s1",
+            projectID: "p1",
+            directory: "/tmp",
+            title: "t",
+            version: "1",
+            time: { created: 1, updated: 3 },
+            revert: { messageID: "m-user-hidden" },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              info: {
+                id: "m-user-visible",
+                role: "user",
+                sessionID: "s1",
+                time: { created: 1 },
+                agent: "build",
+                model: { providerID: "openai", modelID: "gpt-4.1" },
+              },
+              parts: [
+                {
+                  id: "p-visible",
+                  type: "text",
+                  text: "visible",
+                  sessionID: "s1",
+                  messageID: "m-user-visible",
+                },
+              ],
+            },
+            {
+              info: {
+                id: "m-user-hidden",
+                role: "user",
+                sessionID: "s1",
+                time: { created: 2 },
+                agent: "plan",
+                model: { providerID: "anthropic", modelID: "claude-sonnet-4-5" },
+              },
+              parts: [
+                {
+                  id: "p-hidden",
+                  type: "text",
+                  text: "hidden",
+                  sessionID: "s1",
+                  messageID: "m-user-hidden",
+                },
+              ],
+            },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            info: { id: "m-assistant", role: "assistant", sessionID: "s1", time: { created: 3 } },
+            parts: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+
+    const r = await sdk.session.retry({ path: { sessionID: "s1" } })
+
+    expect(r.error).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+
+    const req1 = fetchMock.mock.calls[0][0] as Request
+    expect(req1.url).toContain("/session/s1")
+
+    const req3 = fetchMock.mock.calls[2][0] as Request
+    expect(req3.url).toContain("/session/s1/message")
+    expect(req3.method).toBe("POST")
+
+    const body = JSON.parse(await req3.text()) as {
+      parts: Array<{ type: string; text?: string }>
+      agent?: string
+      model?: { providerID: string; modelID: string }
+    }
+    expect(body.parts).toEqual([{ type: "text", text: "visible", id: "p-visible" }])
     expect(body.agent).toBe("build")
     expect(body.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" })
   })

@@ -1,20 +1,35 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { act, fireEvent, render } from "@testing-library/react"
+import { useRef } from "react"
 import { useMessageScroll } from "./useMessageScroll"
 
-function TestHarness(props: { sessionID: string; sortedMessages: any[]; isIdle: boolean; isReasoning: boolean }) {
+function TestHarness(props: {
+  sessionID: string
+  sortedMessages: any[]
+  isIdle: boolean
+  isReasoning: boolean
+  settling?: boolean
+  tailKey?: string
+}) {
+  const tailRef = useRef<HTMLDivElement>(null)
   const { messagesEndRef, messagesContainerRef } = useMessageScroll(
     props.sessionID,
     props.sortedMessages,
     props.isIdle,
     props.isReasoning,
+    props.settling ?? false,
+    undefined,
+    tailRef,
+    props.tailKey,
   )
 
   return (
     <div data-testid="scroll-parent">
       <div ref={messagesContainerRef}>
-        <div style={{ height: 200 }} />
-        <div ref={messagesEndRef} data-testid="scroll-anchor" />
+        <div data-testid="history-box" style={{ height: 200 }} />
+        <div ref={tailRef} data-testid="tail-box">
+          <div ref={messagesEndRef} data-testid="scroll-anchor" />
+        </div>
       </div>
     </div>
   )
@@ -25,19 +40,28 @@ function TestHarnessWithScrollButton(props: {
   sortedMessages: any[]
   isIdle: boolean
   isReasoning: boolean
+  settling?: boolean
+  tailKey?: string
 }) {
+  const tailRef = useRef<HTMLDivElement>(null)
   const { messagesEndRef, messagesContainerRef, showScrollToBottom } = useMessageScroll(
     props.sessionID,
     props.sortedMessages,
     props.isIdle,
     props.isReasoning,
+    props.settling ?? false,
+    undefined,
+    tailRef,
+    props.tailKey,
   )
 
   return (
     <div data-testid="scroll-parent">
       <div ref={messagesContainerRef}>
-        <div style={{ height: 200 }} />
-        <div ref={messagesEndRef} data-testid="scroll-anchor" />
+        <div data-testid="history-box" style={{ height: 200 }} />
+        <div ref={tailRef} data-testid="tail-box">
+          <div ref={messagesEndRef} data-testid="scroll-anchor" />
+        </div>
         <div data-testid="scroll-button-visible">{showScrollToBottom ? "1" : "0"}</div>
       </div>
     </div>
@@ -60,6 +84,20 @@ function setScrollMetrics(element: HTMLElement, scrollHeight: number, clientHeig
   })
 }
 
+function setRect(element: HTMLElement, box: { top?: number; bottom?: number; height?: number }) {
+  element.getBoundingClientRect = vi.fn(() => ({
+    x: 0,
+    y: box.top ?? 0,
+    top: box.top ?? 0,
+    left: 0,
+    right: 0,
+    bottom: box.bottom ?? (box.top ?? 0) + (box.height ?? 0),
+    width: 0,
+    height: box.height ?? (box.bottom ?? 0) - (box.top ?? 0),
+    toJSON: () => ({}),
+  }))
+}
+
 function textMessage(text: string) {
   return [
     {
@@ -78,33 +116,47 @@ function toolMessage(status: "pending" | "running" | "completed" | "error") {
   ]
 }
 
+function userMessage(text: string) {
+  return [
+    {
+      info: { id: "u1", role: "user" },
+      parts: [{ id: "u-text", type: "text", text }],
+    },
+  ]
+}
+
 describe("useMessageScroll", () => {
   const scrollIntoView = vi.fn()
   const originalResizeObserver = (globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver
-  let resizeObserverCallbacks: ResizeObserverCallback[] = []
+  let resizeObservers: Array<{ callback: ResizeObserverCallback; nodes: Set<Element> }> = []
 
-  const triggerResizeObservers = () => {
-    for (const callback of resizeObserverCallbacks) {
+  const triggerResize = (node: Element) => {
+    for (const item of resizeObservers) {
+      if (!item.nodes.has(node)) continue
       act(() => {
-        callback([], {} as ResizeObserver)
+        item.callback([{ target: node } as ResizeObserverEntry], {} as ResizeObserver)
       })
     }
   }
 
   beforeEach(() => {
     scrollIntoView.mockReset()
-    resizeObserverCallbacks = []
+    resizeObservers = []
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       writable: true,
       value: scrollIntoView,
     })
     ;(globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver = class ResizeObserver {
+      item: { callback: ResizeObserverCallback; nodes: Set<Element> }
       constructor(callback: ResizeObserverCallback) {
-        resizeObserverCallbacks.push(callback)
+        this.item = { callback, nodes: new Set<Element>() }
+        resizeObservers.push(this.item)
       }
       disconnect() {}
-      observe() {}
+      observe(node: Element) {
+        this.item.nodes.add(node)
+      }
       unobserve() {}
     }
   })
@@ -193,6 +245,61 @@ describe("useMessageScroll", () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(2)
   })
 
+  it("smooth 自动滚动过程中不会让到底按钮闪回显示", () => {
+    vi.useFakeTimers()
+    const { rerender, getByTestId } = render(
+      <TestHarnessWithScrollButton
+        sessionID="s1"
+        sortedMessages={textMessage("a")}
+        isIdle={false}
+        isReasoning={false}
+      />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+
+    rerender(
+      <TestHarnessWithScrollButton
+        sessionID="s1"
+        sortedMessages={textMessage("ab")}
+        isIdle={false}
+        isReasoning={false}
+      />,
+    )
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+
+    setScrollMetrics(parent, 1000, 500, 460)
+    fireEvent.scroll(parent)
+
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+  })
+
+  it("smooth 期间仅 scroll 离底后停止自动滚动", () => {
+    vi.useFakeTimers()
+
+    const { rerender, getByTestId } = render(
+      <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    rerender(<TestHarness sessionID="s1" sortedMessages={textMessage("ab")} isIdle={false} isReasoning={false} />)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: "smooth", block: "end" })
+
+    setScrollMetrics(parent, 1000, 500, 200)
+    fireEvent.scroll(parent)
+
+    rerender(<TestHarness sessionID="s1" sortedMessages={textMessage("abc")} isIdle={false} isReasoning={false} />)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
   it("scrollbar 拖拽或键盘滚动离开底部后停止自动滚动", () => {
     const { rerender, getByTestId } = render(
       <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
@@ -276,6 +383,25 @@ describe("useMessageScroll", () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(2)
   })
 
+  it("用户发送新消息时即使 tail 长度不变也会强制回到底部", () => {
+    const { rerender, getByTestId } = render(
+      <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    fireEvent.wheel(parent, { deltaY: -100 })
+    setScrollMetrics(parent, 1200, 500, 200)
+    fireEvent.scroll(parent)
+
+    rerender(<TestHarness sessionID="s1" sortedMessages={userMessage("hi")} isIdle={false} isReasoning={false} />)
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
   it("离开底部一点点也应显示滚动到底部按钮", () => {
     const { getByTestId } = render(
       <TestHarnessWithScrollButton
@@ -320,23 +446,161 @@ describe("useMessageScroll", () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(2)
   })
 
-  it("跟随模式下布局高度变化应立即补齐到底部", () => {
+  it("history 区高度变化不触发自动滚动，但 tail 区变化会触发", () => {
     const { getByTestId } = render(
       <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
     )
 
     const parent = getByTestId("scroll-parent")
+    const history = getByTestId("history-box")
+    const tail = getByTestId("tail-box")
 
     // 初始在底部
     setScrollMetrics(parent, 1000, 500, 500)
     fireEvent.scroll(parent)
     expect(scrollIntoView).toHaveBeenCalledTimes(1)
 
-    // 无新消息，仅布局变高（如自动展开）
-    setScrollMetrics(parent, 1300, 500, 500)
-    triggerResizeObservers()
+    triggerResize(history)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
 
-    // 跟随模式应在布局变化时立即补齐到底部
+    triggerResize(tail)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
+  it("滚动容器高度变化时会重算贴底并保持到底部", () => {
+    const { getByTestId } = render(
+      <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    scrollIntoView.mockClear()
+
+    setScrollMetrics(parent, 1000, 400, 500)
+    triggerResize(parent)
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: "auto", block: "end" })
+  })
+
+  it("贴底判定基于 tail anchor，而不是整个 scrollHeight", () => {
+    const { getByTestId } = render(
+      <TestHarnessWithScrollButton
+        sessionID="s1"
+        sortedMessages={textMessage("a")}
+        isIdle={false}
+        isReasoning={false}
+      />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const anchor = getByTestId("scroll-anchor")
+    setScrollMetrics(parent, 1400, 500, 400)
+    setRect(parent, { top: 0, bottom: 100, height: 100 })
+    setRect(anchor, { top: 100, bottom: 100, height: 0 })
+
+    fireEvent.scroll(parent)
+
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+  })
+
+  it("用户已离开底部时，顶部 prepend 历史不会强制跳到底部", () => {
+    const { rerender, getByTestId } = render(
+      <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    fireEvent.wheel(parent, { deltaY: -100 })
+    setScrollMetrics(parent, 1200, 500, 200)
+    fireEvent.scroll(parent)
+
+    rerender(
+      <TestHarness
+        sessionID="s1"
+        sortedMessages={[
+          { info: { id: "m0" }, parts: [{ id: "p0", type: "text", text: "older" }] },
+          ...textMessage("a"),
+        ]}
+        isIdle={false}
+        isReasoning={false}
+      />,
+    )
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+  })
+
+  it("稳定期内不会自动滚动，结束后只做一次 auto 校正", () => {
+    const { rerender, getByTestId } = render(
+      <TestHarness sessionID="s2" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} settling />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tail = getByTestId("tail-box")
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    scrollIntoView.mockClear()
+
+    setScrollMetrics(parent, 1300, 500, 500)
+    triggerResize(tail)
+    rerender(
+      <TestHarness sessionID="s2" sortedMessages={textMessage("ab")} isIdle={false} isReasoning={false} settling />,
+    )
+
+    expect(scrollIntoView).not.toHaveBeenCalled()
+
+    rerender(<TestHarness sessionID="s2" sortedMessages={textMessage("ab")} isIdle={false} isReasoning={false} />)
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: "auto", block: "end" })
+  })
+
+  it("没有 ResizeObserver 时仍保留基础 tail 贴底语义", () => {
+    ;(globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver = undefined
+    const { rerender, getByTestId } = render(
+      <TestHarness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    rerender(<TestHarness sessionID="s1" sortedMessages={textMessage("ab")} isIdle={false} isReasoning={false} />)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
+  it("没有 ResizeObserver 时，tail-only 变化也会保持基础贴底", () => {
+    ;(globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver = undefined
+    const { rerender, getByTestId } = render(
+      <TestHarness
+        sessionID="s1"
+        sortedMessages={textMessage("a")}
+        isIdle={false}
+        isReasoning={false}
+        tailKey="tail:m1"
+      />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    setScrollMetrics(parent, 1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <TestHarness
+        sessionID="s1"
+        sortedMessages={textMessage("a")}
+        isIdle={false}
+        isReasoning={false}
+        tailKey="tail:m1,question:q1"
+      />,
+    )
+
     expect(scrollIntoView).toHaveBeenCalledTimes(2)
   })
 })

@@ -5,6 +5,7 @@ import { eventEmitter } from "../lib/api/events"
 import { cleanupDeletedSessionDraft } from "./repo/draftRepo"
 import { addRecentModel, loadModelPrefs } from "./repo/modelPrefsRepo"
 import { loadSelection, patchSelection, saveSelection } from "./repo/selectionRepo"
+import { SESSION_LIST_LIMIT, SESSION_LIST_PAGE_SIZE } from "./sessionPaging"
 
 /**
  * Session context state
@@ -24,10 +25,12 @@ interface SessionContextState {
   // All sessions
   sessions: Session[]
   setSessions: (sessions: Session[]) => void
+  hasMore: boolean
 
   // Loading and error states
   isCreating: boolean
   isLoading: boolean
+  isLoadingMore: boolean
   error: Error | null
 
   // Idle state for current session
@@ -60,6 +63,7 @@ interface SessionContextState {
 
   // Variant selection (per provider/model combo)
   selectedVariant: string | undefined
+  selectionSessionId: string | null
   setSelectedVariant: (variant: string | undefined) => Promise<void>
 
   // One-time notice when restored selection is auto-adjusted
@@ -67,16 +71,21 @@ interface SessionContextState {
   clearSelectionRestoreNotice: () => void
 
   // IDE bridge restore (does not persist to server)
-  restoreSelections: (state: {
-    providerId: string | null
-    modelId: string | null
-    agent: string | null
-    variant: string | null
-  }) => void
+  restoreSelections: (
+    state: {
+      providerId: string | null
+      modelId: string | null
+      agent: string | null
+      variant: string | null
+    },
+    sessionID?: string | null,
+  ) => void
+  resolveSelections: (sessionID?: string | null, notice?: string | null) => void
 
   // Actions
   createSession: (options?: { title?: string }) => Promise<Session | null>
   loadSessions: () => Promise<void>
+  loadMoreSessions: () => Promise<void>
   switchSession: (sessionId: string) => Promise<void>
   updateSessionTitle: (sessionId: string, title: string) => Promise<boolean>
   deleteSession: (sessionId: string) => Promise<boolean>
@@ -162,8 +171,10 @@ function isSubagentSession(session: Session): boolean {
 export function SessionProvider({ children }: SessionProviderProps) {
   const [currentSession, setCurrentSession] = useState<Session | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
+  const [hasMore, setHasMore] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [busyMap, setBusyMap] = useState<Record<string, boolean>>({})
   const [reasoningMap, setReasoningMap] = useState<Record<string, boolean>>({})
@@ -194,10 +205,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   // Variant selection state (per provider/model combo, key = "providerId/modelId")
   const [selectedVariant, setSelectedVariantState] = useState<string | undefined>()
+  const [selectionSessionId, setSelectionSessionId] = useState<string | null>(null)
   const [variantMap, setVariantMap] = useState<Record<string, string>>({})
   const [selectionRestoreNotice, setSelectionRestoreNotice] = useState<string | null>(null)
   const [selectionReadyForHostSync, setSelectionReadyForHostSync] = useState(false)
   const draftCleanupQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const sessionLimitRef = useRef(SESSION_LIST_LIMIT)
+  const sessionWantRef = useRef(SESSION_LIST_LIMIT)
+  const sessionMoreRef = useRef<Promise<void> | null>(null)
 
   const clearSelectionRestoreNotice = useCallback(() => {
     setSelectionRestoreNotice(null)
@@ -349,6 +364,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
           }
 
           setSelectedVariantState(initialVariant)
+          setVariantMap(initialVariant ? { [`${providerId}/${modelId}`]: initialVariant } : {})
 
           if (didFallbackModel || didFallbackVariant) {
             setSelectionRestoreNotice("已恢复到当前可用配置")
@@ -385,6 +401,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     async (providerId: string | undefined, modelId: string | undefined) => {
       setSelectedProviderId(providerId)
       setSelectedModelId(modelId)
+      if (currentSession?.id) setSelectionSessionId(currentSession.id)
 
       // Restore variant for the new model
       if (providerId && modelId) {
@@ -419,7 +436,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         }
       }
     },
-    [selectedAgent, agentModelMap, variantMap],
+    [agentModelMap, currentSession?.id, selectedAgent, variantMap],
   )
 
   /**
@@ -429,6 +446,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const setSelectedVariant = useCallback(
     async (variant: string | undefined) => {
       setSelectedVariantState(variant)
+      if (currentSession?.id) setSelectionSessionId(currentSession.id)
 
       // Get current model key
       if (selectedProviderId && selectedModelId) {
@@ -444,7 +462,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         setVariantMap(updatedVariantMap)
       }
     },
-    [selectedProviderId, selectedModelId, variantMap],
+    [currentSession?.id, selectedModelId, selectedProviderId, variantMap],
   )
 
   /**
@@ -474,10 +492,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
       setSelectedAgentState(newAgent)
       setAgentModelMap(nextAgentModel)
+      if (currentSession?.id) setSelectionSessionId(currentSession.id)
 
       if (newProvider !== currentProvider || newModel !== currentModel) {
         setSelectedProviderId(newProvider)
         setSelectedModelId(newModel)
+        setSelectedVariantState(newProvider && newModel ? variantMap[`${newProvider}/${newModel}`] : undefined)
       }
 
       try {
@@ -491,11 +511,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
         console.error("[SessionContext] Failed to save agent preference:", err)
       }
     },
-    [selectedAgent, selectedProviderId, selectedModelId, agentModelMap],
+    [agentModelMap, currentSession?.id, selectedAgent, selectedModelId, selectedProviderId, variantMap],
   )
 
   const restoreSelections = useCallback(
-    (state: { providerId: string | null; modelId: string | null; agent: string | null; variant: string | null }) => {
+    (
+      state: { providerId: string | null; modelId: string | null; agent: string | null; variant: string | null },
+      sessionID?: string | null,
+    ) => {
       // 注意：该函数会被会话激活协调器（useSessionActivation）与 IDE bridge 恢复流程调用。
       // 保持稳定引用有助于避免依赖变化导致的重复恢复。
 
@@ -525,6 +548,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
             return next
           })
         }
+        setSelectionSessionId(sessionID ?? null)
         return
       }
 
@@ -541,23 +565,44 @@ export function SessionProvider({ children }: SessionProviderProps) {
           return next
         })
       }
+      setSelectionSessionId(sessionID ?? null)
     },
     [],
   )
 
+  const resolveSelections = useCallback((sessionID?: string | null, notice?: string | null) => {
+    if (notice) {
+      setSelectionRestoreNotice(notice)
+    }
+    setSelectionSessionId(sessionID ?? null)
+  }, [])
+
   /**
    * Load all sessions
    */
-  const loadSessions = useCallback(async () => {
-    setIsLoading(true)
+  const listSessions = useCallback(async (limit: number, more = false) => {
+    sessionWantRef.current = Math.max(sessionWantRef.current, limit)
+    if (more) setIsLoadingMore(true)
+    else setIsLoading(true)
     setError(null)
 
-    console.log("[SessionContext] Loading sessions...")
+    const stop = () => {
+      if (more) setIsLoadingMore(false)
+      else setIsLoading(false)
+    }
+
+    console.log("[SessionContext] Loading sessions...", { limit })
 
     try {
-      const response = await sdk.session.list()
+      const response = await sdk.session.list({ limit, roots: true })
+      const stale = limit < sessionWantRef.current
 
-      if (response.error) {
+      if (response?.error) {
+        if (stale) {
+          stop()
+          return
+        }
+        sessionWantRef.current = sessionLimitRef.current
         const errorData =
           response.error && typeof response.error === "object" && "data" in response.error ? response.error.data : null
         const errorMsg =
@@ -566,29 +611,50 @@ export function SessionProvider({ children }: SessionProviderProps) {
             : "Failed to load sessions"
         console.error("[SessionContext] Failed to load sessions:", errorMsg)
         setError(new Error(errorMsg))
-        setIsLoading(false)
+        stop()
         return
       }
 
-      if (response.data) {
+      if (response?.data) {
+        if (stale) {
+          stop()
+          return
+        }
+        sessionLimitRef.current = limit
+        sessionWantRef.current = limit
+        setHasMore(response.data.length >= limit)
         console.log("[SessionContext] Sessions loaded:", response.data.length)
-        // Sort by creation time (newest first)
-        const sorted = response.data
-          .filter((s) => !isSubagentSession(s))
-          .sort((a, b) => b.time.created - a.time.created)
-        setSessions(sorted)
-        setIsLoading(false)
+        setSessions(response.data.filter((s) => !isSubagentSession(s)))
+        stop()
         return
       }
 
-      setIsLoading(false)
+      stop()
     } catch (err) {
+      if (limit < sessionWantRef.current) {
+        stop()
+        return
+      }
+      sessionWantRef.current = sessionLimitRef.current
       const errorMsg = err instanceof Error ? err.message : "Failed to load sessions"
       console.error("[SessionContext] Failed to load sessions:", errorMsg)
       setError(new Error(errorMsg))
-      setIsLoading(false)
+      stop()
     }
   }, [])
+
+  const loadSessions = useCallback(() => {
+    return listSessions(sessionLimitRef.current)
+  }, [listSessions])
+
+  const loadMoreSessions = useCallback(() => {
+    if (sessionMoreRef.current) return sessionMoreRef.current
+    const task = listSessions(sessionWantRef.current + SESSION_LIST_PAGE_SIZE, true).finally(() => {
+      sessionMoreRef.current = null
+    })
+    sessionMoreRef.current = task
+    return task
+  }, [listSessions])
 
   /**
    * Create a new session
@@ -922,7 +988,20 @@ export function SessionProvider({ children }: SessionProviderProps) {
       console.log("[SessionContext] Retrying session:", sessionId)
       setSessionIdle(sessionId, false)
       try {
-        await sdk.session.retry({ path: { sessionID: sessionId } })
+        const response = await sdk.session.retry({ path: { sessionID: sessionId } })
+        if (!response?.error) return
+        const errorMsg =
+          response.error instanceof Error
+            ? response.error.message
+            : typeof response.error === "object" &&
+                response.error !== null &&
+                "message" in response.error &&
+                typeof response.error.message === "string"
+              ? response.error.message
+              : "Failed to retry session"
+        console.error("[SessionContext] Failed to retry session:", errorMsg)
+        setError(new Error(errorMsg))
+        setSessionIdle(sessionId, true)
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Failed to retry session"
         console.error("[SessionContext] Failed to retry session:", errorMsg)
@@ -942,8 +1021,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   // Load sessions on mount
   useEffect(() => {
-    loadSessions()
-  }, [loadSessions])
+    void listSessions(SESSION_LIST_LIMIT)
+  }, [listSessions])
 
   // Load session diff when current session changes
   useEffect(() => {
@@ -1001,13 +1080,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
           if (!visible) {
             return exists ? prev.filter((s) => s.id !== updatedSession.id) : prev
           }
-          if (!exists) {
-            return [updatedSession, ...prev]
-          }
-          if (exists.title !== updatedSession.title) {
+          if (exists && exists.title !== updatedSession.title) {
             console.log("[SessionContext] 🎉 Session title CHANGED:", exists.title, "→", updatedSession.title)
           }
-          return prev.map((s) => (s.id === updatedSession.id ? updatedSession : s))
+          const next = prev.filter((s) => s.id !== updatedSession.id)
+          const idx = next.findIndex((s) => s.time.updated < updatedSession.time.updated)
+          if (idx < 0) return [...next, updatedSession]
+          return [...next.slice(0, idx), updatedSession, ...next.slice(idx)]
         })
 
         if (currentSession?.id === updatedSession.id) {
@@ -1087,8 +1166,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setCurrentSession,
     sessions,
     setSessions,
+    hasMore,
     isCreating,
     isLoading,
+    isLoadingMore,
     error,
     isIdle,
     setSessionIdle,
@@ -1104,12 +1185,15 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setSelectedModel,
     setSelectedAgent,
     selectedVariant,
+    selectionSessionId,
     setSelectedVariant,
     selectionRestoreNotice,
     clearSelectionRestoreNotice,
     restoreSelections,
+    resolveSelections,
     createSession,
     loadSessions,
+    loadMoreSessions,
     switchSession,
     updateSessionTitle,
     deleteSession,

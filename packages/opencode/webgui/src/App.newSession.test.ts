@@ -1,5 +1,44 @@
 import { describe, expect, it, vi } from "vitest"
-import { prepareSession } from "./App"
+import { chatState, prepareSession, retryLoad } from "./App"
+
+describe("chatState", () => {
+  it("最近页首屏已可用时不展示 loading 或 retry", () => {
+    expect(
+      chatState({
+        loading: true,
+        loaded: false,
+        error: true,
+        ready: true,
+      }),
+    ).toEqual({ loading: false, error: false, blocked: false })
+  })
+
+  it("最近页首屏不可用且请求失败时展示 retry", () => {
+    expect(
+      chatState({
+        loading: false,
+        loaded: false,
+        error: true,
+        ready: false,
+      }),
+    ).toEqual({ loading: false, error: true, blocked: true })
+  })
+
+  it("retry 会重新执行当前会话 activation", async () => {
+    const load = vi.fn(async () => {})
+    const activate = vi.fn(async () => {})
+
+    await retryLoad({
+      id: "s1",
+      load,
+      activate,
+    })
+
+    expect(activate).toHaveBeenCalledWith("s1")
+    expect(activate).toHaveBeenCalledTimes(1)
+    expect(load).not.toHaveBeenCalled()
+  })
+})
 
 describe("prepareSession", () => {
   it("reuses valid draft session", async () => {

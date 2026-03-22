@@ -78,6 +78,7 @@ const MessageInputInner = forwardRef<
   const containerRef = useRef<HTMLDivElement>(null)
   const { worktree } = useProject()
   const {
+    currentSession,
     isIdle,
     selectedProviderId,
     selectedModelId,
@@ -85,6 +86,7 @@ const MessageInputInner = forwardRef<
     setSelectedModel,
     setSelectedAgent,
     selectedVariant,
+    selectionSessionId,
     setSelectedVariant,
   } = useSession()
   const { providersDirty, clearProvidersDirty } = useProviders()
@@ -191,13 +193,25 @@ const MessageInputInner = forwardRef<
 
   const { fileInputRef, handleFileSelect, handleFileChange } = useFileAttachment(editor)
 
-  useDragDrop({ contentEditableRef, containerRef, editor, worktree, parseWithRange })
+  const selectionPending =
+    !!sessionID &&
+    currentSession?.id === sessionID &&
+    ((typeof selectionSessionId === "string" && selectionSessionId !== sessionID) || selectionSessionId === null)
+
+  const busy = !isIdle
+  const locked = busy || blocked || selectionPending
+
+  useDragDrop({ contentEditableRef, containerRef, editor, worktree, parseWithRange, disabled: locked })
 
   useEditorKeyboard({ editor, contentEditableRef, parseWithRange, onSubmit: handleSubmit })
 
   // Restore session-scoped draft from workspace storage
   useEffect(() => {
     let active = true
+    const cached = sessionID ? (drafts.current[sessionID] ?? "") : ""
+    if (cached !== draft.current) {
+      restore(cached)
+    }
     void loadDrafts().then((value) => {
       if (!active) return
       drafts.current = value
@@ -237,6 +251,7 @@ const MessageInputInner = forwardRef<
         editor.focus()
       },
       insertPaths: (paths: string[]) => {
+        if (locked) return
         if (!paths || paths.length === 0) return
         let tries = 0
         const perform = () => {
@@ -286,6 +301,7 @@ const MessageInputInner = forwardRef<
         perform()
       },
       pastePath: (path: string) => {
+        if (locked) return
         if (!path) return
         let tries = 0
         const perform = () => {
@@ -309,14 +325,12 @@ const MessageInputInner = forwardRef<
         perform()
       },
       insertPlainWithMentions: (value: string) => {
+        if (locked) return
         insertPlainWithMentionsImpl(editor, parseWithRange, value, { replace: true })
       },
     }),
-    [editor, worktree, parseWithRange],
+    [editor, locked, worktree, parseWithRange],
   )
-
-  const busy = !isIdle
-  const locked = busy || blocked
 
   // Disable/enable editor based on session busy state
   useEffect(() => {
@@ -491,6 +505,7 @@ const MessageInputInner = forwardRef<
           selectedVariant={selectedVariant}
           onVariantSelect={(variant) => setSelectedVariant(variant)}
           isReasoningModel={currentModelInfo.isReasoning}
+          selectionPending={selectionPending}
         />
       </footer>
 

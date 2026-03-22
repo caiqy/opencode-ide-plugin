@@ -4,8 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => {
   return {
     closeSubtaskDrawer: vi.fn(),
-    loadSessionMessages: vi.fn<(sessionId: string) => Promise<void>>(),
+    ensureSession: vi.fn<(sessionId: string) => Promise<void>>(),
     getMessagesBySession: vi.fn<(sessionId: string) => Array<any>>(),
+    isSessionLoadError: vi.fn<(sessionId: string) => boolean>(),
     state: {
       isOpen: true,
       sessionId: "s-child",
@@ -31,15 +32,16 @@ vi.mock("../../state/SubtaskDrawerContext", () => {
 vi.mock("../../state/MessagesContext", () => {
   return {
     useMessages: () => ({
-      loadSessionMessages: mocks.loadSessionMessages,
+      ensureSession: mocks.ensureSession,
       getMessagesBySession: mocks.getMessagesBySession,
+      isSessionLoadError: mocks.isSessionLoadError,
     }),
   }
 })
 
 vi.mock("./SubtaskMessageList", () => {
   return {
-    SubtaskMessageList: () => null,
+    SubtaskMessageList: () => <div data-testid="subtask-message-list" />,
   }
 })
 
@@ -51,7 +53,8 @@ describe("SubtaskDrawer", () => {
     mocks.state.isOpen = true
     mocks.state.sessionId = "s-child"
     mocks.state.title = "demo"
-    mocks.loadSessionMessages.mockResolvedValue(undefined)
+    mocks.ensureSession.mockResolvedValue(undefined)
+    mocks.isSessionLoadError.mockReturnValue(false)
     mocks.getMessagesBySession.mockReturnValue([
       {
         info: { id: "m1", sessionID: "s-child", role: "assistant", time: { created: 1 } },
@@ -67,11 +70,71 @@ describe("SubtaskDrawer", () => {
   it("打开时应渲染标题，并触发加载子会话消息", async () => {
     render(<SubtaskDrawer />)
 
-    expect(screen.getByText("委派子任务：demo [ 2 工具调用 / 执行命令 ]")).toBeInTheDocument()
+    expect(screen.getByText("委派子任务：demo [ 已加载 2 个工具调用 / 执行命令 ]")).toBeInTheDocument()
 
     await waitFor(() => {
-      expect(mocks.loadSessionMessages).toHaveBeenCalledWith("s-child")
+      expect(mocks.ensureSession).toHaveBeenCalledWith("s-child")
     })
+  })
+
+  it("首次打开且子会话仍在加载时显示加载态，避免先闪空内容", async () => {
+    let done = () => {}
+    mocks.getMessagesBySession.mockReturnValue([])
+    mocks.ensureSession.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          done = resolve
+        }),
+    )
+
+    render(<SubtaskDrawer />)
+
+    expect(screen.getByTestId("subtask-drawer-loading")).toBeInTheDocument()
+    expect(screen.queryByTestId("subtask-message-list")).not.toBeInTheDocument()
+
+    done()
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("subtask-drawer-loading")).not.toBeInTheDocument()
+    })
+  })
+
+  it("冷启动加载时头部先显示加载文案，不先闪 0 个工具调用", () => {
+    mocks.getMessagesBySession.mockReturnValue([])
+    mocks.ensureSession.mockImplementation(() => new Promise<void>(() => {}))
+
+    render(<SubtaskDrawer />)
+
+    expect(screen.getByText("委派子任务：demo [ 正在加载子任务… ]")).toBeInTheDocument()
+    expect(screen.queryByText("委派子任务：demo [ 已加载 0 个工具调用 / 空闲 ]")).not.toBeInTheDocument()
+  })
+
+  it("冷启动加载失败时显示失败态与重试入口，不伪装成成功加载", async () => {
+    mocks.getMessagesBySession.mockReturnValue([])
+    mocks.ensureSession.mockRejectedValue(new Error("boom"))
+    mocks.isSessionLoadError.mockReturnValue(true)
+
+    render(<SubtaskDrawer />)
+
+    await waitFor(() => {
+      expect(screen.getByText("子任务加载失败")).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId("subtask-message-list")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("subtask-drawer-loading")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "重试加载" })).toBeInTheDocument()
+  })
+
+  it("拖拽过程中关闭抽屉也会恢复 body userSelect", () => {
+    const view = render(<SubtaskDrawer />)
+    const handle = screen.getByTestId("subtask-drawer-resize-handle")
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 900 })
+    expect(document.body.style.userSelect).toBe("none")
+
+    mocks.state.isOpen = false
+    view.rerender(<SubtaskDrawer />)
+
+    expect(document.body.style.userSelect).toBe("")
   })
 
   it("没有进行中的工具调用时，显示当前为空闲", () => {
@@ -84,7 +147,7 @@ describe("SubtaskDrawer", () => {
 
     render(<SubtaskDrawer />)
 
-    expect(screen.getByText("委派子任务：demo [ 1 工具调用 / 空闲 ]")).toBeInTheDocument()
+    expect(screen.getByText("委派子任务：demo [ 已加载 1 个工具调用 / 空闲 ]")).toBeInTheDocument()
   })
 
   it("子任务完成后应显示已完成", () => {
@@ -109,7 +172,7 @@ describe("SubtaskDrawer", () => {
 
     render(<SubtaskDrawer />)
 
-    expect(screen.getByText("委派子任务：demo [ 1 工具调用 / 已完成 ]")).toBeInTheDocument()
+    expect(screen.getByText("委派子任务：demo [ 已加载 1 个工具调用 / 已完成 ]")).toBeInTheDocument()
   })
 
   it("仅显示传入的 title；当 title 为空时不渲染默认标题文案", () => {

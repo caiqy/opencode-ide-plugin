@@ -62,4 +62,39 @@ describe("EditorToolbar", () => {
     const addFile = screen.getByRole("button", { name: "添加文件" })
     expect(addFile).toHaveAttribute("title", "添加文件")
   })
+
+  it("selection 切换期间显示加载占位而不是旧选择器", () => {
+    render(
+      <EditorToolbar
+        selectedProviderId="openai"
+        selectedModelId="gpt-4.1"
+        selectedAgent="build"
+        onModelSelect={vi.fn()}
+        onAgentSelect={vi.fn()}
+        onFileSelect={vi.fn()}
+        isDisabled={false}
+        modelSelectorKey={0}
+        lastFailedMessage={null}
+        onRetry={vi.fn()}
+        fileInputRef={{ current: null } as any}
+        onFileChange={vi.fn()}
+        isIdle={true}
+        isButtonDisabled={false}
+        isCompactDisabled={false}
+        onSubmit={vi.fn()}
+        onAbort={vi.fn()}
+        onCompactClick={vi.fn()}
+        variants={["low"]}
+        selectedVariant={undefined}
+        onVariantSelect={vi.fn()}
+        isReasoningModel={true}
+        selectionPending
+      />,
+    )
+
+    expect(screen.getByText("正在切换会话设置…")).toBeInTheDocument()
+    expect(screen.queryByTestId("agent-selector")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("model-selector")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("variant-selector")).not.toBeInTheDocument()
+  })
 })

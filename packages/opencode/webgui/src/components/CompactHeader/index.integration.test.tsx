@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   useToast: vi.fn(),
   sdkShare: vi.fn(),
   sdkUnshare: vi.fn(),
+  sessionDropdown: vi.fn(),
 }))
 
 vi.mock("../../state/ThemeContext", () => ({
@@ -67,7 +68,10 @@ vi.mock("./StatusPopover", () => ({
 }))
 
 vi.mock("./SessionDropdown", () => ({
-  SessionDropdown: () => null,
+  SessionDropdown: (props: unknown) => {
+    mocks.sessionDropdown(props)
+    return null
+  },
 }))
 
 vi.mock("../../lib/api/sdkClient", () => ({
@@ -137,10 +141,55 @@ describe("CompactHeader integration with real TabBar", () => {
   beforeEach(() => {
     mocks.sdkShare.mockResolvedValue({ data: null })
     mocks.sdkUnshare.mockResolvedValue({ data: null })
+    mocks.sessionDropdown.mockReset()
     mocks.useTheme.mockReturnValue({ theme: "light", toggleTheme: vi.fn() })
     mocks.useSessionDropdown.mockReturnValue(baseDropdown())
     mocks.useSessionActions.mockReturnValue(baseActions())
     mocks.useToast.mockReturnValue({ showToast: vi.fn() })
+  })
+
+  it("透传分页状态给 SessionDropdown", () => {
+    const loadMoreSessions = vi.fn()
+
+    mocks.useSession.mockReturnValue({
+      currentSession: { id: "s1", title: "会话 1" },
+      setCurrentSession: vi.fn(),
+      sessions: [{ id: "s1", title: "会话 1" }],
+      setSessions: vi.fn(),
+      switchSession: vi.fn(),
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      hasMore: true,
+      isLoadingMore: false,
+      loadMoreSessions,
+      isLoading: true,
+      isSessionIdle: vi.fn(() => true),
+      isSessionReasoning: vi.fn(() => false),
+    })
+
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["s1"],
+      activeTab: "s1",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      activateTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    })
+
+    render(<CompactHeader {...props()} />)
+
+    expect(mocks.sessionDropdown).toHaveBeenCalled()
+    expect(mocks.sessionDropdown.mock.calls.at(-1)?.[0]).toMatchObject({
+      hasMore: true,
+      isLoadingMore: false,
+      onLoadMore: loadMoreSessions,
+    })
   })
 
   it("activates a tab and switches session when user clicks another tab", async () => {
@@ -320,5 +369,54 @@ describe("CompactHeader integration with real TabBar", () => {
     })
 
     expect(onNewSession).not.toHaveBeenCalled()
+  })
+
+  it("分页未加载完整时，仍会恢复分页窗口外的 active tab，且不会过早 prune", async () => {
+    const switchSession = vi.fn().mockResolvedValue(undefined)
+    const pruneTabs = vi.fn()
+    let isLoading = true
+    let loaded = false
+
+    mocks.useSession.mockImplementation(() => ({
+      currentSession: null,
+      setCurrentSession: vi.fn(),
+      sessions: [{ id: "s-new", title: "会话 new" }],
+      setSessions: vi.fn(),
+      switchSession,
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      hasMore: true,
+      isLoadingMore: false,
+      loadMoreSessions: vi.fn(),
+      isLoading,
+      isSessionIdle: vi.fn(() => true),
+      isSessionReasoning: vi.fn(() => false),
+    }))
+
+    mocks.useTabStore.mockImplementation(() => ({
+      openTabs: loaded ? ["s-old"] : [],
+      activeTab: loaded ? "s-old" : "",
+      loaded,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      activateTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs,
+    }))
+
+    const view = render(<CompactHeader {...props()} />)
+
+    isLoading = false
+    loaded = true
+    view.rerender(<CompactHeader {...props()} />)
+
+    await waitFor(() => {
+      expect(switchSession).toHaveBeenCalledWith("s-old")
+    })
+    expect(pruneTabs).not.toHaveBeenCalled()
   })
 })

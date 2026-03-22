@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { useMessages } from "../../state/MessagesContext"
 import { useSession } from "../../state/SessionContext"
 import { TypingIndicator } from "../TypingIndicator"
@@ -9,6 +10,8 @@ import { RevertSummary } from "./RevertSummary"
 import { QuestionPart } from "./Parts/QuestionPart"
 import { useMessageScroll } from "./hooks/useMessageScroll"
 import { useMessageActions } from "./hooks/useMessageActions"
+import { useTopTrim } from "./hooks/useTopTrim"
+import { useHistoryBlocks } from "./hooks/useHistoryBlocks"
 import { PartOpenProvider, type PartOpenItem } from "./PartOpenContext"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
 
@@ -17,27 +20,77 @@ interface MessageListProps {
   onUndoToInput?: (value: string) => void
 }
 
+function useSettle(id: string | null | undefined, ref: RefObject<HTMLDivElement | null>, count: number) {
+  const prev = useRef<string | null | undefined>(undefined)
+  const box = useRef(count)
+  const [state, setState] = useState(false)
+  const changed = prev.current !== id
+
+  box.current = count
+
+  useEffect(() => {
+    prev.current = id
+  }, [id])
+
+  useLayoutEffect(() => {
+    if (!id) {
+      setState(false)
+      return
+    }
+
+    let frame = 0
+    let same = 0
+    let left = 12
+    let last = ""
+
+    setState(true)
+
+    const tick = () => {
+      const parent = ref.current?.parentElement as HTMLElement | null
+      const next = `${box.current}:${parent?.scrollHeight ?? -1}:${parent?.clientHeight ?? -1}`
+      same = next === last ? same + 1 : 0
+      last = next
+      left -= 1
+      if (same >= 1 || left <= 0) {
+        setState(false)
+        return
+      }
+      frame = requestAnimationFrame(tick)
+    }
+
+    frame = requestAnimationFrame(tick)
+
+    return () => {
+      cancelAnimationFrame(frame)
+    }
+  }, [count, id, ref])
+
+  return changed || state
+}
+
 export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
-  const { getMessagesBySession, getQuestionsBySession } = useMessages()
+  const {
+    getMessagesBySession,
+    getQuestionsBySession,
+    getSessionPagination,
+    loadOlder,
+    permissions = [],
+  } = useMessages()
   const { isIdle, isReasoning, currentSession } = useSession()
+  const box = useRef<HTMLDivElement>(null)
+  const tailRef = useRef<HTMLDivElement>(null)
 
-  // Get pending questions for current session
-  const pendingQuestions = sessionID ? getQuestionsBySession(sessionID) : []
-
-  // Get messages for current session
-  const sessionMessages = sessionID ? getMessagesBySession(sessionID) : []
-
-  // Sort messages by creation time
-  const sortedMessages = [...sessionMessages].sort((a, b) => {
-    return a.info.time.created - b.info.time.created
-  })
-
-  const { messagesEndRef, messagesContainerRef, showScrollToBottom, scrollToBottom } = useMessageScroll(
-    sessionID,
-    sortedMessages,
-    isIdle,
-    isReasoning,
+  const pendingQuestions = useMemo(
+    () => (sessionID ? getQuestionsBySession(sessionID) : []),
+    [getQuestionsBySession, sessionID],
   )
+  const sessionMessages = useMemo(
+    () => (sessionID ? getMessagesBySession(sessionID) : []),
+    [getMessagesBySession, sessionID],
+  )
+  const sortedMessages = useMemo(() => {
+    return [...sessionMessages].sort((a, b) => a.info.time.created - b.info.time.created)
+  }, [sessionMessages])
 
   const {
     forkConfirm,
@@ -54,119 +107,184 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
     setForkConfirm,
   } = useMessageActions(sessionID, onUndoToInput)
 
-  // Show empty state if no messages
-  if (!sessionID || sortedMessages.length === 0) {
-    return <EmptyState />
-  }
-
   // Inline revert handling: if session has a revert boundary, hide messages at/after it
   const revertBoundaryID = currentSession?.revert?.messageID
 
-  const visibleMessages = (() => {
+  const visibleMessages = useMemo(() => {
     if (!revertBoundaryID) return sortedMessages
     const index = sortedMessages.findIndex((m) => m.info.id === revertBoundaryID)
     if (index === -1) return sortedMessages
     return sortedMessages.slice(0, index)
-  })()
-
-  const items: PartOpenItem[] = visibleMessages.flatMap((msg): PartOpenItem[] => {
-    return msg.parts.flatMap((part): PartOpenItem[] => {
-      if (part.type === "reasoning") {
-        return [{ type: "reasoning", id: part.id, text: part.text, end: part.time?.end }]
-      }
-      if (part.type === "tool") {
-        const status = part.state?.status
-        const safe = status === "pending" || status === "running" || status === "completed" || status === "error"
-        return [{ type: "tool", id: part.id, tool: part.tool, status: safe ? status : undefined }]
-      }
-      return []
-    })
+  }, [revertBoundaryID, sortedMessages])
+  const typing = !isIdle && !isReasoning
+  const blocks = useHistoryBlocks({
+    sessionID,
+    messages: visibleMessages,
+    questions: pendingQuestions,
+    permissions,
+    isTyping: typing,
   })
+  const settling = useSettle(sessionID, box, sortedMessages.length)
+  const page = sessionID
+    ? getSessionPagination(sessionID)
+    : { ready: false, latestLoading: false, olderLoading: false, olderError: false, complete: false }
+  const tailMessages = useMemo(() => {
+    return blocks.tail.flatMap((item) => (item.kind === "tail-message" ? [item.msg] : []))
+  }, [blocks.tail])
+  const tailKey = useMemo(() => blocks.tail.map((item) => `${item.kind}:${item.id}`).join(","), [blocks.tail])
+  const ids = useMemo(() => visibleMessages.map((item) => item.info.id), [visibleMessages])
+  const { messagesEndRef, messagesContainerRef, showScrollToBottom, scrollToBottom } = useMessageScroll(
+    sessionID,
+    tailMessages,
+    isIdle,
+    isReasoning,
+    settling,
+    box,
+    tailRef,
+    revertBoundaryID ? `${tailKey}:revert:${revertBoundaryID}` : tailKey,
+  )
+
+  const trim = useTopTrim({
+    sessionID,
+    items: blocks.history,
+    ids,
+    loading: page.olderLoading,
+    paused: settling,
+    ref: messagesContainerRef,
+  })
+
+  useLayoutEffect(() => {
+    const parent = messagesContainerRef.current?.parentElement as HTMLElement | null
+    if (!parent) return
+    const prev = parent.style.overflowAnchor
+    parent.style.overflowAnchor = "none"
+    return () => {
+      parent.style.overflowAnchor = prev
+    }
+  }, [messagesContainerRef, sessionID])
+
+  const items = useMemo(() => {
+    return visibleMessages.flatMap((msg): PartOpenItem[] => {
+      return msg.parts.flatMap((part): PartOpenItem[] => {
+        if (part.type === "reasoning") {
+          return [{ type: "reasoning", id: part.id, text: part.text, end: part.time?.end }]
+        }
+        if (part.type === "tool") {
+          const status = part.state?.status
+          const safe = status === "pending" || status === "running" || status === "completed" || status === "error"
+          return [{ type: "tool", id: part.id, tool: part.tool, status: safe ? status : undefined }]
+        }
+        return []
+      })
+    })
+  }, [visibleMessages])
 
   const lastMessageID = visibleMessages.at(-1)?.info.id
 
-  // Build rows with optional inline reverted summary block
-  const rows: React.ReactNode[] = []
-  let insertedRevertSummary = false
-  if (revertBoundaryID) {
-    for (const message of sortedMessages) {
-      if (!insertedRevertSummary && message.info.id === revertBoundaryID) {
-        // Insert a compact inline summary and stop rendering further messages
-        rows.push(
-          <RevertSummary
-            key="revert-summary"
-            onRedo={handleRedoClick}
-            onRestore={handleRestoreClick}
-            isRevertBusy={isRevertBusy}
-          />,
-        )
-        insertedRevertSummary = true
-        break
-      }
-      rows.push(
-        <MessageRow
-          key={message.info.id}
-          message={message}
-          onFork={handleForkStart}
-          onRevert={handleRevert}
-          revertBusy={isRevertBusy}
-          sessionID={sessionID || undefined}
-          isLast={message.info.id === lastMessageID}
-        />,
-      )
-    }
-  } else {
-    for (const message of sortedMessages) {
+  const renderRow = useCallback(
+    (
+      message: (typeof visibleMessages)[number],
+      trim?: (node: HTMLDivElement | null) => void,
+      kind?: "history-message" | "history-summary" | "tail-message",
+    ) => {
       const isSummaryAssistant =
-        message.info.role === "assistant" && (message.info as { summary?: boolean }).summary === true
+        !revertBoundaryID &&
+        (kind === "history-summary" ||
+          ((message.info as { summary?: boolean }).summary === true && kind === "tail-message"))
 
-      if (isSummaryAssistant) {
-        rows.push(
-          <div key={`${message.info.id}-summary-separator`} className="flex items-center my-4">
-            <div className="flex-1 border-t border-dashed border-gray-300 dark:border-gray-700" />
-            <span className="mx-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">会话已在此精简</span>
-            <div className="flex-1 border-t border-dashed border-gray-300 dark:border-gray-700" />
-          </div>,
+      return (
+        <div key={message.info.id} ref={trim} data-testid="trim-row" className="flow-root">
+          {isSummaryAssistant && (
+            <div className="flex items-center py-4">
+              <div className="flex-1 border-t border-dashed border-gray-300 dark:border-gray-700" />
+              <span className="mx-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">会话已在此精简</span>
+              <div className="flex-1 border-t border-dashed border-gray-300 dark:border-gray-700" />
+            </div>
+          )}
+          <MessageRow
+            message={message}
+            onFork={handleForkStart}
+            onRevert={handleRevert}
+            revertBusy={isRevertBusy}
+            sessionID={sessionID || undefined}
+            isLast={message.info.id === lastMessageID}
+          />
+        </div>
+      )
+    },
+    [handleForkStart, handleRevert, isRevertBusy, lastMessageID, revertBoundaryID, sessionID],
+  )
+
+  const rows = useMemo(() => {
+    return trim.visible.map((item) => renderRow(item.msg, trim.row(item.id), item.kind))
+  }, [renderRow, trim])
+
+  const tail = useMemo(() => {
+    return blocks.tail.map((item) => {
+      if (item.kind === "tail-message") return renderRow(item.msg, trim.row(item.id), item.kind)
+      if (item.kind === "tail-question") {
+        return (
+          <div key={item.id} className="px-4">
+            <QuestionPart request={item.question} />
+          </div>
         )
       }
+      return typing ? <TypingIndicator key={item.id} visible /> : null
+    })
+  }, [blocks.tail, renderRow, trim, typing])
 
-      rows.push(
-        <MessageRow
-          key={message.info.id}
-          message={message}
-          onFork={handleForkStart}
-          onRevert={handleRevert}
-          revertBusy={isRevertBusy}
-          sessionID={sessionID || undefined}
-          isLast={message.info.id === lastMessageID}
-        />,
-      )
-    }
+  const bar = useMemo(() => {
+    if (!page.ready) return null
+    if (page.complete) return { text: "已加载全部消息", disabled: true }
+    if (page.olderError) return { text: "加载失败，点击重试", disabled: false }
+    if (page.olderLoading) return { text: "正在加载…", disabled: true }
+    return { text: "加载更早消息", disabled: false }
+  }, [page.complete, page.olderError, page.olderLoading, page.ready])
+
+  const onOlder = useCallback(() => {
+    if (!sessionID || !bar || bar.disabled) return
+    trim.preparePrepend()
+    void loadOlder(sessionID)
+  }, [bar, loadOlder, sessionID, trim])
+
+  if (!sessionID || (visibleMessages.length === 0 && blocks.tail.length === 0 && !currentSession?.revert?.messageID)) {
+    return <EmptyState />
   }
 
   return (
     <>
-      <div ref={messagesContainerRef} className="min-h-full">
+      <div data-testid="message-scroll-shell" ref={messagesContainerRef} className="min-h-full">
         <PartOpenProvider items={items}>
-          <div className="space-y-2">
+          <div data-testid="message-scroll-root" className="space-y-2">
+            <div data-testid="history-zone">
+              <div ref={trim.topRef} />
+              <div data-testid="history-trim-spacer" style={{ height: trim.top }} />
+              {bar && (
+                <button
+                  data-testid="history-load-bar"
+                  type="button"
+                  disabled={bar.disabled}
+                  onClick={onOlder}
+                  className="flex w-full items-center justify-center px-4 py-2 text-sm text-gray-500 dark:text-gray-400"
+                >
+                  {bar.text}
+                </button>
+              )}
+              {rows}
+            </div>
             {/* Revert banner (pinned to top of scroll area) */}
             {currentSession?.revert?.messageID && (
               <RevertBanner onRedo={handleRedoClick} onRestore={handleRestoreClick} isRevertBusy={isRevertBusy} />
             )}
 
-            {rows}
+            {revertBoundaryID && (
+              <RevertSummary onRedo={handleRedoClick} onRestore={handleRestoreClick} isRevertBusy={isRevertBusy} />
+            )}
 
-            {/* Pending questions from server */}
-            {pendingQuestions.map((question) => (
-              <div key={question.id} className="px-4">
-                <QuestionPart request={question} />
-              </div>
-            ))}
-
-            {/* Typing indicator - hide while reasoning parts are streaming */}
-            <TypingIndicator visible={!isIdle && !isReasoning} />
-            {/* Scroll anchor */}
-            <div ref={messagesEndRef} />
+            <div ref={tailRef} data-testid="tail-zone">
+              {tail}
+              <div data-testid="tail-anchor" ref={messagesEndRef} />
+            </div>
           </div>
         </PartOpenProvider>
 

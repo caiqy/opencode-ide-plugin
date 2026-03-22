@@ -28,6 +28,25 @@ import { switchSessionWithTabRollback } from "./state/switchSession"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 
+export function chatState(input: { loading: boolean; loaded: boolean; error: boolean; ready: boolean }) {
+  if (input.ready) return { loading: false, error: false, blocked: false }
+  const loading = input.loading || (!input.loaded && !input.error)
+  return { loading, error: !loading && input.error, blocked: loading || input.error }
+}
+
+export async function retryLoad(input: {
+  id: string | null | undefined
+  load: (id: string) => Promise<unknown> | unknown
+  activate?: (id: string) => Promise<unknown> | unknown
+}) {
+  if (!input.id) return
+  if (input.activate) {
+    await input.activate(input.id)
+    return
+  }
+  await input.load(input.id)
+}
+
 export function handleSessionUiEvent(input: {
   event: ServerEvent
   currentSessionId: string | null | undefined
@@ -101,7 +120,8 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   } = useSession()
   const tabStore = useTabStore()
   const { showToast } = useToast()
-  const { isSessionLoading, isSessionLoaded, isSessionLoadError, loadSessionMessages } = useMessages()
+  const { getMessagesBySession, isSessionLoading, isSessionLoaded, isSessionLoadError, loadSessionMessages } =
+    useMessages()
   const compactHeaderRef = useRef<{ toggleSessionDropdown: () => void }>(null)
   const messageInputRef = useRef<{
     focus: () => void
@@ -129,20 +149,24 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
 
   const creating = useRef(false)
 
-  useSessionActivation()
+  const activateSession = useSessionActivation()
 
-  const chatLoading = currentSession?.id
-    ? isSessionLoading(currentSession.id) ||
-      (!isSessionLoaded(currentSession.id) && !isSessionLoadError(currentSession.id))
-    : false
-  const chatLoadError = currentSession?.id ? isSessionLoadError(currentSession.id) : false
-  const chatBlocked = chatLoading || chatLoadError
+  const gate = currentSession?.id
+    ? chatState({
+        loading: isSessionLoading(currentSession.id),
+        loaded: isSessionLoaded(currentSession.id),
+        error: isSessionLoadError(currentSession.id),
+        ready: getMessagesBySession(currentSession.id).length > 0,
+      })
+    : { loading: false, error: false, blocked: false }
 
   const handleRetrySessionLoad = useCallback(() => {
-    const id = currentSession?.id
-    if (!id) return
-    void loadSessionMessages(id)
-  }, [currentSession?.id, loadSessionMessages])
+    void retryLoad({
+      id: currentSession?.id,
+      load: loadSessionMessages,
+      activate: activateSession,
+    })
+  }, [activateSession, currentSession?.id, loadSessionMessages])
 
   const handleNewSession = useCallback(() => {
     if (creating.current) return
@@ -361,7 +385,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
       {/* Offline Banner */}
       <OfflineBanner connectionState={connectionState} />
 
-      <ChatLoadGuard loading={chatLoading} error={chatLoadError} onRetry={handleRetrySessionLoad}>
+      <ChatLoadGuard loading={gate.loading} error={gate.error} onRetry={handleRetrySessionLoad}>
         {/* Messages Area */}
         <main className="flex-1 overflow-y-auto px-4 py-3">
           <MessageList
@@ -374,7 +398,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
         <MessageInput
           ref={messageInputRef}
           sessionID={currentSession?.id ?? null}
-          blocked={chatBlocked}
+          blocked={gate.blocked}
           onMessageSent={() => {
             console.log("[App] Message sent successfully")
           }}

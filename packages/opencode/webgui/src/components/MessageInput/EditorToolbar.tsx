@@ -27,6 +27,7 @@ interface EditorToolbarProps {
   selectedVariant?: string
   onVariantSelect: (variant: string | undefined) => void
   isReasoningModel?: boolean
+  selectionPending?: boolean
 }
 
 export function EditorToolbar({
@@ -52,68 +53,75 @@ export function EditorToolbar({
   selectedVariant,
   onVariantSelect,
   isReasoningModel,
+  selectionPending = false,
 }: EditorToolbarProps) {
   return (
     <div className="h-8 px-2 flex items-center justify-between border-t border-gray-100 dark:border-gray-800">
       <div className="flex items-center gap-0.5">
-        {lastFailedMessage && (
-          <button
-            onClick={onRetry}
-            className="h-6 px-2 flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950 rounded border border-red-200 dark:border-red-800"
-            title="恢复失败消息"
-            data-tip="恢复失败消息"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            重试
-          </button>
+        {selectionPending ? (
+          <div className="px-2 text-xs text-gray-500 dark:text-gray-400">正在切换会话设置…</div>
+        ) : (
+          <>
+            {lastFailedMessage && (
+              <button
+                onClick={onRetry}
+                className="h-6 px-2 flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950 rounded border border-red-200 dark:border-red-800"
+                title="恢复失败消息"
+                data-tip="恢复失败消息"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                重试
+              </button>
+            )}
+            <AgentSelector selectedAgent={selectedAgent} onSelect={onAgentSelect} disabled={isDisabled} />
+            <ModelSelector
+              key={modelSelectorKey}
+              selectedProviderId={selectedProviderId}
+              selectedModelId={selectedModelId}
+              onSelect={onModelSelect}
+              disabled={isDisabled}
+            />
+            <VariantSelector
+              variants={variants}
+              selectedVariant={selectedVariant}
+              onSelect={onVariantSelect}
+              disabled={isDisabled}
+              isReasoningModel={isReasoningModel}
+            />
+            <IconButton
+              onClick={onFileSelect}
+              size="sm"
+              disabled={isDisabled}
+              aria-label="添加文件"
+              title="添加文件"
+              icon={
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                  />
+                </svg>
+              }
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,application/pdf,text/*"
+              multiple
+              onChange={onFileChange}
+              className="hidden"
+            />
+          </>
         )}
-        <AgentSelector selectedAgent={selectedAgent} onSelect={onAgentSelect} disabled={isDisabled} />
-        <ModelSelector
-          key={modelSelectorKey}
-          selectedProviderId={selectedProviderId}
-          selectedModelId={selectedModelId}
-          onSelect={onModelSelect}
-          disabled={isDisabled}
-        />
-        <VariantSelector
-          variants={variants}
-          selectedVariant={selectedVariant}
-          onSelect={onVariantSelect}
-          disabled={isDisabled}
-          isReasoningModel={isReasoningModel}
-        />
-        <IconButton
-          onClick={onFileSelect}
-          size="sm"
-          disabled={isDisabled}
-          aria-label="添加文件"
-          title="添加文件"
-          icon={
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-              />
-            </svg>
-          }
-        />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,application/pdf,text/*"
-          multiple
-          onChange={onFileChange}
-          className="hidden"
-        />
       </div>
       <MessageActions
         isIdle={isIdle}

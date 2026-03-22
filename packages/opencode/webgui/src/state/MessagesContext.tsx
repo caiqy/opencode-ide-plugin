@@ -21,6 +21,35 @@ import { useSession } from "./SessionContext"
 import { reloadPath } from "../lib/ideBridge"
 import { adaptPart } from "../lib/task-part"
 
+const PAGE = 50
+
+interface SessionPage {
+  cursor?: string
+  complete: boolean
+  loaded: boolean
+  latest_loading: boolean
+  latest_error: boolean
+  older_loading: boolean
+  older_error: boolean
+}
+
+interface SessionPagination {
+  ready: boolean
+  latestLoading: boolean
+  olderLoading: boolean
+  olderError: boolean
+  complete: boolean
+}
+
+const emptyPage: SessionPage = {
+  complete: false,
+  loaded: false,
+  latest_loading: false,
+  latest_error: false,
+  older_loading: false,
+  older_error: false,
+}
+
 // Re-export types for convenience
 export type { Message, Part, WebguiPart, SDKMessage, QuestionRequest, QuestionRequestPart } from "../types/messages"
 
@@ -35,10 +64,20 @@ interface MessagesContextValue {
   removePart: (messageID: string, partID: string) => void
   clearMessages: () => void
   getMessagesBySession: (sessionID: string) => Message[]
+  loadLatest: (sessionID: string) => Promise<Message[] | null>
+  ensureSession: (sessionID: string) => Promise<Message[] | null>
+  loadOlder: (sessionID: string) => Promise<Message[] | null>
+  /** 后台扫描更早消息：不污染分页状态，也不落地到可见消息列表 */
+  scanOlder: (sessionID: string, before: string) => Promise<{ rows: Message[]; cursor?: string } | null>
+  /** 兼容接口：仅保证最近一页可用，等价于 ensureSession，不会加载整段会话历史 */
   loadSessionMessages: (sessionID: string) => Promise<Message[] | null>
+  /** 仅读取当前会话分页 cursor（用于后台扫描），不触发加载 */
+  getSessionCursor: (sessionID: string) => string | undefined
+  isSessionComplete: (sessionID: string) => boolean
   isSessionLoading: (sessionID: string) => boolean
   isSessionLoaded: (sessionID: string) => boolean
   isSessionLoadError: (sessionID: string) => boolean
+  getSessionPagination: (sessionID: string) => SessionPagination
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   removeSessionErrors: (sessionID: string, afterTimestamp?: number) => void
   // permissions
@@ -100,17 +139,40 @@ function infoSessionErrorKey(info: unknown): string | undefined {
   return sessionErrorKey(error)
 }
 
+function nextCursor(result: unknown): string | undefined {
+  const headers =
+    (result as { response?: { headers?: Headers | Record<string, unknown> } })?.response?.headers ??
+    (result as { headers?: Headers | Record<string, unknown> })?.headers
+  if (!headers) return undefined
+  if (headers instanceof Headers) {
+    const value = headers.get("X-Next-Cursor") ?? headers.get("x-next-cursor")
+    return value || undefined
+  }
+  const value = headers["X-Next-Cursor"] ?? headers["x-next-cursor"]
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
 export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [sessionLoadMap, setSessionLoadMap] = useState<Record<string, "loading" | "loaded" | "error">>({})
+  const [messages, setRows] = useState<Message[]>([])
+  const [, setSessionPageMap] = useState<Record<string, SessionPage>>({})
   const [permissions, setPermissions] = useState<PermissionRequest[]>([])
   const [questions, setQuestions] = useState<Map<string, QuestionRequest[]>>(new Map())
   const sessionLoadToken = useRef<Record<string, number>>({})
   const sessionVersion = useRef<Record<string, number>>({})
+  const sessionPageRef = useRef<Record<string, SessionPage>>({})
+  const latestLoadRef = useRef<Record<string, Promise<Message[] | null> | undefined>>({})
+  const olderLoadRef = useRef<Record<string, Promise<Message[] | null> | undefined>>({})
+  const messagesRef = useRef<Message[]>([])
   const session = useSession()
   const setReasoning = session.setReasoning
   const setSessionIdle = session.setSessionIdle
   const reasoningPartsBySessionRef = useRef<Map<string, Set<string>>>(new Map())
+
+  const setMessages = useCallback<React.Dispatch<React.SetStateAction<Message[]>>>((next) => {
+    const rows = typeof next === "function" ? next(messagesRef.current) : next
+    messagesRef.current = rows
+    setRows(rows)
+  }, [])
 
   const normalizePart = useCallback((part: WebguiPart): WebguiPart => {
     if (part.type !== "tool") return part
@@ -320,29 +382,89 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     [messages],
   )
 
+  const mergeSessionMessages = useCallback((sessionID: string, rows: Message[], preferLocal = false) => {
+    if (rows.length === 0) return
+    setMessages((prev) => {
+      const keep = prev.filter((row) => row.info.sessionID !== sessionID)
+      const map = new Map(prev.filter((row) => row.info.sessionID === sessionID).map((row) => [row.info.id, row]))
+      for (const row of rows) {
+        if (preferLocal && map.has(row.info.id)) continue
+        map.set(row.info.id, row)
+      }
+      return [...keep, ...[...map.values()].sort((a, b) => a.info.time.created - b.info.time.created)]
+    })
+  }, [])
+
+  const mergeSessionRows = useCallback((sessionID: string, rows: Message[], preferLocal = false) => {
+    const map = new Map(
+      messagesRef.current.filter((row) => row.info.sessionID === sessionID).map((row) => [row.info.id, row]),
+    )
+    for (const row of rows) {
+      if (preferLocal && map.has(row.info.id)) continue
+      map.set(row.info.id, row)
+    }
+    return [...map.values()].sort((a, b) => a.info.time.created - b.info.time.created)
+  }, [])
+
+  const setPage = useCallback((sessionID: string, next: SessionPage | ((prev: SessionPage) => SessionPage)) => {
+    const last = sessionPageRef.current[sessionID] ?? emptyPage
+    const row = typeof next === "function" ? next(last) : next
+    sessionPageRef.current = { ...sessionPageRef.current, [sessionID]: row }
+    setSessionPageMap((prev) => ({ ...prev, [sessionID]: row }))
+  }, [])
+
+  const getPage = useCallback((sessionID: string) => {
+    if (!sessionID) return emptyPage
+    return sessionPageRef.current[sessionID] ?? emptyPage
+  }, [])
+
   const isSessionLoading = useCallback(
     (sessionID: string) => {
       if (!sessionID) return false
-      return sessionLoadMap[sessionID] === "loading"
+      return Boolean(getPage(sessionID).latest_loading)
     },
-    [sessionLoadMap],
+    [getPage],
+  )
+
+  const isSessionComplete = useCallback(
+    (sessionID: string) => {
+      if (!sessionID) return false
+      return Boolean(getPage(sessionID).complete)
+    },
+    [getPage],
   )
 
   const isSessionLoaded = useCallback(
     (sessionID: string) => {
       if (!sessionID) return false
-      return sessionLoadMap[sessionID] === "loaded"
+      return Boolean(getPage(sessionID).loaded)
     },
-    [sessionLoadMap],
+    [getPage],
   )
 
   const isSessionLoadError = useCallback(
     (sessionID: string) => {
       if (!sessionID) return false
-      return sessionLoadMap[sessionID] === "error"
+      return Boolean(getPage(sessionID).latest_error)
     },
-    [sessionLoadMap],
+    [getPage],
   )
+
+  const getSessionPagination = useCallback(
+    (sessionID: string) => {
+      const page = getPage(sessionID)
+      return {
+        ready: page.loaded,
+        latestLoading: page.latest_loading,
+        olderLoading: page.older_loading,
+        olderError: page.older_error,
+        complete: page.complete,
+      }
+    },
+    [getPage],
+  )
+
+  const getSessionCursor = useCallback((sessionID: string) => getPage(sessionID).cursor, [getPage])
 
   const touch = useCallback((sessionID: string) => {
     if (!sessionID) return
@@ -491,10 +613,13 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         console.log("[MessagesContext] Message removed:", messageID)
         touch(sessionID)
         removeMessage(messageID)
-        setReasoning(sessionID, false)
+        syncSessionReasoningFromMessages(
+          sessionID,
+          messagesRef.current.filter((row) => row.info.sessionID === sessionID),
+        )
       }
     },
-    [removeMessage, setReasoning, touch],
+    [removeMessage, syncSessionReasoningFromMessages, touch],
   )
 
   // Listen to message.part.removed events
@@ -515,91 +640,270 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     [removePart, removeTrackedReasoningPart, touch],
   )
 
-  // Load messages for a session
-  const loadSessionMessages = useCallback(
+  const loadLatest = useCallback(
     async (sessionID: string) => {
-      console.log("[MessagesContext] Loading messages for session:", sessionID)
+      const pending = latestLoadRef.current[sessionID]
+      if (pending) return pending
+
+      console.log("[MessagesContext] Loading latest messages for session:", sessionID)
       const token = (sessionLoadToken.current[sessionID] ?? 0) + 1
       sessionLoadToken.current[sessionID] = token
       const version = sessionVersion.current[sessionID] ?? 0
       const active = () => sessionLoadToken.current[sessionID] === token
       const changed = () => (sessionVersion.current[sessionID] ?? 0) !== version
-      setSessionLoadMap((prev) => {
-        if (prev[sessionID] === "loading") return prev
-        return { ...prev, [sessionID]: "loading" }
-      })
+      setPage(sessionID, (prev) => ({
+        ...prev,
+        latest_loading: true,
+        latest_error: false,
+        older_loading: false,
+        older_error: false,
+      }))
 
-      try {
-        const response = await sdk.session.messages({ path: { id: sessionID } })
+      const run = (async () => {
+        try {
+          const response = await sdk.session.messages({
+            path: { id: sessionID },
+            query: { limit: PAGE },
+          } as any)
 
-        if (response.error) {
-          console.error("[MessagesContext] Failed to load messages:", response.error)
+          if (response.error) {
+            console.error("[MessagesContext] Failed to load messages:", response.error)
+            if (active()) {
+              setPage(sessionID, (prev) => ({
+                ...prev,
+                latest_loading: false,
+                loaded: false,
+                latest_error: true,
+                older_loading: false,
+              }))
+            }
+            return null
+          }
+
+          const loadedMessages = ((response.data ?? []) as unknown as Message[]).map((msg) => normalizeMsg(msg))
+          const cursor = nextCursor(response)
+          console.log("[MessagesContext] Messages loaded:", loadedMessages.length)
+
+          if (!active()) return loadedMessages
+
+          if (changed()) {
+            const rows = mergeSessionRows(sessionID, loadedMessages, true)
+            mergeSessionMessages(sessionID, loadedMessages, true)
+
+            syncSessionReasoningFromMessages(sessionID, rows)
+
+            let last: Message | undefined
+            let lastCreated = -Infinity
+            for (const message of rows) {
+              const created = message.info.time.created
+              if (created <= lastCreated) continue
+              last = message
+              lastCreated = created
+            }
+
+            const completed = (last ? (last.info as any)?.time?.completed : 0) as unknown
+            const isAssistant = last ? (last.info as any)?.role === "assistant" : false
+            const busy = Boolean(last && isAssistant && (!completed || completed === 0))
+            setSessionIdle(sessionID, !busy)
+
+            setPage(sessionID, {
+              cursor,
+              complete: !cursor,
+              loaded: true,
+              latest_loading: false,
+              latest_error: false,
+              older_loading: false,
+              older_error: false,
+            })
+            return loadedMessages
+          }
+
+          if (loadedMessages.length === 0) {
+            setPage(sessionID, {
+              cursor,
+              complete: !cursor,
+              loaded: true,
+              latest_loading: false,
+              latest_error: false,
+              older_loading: false,
+              older_error: false,
+            })
+            return loadedMessages
+          }
+
+          mergeSessionMessages(sessionID, loadedMessages)
+
+          if (loadedMessages.length > 0) {
+            syncSessionReasoningFromMessages(sessionID, loadedMessages)
+          }
+
+          let last: Message | undefined
+          let lastCreated = -Infinity
+          for (const message of loadedMessages) {
+            const created = message.info.time.created
+            if (created <= lastCreated) continue
+            last = message
+            lastCreated = created
+          }
+
+          const completed = (last ? (last.info as any)?.time?.completed : 0) as unknown
+          const isAssistant = last ? (last.info as any)?.role === "assistant" : false
+          const busy = Boolean(last && isAssistant && (!completed || completed === 0))
+          setSessionIdle(sessionID, !busy)
+
+          setPage(sessionID, {
+            cursor,
+            complete: !cursor,
+            loaded: true,
+            latest_loading: false,
+            latest_error: false,
+            older_loading: false,
+            older_error: false,
+          })
+
+          return loadedMessages
+        } catch (err) {
+          console.error("[MessagesContext] Failed to load messages:", err)
           if (active()) {
-            setSessionLoadMap((prev) => ({ ...prev, [sessionID]: "error" }))
+            setPage(sessionID, (prev) => ({
+              ...prev,
+              latest_loading: false,
+              loaded: false,
+              latest_error: true,
+              older_loading: false,
+            }))
           }
           return null
         }
+      })()
 
-        const loadedMessages = ((response.data ?? []) as unknown as Message[]).map((msg) => normalizeMsg(msg))
-        console.log("[MessagesContext] Messages loaded:", loadedMessages.length)
-        // SDK response is already in the correct format: Array<{ info: Message, parts: Array<Part> }>
-        // Cast needed because sdk.session.messages returns non-v2 types, but they're structurally identical
+      latestLoadRef.current[sessionID] = run
+      return run.finally(() => {
+        if (latestLoadRef.current[sessionID] === run) {
+          delete latestLoadRef.current[sessionID]
+        }
+      })
+    },
+    [mergeSessionMessages, normalizeMsg, setPage, setSessionIdle, syncSessionReasoningFromMessages],
+  )
 
-        console.log("[MessagesContext] Loaded messages sample:", loadedMessages[0])
+  const ensureSession = useCallback(
+    async (sessionID: string) => {
+      if (!sessionID) return null
+      if (sessionPageRef.current[sessionID]?.loaded) {
+        return getMessagesBySession(sessionID)
+      }
+      const run = latestLoadRef.current[sessionID]
+      if (run) return run
+      return loadLatest(sessionID)
+    },
+    [getMessagesBySession, loadLatest],
+  )
 
-        if (!active()) return loadedMessages
+  const loadOlder = useCallback(
+    (sessionID: string) => {
+      if (!sessionID) return Promise.resolve(null)
+      if (!sessionPageRef.current[sessionID]?.loaded) {
+        return ensureSession(sessionID)
+      }
 
-        if (changed()) {
-          if (loadedMessages.length > 0) {
-            setMessages((prev) => {
-              const current = prev.filter((msg) => msg.info.sessionID === sessionID)
-              const known = new Set(current.map((msg) => msg.info.id))
-              const extra = loadedMessages.filter((msg) => !known.has(msg.info.id))
-              if (extra.length === 0) return prev
-              return [...prev, ...extra]
+      const page = sessionPageRef.current[sessionID] ?? emptyPage
+      if (page.complete || !page.cursor) {
+        return Promise.resolve(getMessagesBySession(sessionID))
+      }
+
+      const pending = olderLoadRef.current[sessionID]
+      if (pending) return pending
+
+      const before = page.cursor
+      const token = sessionLoadToken.current[sessionID] ?? 0
+      setPage(sessionID, (prev) => ({
+        ...prev,
+        older_loading: true,
+        older_error: false,
+      }))
+      const task = (async () => {
+        try {
+          const response = await sdk.session.messages({
+            path: { id: sessionID },
+            query: { before, limit: PAGE },
+          } as any)
+
+          if (response.error) {
+            const current = sessionPageRef.current[sessionID] ?? emptyPage
+            if ((sessionLoadToken.current[sessionID] ?? 0) === token && current.cursor === before) {
+              setPage(sessionID, {
+                ...current,
+                older_loading: false,
+                older_error: true,
+              })
+            }
+            return null
+          }
+
+          const loadedMessages = ((response.data ?? []) as unknown as Message[]).map((msg) => normalizeMsg(msg))
+          const cursor = nextCursor(response)
+          const current = sessionPageRef.current[sessionID] ?? emptyPage
+          if ((sessionLoadToken.current[sessionID] ?? 0) !== token) return loadedMessages
+          if (current.cursor !== before) return loadedMessages
+
+          mergeSessionMessages(sessionID, loadedMessages, true)
+          setPage(sessionID, {
+            ...current,
+            cursor,
+            complete: !cursor,
+            older_loading: false,
+            older_error: false,
+          })
+          return loadedMessages
+        } catch {
+          const current = sessionPageRef.current[sessionID] ?? emptyPage
+          if ((sessionLoadToken.current[sessionID] ?? 0) === token && current.cursor === before) {
+            setPage(sessionID, {
+              ...current,
+              older_loading: false,
+              older_error: true,
             })
           }
-          setSessionLoadMap((prev) => ({ ...prev, [sessionID]: "loaded" }))
-          return loadedMessages
+          return null
         }
+      })()
 
-        if (loadedMessages.length > 0) {
-          // Replace messages for this session with latest server data.
-          setMessages((prev) => {
-            const filtered = prev.filter((msg) => msg.info.sessionID !== sessionID)
-            return [...filtered, ...loadedMessages]
-          })
-
-          syncSessionReasoningFromMessages(sessionID, loadedMessages)
+      const run = task.finally(() => {
+        if (olderLoadRef.current[sessionID] === run) {
+          delete olderLoadRef.current[sessionID]
         }
+      })
+      olderLoadRef.current[sessionID] = run
+      return run
+    },
+    [ensureSession, getMessagesBySession, mergeSessionMessages, normalizeMsg, setPage],
+  )
 
-        let last: Message | undefined
-        let lastCreated = -Infinity
-        for (const message of loadedMessages) {
-          const created = message.info.time.created
-          if (created <= lastCreated) continue
-          last = message
-          lastCreated = created
+  const scanOlder = useCallback(
+    async (sessionID: string, before: string) => {
+      if (!sessionID || !before) return null
+      try {
+        const response = await sdk.session.messages({
+          path: { id: sessionID },
+          query: { before, limit: PAGE },
+        } as any)
+
+        if (response.error) return null
+
+        return {
+          rows: ((response.data ?? []) as unknown as Message[]).map((msg) => normalizeMsg(msg)),
+          cursor: nextCursor(response),
         }
-
-        const completed = (last ? (last.info as any)?.time?.completed : 0) as unknown
-        const isAssistant = last ? (last.info as any)?.role === "assistant" : false
-        const busy = Boolean(last && isAssistant && (!completed || completed === 0))
-        setSessionIdle(sessionID, !busy)
-
-        setSessionLoadMap((prev) => ({ ...prev, [sessionID]: "loaded" }))
-
-        return loadedMessages
-      } catch (err) {
-        console.error("[MessagesContext] Failed to load messages:", err)
-        if (active()) {
-          setSessionLoadMap((prev) => ({ ...prev, [sessionID]: "error" }))
-        }
+      } catch {
         return null
       }
     },
-    [normalizeMsg, setSessionIdle, syncSessionReasoningFromMessages],
+    [normalizeMsg],
   )
+
+  // 兼容旧调用方的别名；语义与 ensureSession 相同，只保证最近一页可用。
+  const loadSessionMessages = ensureSession
 
   // Permission events
   const handlePermissionAsked = useCallback((event: ServerEvent) => {
@@ -717,10 +1021,11 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
 
   const replyQuestion = useCallback(async (requestID: string, answers: QuestionAnswer[]): Promise<boolean> => {
     try {
-      await sdk.question.reply({
+      const result = await sdk.question.reply({
         requestID,
         answers,
       })
+      if (result?.error) return false
       // Remove from local state (event will also do this, but be proactive)
       setQuestions((prev) => {
         const newMap = new Map(prev)
@@ -742,9 +1047,10 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
 
   const rejectQuestion = useCallback(async (requestID: string): Promise<boolean> => {
     try {
-      await sdk.question.reject({
+      const result = await sdk.question.reject({
         requestID,
       })
+      if (result?.error) return false
       // Remove from local state (event will also do this, but be proactive)
       setQuestions((prev) => {
         const newMap = new Map(prev)
@@ -788,10 +1094,17 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     removePart,
     clearMessages,
     getMessagesBySession,
+    loadLatest,
+    ensureSession,
+    loadOlder,
+    scanOlder,
     loadSessionMessages,
+    getSessionCursor,
+    isSessionComplete,
     isSessionLoading,
     isSessionLoaded,
     isSessionLoadError,
+    getSessionPagination,
     setMessages,
     removeSessionErrors,
     permissions,

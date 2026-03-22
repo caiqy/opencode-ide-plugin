@@ -95,7 +95,7 @@ describe("MessagesContext task_result adapter", () => {
     expect(part?.parsed?.task_result?.text).toBe("**ok**")
   })
 
-  it("loadSessionMessages 返回的 task part 也应写入 parsed.task_result", async () => {
+  it("最近页加载和历史分页返回的 task part 都应写入 parsed.task_result", async () => {
     ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       error: null,
       data: [
@@ -117,6 +117,9 @@ describe("MessagesContext task_result adapter", () => {
           ],
         },
       ],
+      response: {
+        headers: new Headers({ "X-Next-Cursor": "c1" }),
+      },
     })
 
     render(
@@ -126,12 +129,49 @@ describe("MessagesContext task_result adapter", () => {
     )
 
     await act(async () => {
-      await api?.loadSessionMessages("s1")
+      await (api as any)?.loadLatest("s1")
     })
 
     const msg = api?.getMessagesBySession("s1")[0]
     const part = msg?.parts[0] as { parsed?: { task_result?: { text?: string } } } | undefined
     expect(part?.parsed?.task_result?.text).toBe("# title")
+    ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      error: null,
+      data: [
+        {
+          info: {
+            ...info,
+            id: "m0",
+            time: { created: 0 },
+          },
+          parts: [
+            {
+              id: "p2-old",
+              type: "tool",
+              tool: "task",
+              callID: "c2-old",
+              sessionID: "s1",
+              messageID: "m0",
+              state: {
+                status: "completed",
+                output: "<task_result>older</task_result>",
+              },
+            },
+          ],
+        },
+      ],
+      response: {
+        headers: new Headers(),
+      },
+    })
+
+    await act(async () => {
+      await (api as any)?.loadOlder("s1")
+    })
+
+    const rows = api?.getMessagesBySession("s1") ?? []
+    const older = rows[0]?.parts[0] as { parsed?: { task_result?: { text?: string } } } | undefined
+    expect(older?.parsed?.task_result?.text).toBe("older")
   })
 
   it("addPart 直接入库 task part 也应经过同一适配", () => {

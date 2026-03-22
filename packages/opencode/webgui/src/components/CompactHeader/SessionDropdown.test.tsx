@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 
 import { SessionDropdown } from "./SessionDropdown"
 
@@ -22,6 +23,8 @@ describe("CompactHeader/SessionDropdown", () => {
         selectedSessionRef={{ current: null }}
         sessionListRef={{ current: null }}
         sharingSessionId={null}
+        hasMore={false}
+        isLoadingMore={false}
         onSearchChange={vi.fn()}
         onSearchKeyDown={vi.fn()}
         onToggleSelectMode={vi.fn()}
@@ -34,6 +37,7 @@ describe("CompactHeader/SessionDropdown", () => {
         onBulkDeleteStart={vi.fn()}
         onCheckboxChange={vi.fn()}
         onKeyDown={vi.fn()}
+        onLoadMore={vi.fn()}
         onToggleShare={vi.fn()}
       />,
     )
@@ -60,6 +64,8 @@ describe("CompactHeader/SessionDropdown", () => {
         selectedSessionRef={{ current: null }}
         sessionListRef={{ current: null }}
         sharingSessionId={null}
+        hasMore={false}
+        isLoadingMore={false}
         onSearchChange={vi.fn()}
         onSearchKeyDown={vi.fn()}
         onToggleSelectMode={vi.fn()}
@@ -72,10 +78,96 @@ describe("CompactHeader/SessionDropdown", () => {
         onBulkDeleteStart={vi.fn()}
         onCheckboxChange={vi.fn()}
         onKeyDown={vi.fn()}
+        onLoadMore={vi.fn()}
         onToggleShare={vi.fn()}
       />,
     )
 
     expect(screen.getByRole("button", { name: "删除 2 个会话" })).toBeInTheDocument()
+  })
+
+  it("hasMore 时显示加载更多按钮并触发回调", async () => {
+    const onLoadMore = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <SessionDropdown
+        sessions={[]}
+        currentSessionId={undefined}
+        filteredSessions={[]}
+        isDropdownOpen={true}
+        isSelectMode={false}
+        selectedSessions={new Set()}
+        selectedSessionIndex={0}
+        searchQuery={""}
+        editingSessionId={null}
+        editingTitle={""}
+        searchInputRef={{ current: null }}
+        editInputRef={{ current: null }}
+        selectedSessionRef={{ current: null }}
+        sessionListRef={{ current: null }}
+        sharingSessionId={null}
+        hasMore={true}
+        isLoadingMore={false}
+        onSearchChange={vi.fn()}
+        onSearchKeyDown={vi.fn()}
+        onToggleSelectMode={vi.fn()}
+        onSessionSelect={vi.fn()}
+        onEditStart={vi.fn()}
+        onEditSave={vi.fn()}
+        onEditCancel={vi.fn()}
+        onEditChange={vi.fn()}
+        onDeleteStart={vi.fn()}
+        onBulkDeleteStart={vi.fn()}
+        onCheckboxChange={vi.fn()}
+        onKeyDown={vi.fn()}
+        onLoadMore={onLoadMore}
+        onToggleShare={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "加载更多" }))
+
+    expect(onLoadMore).toHaveBeenCalledTimes(1)
+  })
+
+  it("加载更多时按钮禁用并显示加载态", () => {
+    render(
+      <SessionDropdown
+        sessions={[]}
+        currentSessionId={undefined}
+        filteredSessions={[]}
+        isDropdownOpen={true}
+        isSelectMode={false}
+        selectedSessions={new Set()}
+        selectedSessionIndex={0}
+        searchQuery={""}
+        editingSessionId={null}
+        editingTitle={""}
+        searchInputRef={{ current: null }}
+        editInputRef={{ current: null }}
+        selectedSessionRef={{ current: null }}
+        sessionListRef={{ current: null }}
+        sharingSessionId={null}
+        hasMore={true}
+        isLoadingMore={true}
+        onSearchChange={vi.fn()}
+        onSearchKeyDown={vi.fn()}
+        onToggleSelectMode={vi.fn()}
+        onSessionSelect={vi.fn()}
+        onEditStart={vi.fn()}
+        onEditSave={vi.fn()}
+        onEditCancel={vi.fn()}
+        onEditChange={vi.fn()}
+        onDeleteStart={vi.fn()}
+        onBulkDeleteStart={vi.fn()}
+        onCheckboxChange={vi.fn()}
+        onKeyDown={vi.fn()}
+        onLoadMore={vi.fn()}
+        onToggleShare={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole("button", { name: "加载中…" })).toBeDisabled()
   })
 })

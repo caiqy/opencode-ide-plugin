@@ -10,6 +10,7 @@ interface UseDragDropOptions {
   editor: LexicalEditor
   worktree: string | null
   parseWithRange: (val: string) => { display: string; path: string; range?: { start: number; end: number } }
+  disabled?: boolean
 }
 
 export function useDragDrop({
@@ -18,6 +19,7 @@ export function useDragDrop({
   editor,
   worktree,
   parseWithRange,
+  disabled = false,
 }: UseDragDropOptions) {
   // Attach drag-and-drop to the contentEditable
   useEffect(() => {
@@ -39,27 +41,30 @@ export function useDragDrop({
 
     const onDragEnter = (ev: DragEvent) => {
       ev.preventDefault()
+      if (disabled) return
       overCount = overCount + 1
       addHighlight()
     }
 
     const onDragOver = (ev: DragEvent) => {
       ev.preventDefault()
+      if (disabled) return
       if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy"
       addHighlight()
     }
 
     const onDragLeave = (ev: DragEvent) => {
       ev.preventDefault()
+      if (disabled) return
       overCount = Math.max(0, overCount - 1)
       if (overCount === 0) removeHighlight()
     }
 
     const onDrop = (ev: DragEvent) => {
       ev.preventDefault()
-      ev.stopPropagation()
       overCount = 0
       removeHighlight()
+      if (disabled) return
       const paths = extractPathsFromDrop(ev)
       if (paths && paths.length > 0) {
         // Reuse the same insertion logic as insertPaths
@@ -115,7 +120,7 @@ export function useDragDrop({
       el.removeEventListener("dragleave", onDragLeave as any)
       el.removeEventListener("drop", onDrop as any)
     }
-  }, [contentEditableRef.current, editor, worktree, containerRef, parseWithRange])
+  }, [contentEditableRef.current, disabled, editor, worktree, containerRef, parseWithRange])
 
   // Document-level drag highlight
   useEffect(() => {
@@ -144,7 +149,8 @@ export function useDragDrop({
       over = Math.max(0, over - 1)
       if (over === 0) rm()
     }
-    const onEnd = () => {
+    const onEnd = (e: DragEvent) => {
+      e.preventDefault()
       over = 0
       rm()
     }
