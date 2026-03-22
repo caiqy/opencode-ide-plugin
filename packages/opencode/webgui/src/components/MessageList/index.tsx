@@ -235,7 +235,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
 
   const bar = useMemo(() => {
     if (!page.ready) return null
-    if (page.complete) return { text: "已加载全部消息", disabled: true }
+    if (page.complete) return null
     if (page.olderError) return { text: "加载失败，点击重试", disabled: false }
     if (page.olderLoading) return { text: "正在加载…", disabled: true }
     return { text: "加载更早消息", disabled: false }

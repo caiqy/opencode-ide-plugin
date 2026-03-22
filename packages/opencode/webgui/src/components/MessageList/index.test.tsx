@@ -299,7 +299,6 @@ describe("MessageList", () => {
     ["可加载", page(), "加载更早消息", false],
     ["正在加载", page({ olderLoading: true }), "正在加载…", true],
     ["失败", page({ olderError: true }), "加载失败，点击重试", false],
-    ["完成", page({ complete: true }), "已加载全部消息", true],
   ])("ready 后顶部条展示%s状态", (_name, state, text, disabled) => {
     mocks.useMessages.mockReturnValue({
       getMessagesBySession: () => [msg("m1", 1)],
@@ -314,6 +313,21 @@ describe("MessageList", () => {
     const bar = screen.getByRole("button", { name: text })
     expect(bar).toBeInTheDocument()
     expect(bar).toHaveProperty("disabled", disabled)
+  })
+
+  it("complete 时隐藏顶部条", () => {
+    mocks.useMessages.mockReturnValue({
+      getMessagesBySession: () => [msg("m1", 1)],
+      getQuestionsBySession: () => [],
+      getSessionPagination: () => page({ complete: true }),
+      loadOlder: vi.fn(async () => []),
+      permissions: [],
+    })
+
+    render(<MessageList sessionID="s1" onUndoToInput={vi.fn()} />)
+
+    expect(screen.queryByTestId("history-load-bar")).not.toBeInTheDocument()
+    expect(screen.queryByText("已加载全部消息")).not.toBeInTheDocument()
   })
 
   it("点击顶部条时按 preparePrepend -> loadOlder(sessionID) 调用", () => {
@@ -510,10 +524,8 @@ describe("MessageList", () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "已加载全部消息" })).toBeDisabled()
+      expect(screen.queryByTestId("history-load-bar")).not.toBeInTheDocument()
     })
-
-    fireEvent.click(screen.getByRole("button", { name: "已加载全部消息" }))
     expect((sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(3)
   })
 
