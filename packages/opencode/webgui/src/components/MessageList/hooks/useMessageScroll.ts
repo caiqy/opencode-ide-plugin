@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useCallback, useState, type RefObject } from "react"
 import type { Message } from "../../../state/MessagesContext"
 
+// ─── JCEF helpers ────────────────────────────────────────────────────────────
+
 function readJcefScrollMultiplier() {
   if (typeof window === "undefined") return
   const value = new URLSearchParams(window.location.search).get("jcefScrollMultiplier")
@@ -32,6 +34,44 @@ function nestedScrollable(container: HTMLElement, target: EventTarget | null) {
   return false
 }
 
+// ─── Auto-scroll helpers (ported from create-auto-scroll) ────────────────────
+
+const AUTO_TTL = 1500
+
+type AutoMark = { top: number; time: number }
+
+function markAuto(
+  container: HTMLElement,
+  ref: { current: AutoMark | null },
+  timer: { current: ReturnType<typeof setTimeout> | null },
+) {
+  ref.current = {
+    top: Math.max(0, container.scrollHeight - container.clientHeight),
+    time: Date.now(),
+  }
+  if (timer.current) clearTimeout(timer.current)
+  timer.current = setTimeout(() => {
+    ref.current = null
+    timer.current = null
+  }, AUTO_TTL)
+}
+
+function isAuto(container: HTMLElement, ref: { current: AutoMark | null }): boolean {
+  const a = ref.current
+  if (!a) return false
+  if (Date.now() - a.time > AUTO_TTL) {
+    ref.current = null
+    return false
+  }
+  return Math.abs(container.scrollTop - a.top) < 2
+}
+
+function distanceFromBottom(container: HTMLElement): number {
+  return container.scrollHeight - container.clientHeight - container.scrollTop
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
 export function useMessageScroll(
   sessionID: string | null | undefined,
   sortedMessages: Message[],
@@ -46,186 +86,96 @@ export function useMessageScroll(
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = box ?? innerRef
-  const isUserAtBottomRef = useRef(true)
-  const hasInitializedRef = useRef(false)
-  const lastScrollTopRef = useRef<number | null>(null)
-  // Tracks user intent to scroll away (set by wheel/touch/scrollbar/keyboard)
-  const userScrolledRef = useRef(false)
-  // Flag: true while a programmatic smooth-scroll is in progress
-  const isProgrammaticScrollRef = useRef(false)
-  // Safety timeout to clear the programmatic flag if scroll never reaches bottom
-  const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const resumeRef = useRef(false)
-  const resumeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Reactive state for "scroll to bottom" button visibility
+  // ── core state (2 refs replacing the previous 6) ──────────────────────────
+  const userScrolled = useRef(false)
+  const autoMark = useRef<AutoMark | null>(null)
+  const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── "scroll to bottom" button ─────────────────────────────────────────────
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
 
-  const scrollSignature = useMemo(() => {
-    const lastMessage = sortedMessages.at(-1)
-    const lastMessageID = lastMessage?.info.id ?? ""
-    const lastPartsSignature =
-      lastMessage?.parts
-        .map((part) => {
-          const base = `${part.id}:${part.type}`
-          const textValue = (part as { text?: string }).text
-          const textLength = typeof textValue === "string" ? textValue.length : 0
-          const toolState = (part as { state?: { status?: string; output?: string; metadata?: { output?: string } } })
-            .state
-          const status = typeof toolState?.status === "string" ? toolState.status : ""
-          const outputLength = typeof toolState?.output === "string" ? toolState.output.length : 0
-          const metadataOutputLength =
-            typeof toolState?.metadata?.output === "string" ? toolState.metadata.output.length : 0
-          return `${base}:${textLength}:${status}:${outputLength}:${metadataOutputLength}`
-        })
-        .join(",") ?? ""
-    // Include idle and reasoning states so indicator appearance/disappearance triggers scroll
-    return `${lastMessageID}:${lastMessage?.parts.length ?? 0}:${lastPartsSignature}:idle=${isIdle}:think=${isReasoning}:tail=${tailKey}`
-  }, [sortedMessages, isIdle, isReasoning, tailKey])
+  // ── helpers ───────────────────────────────────────────────────────────────
 
-  const clearProgrammaticFlag = useCallback(() => {
-    isProgrammaticScrollRef.current = false
-    if (programmaticTimeoutRef.current) {
-      clearTimeout(programmaticTimeoutRef.current)
-      programmaticTimeoutRef.current = null
-    }
-  }, [])
-
-  const clearResume = useCallback(() => {
-    resumeRef.current = false
-    if (resumeTimeoutRef.current) {
-      clearTimeout(resumeTimeoutRef.current)
-      resumeTimeoutRef.current = null
-    }
-  }, [])
-
-  const updateScrollState = useCallback(() => {
-    const container = messagesContainerRef.current?.parentElement as HTMLElement | null
-    if (!container) return
-
-    const currentScrollTop = container.scrollTop
-    const previousScrollTop = lastScrollTopRef.current
-    const movedUp = previousScrollTop !== null && currentScrollTop < previousScrollTop - 1
-    lastScrollTopRef.current = currentScrollTop
-
-    const tailDistance = (() => {
-      const anchor = messagesEndRef.current
-      if (!anchor) return
-      const box = container.getBoundingClientRect()
-      const next = anchor.getBoundingClientRect()
-      if (next.top === 0 && next.bottom === 0 && box.top === 0 && box.bottom === 0) return
-      return next.bottom - box.bottom
-    })()
-    const distance = tailDistance ?? container.scrollHeight - container.clientHeight - container.scrollTop
-    const nearBottomThreshold = 48
-    const atBottomThreshold = 8
-    const isNearBottom = distance <= nearBottomThreshold
-    const isAtBottom = distance <= atBottomThreshold
-    isUserAtBottomRef.current = isNearBottom
-
-    // Update reactive button visibility
-    setShowScrollToBottom(isProgrammaticScrollRef.current ? false : !isAtBottom)
-
-    if (isProgrammaticScrollRef.current) {
-      if (!isNearBottom && hasInitializedRef.current && movedUp) {
-        userScrolledRef.current = true
-        clearProgrammaticFlag()
-        setShowScrollToBottom(!isAtBottom)
-        return
-      }
-
-      // Programmatic scroll reached bottom → clear the flag
-      if (isNearBottom) {
-        clearProgrammaticFlag()
-      }
-    } else {
-      // Not a programmatic scroll:
-      // - If near bottom, user scrolled back → clear userScrolled
-      // - If far from bottom AND already initialized, user scrolled away → set userScrolled
-      if (isAtBottom) {
-        userScrolledRef.current = false
-      } else if (hasInitializedRef.current && movedUp) {
-        userScrolledRef.current = true
-      }
-    }
-  }, [clearProgrammaticFlag])
-
-  const performScrollToBottom = useCallback(
-    (behavior: ScrollBehavior) => {
-      const anchor = messagesEndRef.current
-      if (!anchor) return
-
-      isProgrammaticScrollRef.current = true
-      if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current)
-      const timeoutMs = behavior === "smooth" ? 1000 : 120
-      programmaticTimeoutRef.current = setTimeout(clearProgrammaticFlag, timeoutMs)
-
-      anchor.scrollIntoView({ behavior, block: "end" })
-      hasInitializedRef.current = true
-      isUserAtBottomRef.current = true
-      setShowScrollToBottom(false)
-    },
-    [clearProgrammaticFlag],
+  const container = useCallback(
+    () => messagesContainerRef.current?.parentElement as HTMLElement | null,
+    [messagesContainerRef],
   )
 
-  // Manual scroll-to-bottom triggered by button click
-  const scrollToBottom = useCallback(() => {
-    userScrolledRef.current = false
-    isUserAtBottomRef.current = true
-    performScrollToBottom("smooth")
-  }, [performScrollToBottom])
+  // Immediately pin to bottom (no animation).
+  // ResizeObserver fires after layout, before paint — instant assignment avoids
+  // the visible "catch-up" animation you get with scrollIntoView smooth.
+  const pinBottom = useCallback(
+    (behavior: ScrollBehavior = "auto") => {
+      const el = container()
+      if (!el) return
+      markAuto(el, autoMark, autoTimer)
+      if (behavior === "smooth") {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+      } else {
+        el.scrollTop = el.scrollHeight
+      }
+      setShowScrollToBottom(false)
+    },
+    [container],
+  )
 
-  // Reset scroll state on session change
-  useEffect(() => {
-    userScrolledRef.current = false
-    isUserAtBottomRef.current = true
-    hasInitializedRef.current = false
-    lastScrollTopRef.current = null
-    setShowScrollToBottom(false)
-    clearProgrammaticFlag()
-    clearResume()
-  }, [sessionID, clearProgrammaticFlag, clearResume])
+  // ── scroll event handler ──────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!settling) return
-    if (resumeTimeoutRef.current) {
-      clearTimeout(resumeTimeoutRef.current)
-      resumeTimeoutRef.current = null
+  const handleScroll = useCallback(() => {
+    const el = container()
+    if (!el) return
+
+    const dist = distanceFromBottom(el)
+    const canScroll = el.scrollHeight - el.clientHeight > 1
+
+    // Button visibility: show when more than 8 px from bottom
+    setShowScrollToBottom(dist > 8)
+
+    if (!canScroll) {
+      userScrolled.current = false
+      return
     }
-    resumeRef.current = true
-  }, [settling])
 
-  // Reset scroll when a new user message appears (user just sent input)
-  const messageCount = sortedMessages.length
-  const prevMessageRef = useRef({ count: messageCount, id: sortedMessages.at(-1)?.info.id })
-
-  useEffect(() => {
-    const last = sortedMessages.at(-1)
-    const next = prevMessageRef.current.count < messageCount || prevMessageRef.current.id !== last?.info.id
-    if (next && last?.info.role === "user") {
-      userScrolledRef.current = false
-      isUserAtBottomRef.current = true
+    if (dist < 10) {
+      // Arrived at bottom — resume auto-follow
+      userScrolled.current = false
+      return
     }
-    prevMessageRef.current = { count: messageCount, id: last?.info.id }
-  }, [messageCount, sortedMessages])
 
-  // Detect explicit user scroll-up gestures (wheel / touch)
+    // Ignore scroll events that WE triggered
+    if (!userScrolled.current && isAuto(el, autoMark)) {
+      // still programmatic — keep following
+      pinBottom()
+      return
+    }
+
+    userScrolled.current = true
+  }, [container, pinBottom])
+
+  // ── wheel / touch handlers ────────────────────────────────────────────────
+
   useEffect(() => {
-    const container = messagesContainerRef.current?.parentElement as HTMLElement | null
-    if (!container) return
+    const el = container()
+    if (!el) return
 
     const handleWheel = (e: WheelEvent) => {
-      // Ignore tiny accidental scrolls; only treat intentional upward wheel as user scroll
-      if (e.deltaY < -2) {
-        userScrolledRef.current = true
+      // Only treat intentional upward scrolls as user intent.
+      // Keep the threshold at < -2 (same as before) to ignore tiny
+      // touchpad inertia ticks. Additionally filter out nested scrollable
+      // regions (code blocks, tool output) — this is the real fix for root
+      // cause #5, not just lowering the threshold.
+      if (e.deltaY < -2 && !nestedScrollable(el, e.target)) {
+        userScrolled.current = true
       }
 
+      // JCEF wheel multiplier
       if (!multiplier) return
-      if (nestedScrollable(container, e.target)) return
-      const delta = normalizeDelta(e, container)
+      if (nestedScrollable(el, e.target)) return
+      const delta = normalizeDelta(e, el)
       if (!delta) return
       e.preventDefault()
-      container.scrollBy({ top: delta * multiplier, behavior: "auto" })
+      el.scrollBy({ top: delta * multiplier, behavior: "auto" })
     }
 
     let lastTouchY: number | undefined
@@ -233,86 +183,125 @@ export function useMessageScroll(
       lastTouchY = e.touches[0]?.clientY
     }
     const handleTouchMove = (e: TouchEvent) => {
-      const currentY = e.touches[0]?.clientY
-      if (currentY !== undefined && lastTouchY !== undefined && currentY > lastTouchY) {
-        // Finger moving down = scrolling up
-        userScrolledRef.current = true
+      const y = e.touches[0]?.clientY
+      if (y !== undefined && lastTouchY !== undefined && y > lastTouchY) {
+        userScrolled.current = true
       }
-      lastTouchY = currentY
+      lastTouchY = y
     }
 
-    const wheelOptions: AddEventListenerOptions = { passive: !multiplier }
-    container.addEventListener("wheel", handleWheel, wheelOptions)
-    container.addEventListener("touchstart", handleTouchStart, { passive: true })
-    container.addEventListener("touchmove", handleTouchMove, { passive: true })
+    const opts: AddEventListenerOptions = { passive: !multiplier }
+    el.addEventListener("wheel", handleWheel, opts)
+    el.addEventListener("touchstart", handleTouchStart, { passive: true })
+    el.addEventListener("touchmove", handleTouchMove, { passive: true })
     return () => {
-      container.removeEventListener("wheel", handleWheel, wheelOptions)
-      container.removeEventListener("touchstart", handleTouchStart)
-      container.removeEventListener("touchmove", handleTouchMove)
+      el.removeEventListener("wheel", handleWheel, opts)
+      el.removeEventListener("touchstart", handleTouchStart)
+      el.removeEventListener("touchmove", handleTouchMove)
     }
-  }, [sessionID, multiplier])
+  }, [sessionID, multiplier, container])
+
+  // ── scroll event binding ──────────────────────────────────────────────────
 
   useEffect(() => {
-    const container = messagesContainerRef.current?.parentElement as HTMLElement | null
-    if (!container) return
-    const prev = container.style.overflowAnchor
-    container.style.overflowAnchor = "none"
-    return () => {
-      container.style.overflowAnchor = prev
-    }
-  }, [sessionID])
+    const el = container()
+    if (!el) return
+    el.addEventListener("scroll", handleScroll)
+    handleScroll()
+    return () => el.removeEventListener("scroll", handleScroll)
+  }, [sessionID, handleScroll, container])
+
+  // ── overflow-anchor: disable browser anchoring to avoid conflicts ─────────
 
   useEffect(() => {
-    const container = messagesContainerRef.current?.parentElement as HTMLElement | null
-    if (!container) return
-    const handleScroll = () => {
-      updateScrollState()
-    }
-    container.addEventListener("scroll", handleScroll)
-    updateScrollState()
+    const el = container()
+    if (!el) return
+    const prev = el.style.overflowAnchor
+    el.style.overflowAnchor = "none"
     return () => {
-      container.removeEventListener("scroll", handleScroll)
+      el.style.overflowAnchor = prev
     }
-  }, [sessionID, updateScrollState])
+  }, [sessionID, container])
+
+  // ── ResizeObserver: primary auto-scroll trigger ───────────────────────────
+  // Fires after layout, before paint — correct timing for scrollTop assignment.
 
   useEffect(() => {
-    const container = messagesContainerRef.current?.parentElement as HTMLElement | null
+    const el = container()
     const content = tail?.current ?? messagesContainerRef.current
-    if (!container || !content) return
+    if (!el || !content) return
     if (typeof ResizeObserver === "undefined") return
 
-    const observer = new ResizeObserver(() => {
-      updateScrollState()
-      if (settling || userScrolledRef.current || resumeRef.current) return
-      performScrollToBottom("auto")
+    const obs = new ResizeObserver(() => {
+      if (settling || userScrolled.current) return
+      pinBottom()
     })
 
-    observer.observe(content)
-    observer.observe(container)
+    obs.observe(content)
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [sessionID, settling, tail, container, messagesContainerRef, pinBottom])
 
-    return () => {
-      observer.disconnect()
-    }
-  }, [sessionID, settling, tail, updateScrollState, performScrollToBottom])
+  // ── Session reset ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const anchor = messagesEndRef.current
-    if (!anchor) return
-    if (settling) return
-    const shouldScroll = !userScrolledRef.current || !hasInitializedRef.current
-    if (!shouldScroll) {
-      clearResume()
-      return
+    userScrolled.current = false
+    autoMark.current = null
+    if (autoTimer.current) {
+      clearTimeout(autoTimer.current)
+      autoTimer.current = null
     }
-    const behavior: ScrollBehavior = resumeRef.current || !hasInitializedRef.current ? "auto" : "smooth"
-    performScrollToBottom(behavior)
-    if (!resumeRef.current) return
-    if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current)
-    resumeTimeoutRef.current = setTimeout(() => {
-      resumeTimeoutRef.current = null
-      resumeRef.current = false
-    }, 0)
-  }, [clearResume, scrollSignature, sessionID, performScrollToBottom, settling])
+    setShowScrollToBottom(false)
+  }, [sessionID])
+
+  // ── User sends new message → force scroll back to bottom ─────────────────
+
+  const messageCount = sortedMessages.length
+  const prevMsg = useRef({ count: messageCount, id: sortedMessages.at(-1)?.info.id })
+
+  useEffect(() => {
+    const last = sortedMessages.at(-1)
+    const changed = prevMsg.current.count < messageCount || prevMsg.current.id !== last?.info.id
+    if (changed && last?.info.role === "user") {
+      userScrolled.current = false
+      pinBottom()
+    }
+    prevMsg.current = { count: messageCount, id: last?.info.id }
+  }, [messageCount, sortedMessages, pinBottom])
+
+  // ── Fallback effect: for environments without ResizeObserver, or when
+  //    settling ends — uses scrollSignature as a secondary trigger ─────────
+
+  const scrollSignature = useMemo(() => {
+    const last = sortedMessages.at(-1)
+    const id = last?.info.id ?? ""
+    const parts =
+      last?.parts
+        .map((part) => {
+          const text = (part as { text?: string }).text
+          const len = typeof text === "string" ? text.length : 0
+          const tool = (part as { state?: { status?: string; output?: string; metadata?: { output?: string } } }).state
+          const status = typeof tool?.status === "string" ? tool.status : ""
+          const out = typeof tool?.output === "string" ? tool.output.length : 0
+          const meta = typeof tool?.metadata?.output === "string" ? tool.metadata.output.length : 0
+          return `${part.id}:${part.type}:${len}:${status}:${out}:${meta}`
+        })
+        .join(",") ?? ""
+    return `${id}:${last?.parts.length ?? 0}:${parts}:idle=${isIdle}:think=${isReasoning}:tail=${tailKey}`
+  }, [sortedMessages, isIdle, isReasoning, tailKey])
+
+  useEffect(() => {
+    if (settling) return
+    if (userScrolled.current) return
+    pinBottom()
+  }, [scrollSignature, settling, sessionID, pinBottom])
+
+  // ── Manual scroll-to-bottom (button) ─────────────────────────────────────
+
+  const scrollToBottom = useCallback(() => {
+    userScrolled.current = false
+    pinBottom("smooth")
+  }, [pinBottom])
 
   return { messagesEndRef, messagesContainerRef, showScrollToBottom, scrollToBottom }
 }
