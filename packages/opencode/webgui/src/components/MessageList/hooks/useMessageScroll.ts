@@ -91,6 +91,10 @@ export function useMessageScroll(
   const userScrolled = useRef(false)
   const autoMark = useRef<AutoMark | null>(null)
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // True while a smooth programmatic scroll is in flight (manual button click).
+  // isAuto() can't cover this case because smooth scrollTop moves gradually.
+  const smoothing = useRef(false)
+  const smoothTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── "scroll to bottom" button ─────────────────────────────────────────────
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
@@ -111,6 +115,12 @@ export function useMessageScroll(
       if (!el) return
       markAuto(el, autoMark, autoTimer)
       if (behavior === "smooth") {
+        smoothing.current = true
+        if (smoothTimer.current) clearTimeout(smoothTimer.current)
+        smoothTimer.current = setTimeout(() => {
+          smoothing.current = false
+          smoothTimer.current = null
+        }, 600)
         el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
       } else {
         el.scrollTop = el.scrollHeight
@@ -130,7 +140,8 @@ export function useMessageScroll(
     const canScroll = el.scrollHeight - el.clientHeight > 1
 
     // Button visibility: show when more than 8 px from bottom
-    setShowScrollToBottom(dist > 8)
+    // Suppress button during smooth programmatic scroll
+    setShowScrollToBottom(!smoothing.current && dist > 8)
 
     if (!canScroll) {
       userScrolled.current = false
@@ -140,18 +151,26 @@ export function useMessageScroll(
     if (dist < 10) {
       // Arrived at bottom — resume auto-follow
       userScrolled.current = false
+      smoothing.current = false
+      if (smoothTimer.current) {
+        clearTimeout(smoothTimer.current)
+        smoothTimer.current = null
+      }
       return
     }
 
-    // Ignore scroll events that WE triggered
-    if (!userScrolled.current && isAuto(el, autoMark)) {
-      // still programmatic — keep following
-      pinBottom()
+    // Ignore scroll events that WE triggered (auto pinBottom or smooth in flight)
+    if (!userScrolled.current && (isAuto(el, autoMark) || smoothing.current)) {
       return
     }
 
     userScrolled.current = true
-  }, [container, pinBottom])
+    smoothing.current = false
+    if (smoothTimer.current) {
+      clearTimeout(smoothTimer.current)
+      smoothTimer.current = null
+    }
+  }, [container])
 
   // ── wheel / touch handlers ────────────────────────────────────────────────
 
@@ -247,9 +266,14 @@ export function useMessageScroll(
   useEffect(() => {
     userScrolled.current = false
     autoMark.current = null
+    smoothing.current = false
     if (autoTimer.current) {
       clearTimeout(autoTimer.current)
       autoTimer.current = null
+    }
+    if (smoothTimer.current) {
+      clearTimeout(smoothTimer.current)
+      smoothTimer.current = null
     }
     setShowScrollToBottom(false)
   }, [sessionID])
