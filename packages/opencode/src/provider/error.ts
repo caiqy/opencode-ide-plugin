@@ -107,7 +107,7 @@ export namespace ProviderError {
     | {
         type: "api_error"
         message: string
-        isRetryable: false
+        isRetryable: boolean
         responseBody: string
       }
 
@@ -116,6 +116,18 @@ export namespace ProviderError {
     if (!body) return
 
     const responseBody = JSON.stringify(body)
+
+    // Non-standard error frame from gateways/proxies: {"error":"stream_read_error"} or {"error":"<msg>"}
+    if (typeof (body as Record<string, unknown>).error === "string") {
+      const msg = (body as Record<string, unknown>).error as string
+      return {
+        type: "api_error",
+        message: `Stream interrupted by upstream: ${msg}`,
+        isRetryable: true,
+        responseBody,
+      }
+    }
+
     if (body.type !== "error") return
 
     switch (body?.error?.code) {

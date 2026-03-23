@@ -2,7 +2,14 @@ import { BusEvent } from "@/bus/bus-event"
 import { SessionID, MessageID, PartID } from "./schema"
 import z from "zod"
 import { NamedError } from "@opencode-ai/util/error"
-import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
+import {
+  APICallError,
+  convertToModelMessages,
+  LoadAPIKeyError,
+  TypeValidationError,
+  type ModelMessage,
+  type UIMessage,
+} from "ai"
 import { LSP } from "../lsp"
 import { Snapshot } from "@/snapshot"
 import { fn } from "@/util/fn"
@@ -897,6 +904,27 @@ export namespace MessageV2 {
     return result
   }
 
+  function fail(err: ProviderError.ParsedStreamError, cause: unknown) {
+    if (err.type === "context_overflow") {
+      return new MessageV2.ContextOverflowError(
+        {
+          message: err.message,
+          responseBody: err.responseBody,
+        },
+        { cause },
+      ).toObject()
+    }
+
+    return new MessageV2.APIError(
+      {
+        message: err.message,
+        isRetryable: err.isRetryable,
+        responseBody: err.responseBody,
+      },
+      { cause },
+    ).toObject()
+  }
+
   export function fromError(e: unknown, ctx: { providerID: ProviderID }): NonNullable<Assistant["error"]> {
     switch (true) {
       case e instanceof DOMException && e.name === "AbortError":
@@ -956,31 +984,17 @@ export namespace MessageV2 {
           { cause: e },
         ).toObject()
       case e instanceof Error:
+        // TypeValidationError from AI SDK: the raw value parsed from the stream contains the actual error.
+        // Try to recover a user-friendly message via parseStreamError on the raw value.
+        if (TypeValidationError.isInstance(e)) {
+          const parsed = ProviderError.parseStreamError(e.value)
+          if (parsed) return fail(parsed, e)
+        }
         return new NamedError.Unknown({ message: e.toString() }, { cause: e }).toObject()
       default:
         try {
           const parsed = ProviderError.parseStreamError(e)
-          if (parsed) {
-            if (parsed.type === "context_overflow") {
-              return new MessageV2.ContextOverflowError(
-                {
-                  message: parsed.message,
-                  responseBody: parsed.responseBody,
-                },
-                { cause: e },
-              ).toObject()
-            }
-            return new MessageV2.APIError(
-              {
-                message: parsed.message,
-                isRetryable: parsed.isRetryable,
-                responseBody: parsed.responseBody,
-              },
-              {
-                cause: e,
-              },
-            ).toObject()
-          }
+          if (parsed) return fail(parsed, e)
         } catch {}
         return new NamedError.Unknown({ message: JSON.stringify(e) }, { cause: e }).toObject()
     }
