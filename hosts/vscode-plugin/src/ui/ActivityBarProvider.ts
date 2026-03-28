@@ -5,6 +5,7 @@ import { errorHandler } from "../utils/ErrorHandler"
 import { WebviewController } from "./WebviewController"
 import { logger } from "../globals"
 import { PathInserter } from "../utils/PathInserter"
+import { loading } from "./loading"
 
 function withCacheBuster(url: string, version: string): string {
   if (url.includes("v=")) {
@@ -100,6 +101,8 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
       ],
     }
 
+    webviewView.webview.html = loading("Starting OpenCode...", "Initializing backend...")
+
     // Track view visibility/activeness for command routing
     webviewView.onDidChangeVisibility(() => {
       if (!webviewView.visible) return
@@ -122,6 +125,7 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
           // Reuse existing backend connection if available (e.g., when webview is moved between sidebars)
           if (!this.connection) {
             progress.report({ increment: 0, message: "Launching backend..." })
+            webviewView.webview.html = loading("Starting OpenCode...", "Launching backend...")
             const connection = await this.backendLauncher.launchBackend()
             this.connection = connection
 
@@ -130,6 +134,7 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
           } else {
             logger.appendLine("Reusing existing backend connection for webview reinitialization")
             progress.report({ increment: 0, message: "Reconnecting to backend..." })
+            webviewView.webview.html = loading("Starting OpenCode...", "Reconnecting to backend...")
           }
 
           progress.report({ increment: 50, message: "Loading web UI..." })

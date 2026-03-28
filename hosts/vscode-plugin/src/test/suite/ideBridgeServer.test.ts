@@ -11,6 +11,17 @@ import * as os from "os"
 import { bridgeServer } from "../../ui/IdeBridgeServer"
 import type { SessionHandlers } from "../../ui/IdeBridgeServer"
 
+const TIMEOUT = 2000
+
+type Scope = "global" | "workspace" | "mem"
+
+type Reply = {
+  replyTo: string
+  ok: boolean
+  error?: string
+  result?: Record<string, string | undefined>
+}
+
 function post(url: string, body: object): Promise<{ status: number }> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url)
@@ -32,13 +43,13 @@ function post(url: string, body: object): Promise<{ status: number }> {
 }
 
 function requestReply(baseUrl: string, token: string, message: { type: string; payload?: Record<string, unknown> }) {
-  return new Promise<any>((resolve, reject) => {
+  return new Promise<Reply>((resolve, reject) => {
     const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const sse = http.get(`${baseUrl}/events?token=${token}`)
     const timer = setTimeout(() => {
       sse.destroy()
       reject(new Error(`timeout waiting reply: ${message.type}`))
-    }, 2000)
+    }, TIMEOUT)
 
     function done(fn: () => void) {
       clearTimeout(timer)
@@ -59,7 +70,7 @@ function requestReply(baseUrl: string, token: string, message: { type: string; p
           const line = event.split("\n").find((item) => item.startsWith("data:"))
           if (!line) continue
           try {
-            const msg = JSON.parse(line.slice(5).trim())
+            const msg = JSON.parse(line.slice(5).trim()) as Reply
             if (msg.replyTo !== id) continue
             done(() => resolve(msg))
             return
@@ -81,6 +92,98 @@ function requestReply(baseUrl: string, token: string, message: { type: string; p
     sse.on("error", (err) => {
       done(() => reject(err))
     })
+  })
+}
+
+function requestRoundtrip(
+  baseUrl: string,
+  token: string,
+  message: { type: string; payload?: Record<string, unknown> },
+) {
+  return new Promise<{ status: number; reply: Reply }>((resolve, reject) => {
+    const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const sse = http.get(`${baseUrl}/events?token=${token}`)
+    const timer = setTimeout(() => {
+      sse.destroy()
+      reject(new Error(`timeout waiting roundtrip: ${message.type}`))
+    }, TIMEOUT)
+    let status: number | null = null
+    let reply: Reply | null = null
+
+    function done(err?: unknown) {
+      clearTimeout(timer)
+      sse.destroy()
+      if (err) {
+        reject(err)
+        return
+      }
+      resolve({ status: status ?? 0, reply: reply as Reply })
+    }
+
+    function flush() {
+      if (status === null || !reply) return
+      done()
+    }
+
+    sse.on("response", (res) => {
+      res.setEncoding("utf8")
+      let buf = ""
+      res.on("data", (chunk: string) => {
+        buf += chunk
+        while (true) {
+          const idx = buf.indexOf("\n\n")
+          if (idx < 0) break
+          const event = buf.slice(0, idx)
+          buf = buf.slice(idx + 2)
+          const line = event.split("\n").find((item) => item.startsWith("data:"))
+          if (!line) continue
+          try {
+            const msg = JSON.parse(line.slice(5).trim()) as Reply
+            if (msg.replyTo !== id) continue
+            reply = msg
+            flush()
+            return
+          } catch {
+            continue
+          }
+        }
+      })
+
+      void post(`${baseUrl}/send?token=${token}`, {
+        id,
+        type: message.type,
+        payload: message.payload,
+      })
+        .then((res) => {
+          status = res.status
+          flush()
+        })
+        .catch((err) => done(err))
+    })
+
+    sse.on("error", (err) => {
+      done(err)
+    })
+  })
+}
+
+function wait(): { promise: Promise<void>; resolve: () => void } {
+  let resolve = () => {}
+  const promise = new Promise<void>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
+}
+
+function tick() {
+  return new Promise<void>((resolve) => setImmediate(resolve))
+}
+
+function openSSE(url: string) {
+  return new Promise<{ req: http.ClientRequest; res: http.IncomingMessage }>((resolve, reject) => {
+    const req = http.get(url)
+    req.on("response", (res) => resolve({ req, res }))
+    req.on("error", reject)
   })
 }
 
@@ -161,16 +264,14 @@ suite("IdeBridgeServer ensureAndOpenFile", () => {
   })
 
   test("returns error when path is missing", async () => {
-    const res = await post(`${baseUrl}/send?token=${token}`, {
-      id: "msg-3",
+    const res = await requestRoundtrip(baseUrl, token, {
       type: "ensureAndOpenFile",
       payload: {},
     })
 
-    // Server still returns 204 for the HTTP response (message-level error goes via SSE)
     assert.strictEqual(res.status, 204)
-
-    // openFile should NOT have been called
+    assert.strictEqual(res.reply.ok, false)
+    assert.strictEqual(res.reply.error, "Missing path")
     assert.strictEqual(openFileCalls.length, 0)
   })
 
@@ -205,8 +306,8 @@ suite("IdeBridgeServer scoped storage", () => {
   let baseUrl: string
   let token: string
   let sessionId: string
-  let getCalls: any[]
-  let setCalls: any[]
+  let getCalls: Array<[Scope, string[]]>
+  let setCalls: Array<[Scope, string, string]>
 
   setup(async () => {
     getCalls = []
@@ -215,11 +316,11 @@ suite("IdeBridgeServer scoped storage", () => {
     const workspace = new Map<string, string>()
     const mem = new Map<string, string>()
 
-    const pick = (scope: unknown) => {
+    const pick = (scope: Scope) => {
       if (scope === "global") return global
       if (scope === "workspace") return workspace
       if (scope === "mem") return mem
-      return null
+      throw new Error(`Invalid scope: ${scope}`)
     }
 
     const handlers: SessionHandlers = {
@@ -227,24 +328,16 @@ suite("IdeBridgeServer scoped storage", () => {
       openUrl: async () => {},
       reloadPath: async () => {},
       clipboardWrite: async () => {},
-      storageGet: (async (...args: any[]) => {
-        getCalls.push(args)
-        const scope = args[0]
-        const keys = Array.isArray(args[1]) ? args[1] : []
+      storageGet: async (scope, keys) => {
+        getCalls.push([scope, keys])
         const store = pick(scope)
-        if (!store) return {}
-        return Object.fromEntries(keys.map((k: string) => [k, store.get(k)]))
-      }) as any,
-      storageSet: (async (...args: any[]) => {
-        setCalls.push(args)
-        const scope = args[0]
-        const key = args[1]
-        const value = args[2]
+        return Object.fromEntries(keys.map((k) => [k, store.get(k)]))
+      },
+      storageSet: async (scope, key, value) => {
+        setCalls.push([scope, key, value])
         const store = pick(scope)
-        if (!store) return
-        if (typeof key !== "string" || typeof value !== "string") return
         store.set(key, value)
-      }) as any,
+      },
     }
 
     const session = await bridgeServer.createSession(handlers)
@@ -336,10 +429,20 @@ suite("IdeBridgeServer restartHost", () => {
   let sessionId: string
   let restartCalls: number
   let restartErr: Error | null
+  let restartDone: (() => void) | null
+  let restartStarted: Promise<void>
+  let markStarted: (() => void) | null
+  let restartWait: boolean
 
   setup(async () => {
     restartCalls = 0
     restartErr = null
+    restartDone = null
+    markStarted = null
+    restartWait = false
+    const started = wait()
+    restartStarted = started.promise
+    markStarted = started.resolve
 
     const handlers: SessionHandlers = {
       openFile: async () => {},
@@ -349,6 +452,11 @@ suite("IdeBridgeServer restartHost", () => {
       restartHost: async () => {
         if (restartErr) throw restartErr
         restartCalls += 1
+        markStarted?.()
+        if (!restartWait) return
+        await new Promise<void>((resolve) => {
+          restartDone = resolve
+        })
       },
     }
 
@@ -364,17 +472,168 @@ suite("IdeBridgeServer restartHost", () => {
 
   test("restartHost 路由到 handler 并返回 ok", async () => {
     const res = await requestReply(baseUrl, token, { type: "restartHost", payload: {} })
+    await restartStarted
 
     assert.strictEqual(res.ok, true)
     assert.strictEqual(restartCalls, 1)
   })
 
-  test("restartHost handler 抛错时返回错误 reply", async () => {
+  test("restartHost 会在 handler 完成前返回 ok，且 handler 最终仍会被调用", async () => {
+    restartWait = true
+    const req = requestReply(baseUrl, token, { type: "restartHost", payload: {} })
+    let replied = false
+    void req.then(() => {
+      replied = true
+    })
+
+    await restartStarted
+    assert.strictEqual(restartCalls, 1)
+    await tick()
+    assert.strictEqual(replied, true)
+
+    restartDone?.()
+    const res = await req
+    assert.strictEqual(res.ok, true)
+    assert.strictEqual(restartCalls, 1)
+  })
+
+  test("restartHost handler 抛错时仍先返回 ok", async () => {
     restartErr = new Error("boom")
     const res = await requestReply(baseUrl, token, { type: "restartHost", payload: {} })
 
-    assert.strictEqual(res.ok, false)
-    assert.strictEqual(typeof res.error, "string")
-    assert.strictEqual(String(res.error).includes("restartHost failed"), true)
+    assert.strictEqual(res.ok, true)
+  })
+})
+
+suite("IdeBridgeServer protocol", () => {
+  teardown(() => {
+    bridgeServer.stop()
+  })
+
+  test("createSession 并发时不会返回 port 0", async () => {
+    bridgeServer.stop()
+
+    const wait = global.setTimeout
+    const listen = http.Server.prototype.listen
+    const gate =
+      wait === undefined
+        ? null
+        : (() => {
+            let done = false
+            return {
+              open: () => {
+                done = true
+              },
+              wait: () =>
+                new Promise<void>((resolve) => {
+                  const tick = () => {
+                    if (done) {
+                      resolve()
+                      return
+                    }
+                    wait(tick, 1)
+                  }
+                  tick()
+                }),
+            }
+          })()
+
+    http.Server.prototype.listen = function (this: http.Server, ...items: unknown[]) {
+      const cb = items.at(-1)
+      if (typeof cb !== "function" || !gate) return Reflect.apply(listen, this, items)
+      return Reflect.apply(listen, this, [
+        ...items.slice(0, -1),
+        () => {
+          void gate.wait().then(() => cb())
+        },
+      ])
+    } as typeof http.Server.prototype.listen
+
+    const handlers: SessionHandlers = {
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+    }
+
+    try {
+      const one = bridgeServer.createSession(handlers)
+      const two = bridgeServer.createSession(handlers)
+      const open = Promise.resolve().then(() => gate?.open())
+      const list = await Promise.all([one, two])
+      await open
+
+      assert.strictEqual(
+        list.every((item) => !item.baseUrl.includes(":0/")),
+        true,
+      )
+
+      for (const item of list) {
+        bridgeServer.removeSession(item.sessionId)
+      }
+    } finally {
+      http.Server.prototype.listen = listen
+    }
+  })
+
+  test("handler 异常时仍返回 SSE replyError", async () => {
+    const handlers: SessionHandlers = {
+      openFile: async () => {
+        throw new Error("boom")
+      },
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+    }
+
+    const session = await bridgeServer.createSession(handlers)
+
+    try {
+      const res = await requestRoundtrip(session.baseUrl, session.token, {
+        type: "openFile",
+        payload: { path: "foo" },
+      })
+
+      assert.strictEqual(res.status, 400)
+      assert.strictEqual(res.reply.ok, false)
+      assert.strictEqual(String(res.reply.error).includes("openFile failed"), true)
+    } finally {
+      bridgeServer.removeSession(session.sessionId)
+    }
+  })
+
+  test("stop 会关闭现有 SSE 连接", async () => {
+    const handlers: SessionHandlers = {
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+    }
+
+    const session = await bridgeServer.createSession(handlers)
+    const sse = await openSSE(`${session.baseUrl}/events?token=${session.token}`)
+
+    try {
+      sse.res.setEncoding("utf8")
+      await new Promise<void>((resolve) => {
+        sse.res.once("data", () => resolve())
+      })
+
+      const closed = new Promise<void>((resolve) => {
+        sse.res.once("close", () => resolve())
+      })
+
+      bridgeServer.stop()
+
+      await Promise.race([
+        closed,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("timeout waiting SSE close after stop")), TIMEOUT)
+        }),
+      ])
+    } finally {
+      sse.req.destroy()
+      bridgeServer.removeSession(session.sessionId)
+    }
   })
 })

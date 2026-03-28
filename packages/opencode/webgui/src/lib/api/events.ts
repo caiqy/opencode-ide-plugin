@@ -161,6 +161,7 @@ export function useEventStream(options: EventStreamOptions = {}) {
   const reconnectDelayRef = useRef(RECONNECT_CONFIG.initialDelay)
   const mountedRef = useRef(true)
   const onConnectionStateChangeRef = useRef(onConnectionStateChange)
+  const seenRef = useRef(false)
 
   // Keep ref up to date
   onConnectionStateChangeRef.current = onConnectionStateChange
@@ -189,7 +190,9 @@ export function useEventStream(options: EventStreamOptions = {}) {
     if (debug) {
       console.log("[SSE] Connecting to event stream...")
     }
-    updateConnectionState("connecting")
+    if (!seenRef.current) {
+      updateConnectionState("connecting")
+    }
 
     try {
       const eventSource = new EventSource(url)
@@ -199,6 +202,7 @@ export function useEventStream(options: EventStreamOptions = {}) {
         if (debug) {
           console.log("[SSE] Connection established")
         }
+        seenRef.current = true
         updateConnectionState("connected")
         // Reset reconnect delay on successful connection
         reconnectAttemptsRef.current = 0
@@ -225,7 +229,7 @@ export function useEventStream(options: EventStreamOptions = {}) {
 
         if (!mountedRef.current) return
 
-        updateConnectionState("error")
+        updateConnectionState(seenRef.current ? "disconnected" : "error")
 
         // Implement exponential backoff for reconnection
         reconnectAttemptsRef.current++

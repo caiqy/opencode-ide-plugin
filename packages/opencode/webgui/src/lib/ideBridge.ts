@@ -2,7 +2,7 @@ type Message = {
   id?: string
   replyTo?: string
   type: string
-  payload?: any
+  payload?: unknown
   timestamp?: number
   ok?: boolean
   error?: string
@@ -11,6 +11,13 @@ type Message = {
 export type StorageScope = "global" | "workspace" | "mem"
 
 type Handler = (message: Message) => void
+
+type Pending = {
+  resolve: (m: Message) => void
+  reject: (e: unknown) => void
+  timer?: ReturnType<typeof setTimeout>
+  retry?: ReturnType<typeof setTimeout>
+}
 
 // Parse URL params once at module load
 const params = new URLSearchParams(window.location.search)
@@ -24,10 +31,13 @@ class IdeBridge {
   restartMode: "window" | "ide" | null = null
   private queue: Message[] = []
   private handlers: Set<Handler> = new Set()
-  private pending = new Map<string, { resolve: (m: Message) => void; reject: (e: any) => void }>()
+  private pending = new Map<string, Pending>()
   private eventSource: EventSource | null = null
   private reconnectDelay = 1000
   private readonly maxReconnectDelay = 30000
+  private readonly timeout: Partial<Record<string, number>> = {
+    restartHost: 5000,
+  }
   private reconnectScheduled = false
   private connectErrorLogged = false
 
@@ -62,10 +72,14 @@ class IdeBridge {
           this.minVersion = data.minVersion
         }
         this.restartMode = data.restartMode === "window" || data.restartMode === "ide" ? data.restartMode : null
-      } catch {}
+      } catch {
+        return
+      }
       try {
         window.dispatchEvent(new Event("opencode:idebridge-connected"))
-      } catch {}
+      } catch {
+        return
+      }
     })
 
     this.eventSource.onopen = () => {
@@ -94,6 +108,7 @@ class IdeBridge {
         })
       }
       this.ready = false
+      this.rejectPending(new Error("[ideBridge] Bridge disconnected"))
       this.scheduleReconnect()
     }
   }
@@ -102,7 +117,9 @@ class IdeBridge {
     const run = () => {
       try {
         handler()
-      } catch {}
+      } catch {
+        return
+      }
     }
 
     if (this.ready) {
@@ -131,7 +148,11 @@ class IdeBridge {
     if (msg && msg.replyTo) {
       const p = this.pending.get(msg.replyTo)
       if (p) {
-        this.pending.delete(msg.replyTo)
+        this.clearPending(msg.replyTo)
+        if (msg.ok === false) {
+          p.reject(new Error(msg.error || "[ideBridge] Request failed"))
+          return
+        }
         p.resolve(msg)
         return
       }
@@ -139,7 +160,9 @@ class IdeBridge {
     this.handlers.forEach((h) => {
       try {
         h(msg)
-      } catch {}
+      } catch {
+        return
+      }
     })
   }
 
@@ -177,45 +200,100 @@ class IdeBridge {
 
       if (!response.ok) {
         console.warn("[ideBridge] Send failed with status:", response.status)
-        // Requeue on server errors (5xx) with limited retries
         if (response.status >= 500 && retryCount < 3) {
           this.requeueWithBackoff(msg, retryCount)
+          return
         }
+        this.rejectRequest(msg, new Error(`[ideBridge] Send failed with status: ${response.status}`))
       }
     } catch (e) {
       console.warn("[ideBridge] Send failed:", e)
-      // Network error - requeue with backoff
       if (retryCount < 3) {
         this.requeueWithBackoff(msg, retryCount)
+        return
       }
+      this.rejectRequest(msg, e)
     }
   }
 
   private requeueWithBackoff(msg: Message, retryCount: number) {
     const delay = Math.min(1000 * Math.pow(2, retryCount), 10000)
-    setTimeout(() => {
+    const run = () => {
+      if (msg.id) {
+        const p = this.pending.get(msg.id)
+        if (!p) return
+        delete p.retry
+      }
       if (this.ready) {
         this.doSend(msg, retryCount + 1)
-      } else {
+        return
+      }
+      if (!msg.id || this.pending.has(msg.id)) {
         this.queue.push(msg)
       }
-    }, delay)
+    }
+    const timer = setTimeout(run, delay)
+    if (!msg.id) return
+    const p = this.pending.get(msg.id)
+    if (!p) {
+      clearTimeout(timer)
+      return
+    }
+    if (p.retry) clearTimeout(p.retry)
+    p.retry = timer
   }
 
-  request<T = any>(type: string, payload?: any): Promise<Message & { result?: T }> {
+  request<T = unknown>(type: string, payload?: unknown): Promise<Message & { result?: T }> {
     return new Promise((resolve, reject) => {
       if (!this.isInstalled()) {
         reject(new Error("[ideBridge] Bridge not installed"))
         return
       }
+      const id = String(Date.now()) + Math.random().toString(36).slice(2)
       try {
-        const id = String(Date.now()) + Math.random().toString(36).slice(2)
-        this.pending.set(id, { resolve, reject })
+        const ms = this.timeout[type]
+        const timer = ms
+          ? setTimeout(() => {
+              this.clearPending(id)
+              reject(new Error(`[ideBridge] Request timed out: ${type}`))
+            }, ms)
+          : undefined
+        this.pending.set(id, { resolve, reject, timer })
         this.send({ id, type, payload, timestamp: Date.now() })
       } catch (e) {
+        this.clearPending(id)
         reject(e)
       }
     })
+  }
+
+  private clearPending(id: string) {
+    const p = this.pending.get(id)
+    if (!p) return
+    if (p.timer) clearTimeout(p.timer)
+    if (p.retry) clearTimeout(p.retry)
+    this.queue = this.queue.filter((msg) => msg.id !== id)
+    this.pending.delete(id)
+  }
+
+  private rejectPending(err: Error) {
+    const list = [...this.pending.entries()]
+    const ids = new Set(list.map(([id]) => id))
+    this.queue = this.queue.filter((msg) => !msg.id || !ids.has(msg.id))
+    this.pending.clear()
+    list.forEach(([, p]) => {
+      if (p.timer) clearTimeout(p.timer)
+      if (p.retry) clearTimeout(p.retry)
+      p.reject(err)
+    })
+  }
+
+  private rejectRequest(msg: Message, err: unknown) {
+    if (!msg.id) return
+    const p = this.pending.get(msg.id)
+    if (!p) return
+    this.clearPending(msg.id)
+    p.reject(err)
   }
 
   private flushQueue() {
@@ -226,15 +304,17 @@ class IdeBridge {
 
     try {
       window.dispatchEvent(new Event("opencode:idebridge-ready"))
-    } catch {}
+    } catch {
+      return
+    }
   }
 
   async storageGet(scope: StorageScope, keys: string[]): Promise<Record<string, string | undefined> | null> {
     try {
       const res = await this.request<Record<string, string | undefined>>("storageGet", { scope, keys })
-      const result = (res as any)?.result
+      const result = res.result
       if (!result || typeof result !== "object") return {}
-      return result as Record<string, string | undefined>
+      return result
     } catch {
       return null
     }
@@ -243,7 +323,7 @@ class IdeBridge {
   async storageSet(scope: StorageScope, key: string, value: string): Promise<boolean> {
     try {
       const res = await this.request("storageSet", { scope, key, value })
-      return !!(res as any)?.ok
+      return !!res.ok
     } catch {
       return false
     }

@@ -3,6 +3,7 @@ import { WebviewManager } from "./ui/WebviewManager"
 import { BackendLauncher } from "./backend/BackendLauncher"
 import { SettingsManager } from "./settings/SettingsManager"
 import { ActivityBarProvider } from "./ui/ActivityBarProvider"
+import { bridgeServer } from "./ui/IdeBridgeServer"
 import { ErrorCategory, errorHandler, ErrorSeverity } from "./utils/ErrorHandler"
 import { logger } from "./globals"
 
@@ -32,13 +33,16 @@ class OpenCodeExtension {
   private backendLauncher?: BackendLauncher
   private settingsManager?: SettingsManager
   private activityBarProvider?: ActivityBarProvider
+  private registration?: vscode.Disposable
   private context?: vscode.ExtensionContext
+  private disposed = false
 
   /**
    * Initialize the extension with all components
    * @param context VSCode extension context
    */
   async initialize(context: vscode.ExtensionContext): Promise<void> {
+    this.disposed = false
     this.context = context
     logger.appendLine("Initializing OpenCode extension...")
 
@@ -91,7 +95,7 @@ class OpenCodeExtension {
 
     // Initialize activity bar provider as WebviewViewProvider so the content renders directly in the view
     this.activityBarProvider = new ActivityBarProvider(this.context!, this.backendLauncher, this.settingsManager)
-    vscode.window.registerWebviewViewProvider("opencode.main", this.activityBarProvider, {
+    this.registration = vscode.window.registerWebviewViewProvider("opencode.main", this.activityBarProvider, {
       webviewOptions: { retainContextWhenHidden: true },
     })
 
@@ -352,21 +356,38 @@ class OpenCodeExtension {
    * Dispose of all extension resources
    */
   dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
     logger.appendLine("Disposing OpenCode extension...")
+
+    const drop = (name: string, fn: () => void) => {
+      try {
+        fn()
+      } catch (err) {
+        logger.appendLine(`dispose ${name} failed: ${err}`)
+      }
+    }
 
     // Clean up components in reverse order of initialization
     if (this.webviewManager) {
-      this.webviewManager.dispose()
+      drop("webviewManager", () => this.webviewManager!.dispose())
       this.webviewManager = undefined
     }
-
+    if (this.activityBarProvider) {
+      drop("activityBarProvider", () => this.activityBarProvider!.dispose())
+      this.activityBarProvider = undefined
+    }
+    if (this.registration) {
+      drop("registration", () => this.registration!.dispose())
+      this.registration = undefined
+    }
+    drop("bridgeServer", () => bridgeServer.stop())
     if (this.backendLauncher) {
-      this.backendLauncher.terminate()
+      drop("backendLauncher", () => this.backendLauncher!.terminate())
       this.backendLauncher = undefined
     }
-
     if (this.settingsManager) {
-      this.settingsManager.dispose()
+      drop("settingsManager", () => this.settingsManager!.dispose())
       this.settingsManager = undefined
     }
 

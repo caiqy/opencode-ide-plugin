@@ -45,11 +45,13 @@ class IdeBridgeServer {
   private port: number = 0
   private sessions: Map<string, Session> = new Map()
   private keepaliveInterval: NodeJS.Timeout | null = null
+  private starting: Promise<void> | null = null
 
   async start(): Promise<void> {
+    if (this.starting) return this.starting
     if (this.server) return
 
-    return new Promise((resolve, reject) => {
+    this.starting = new Promise((resolve, reject) => {
       this.server = http.createServer((req, res) => this.handleRequest(req, res))
       this.server.listen(0, "127.0.0.1", () => {
         const addr = this.server!.address()
@@ -62,16 +64,26 @@ class IdeBridgeServer {
             this.keepaliveInterval = setInterval(() => this.sendKeepaliveToAll(), 15000)
           }
 
+          this.starting = null
           resolve()
         } else {
+          this.server?.close()
+          this.server = null
+          this.port = 0
+          this.starting = null
           reject(new Error("Failed to get server port"))
         }
       })
       this.server.on("error", (e) => {
+        this.server?.close()
+        this.server = null
+        this.port = 0
+        this.starting = null
         logger.appendLine(`IdeBridgeServer error: ${e}`)
         reject(e)
       })
     })
+    return this.starting
   }
 
   stop(): void {
@@ -81,6 +93,11 @@ class IdeBridgeServer {
     }
     this.server?.close()
     this.server = null
+    this.port = 0
+    this.starting = null
+    this.sessions.forEach((session) => {
+      session.sseClients.forEach((res) => res.end())
+    })
     this.sessions.clear()
   }
 
@@ -206,11 +223,17 @@ class IdeBridgeServer {
       return
     }
 
+    let msg: Message | undefined
     try {
       const body = await this.readBody(req)
-      const msg: Message = JSON.parse(body)
+      msg = JSON.parse(body)
+      if (!msg) {
+        throw new Error("Missing message")
+      }
 
-      const { type, id, payload } = msg
+      const type = msg.type
+      const id = msg.id
+      const payload = msg.payload
 
       switch (type) {
         case "openFile":
@@ -254,12 +277,14 @@ class IdeBridgeServer {
             this.replyError(session, id, "restartHost not supported")
             break
           }
-          try {
-            await session.handlers.restartHost()
-            this.replyOk(session, id)
-          } catch (e) {
-            this.replyError(session, id, `restartHost failed: ${e}`)
-          }
+          // Reply before executing reload so the client receives OK
+          // before the extension host tears down the transport.
+          this.replyOk(session, id)
+          setTimeout(() => {
+            void session.handlers.restartHost!().catch((e) => {
+              logger.appendLine(`[${session.id}] restartHost failed after reply: ${e}`)
+            })
+          }, 0)
           break
 
         case "ensureAndOpenFile": {
@@ -342,7 +367,10 @@ class IdeBridgeServer {
 
       res.writeHead(204)
     } catch (e) {
-      console.error("Error handling send:", e)
+      if (msg?.id) {
+        this.replyError(session, msg.id, `${msg.type || "request"} failed: ${e}`)
+      }
+      logger.appendLine(`[${session.id}] handleSend error (msg=${msg?.id ?? "?"}): ${e}`)
       res.writeHead(400)
     }
     res.end()

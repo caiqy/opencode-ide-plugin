@@ -135,7 +135,10 @@ export class WebviewController {
             await vscode.env.clipboard.writeText(text)
           },
           restartHost: async () => {
-            await vscode.commands.executeCommand("workbench.action.reloadWindow")
+            await vscode.commands.executeCommand("workbench.action.reloadWindow").then(
+              () => undefined,
+              (e) => logger.appendLine(`restartHost reload failed: ${e}`),
+            )
           },
           storageGet: this.storageGet,
           storageSet: this.storageSet,

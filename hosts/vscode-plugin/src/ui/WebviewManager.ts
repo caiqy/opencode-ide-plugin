@@ -7,6 +7,7 @@ import { CommunicationBridge } from "./CommunicationBridge"
 import { errorHandler } from "../utils/ErrorHandler"
 import { logger } from "../globals"
 import { PathInserter } from "../utils/PathInserter"
+import { loading } from "./loading"
 
 /**
  * Webview management - handles VSCode webview panel lifecycle and content
@@ -153,6 +154,7 @@ export class WebviewManager {
 
       this.connection = connection
       logger.appendLine(`Loading web UI with connection: port=${connection.port}, uiBase=${connection.uiBase}`)
+      panel.webview.html = loading("Starting OpenCode...", "Loading web UI...")
 
       // Retry the full controller.load() cycle when it fails due to the
       // transient Chromium SW InvalidState bug (microsoft/vscode#125993).

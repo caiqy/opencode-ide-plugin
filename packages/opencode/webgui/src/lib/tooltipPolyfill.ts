@@ -272,7 +272,8 @@ export function installTooltipPolyfillBridge() {
   ideBridge.on((msg) => {
     if (!msg || typeof msg !== "object") return
     if (msg.type !== "setTooltipPolyfill") return
-    const enabled = msg.payload?.enabled
+    const payload = msg.payload
+    const enabled = payload && typeof payload === "object" && "enabled" in payload ? payload.enabled : undefined
     setTooltipPolyfill(enabled === true)
   })
 }

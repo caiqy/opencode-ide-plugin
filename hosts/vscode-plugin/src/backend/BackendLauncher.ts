@@ -3,6 +3,7 @@ import { existsSync } from "fs"
 import { join } from "path"
 import * as vscode from "vscode"
 import { ResourceExtractor } from "./ResourceExtractor"
+import { killTree } from "./kill"
 import { ErrorCategory, errorHandler, ErrorSeverity } from "../utils/ErrorHandler"
 import { logger } from "../globals"
 
@@ -52,7 +53,10 @@ export class BackendLauncher {
         const childProcess = this.spawnBackend(args, cwd)
 
         // Parse connection and set up error handling
-        const connection = await this.parseConnectionInfo(childProcess)
+        const connection = await this.parseConnectionInfo(childProcess).catch((error) => {
+          this.cleanupFailedProcess(childProcess)
+          throw error
+        })
         this.setupErrorHandling(childProcess)
         logger.appendLine(`Additional backend started successfully on port ${connection.port}`)
 
@@ -68,7 +72,10 @@ export class BackendLauncher {
       this.currentProcess = childProcess
 
       // Parse connection info from stdout
-      const connection = await this.parseConnectionInfo(childProcess)
+      const connection = await this.parseConnectionInfo(childProcess).catch((error) => {
+        this.cleanupFailedProcess(childProcess, true)
+        throw error
+      })
 
       // Set up error handling
       this.setupErrorHandling(childProcess)
@@ -135,7 +142,10 @@ export class BackendLauncher {
 
       this.currentProcess = childProcess
 
-      const connection = await this.parseConnectionInfo(childProcess)
+      const connection = await this.parseConnectionInfo(childProcess).catch((error) => {
+        this.cleanupFailedProcess(childProcess, true)
+        throw error
+      })
       this.setupErrorHandling(childProcess)
 
       logger.appendLine(`Fallback backend started successfully on port ${connection.port}`)
@@ -468,24 +478,30 @@ export class BackendLauncher {
     })
   }
 
+  private cleanupFailedProcess(child: ChildProcess, shared = false): void {
+    this.killWithTimeout(child)
+    if (shared && this.currentProcess === child) {
+      this.currentProcess = undefined
+      this.currentConnection = undefined
+    }
+  }
+
+  /**
+   * Best-effort kill of the backend process tree.
+   */
+  private killWithTimeout(child: ChildProcess): void {
+    void killTree(child).catch((err) => {
+      logger.appendLine(`Force killing backend process failed: ${err}`)
+    })
+  }
+
   /**
    * Terminate the backend process
    */
   terminate(): void {
     if (this.currentProcess) {
       logger.appendLine("Terminating backend process...")
-
-      // Try graceful shutdown first
-      this.currentProcess.kill("SIGTERM")
-
-      // Force kill after timeout
-      setTimeout(() => {
-        if (this.currentProcess && !this.currentProcess.killed) {
-          logger.appendLine("Force killing backend process...")
-          this.currentProcess.kill("SIGKILL")
-        }
-      }, 5000)
-
+      this.killWithTimeout(this.currentProcess)
       this.currentProcess = undefined
       this.currentConnection = undefined
     }

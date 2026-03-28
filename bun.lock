@@ -417,7 +417,7 @@
     },
     "packages/opencode/webgui": {
       "name": "webgui",
-      "version": "26.3.162",
+      "version": "26.3.164",
       "dependencies": {
         "@lexical/react": "0.37.0",
         "@opencode-ai/sdk": "workspace:*",
