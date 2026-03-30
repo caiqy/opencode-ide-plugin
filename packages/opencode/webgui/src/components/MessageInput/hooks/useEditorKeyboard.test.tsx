@@ -22,7 +22,6 @@ function setup() {
     useEditorKeyboard({
       editor,
       contentEditableRef,
-      parseWithRange: (value) => ({ display: value, path: value }),
       onSubmit,
     }),
   )

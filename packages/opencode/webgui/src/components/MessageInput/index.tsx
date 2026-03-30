@@ -203,7 +203,7 @@ const MessageInputInner = forwardRef<
 
   useDragDrop({ contentEditableRef, containerRef, editor, worktree, parseWithRange, disabled: locked })
 
-  useEditorKeyboard({ editor, contentEditableRef, parseWithRange, onSubmit: handleSubmit })
+  useEditorKeyboard({ editor, contentEditableRef, onSubmit: handleSubmit })
 
   // Restore session-scoped draft from workspace storage
   useEffect(() => {

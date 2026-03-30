@@ -1,15 +1,22 @@
 import { useEffect } from "react"
-import { KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH, REDO_COMMAND, UNDO_COMMAND, type LexicalEditor } from "lexical"
-import { insertPlainWithMentionsImpl } from "../utils"
+import {
+  KEY_ENTER_COMMAND,
+  COMMAND_PRIORITY_HIGH,
+  REDO_COMMAND,
+  UNDO_COMMAND,
+  $getSelection,
+  $isRangeSelection,
+  $createTextNode,
+  type LexicalEditor,
+} from "lexical"
 
 interface UseEditorKeyboardOptions {
   editor: LexicalEditor
   contentEditableRef: React.RefObject<HTMLDivElement | null>
-  parseWithRange: (val: string) => { display: string; path: string; range?: { start: number; end: number } }
   onSubmit: () => void
 }
 
-export function useEditorKeyboard({ editor, contentEditableRef, parseWithRange, onSubmit }: UseEditorKeyboardOptions) {
+export function useEditorKeyboard({ editor, contentEditableRef, onSubmit }: UseEditorKeyboardOptions) {
   // Register Enter-to-send command
   useEffect(() => {
     return editor.registerCommand(
@@ -22,14 +29,12 @@ export function useEditorKeyboard({ editor, contentEditableRef, parseWithRange, 
         event.preventDefault()
         onSubmit()
         return true
-
-        return false
       },
       COMMAND_PRIORITY_HIGH,
     )
   }, [editor, onSubmit])
 
-  // Handle paste with mentions parsing
+  // Handle paste as plain text
   useEffect(() => {
     const el = contentEditableRef.current
     if (!el) return
@@ -43,13 +48,21 @@ export function useEditorKeyboard({ editor, contentEditableRef, parseWithRange, 
       editor.dispatchCommand(action === "undo" ? UNDO_COMMAND : REDO_COMMAND, undefined)
     }
 
+    const insertPlain = (text: string) => {
+      editor.update(() => {
+        const selection = $getSelection()
+        if (!$isRangeSelection(selection)) return
+        selection.insertNodes([$createTextNode(text)])
+      })
+    }
+
     const onPasteText = (e: Event) => {
       const ev = e as CustomEvent<{ text?: string }>
       const text = ev.detail?.text
       if (!text) return
       e.preventDefault()
       e.stopPropagation()
-      insertPlainWithMentionsImpl(editor, parseWithRange, text)
+      insertPlain(text)
     }
 
     const onPaste = (e: ClipboardEvent) => {
@@ -58,7 +71,7 @@ export function useEditorKeyboard({ editor, contentEditableRef, parseWithRange, 
       if (!plain) return
       e.preventDefault()
       e.stopPropagation()
-      insertPlainWithMentionsImpl(editor, parseWithRange, plain)
+      insertPlain(plain)
     }
 
     el.addEventListener("opencode:history", onHistory as any, true)
@@ -69,5 +82,5 @@ export function useEditorKeyboard({ editor, contentEditableRef, parseWithRange, 
       el.removeEventListener("opencode:paste-text", onPasteText as any, true)
       el.removeEventListener("paste", onPaste as any, true)
     }
-  }, [contentEditableRef.current, editor, parseWithRange])
+  }, [contentEditableRef.current, editor])
 }
