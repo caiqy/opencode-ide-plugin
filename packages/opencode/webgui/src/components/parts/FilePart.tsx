@@ -1,5 +1,6 @@
-import { useCallback, type KeyboardEvent } from "react"
+import { useCallback, useState, type KeyboardEvent } from "react"
 import { useOpenFile } from "../../hooks/useOpenFile"
+import { ImageOverlay } from "./ImageOverlay"
 
 interface FilePartProps {
   part: {
@@ -15,7 +16,7 @@ interface FilePartProps {
         start: number
         end: number
       }
-      path: string
+      path?: string
       range?: {
         start: { line: number; character: number }
         end: { line: number; character: number }
@@ -26,21 +27,38 @@ interface FilePartProps {
   }
 }
 
+const isDataUrl = (url: string) => url.startsWith("data:")
+
+// Resolve mime: use part.mime if present, otherwise extract from data URL
+function resolveMime(mime: string | undefined, url: string): string {
+  if (mime) return mime
+  if (!isDataUrl(url)) return ""
+  const match = url.match(/^data:([^;,]+)/)
+  return match ? match[1] : ""
+}
+
 export function FilePart({ part }: FilePartProps) {
   const openFile = useOpenFile()
+  const [preview, setPreview] = useState(false)
+  const mime = resolveMime(part.mime, part.url)
+  const image = mime.startsWith("image/") && isDataUrl(part.url)
   const isSymbol = part.source?.type === "symbol"
   const displayName = isSymbol && part.source?.name ? part.source.name : part.filename || part.source?.path || "file"
   const effectivePath = part.source?.path || part.filename || part.url
   const range = part.source?.range
 
   const handleOpen = useCallback(() => {
+    if (image) {
+      setPreview(true)
+      return
+    }
     if (!effectivePath) return
     openFile({
       path: effectivePath,
       display: displayName,
       range,
     })
-  }, [displayName, effectivePath, openFile, range])
+  }, [image, displayName, effectivePath, openFile, range])
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLSpanElement>) => {
@@ -53,6 +71,18 @@ export function FilePart({ part }: FilePartProps) {
   )
 
   const getFileIcon = () => {
+    if (image) {
+      return (
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+          />
+        </svg>
+      )
+    }
     if (isSymbol) {
       return (
         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,20 +108,28 @@ export function FilePart({ part }: FilePartProps) {
   }
 
   return (
-    <span
-      className="inline-flex items-center gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5 text-xs font-medium cursor-pointer hover:bg-blue-200/80 dark:hover:bg-blue-900/60"
-      role="button"
-      tabIndex={0}
-      onClick={handleOpen}
-      onKeyDown={handleKeyDown}
-      title={part.source?.path || part.filename}
-      data-tip={part.source?.path || part.filename}
-    >
-      {getFileIcon()}
-      <span className="font-mono">{displayName}</span>
-      {isSymbol && part.source?.range && (
-        <span className="text-[10px] opacity-75">:{part.source.range.start.line + 1}</span>
-      )}
-    </span>
+    <>
+      <span
+        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium cursor-pointer ${
+          image
+            ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200/80 dark:hover:bg-emerald-900/60"
+            : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200/80 dark:hover:bg-blue-900/60"
+        }`}
+        role="button"
+        tabIndex={0}
+        onClick={handleOpen}
+        onKeyDown={handleKeyDown}
+        title={part.source?.path || part.filename}
+        data-tip={part.source?.path || part.filename}
+      >
+        {getFileIcon()}
+        <span className="font-mono">{displayName}</span>
+        {isSymbol && part.source?.range && (
+          <span className="text-[10px] opacity-75">:{part.source.range.start.line + 1}</span>
+        )}
+      </span>
+
+      {preview && <ImageOverlay url={part.url} alt={displayName} onClose={() => setPreview(false)} />}
+    </>
   )
 }

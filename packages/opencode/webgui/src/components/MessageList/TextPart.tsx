@@ -1,8 +1,55 @@
-import { useRef } from "react"
+import { useRef, useState, useCallback } from "react"
 import type { Part } from "../../state/MessagesContext"
 import { MarkdownRenderer } from "../MarkdownRenderer"
 import { FilePart } from "../parts/FilePart"
 import { AgentPart } from "../parts/AgentPart"
+import { ImageOverlay } from "../parts/ImageOverlay"
+
+interface ImageFile {
+  id: string
+  mime: string
+  url: string
+  filename?: string
+}
+
+const isImageDataUrl = (p: Part): p is Part & ImageFile => {
+  if (p.type !== "file") return false
+  const url = (p as any).url
+  if (typeof url !== "string" || !url.startsWith("data:")) return false
+  // Use part.mime if present, otherwise extract from data URL
+  let mime = (p as any).mime
+  if (!mime || typeof mime !== "string") {
+    const match = url.match(/^data:([^;,]+)/)
+    mime = match ? match[1] : ""
+  }
+  return mime.startsWith("image/")
+}
+
+function Thumbnail({ file }: { file: ImageFile }) {
+  const [preview, setPreview] = useState(false)
+  const toggle = useCallback(() => setPreview((v) => !v), [])
+  const alt = file.filename || "image"
+
+  return (
+    <>
+      <div
+        className="mt-1.5 cursor-pointer rounded-md overflow-hidden inline-block border border-white/20 dark:border-white/10 hover:border-white/40 dark:hover:border-white/30 transition-colors shadow-sm"
+        onClick={toggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            toggle()
+          }
+        }}
+      >
+        <img src={file.url} alt={alt} className="max-w-48 max-h-36 object-contain" />
+      </div>
+      {preview && <ImageOverlay url={file.url} alt={alt} onClose={toggle} />}
+    </>
+  )
+}
 
 function renderTextWithMentions(text: string, mentions: Array<{ start: number; end: number; part: Part }>) {
   if (mentions.length === 0) {
@@ -110,6 +157,9 @@ export function TextPart({ part, isUser, attachedParts }: TextPartProps) {
       }
     }
   }
+
+  // Collect image attachments for thumbnail display
+  const images = (attachedParts || []).filter(isImageDataUrl) as unknown as ImageFile[]
 
   if (isUser) {
     const handleCopy = (e: React.ClipboardEvent<HTMLDivElement>) => {
@@ -237,6 +287,13 @@ export function TextPart({ part, isUser, attachedParts }: TextPartProps) {
           <div ref={ref} className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" onCopy={handleCopy}>
             {mentions.length > 0 ? renderTextWithMentions(text, mentions) : text}
           </div>
+          {images.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {images.map((img) => (
+                <Thumbnail key={img.id} file={img} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     )

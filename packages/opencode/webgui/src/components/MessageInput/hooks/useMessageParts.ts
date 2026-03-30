@@ -211,13 +211,13 @@ export function useMessageParts({ editor, resolveToAbsolutePath }: UseMessagePar
         filename: attachment.filename,
         url: normalized.url,
         source: {
+          type: "file" as const,
+          path: attachment.filename,
           text: {
             value: `[${attachment.display}]`,
             start: attachment.start,
             end: attachment.end,
           },
-          type: "file",
-          path: attachment.filename,
         },
       })
     }
