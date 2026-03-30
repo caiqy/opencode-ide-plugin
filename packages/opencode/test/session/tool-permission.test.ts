@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { PermissionNext } from "../../src/permission/next"
+import { Permission } from "../../src/permission"
 import { MessageID, SessionID } from "../../src/session/schema"
 import { buildToolPermissionAsk } from "../../src/session/tool-permission"
 
 describe("session tool permission payload", () => {
   test("buildToolPermissionAsk 包含 tool messageID/callID 绑定", () => {
-    const ruleset = PermissionNext.fromConfig({ glob: "ask" })
+    const ruleset = Permission.fromConfig({ glob: "ask" })
     const payload = buildToolPermissionAsk({
       sessionID: SessionID.make("session_1"),
       messageID: MessageID.make("message_1"),
@@ -26,7 +26,7 @@ describe("session tool permission payload", () => {
   })
 
   test("buildToolPermissionAsk 保留原权限请求字段", () => {
-    const ruleset = PermissionNext.fromConfig({ edit: "ask" })
+    const ruleset = Permission.fromConfig({ edit: "ask" })
     const payload = buildToolPermissionAsk({
       sessionID: SessionID.make("session_2"),
       messageID: MessageID.make("message_2"),
