@@ -1135,7 +1135,7 @@ export namespace Config {
     return skillPermissionOverlayByDir.get(dir) ?? {}
   }
 
-  export function setSkillPermissionOverlay(dir: string, name: string, action: string) {
+  export function setSkillPermissionOverlay(dir: string, name: string, action: "allow" | "deny" | "ask") {
     const prev = skillPermissionOverlayByDir.get(dir) ?? {}
     skillPermissionOverlayByDir.set(dir, { ...prev, [name]: action })
   }

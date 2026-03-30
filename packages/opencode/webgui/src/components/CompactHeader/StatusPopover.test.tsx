@@ -56,9 +56,17 @@ type View = {
   refreshMcp: ReturnType<typeof vi.fn>
   toggleMcp: ReturnType<typeof vi.fn>
   toggleTool: ReturnType<typeof vi.fn>
+  toggleSkill: ReturnType<typeof vi.fn>
   mcpBusy: Record<string, boolean>
   mcpToolBusy: Record<string, Record<string, boolean>>
   mcpRefreshing: boolean
+  skills: {
+    state: "ready" | "empty" | "failed" | "stale"
+    error: string | null
+    updatedAt: number | null
+    data: Record<string, { enabled: boolean }>
+  }
+  skillBusy: Record<string, boolean>
 }
 
 function data(): View {
@@ -109,6 +117,17 @@ function data(): View {
     mcpBusy: {},
     mcpToolBusy: {},
     mcpRefreshing: false,
+    toggleSkill: vi.fn().mockResolvedValue(undefined),
+    skills: {
+      state: "ready",
+      error: null,
+      updatedAt: 1,
+      data: {
+        brainstorming: { enabled: true },
+        debugging: { enabled: false },
+      },
+    },
+    skillBusy: {},
   }
 }
 
@@ -123,7 +142,13 @@ describe("CompactHeader/StatusPopover", () => {
     expect(mocks.useStatusPopoverData).toHaveBeenCalledWith({ open: true, connectionState: "connected" })
     expect(screen.getByRole("dialog", { name: "状态面板" })).toHaveClass("right-2")
     expect(screen.getByRole("dialog", { name: "状态面板" })).toHaveClass("modern-card")
-    expect(screen.getAllByRole("tab").map((item) => item.textContent)).toEqual(["Server", "MCP", "LSP", "Plugins"])
+    expect(screen.getAllByRole("tab").map((item) => item.textContent)).toEqual([
+      "Server",
+      "MCP",
+      "LSP",
+      "Plugins",
+      "Skills",
+    ])
     expect(screen.getByRole("tab", { name: "Server" })).toHaveAttribute("aria-selected", "true")
     expect(screen.getByText("SSE 连接：connected")).toBeInTheDocument()
     expect(screen.getByText("IDE bridge：ready")).toBeInTheDocument()
@@ -442,5 +467,51 @@ describe("CompactHeader/StatusPopover", () => {
 
     await user.click(screen.getByRole("button", { name: "收起工具 alpha" }))
     expect(screen.queryByRole("switch", { name: "切换 alpha.read" })).not.toBeInTheDocument()
+  })
+
+  it("Skills tab 展示 skill 列表并渲染开关", async () => {
+    const user = userEvent.setup()
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "Skills" }))
+
+    expect(screen.getByText("brainstorming")).toBeInTheDocument()
+    expect(screen.getByText("debugging")).toBeInTheDocument()
+
+    const enabled = screen.getByRole("switch", { name: "切换 brainstorming" })
+    expect(enabled).toHaveAttribute("aria-checked", "true")
+
+    const disabled = screen.getByRole("switch", { name: "切换 debugging" })
+    expect(disabled).toHaveAttribute("aria-checked", "false")
+  })
+
+  it("Skills tab 点击开关调用 toggleSkill", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "Skills" }))
+    await user.click(screen.getByRole("switch", { name: "切换 debugging" }))
+
+    expect(view.toggleSkill).toHaveBeenCalledWith("debugging")
+  })
+
+  it("Skills busy 状态下开关禁用并展示 spinner", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.skillBusy = { brainstorming: true }
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "Skills" }))
+
+    const sw = screen.getByRole("switch", { name: "切换 brainstorming" })
+    expect(sw).toBeDisabled()
+
+    const spinner = sw.querySelector(".animate-spin")
+    expect(spinner).toBeInTheDocument()
   })
 })

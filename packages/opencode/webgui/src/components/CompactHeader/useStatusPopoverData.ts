@@ -220,9 +220,12 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
     }
   }, [])
 
-  const loadSkills = useCallback(async () => {
+  const loadSkills = useCallback(async (cfg?: Record<string, unknown> | null) => {
     try {
-      const [skillsRes, configRes] = await Promise.all([sdk.app.skills(), sdk.config.get()])
+      const [skillsRes, configRes] = await Promise.all([
+        sdk.app.skills(),
+        cfg !== undefined ? { data: cfg, error: null } : sdk.config.get(),
+      ])
       if (skillsRes.error || !skillsRes.data) {
         return { data: null, error: text(skillsRes.error, "Failed to load skills") }
       }
@@ -347,14 +350,19 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
     const id = ++seq.current
     const mid = ++mseq.current
     const state = conn.current
-    const [projectRes, pathRes, mcpRes, lspRes, pluginRes, skillsRes] = await Promise.allSettled([
+    const [projectRes, pathRes, mcpRes, lspRes, pluginRes] = await Promise.allSettled([
       sdk.project.current(),
       sdk.path.get(),
       loadMcp(),
       sdk.lsp.status(),
       sdk.config.get(),
-      loadSkills(),
     ])
+    // Reuse config data for skills loading to avoid duplicate config.get() request
+    const cfg = pluginRes.status === "fulfilled" && pluginRes.value.data ? pluginRes.value.data : null
+    const skillsRes = await loadSkills(cfg).then(
+      (v) => ({ status: "fulfilled" as const, value: v }),
+      (e) => ({ status: "rejected" as const, reason: e }),
+    )
 
     setData((prev) => {
       if (id !== seq.current) return prev

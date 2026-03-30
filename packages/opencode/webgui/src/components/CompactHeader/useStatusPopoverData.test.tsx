@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   configUpdate: vi.fn(),
   projectCurrent: vi.fn(),
   pathGet: vi.fn(),
+  appSkills: vi.fn(),
+  appSetSkillEnabled: vi.fn(),
   bridgeInstalled: true,
   bridgeReady: true,
   bridgeCustomApi: true,
@@ -42,6 +44,10 @@ vi.mock("../../lib/api/sdkClient", () => ({
     },
     path: {
       get: (...args: unknown[]) => mocks.pathGet(...args),
+    },
+    app: {
+      skills: (...args: unknown[]) => mocks.appSkills(...args),
+      setSkillEnabled: (...args: unknown[]) => mocks.appSetSkillEnabled(...args),
     },
   },
 }))
@@ -102,6 +108,8 @@ describe("CompactHeader/useStatusPopoverData", () => {
     mocks.configUpdate.mockReset()
     mocks.projectCurrent.mockReset()
     mocks.pathGet.mockReset()
+    mocks.appSkills.mockReset()
+    mocks.appSetSkillEnabled.mockReset()
     mocks.bridgeInstalled = true
     mocks.bridgeReady = true
     mocks.bridgeCustomApi = true
@@ -133,6 +141,12 @@ describe("CompactHeader/useStatusPopoverData", () => {
     mocks.configUpdate.mockResolvedValue(ok({ plugin: ["foo", "bar"], tools: {} }))
     mocks.projectCurrent.mockResolvedValue(ok({ id: "p1", worktree: "D:/repo", time: { created: 1 } }))
     mocks.pathGet.mockResolvedValue(ok({ state: "ready", config: "cfg", worktree: "D:/repo", directory: "D:/repo" }))
+    mocks.appSkills.mockResolvedValue(
+      ok([
+        { name: "brainstorming", description: "Brainstorming skill" },
+        { name: "debugging", description: "Debugging skill" },
+      ]),
+    )
   })
 
   it("在打开弹层时聚合首版所需数据", async () => {
@@ -570,5 +584,56 @@ describe("CompactHeader/useStatusPopoverData", () => {
     })
 
     expect(view.result.current.mcp.data.alpha?.status).toBe("disabled")
+  })
+
+  it("refreshAll 加载 skills 列表并从 config 读取 permission", async () => {
+    mocks.configGet.mockResolvedValue(
+      ok({
+        plugin: ["foo"],
+        tools: {},
+        permission: { skill: { debugging: "deny" } },
+      }),
+    )
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.skills.state).toBe("ready")
+    })
+
+    expect(view.result.current.skills.data.brainstorming?.enabled).toBe(true)
+    expect(view.result.current.skills.data.debugging?.enabled).toBe(false)
+  })
+
+  it("skills 加载失败时走 failed 分支", async () => {
+    mocks.appSkills.mockResolvedValue(fail("skill error"))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.skills.state).not.toBe("empty")
+    })
+
+    expect(view.result.current.skills.state).toBe("failed")
+    expect(view.result.current.skills.error).toBe("skill error")
+  })
+
+  it("toggleSkill 调用 setSkillEnabled 并刷新列表", async () => {
+    mocks.appSetSkillEnabled.mockResolvedValue(ok(true))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.skills.state).toBe("ready")
+    })
+
+    await act(async () => {
+      await view.result.current.toggleSkill("brainstorming")
+    })
+
+    expect(mocks.appSetSkillEnabled).toHaveBeenCalledWith({
+      path: { name: "brainstorming" },
+      body: { enabled: false },
+    })
   })
 })
