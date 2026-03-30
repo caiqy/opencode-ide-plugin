@@ -1536,12 +1536,30 @@ export namespace Config {
 
         const get = Effect.fn("Config.get")(function* () {
           return yield* InstanceState.use(state, (s) => {
-            const overlay = getToolsOverlay(Instance.directory)
-            if (!Object.keys(overlay).length) return s.config
-            return {
-              ...s.config,
-              tools: { ...(s.config.tools ?? {}), ...overlay },
+            const toolOverlay = getToolsOverlay(Instance.directory)
+            const skillOverlay = getSkillPermissionOverlay(Instance.directory)
+            const hasTools = Object.keys(toolOverlay).length > 0
+            const hasSkills = Object.keys(skillOverlay).length > 0
+            if (!hasTools && !hasSkills) return s.config
+            let result = s.config
+            if (hasTools) {
+              result = { ...result, tools: { ...(result.tools ?? {}), ...toolOverlay } }
             }
+            if (hasSkills) {
+              const prev = (result.permission ?? {}) as Record<string, unknown>
+              const prevSkill = (typeof prev.skill === "object" && prev.skill ? prev.skill : {}) as Record<
+                string,
+                PermissionAction
+              >
+              result = {
+                ...result,
+                permission: {
+                  ...prev,
+                  skill: { ...prevSkill, ...skillOverlay } as Record<string, PermissionAction>,
+                },
+              }
+            }
+            return result
           })
         })
 
