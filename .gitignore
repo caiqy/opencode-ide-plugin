@@ -39,6 +39,7 @@ target
 .settings/
 .classpath
 .project
+.superpowers/
 
 # ---- Java/Kotlin/Gradle ----
 .gradle/
