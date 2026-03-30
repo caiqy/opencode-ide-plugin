@@ -689,7 +689,9 @@ export namespace MCP {
 
               const timeout = entry?.timeout ?? defaultTimeout
               for (const mcpTool of listed) {
-                result[canon(clientName, mcpTool.name)] = convertMcpTool(mcpTool, client, timeout)
+                const toolId = canon(clientName, mcpTool.name)
+                if (cfg.tools?.[toolId] === false) continue
+                result[toolId] = convertMcpTool(mcpTool, client, timeout)
               }
             }),
           { concurrency: "unbounded" },
