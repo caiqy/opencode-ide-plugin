@@ -1,4 +1,4 @@
-import { describeRoute, resolver } from "hono-openapi"
+import { describeRoute, resolver, validator } from "hono-openapi"
 import { Hono } from "hono"
 import { proxy } from "hono/proxy"
 import z from "zod"
@@ -10,6 +10,7 @@ import { Instance } from "../project/instance"
 import { Vcs } from "../project/vcs"
 import { Agent } from "../agent/agent"
 import { Skill } from "../skill"
+import { Config } from "../config/config"
 import { Global } from "../global"
 import { LSP } from "../lsp"
 import { Command } from "../command"
@@ -26,6 +27,7 @@ import { ExperimentalRoutes } from "./routes/experimental"
 import { ProviderRoutes } from "./routes/provider"
 import { EventRoutes } from "./routes/event"
 import { errorHandler } from "./middleware"
+import { errors } from "./error"
 
 const log = Log.create({ service: "server" })
 
@@ -204,6 +206,38 @@ export const InstanceRoutes = (app?: Hono) =>
       async (c) => {
         const skills = await Skill.all()
         return c.json(skills)
+      },
+    )
+    .patch(
+      "/skill/:name/enabled",
+      describeRoute({
+        description: "Set skill enabled state with persistence",
+        operationId: "skill.setEnabled",
+        responses: {
+          200: {
+            description: "Skill enabled state updated",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator("param", z.object({ name: z.string() })),
+      validator("json", z.object({ enabled: z.boolean() })),
+      async (c) => {
+        const { name } = c.req.valid("param")
+        const { enabled } = c.req.valid("json")
+        const skills = await Skill.all()
+        if (!skills.some((s) => s.name === name)) {
+          return c.json({ error: `Skill not found: ${name}` }, 404)
+        }
+        const action = enabled ? "allow" : "deny"
+        Config.setSkillPermissionOverlay(Instance.directory, name, action)
+        await Config.patchProjectField(["permission", "skill", name], action)
+        return c.json(true)
       },
     )
     .get(

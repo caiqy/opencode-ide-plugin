@@ -498,8 +498,28 @@ export const sdk = {
         }
       }
     },
+    setSkillEnabled: async (options: {
+      path: { name: string }
+      body: { enabled: boolean }
+    }): Promise<ApiResult<unknown>> => {
+      try {
+        const response = await fetch(`/skill/${encodeURIComponent(options.path.name)}/enabled`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(options.body),
+        })
+        if (!response.ok) {
+          return { error: { message: "Failed to update skill state" }, data: null }
+        }
+        const data = await response.json()
+        return { data, error: null }
+      } catch (error) {
+        return { error: { message: error instanceof Error ? error.message : "Unknown error" }, data: null }
+      }
+    },
   }) as typeof baseClient.app & {
     skills: () => Promise<{ data: SkillsResponse[] | null; error: { message: string } | null }>
+    setSkillEnabled: (options: { path: { name: string }; body: { enabled: boolean } }) => Promise<ApiResult<unknown>>
   },
   permissions: {
     respond: async (options: {

@@ -44,11 +44,16 @@ type Box<T> = {
   updatedAt: number | null
 }
 
+type SkillState = {
+  enabled: boolean
+}
+
 type Data = {
   servers: Box<ServerData>
   mcp: Box<Record<string, McpState>>
   lsp: Box<LspState[]>
   plugins: Box<string[]>
+  skills: Box<Record<string, SkillState>>
 }
 
 type Props = {
@@ -148,10 +153,14 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
     mcp: box({}, "empty", null, null),
     lsp: box([], "empty", null, null),
     plugins: box([], "empty", null, null),
+    skills: box({}, "empty", null, null),
   })
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [tbusy, setTBusy] = useState<Record<string, Record<string, boolean>>>({})
   const [refreshing, setRefreshing] = useState(false)
+  const slock = useRef<Record<string, boolean>>({})
+  const [sbusy, setSBusy] = useState<Record<string, boolean>>({})
+  const sseq = useRef(0)
 
   const loadMcp = useCallback(async () => {
     try {
@@ -208,6 +217,28 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
         data: null,
         error: text(err, "Failed to load MCP status"),
       }
+    }
+  }, [])
+
+  const loadSkills = useCallback(async () => {
+    try {
+      const [skillsRes, configRes] = await Promise.all([sdk.app.skills(), sdk.config.get()])
+      if (skillsRes.error || !skillsRes.data) {
+        return { data: null, error: text(skillsRes.error, "Failed to load skills") }
+      }
+      const perm =
+        configRes.data && typeof configRes.data === "object" && "permission" in configRes.data
+          ? ((configRes.data as Record<string, unknown>).permission as Record<string, unknown> | undefined)
+          : undefined
+      const skillPerm =
+        perm && typeof perm === "object" && "skill" in perm ? (perm.skill as Record<string, string>) : {}
+      const result: Record<string, SkillState> = {}
+      for (const item of skillsRes.data) {
+        result[item.name] = { enabled: skillPerm[item.name] !== "deny" }
+      }
+      return { data: result, error: null }
+    } catch (err) {
+      return { data: null, error: text(err, "Failed to load skills") }
     }
   }, [])
 
@@ -316,12 +347,13 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
     const id = ++seq.current
     const mid = ++mseq.current
     const state = conn.current
-    const [projectRes, pathRes, mcpRes, lspRes, pluginRes] = await Promise.allSettled([
+    const [projectRes, pathRes, mcpRes, lspRes, pluginRes, skillsRes] = await Promise.allSettled([
       sdk.project.current(),
       sdk.path.get(),
       loadMcp(),
       sdk.lsp.status(),
       sdk.config.get(),
+      loadSkills(),
     ])
 
     setData((prev) => {
@@ -398,9 +430,22 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
         return box(next, next.length > 0 ? "ready" : "empty", null, stamp)
       })()
 
-      return { servers, mcp, lsp, plugins }
+      const skills = (() => {
+        if (skillsRes.status === "rejected") {
+          const err = text(skillsRes.reason, "Failed to load skills")
+          return failed(prev.skills, {}, err)
+        }
+        if (skillsRes.value.error || !skillsRes.value.data) {
+          const err = text(skillsRes.value.error, "Failed to load skills")
+          return failed(prev.skills, {}, err)
+        }
+        const next = skillsRes.value.data as Record<string, SkillState>
+        return box(next, Object.keys(next).length > 0 ? "ready" : "empty", null, stamp)
+      })()
+
+      return { servers, mcp, lsp, plugins, skills }
     })
-  }, [loadMcp])
+  }, [loadMcp, loadSkills])
 
   useEffect(() => {
     if (open && !prev.current) void refreshAll()
@@ -418,6 +463,44 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
     void refreshAll()
   }, [connectionState, open, refreshAll])
 
+  const toggleSkill = useCallback(
+    async (name: string) => {
+      if (slock.current[name]) return
+      slock.current[name] = true
+      setSBusy({ ...slock.current })
+      try {
+        const enabled = data.skills.data[name]?.enabled
+        const res = await sdk.app.setSkillEnabled({
+          path: { name },
+          body: { enabled: !enabled },
+        })
+        if (res.error) throw res.error
+        const id = ++sseq.current
+        const fresh = await loadSkills()
+        setData((prev) => {
+          if (id !== sseq.current) return prev
+          if (fresh.error || !fresh.data) {
+            return {
+              ...prev,
+              skills: failed(prev.skills, prev.skills.data, text(fresh.error, "Failed to load skills")),
+            }
+          }
+          const state = Object.keys(fresh.data).length > 0 ? "ready" : "empty"
+          return { ...prev, skills: box(fresh.data, state, null, now()) }
+        })
+      } catch (err) {
+        setData((prev) => ({
+          ...prev,
+          skills: failed(prev.skills, prev.skills.data, text(err, "Failed to toggle skill")),
+        }))
+      } finally {
+        delete slock.current[name]
+        setSBusy({ ...slock.current })
+      }
+    },
+    [data.skills.data, loadSkills],
+  )
+
   return {
     connectionState,
     servers: {
@@ -430,12 +513,15 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
     mcp: data.mcp,
     lsp: data.lsp,
     plugins: data.plugins,
+    skills: data.skills,
     refreshAll,
     refreshMcp,
     toggleMcp,
     toggleTool,
+    toggleSkill,
     mcpBusy: busy,
     mcpToolBusy: tbusy,
     mcpRefreshing: refreshing,
+    skillBusy: sbusy,
   }
 }

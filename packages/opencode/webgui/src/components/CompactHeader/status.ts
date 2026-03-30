@@ -1,4 +1,4 @@
-type Tab = "servers" | "mcp" | "lsp" | "plugins"
+type Tab = "servers" | "mcp" | "lsp" | "plugins" | "skills"
 
 type State = "ready" | "empty" | "failed" | "stale"
 
@@ -46,6 +46,7 @@ export const STATUS_TABS: Array<{ id: Tab; label: string }> = [
   { id: "mcp", label: "MCP" },
   { id: "lsp", label: "LSP" },
   { id: "plugins", label: "Plugins" },
+  { id: "skills", label: "Skills" },
 ]
 
 export function buildServerView(input: Box<ServerData>) {
@@ -105,5 +106,20 @@ export function buildMcpView(input: Box<Record<string, McpData>>) {
               ? (item.error ?? "需要客户端注册")
               : undefined,
     })),
+  }
+}
+
+type SkillState = {
+  enabled: boolean
+}
+
+export function buildSkillView(input: Box<Record<string, SkillState>>) {
+  return {
+    state: input.state,
+    error: input.error,
+    updatedAt: input.updatedAt,
+    items: Object.entries(input.data)
+      .map(([name, item]) => ({ name, enabled: item.enabled }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
   }
 }

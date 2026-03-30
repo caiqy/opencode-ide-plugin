@@ -1,12 +1,26 @@
 import { describe, expect, it } from "vitest"
 
-import { DEFAULT_STATUS_TAB, STATUS_TABS, buildLspView, buildMcpView, buildPluginView, buildServerView } from "./status"
+import {
+  DEFAULT_STATUS_TAB,
+  STATUS_TABS,
+  buildLspView,
+  buildMcpView,
+  buildPluginView,
+  buildServerView,
+  buildSkillView,
+} from "./status"
 
 describe("CompactHeader/status", () => {
   it("固定 tab 顺序并默认进入 servers", () => {
     expect(DEFAULT_STATUS_TAB).toBe("servers")
-    expect(STATUS_TABS.map((item: { id: string }) => item.id)).toEqual(["servers", "mcp", "lsp", "plugins"])
-    expect(STATUS_TABS.map((item: { label: string }) => item.label)).toEqual(["Server", "MCP", "LSP", "Plugins"])
+    expect(STATUS_TABS.map((item: { id: string }) => item.id)).toEqual(["servers", "mcp", "lsp", "plugins", "skills"])
+    expect(STATUS_TABS.map((item: { label: string }) => item.label)).toEqual([
+      "Server",
+      "MCP",
+      "LSP",
+      "Plugins",
+      "Skills",
+    ])
   })
 
   it("buildServerView 只映射连接状态、bridge 和项目路径摘要", () => {
@@ -96,5 +110,34 @@ describe("CompactHeader/status", () => {
     expect(view.items.find((item: { name: string }) => item.name === "gamma")?.error).toBe("bad")
     expect(view.items.find((item: { name: string }) => item.name === "delta")?.disabled).toBe(true)
     expect(view.items.find((item: { name: string }) => item.name === "delta")?.reason).toContain("认证")
+  })
+
+  it("buildSkillView 按名称排序并映射 enabled 状态", () => {
+    const view = buildSkillView({
+      state: "ready",
+      error: null,
+      updatedAt: 4,
+      data: {
+        beta: { enabled: true },
+        alpha: { enabled: false },
+      },
+    })
+
+    expect(view.state).toBe("ready")
+    expect(view.items).toEqual([
+      { name: "alpha", enabled: false },
+      { name: "beta", enabled: true },
+    ])
+  })
+
+  it("buildSkillView empty 状态返回空列表", () => {
+    const view = buildSkillView({
+      state: "empty",
+      error: null,
+      updatedAt: null,
+      data: {},
+    })
+    expect(view.state).toBe("empty")
+    expect(view.items).toEqual([])
   })
 })

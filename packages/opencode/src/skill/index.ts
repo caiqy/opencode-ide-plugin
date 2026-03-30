@@ -11,6 +11,7 @@ import { makeRuntime } from "@/effect/run-service"
 import { Flag } from "@/flag/flag"
 import { Global } from "@/global"
 import { Permission } from "@/permission"
+import { Instance } from "@/project/instance"
 import { Filesystem } from "@/util/filesystem"
 import { Config } from "../config/config"
 import { ConfigMarkdown } from "../config/markdown"
@@ -231,7 +232,15 @@ export namespace Skill {
         const s = yield* InstanceState.get(state)
         const list = Object.values(s.skills).toSorted((a, b) => a.name.localeCompare(b.name))
         if (!agent) return list
-        return list.filter((skill) => Permission.evaluate("skill", skill.name, agent.permission).action !== "deny")
+        const overlay = Config.getSkillPermissionOverlay(Instance.directory)
+        const extra = Object.entries(overlay).map(([pattern, action]) => ({
+          permission: "skill",
+          pattern,
+          action: action as "allow" | "deny" | "ask",
+        }))
+        return list.filter(
+          (skill) => Permission.evaluate("skill", skill.name, agent.permission, extra).action !== "deny",
+        )
       })
 
       return Service.of({ get, all, dirs, available })

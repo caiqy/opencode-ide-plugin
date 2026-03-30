@@ -1126,6 +1126,24 @@ export namespace Config {
     toolsOverlayByDir.delete(dir)
   }
 
+  // In-memory overlay for skill permission states.
+  // Allows toggling individual skill visibility without Instance.dispose().
+  // Values are "allow" | "deny" (string, matching Permission.Action).
+  const skillPermissionOverlayByDir = new Map<string, Record<string, string>>()
+
+  export function getSkillPermissionOverlay(dir: string): Record<string, string> {
+    return skillPermissionOverlayByDir.get(dir) ?? {}
+  }
+
+  export function setSkillPermissionOverlay(dir: string, name: string, action: string) {
+    const prev = skillPermissionOverlayByDir.get(dir) ?? {}
+    skillPermissionOverlayByDir.set(dir, { ...prev, [name]: action })
+  }
+
+  export function clearSkillPermissionOverlay(dir: string) {
+    skillPermissionOverlayByDir.delete(dir)
+  }
+
   export interface Interface {
     readonly get: () => Effect.Effect<Info>
     readonly getGlobal: () => Effect.Effect<Info>
@@ -1506,7 +1524,12 @@ export namespace Config {
 
         const state = yield* InstanceState.make<State>(
           Effect.fn("Config.state")(function* (ctx) {
-            yield* Effect.addFinalizer(() => Effect.sync(() => clearToolsOverlay(ctx.directory)))
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                clearToolsOverlay(ctx.directory)
+                clearSkillPermissionOverlay(ctx.directory)
+              }),
+            )
             return yield* loadInstanceState(ctx)
           }),
         )

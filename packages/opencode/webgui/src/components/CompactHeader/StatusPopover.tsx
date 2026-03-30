@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react"
 import type { ConnectionState } from "../../lib/api/events"
 import { useClickOutside } from "../../hooks/useClickOutside"
-import { DEFAULT_STATUS_TAB, STATUS_TABS, buildLspView, buildMcpView, buildPluginView, buildServerView } from "./status"
+import {
+  DEFAULT_STATUS_TAB,
+  STATUS_TABS,
+  buildLspView,
+  buildMcpView,
+  buildPluginView,
+  buildServerView,
+  buildSkillView,
+} from "./status"
 import { useStatusPopoverData } from "./useStatusPopoverData"
 
 type Tab = (typeof STATUS_TABS)[number]["id"]
@@ -70,6 +78,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
   const mcp = useMemo(() => buildMcpView(data.mcp), [data.mcp])
   const lsp = useMemo(() => buildLspView(data.lsp), [data.lsp])
   const plugins = useMemo(() => buildPluginView(data.plugins), [data.plugins])
+  const skills = useMemo(() => buildSkillView(data.skills), [data.skills])
 
   if (!open) return null
 
@@ -231,6 +240,32 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
             />
             {plugins.items.map((item) => (
               <div key={item}>{item}</div>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel tab={tab} id="skills">
+          <div className="space-y-2 px-3 py-3 pr-4 text-xs text-gray-700 dark:text-gray-200">
+            <StateBox
+              state={skills.state}
+              error={skills.error}
+              updatedAt={skills.updatedAt}
+              onRetry={data.refreshAll}
+            />
+            {skills.items.map((item) => (
+              <div
+                key={item.name}
+                className="flex items-center justify-between border-b border-gray-100 pb-2 last:border-0 last:pb-0 dark:border-gray-900"
+              >
+                <span>{item.name}</span>
+                <Switch
+                  label={`切换 ${item.name}`}
+                  checked={item.enabled}
+                  disabled={data.skillBusy[item.name] === true}
+                  loading={data.skillBusy[item.name] === true}
+                  onToggle={() => void data.toggleSkill(item.name)}
+                />
+              </div>
             ))}
           </div>
         </Panel>
