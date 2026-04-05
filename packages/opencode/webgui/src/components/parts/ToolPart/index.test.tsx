@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   getMessagesBySession: vi.fn(),
   respondPermission: vi.fn(),
   openSubtaskDrawer: vi.fn(),
+  permissions: [] as Array<{ id: string; sessionID: string; tool?: { messageID: string; callID: string } }>,
+  getQuestionsBySession: vi.fn<(sessionID: string) => Array<any>>(),
 }))
 
 vi.mock("../../../state/MessagesContext", () => ({
@@ -18,6 +20,8 @@ vi.mock("../../../state/MessagesContext", () => ({
     getPermissionForCall: mocks.getPermissionForCall,
     getMessagesBySession: mocks.getMessagesBySession,
     respondPermission: mocks.respondPermission,
+    permissions: mocks.permissions,
+    getQuestionsBySession: mocks.getQuestionsBySession,
   }),
 }))
 
@@ -52,6 +56,8 @@ describe("ToolPart", () => {
     mocks.getMessagesBySession.mockReturnValue([])
     mocks.respondPermission.mockResolvedValue(true)
     mocks.openSubtaskDrawer.mockReset()
+    mocks.permissions = []
+    mocks.getQuestionsBySession.mockReturnValue([])
   })
 
   it("apply_patch 使用 patchText 字段时，展开应显示补丁内容", () => {
@@ -333,5 +339,129 @@ describe("ToolPart", () => {
     view.rerender(<ToolPart part={makePart("p9", "c9")} sessionID="s1" messageID="m1" />)
     fireEvent.click(screen.getByRole("button", { name: "拒绝" }))
     await waitFor(() => expect(mocks.respondPermission).toHaveBeenCalledWith("perm-reject", "reject"))
+  })
+
+  it("子任务有待处理授权时，工具行显示等待授权状态", () => {
+    mocks.permissions = [{ id: "perm-1", sessionID: "s-child", tool: { messageID: "m-sub", callID: "c-sub" } }]
+    mocks.getMessagesBySession.mockReturnValue([
+      {
+        info: { id: "m1", sessionID: "s-child", role: "assistant", time: { created: 1 } },
+        parts: [{ id: "t1", type: "tool", tool: "bash", state: { status: "running" } }],
+      },
+    ])
+
+    const part = {
+      id: "p-blocked-perm",
+      type: "tool",
+      callID: "c-blocked-perm",
+      tool: "task",
+      state: {
+        status: "running",
+        title: "Execute Commands",
+        input: { description: "Execute Commands", subagent_type: "general", prompt: "run" },
+        metadata: { sessionId: "s-child" },
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText(/⚠ 等待授权/)).toBeInTheDocument()
+    expect(screen.getByText(/点击查看/)).toBeInTheDocument()
+  })
+
+  it("子任务有待回答问题时，工具行显示等待回答状态", () => {
+    mocks.getQuestionsBySession.mockImplementation((sid: string) =>
+      sid === "s-child" ? [{ id: "q1", sessionID: "s-child" }] : [],
+    )
+    mocks.getMessagesBySession.mockReturnValue([
+      {
+        info: { id: "m1", sessionID: "s-child", role: "assistant", time: { created: 1 } },
+        parts: [{ id: "t1", type: "tool", tool: "read", state: { status: "completed" } }],
+      },
+    ])
+
+    const part = {
+      id: "p-blocked-q",
+      type: "tool",
+      callID: "c-blocked-q",
+      tool: "task",
+      state: {
+        status: "running",
+        title: "Explore Codebase",
+        input: { description: "Explore Codebase", subagent_type: "explore", prompt: "look" },
+        metadata: { sessionId: "s-child" },
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText(/❓ 等待回答/)).toBeInTheDocument()
+    expect(screen.getByText(/点击查看/)).toBeInTheDocument()
+  })
+
+  it("阻塞状态下点击工具行整行打开子任务弹层", () => {
+    mocks.permissions = [{ id: "perm-2", sessionID: "s-child", tool: { messageID: "m-sub", callID: "c-sub" } }]
+    mocks.getMessagesBySession.mockReturnValue([])
+
+    const part = {
+      id: "p-click-blocked",
+      type: "tool",
+      callID: "c-click-blocked",
+      tool: "task",
+      state: {
+        status: "running",
+        title: "My Task",
+        input: { description: "My Task", subagent_type: "general", prompt: "go" },
+        metadata: { sessionId: "s-child" },
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    // The ToolHeader renders as a button role when expandable, find it
+    // The header text should contain the blocked message
+    const header = screen.getByText(/⚠ 等待授权/).closest('[role="button"]')
+    expect(header).toBeTruthy()
+    fireEvent.click(header!)
+
+    expect(mocks.openSubtaskDrawer).toHaveBeenCalledWith({
+      sessionId: "s-child",
+      title: "My Task",
+      parent: { sessionId: "s1", messageId: "m1", partId: "p-click-blocked" },
+    })
+  })
+
+  it("授权完成后工具行恢复正常运行状态", () => {
+    mocks.permissions = [{ id: "perm-3", sessionID: "s-child", tool: { messageID: "m-sub", callID: "c-sub" } }]
+    mocks.getMessagesBySession.mockReturnValue([
+      {
+        info: { id: "m1", sessionID: "s-child", role: "assistant", time: { created: 1 } },
+        parts: [{ id: "t1", type: "tool", tool: "bash", state: { status: "running" } }],
+      },
+    ])
+
+    const part = {
+      id: "p-recover",
+      type: "tool",
+      callID: "c-recover",
+      tool: "task",
+      state: {
+        status: "running",
+        title: "My Task",
+        input: { description: "My Task", subagent_type: "general", prompt: "go" },
+        metadata: { sessionId: "s-child" },
+      },
+    } as any
+
+    const view = render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText(/⚠ 等待授权/)).toBeInTheDocument()
+
+    // Simulate permission cleared
+    mocks.permissions = []
+    view.rerender(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.queryByText(/⚠ 等待授权/)).not.toBeInTheDocument()
+    expect(screen.getByText(/1 工具调用/)).toBeInTheDocument()
   })
 })
