@@ -220,7 +220,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
   const subtaskSessionId = useMemo(() => {
     if (part.tool !== "task") return null
-    const raw = (part.state.metadata as any)?.sessionId ?? (part.state.metadata as any)?.sessionID
+    const raw = part.state.metadata?.sessionId ?? part.state.metadata?.sessionID
     const value = typeof raw === "string" ? raw : raw ? String(raw) : ""
     return value.length > 0 ? value : null
   }, [part.tool, part.state.metadata])
@@ -235,11 +235,11 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const subtaskTitle = useMemo(() => {
     if (part.tool !== "task") return null
     if (typeof part.state.title === "string" && part.state.title.length > 0) return part.state.title
-    const desc = (part.state.input as any)?.description
+    const desc = part.state.input?.description
     return typeof desc === "string" && desc.length > 0 ? desc : null
   }, [part.tool, part.state.title, part.state.input])
 
-  const taskProgressName = useMemo(() => {
+  const progress = useMemo(() => {
     if (part.tool !== "task") return null
     if (!subtaskSessionId) return null
 
@@ -265,22 +265,25 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     return `${base} [ ${toolParts.length} 工具调用 / ${currentLabel} ]`
   }, [part.tool, part.state.status, subtaskSessionId, subtaskTitle, blocked, getMessagesBySession])
 
-  const headerToolName = taskProgressName ?? toolName
+  const heading = progress ?? toolName
+
+  const drawerParent = useMemo(
+    () => (sessionID ? { sessionId: sessionID, messageId: messageID, partId: part.id } : null),
+    [sessionID, messageID, part.id],
+  )
 
   const handleBlockedClick = useMemo(() => {
     if (!blocked || !subtaskSessionId) return undefined
-    const parent = sessionID ? { sessionId: sessionID, messageId: messageID, partId: part.id } : null
     return () =>
       openSubtaskDrawer({
         sessionId: subtaskSessionId,
         title: subtaskTitle,
-        parent,
+        parent: drawerParent,
       })
-  }, [blocked, subtaskSessionId, subtaskTitle, sessionID, messageID, part.id, openSubtaskDrawer])
+  }, [blocked, subtaskSessionId, subtaskTitle, drawerParent, openSubtaskDrawer])
 
   const rightActions = useMemo(() => {
     if (!subtaskSessionId) return undefined
-    const parent = sessionID ? { sessionId: sessionID, messageId: messageID, partId: part.id } : null
     return (
       <IconButton
         size="sm"
@@ -290,7 +293,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
           openSubtaskDrawer({
             sessionId: subtaskSessionId,
             title: subtaskTitle,
-            parent,
+            parent: drawerParent,
           })
         }
         icon={
@@ -305,7 +308,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
         }
       />
     )
-  }, [subtaskSessionId, subtaskTitle, sessionID, messageID, part.id, openSubtaskDrawer])
+  }, [subtaskSessionId, subtaskTitle, drawerParent, openSubtaskDrawer])
 
   return (
     <div
@@ -315,7 +318,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
       <ToolHeader
         tool={part.tool}
         status={part.state.status}
-        toolName={headerToolName}
+        toolName={heading}
         filePath={filePath}
         patchFilePaths={patchFilePaths}
         isExpanded={isExpanded}

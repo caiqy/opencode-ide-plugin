@@ -85,9 +85,10 @@ export function ToolHeader({
       if (!isExpandable) return
       if (e.key !== "Enter" && e.key !== " ") return
       e.preventDefault()
+      if (blocked && onBlockedClick) return onBlockedClick()
       onToggle()
     },
-    [isExpandable, onToggle],
+    [isExpandable, onToggle, blocked, onBlockedClick],
   )
 
   return (
@@ -161,6 +162,14 @@ export function ToolHeader({
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
+          onClick={
+            blocked
+              ? (e) => {
+                  e.stopPropagation()
+                  onToggle()
+                }
+              : undefined
+          }
         >
           <path d="M9 5l7 7-7 7" />
         </svg>
