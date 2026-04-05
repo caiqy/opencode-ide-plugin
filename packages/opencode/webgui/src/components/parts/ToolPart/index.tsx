@@ -58,7 +58,8 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
   const { openSubtaskDrawer } = useSubtaskDrawer()
 
-  const { getPermissionForCall, getMessagesBySession, respondPermission } = useMessages()
+  const { getPermissionForCall, getMessagesBySession, respondPermission, permissions, getQuestionsBySession } =
+    useMessages()
   const permission = useMemo(() => {
     return sessionID ? getPermissionForCall(sessionID, part.callID) : undefined
   }, [getPermissionForCall, sessionID, part.callID])
@@ -224,6 +225,13 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     return value.length > 0 ? value : null
   }, [part.tool, part.state.metadata])
 
+  const blocked = useMemo(() => {
+    if (!subtaskSessionId) return null
+    if (permissions.some((p) => p.sessionID === subtaskSessionId)) return "permission" as const
+    if (getQuestionsBySession(subtaskSessionId).length > 0) return "question" as const
+    return null
+  }, [subtaskSessionId, permissions, getQuestionsBySession])
+
   const subtaskTitle = useMemo(() => {
     if (part.tool !== "task") return null
     if (typeof part.state.title === "string" && part.state.title.length > 0) return part.state.title
@@ -234,6 +242,12 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const taskProgressName = useMemo(() => {
     if (part.tool !== "task") return null
     if (!subtaskSessionId) return null
+
+    const label = getToolLabel(part.tool)
+    const base = `${label}${subtaskTitle ? `：${subtaskTitle}` : ""}`
+
+    if (blocked === "permission") return `${base} [ ⚠ 等待授权 — 点击查看 ]`
+    if (blocked === "question") return `${base} [ ❓ 等待回答 — 点击查看 ]`
 
     const toolParts = getMessagesBySession(subtaskSessionId)
       .flatMap((message) => message.parts)
@@ -248,12 +262,21 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
       : part.state.status === "completed"
         ? "已完成"
         : "空闲"
-    const toolName = getToolLabel(part.tool)
-    const base = `${toolName}${subtaskTitle ? `：${subtaskTitle}` : ""}`
     return `${base} [ ${toolParts.length} 工具调用 / ${currentLabel} ]`
-  }, [part.tool, part.state.status, subtaskSessionId, subtaskTitle, getMessagesBySession])
+  }, [part.tool, part.state.status, subtaskSessionId, subtaskTitle, blocked, getMessagesBySession])
 
   const headerToolName = taskProgressName ?? toolName
+
+  const handleBlockedClick = useMemo(() => {
+    if (!blocked || !subtaskSessionId) return undefined
+    const parent = sessionID ? { sessionId: sessionID, messageId: messageID, partId: part.id } : null
+    return () =>
+      openSubtaskDrawer({
+        sessionId: subtaskSessionId,
+        title: subtaskTitle,
+        parent,
+      })
+  }, [blocked, subtaskSessionId, subtaskTitle, sessionID, messageID, part.id, openSubtaskDrawer])
 
   const rightActions = useMemo(() => {
     if (!subtaskSessionId) return undefined
@@ -286,7 +309,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
   return (
     <div
-      className={`my-0.5 border ${getBorderColor(part.state.status, Boolean(permission))} overflow-hidden bg-gray-50 dark:bg-gray-900`}
+      className={`my-0.5 border ${getBorderColor(part.state.status, Boolean(permission), blocked)} overflow-hidden bg-gray-50 dark:bg-gray-900`}
     >
       {/* Header */}
       <ToolHeader
@@ -301,6 +324,8 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
         time={part.state.time}
         rightActions={rightActions}
         lineRange={lineRange}
+        blocked={blocked}
+        onBlockedClick={handleBlockedClick}
       />
 
       {/* Permission banner */}
