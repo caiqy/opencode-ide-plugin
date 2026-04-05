@@ -67,6 +67,7 @@ const all: Target[] = [
 export function targets(argv: string[], platform = process.platform, arch = process.arch) {
   const single = argv.includes("--single")
   const baseline = argv.includes("--baseline")
+  const include = argv.find((item) => item.startsWith("--include-target="))?.slice("--include-target=".length)
   const exclude = new Set(
     argv
       .filter((item) => item.startsWith("--exclude-os="))
@@ -75,6 +76,15 @@ export function targets(argv: string[], platform = process.platform, arch = proc
       .filter(Boolean),
   )
   const list = all.filter((item) => !exclude.has(item.os))
+  if (include) {
+    const [targetOs, targetArch] = include.split("-")
+    return list.filter((item) => {
+      if (item.os !== targetOs || item.arch !== targetArch) return false
+      if (item.avx2 === false) return false
+      if (item.abi !== undefined) return false
+      return true
+    })
+  }
   if (!single) return list
   return list.filter((item) => {
     if (item.os !== platform || item.arch !== arch) return false

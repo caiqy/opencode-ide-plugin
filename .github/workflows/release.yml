@@ -17,11 +17,16 @@ on:
         default: false
 
 jobs:
-  build-release:
+  # ---------------------------------------------------------------------------
+  # 1.  Pre-flight: replay gate + compute version metadata
+  # ---------------------------------------------------------------------------
+  preflight:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_number: ${{ steps.version.outputs.version_number }}
+      vscode_version: ${{ steps.version.outputs.vscode_version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,6 +36,81 @@ jobs:
 
       - name: Replay gate before release
         run: bun --cwd packages/opencode run test:anthropic:replay
+
+      - name: Determine version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_PRERELEASE: ${{ github.event.inputs.prerelease }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "version=$INPUT_VERSION" >> $GITHUB_OUTPUT
+            echo "prerelease=$INPUT_PRERELEASE" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            if [[ "${GITHUB_REF#refs/tags/}" == *"-"* ]]; then
+              echo "prerelease=true" >> $GITHUB_OUTPUT
+            else
+              echo "prerelease=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+          VER="$(grep -oP '"version":\s*"\K[^"]+' packages/opencode/package.json)"
+          echo "version_number=$VER" >> $GITHUB_OUTPUT
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            RAW_VERSION="$INPUT_VERSION"
+          else
+            RAW_VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          CLEAN_VERSION="${RAW_VERSION#v}"
+          VSCODE_VERSION=$(node -e '
+            const v = process.argv[1];
+            const parts = v.split(".");
+            if (parts.length === 4) {
+              const [year, month, day, build] = parts;
+              console.log(year + "." + (parseInt(month) * 100 + parseInt(day)) + "." + build);
+            } else {
+              console.log(v);
+            }
+          ' "$CLEAN_VERSION")
+          echo "vscode_version=$VSCODE_VERSION" >> $GITHUB_OUTPUT
+
+  # ---------------------------------------------------------------------------
+  # 2.  Build per-platform VSCode extensions (parallel matrix)
+  # ---------------------------------------------------------------------------
+  build-vscode:
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: win32-x64
+            build_os: win32
+            build_arch: x64
+          - target: darwin-x64
+            build_os: darwin
+            build_arch: x64
+          - target: darwin-arm64
+            build_os: darwin
+            build_arch: arm64
+          - target: linux-x64
+            build_os: linux
+            build_arch: x64
+          - target: linux-arm64
+            build_os: linux
+            build_arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -46,53 +126,8 @@ jobs:
             hosts/vscode-plugin/pnpm-lock.yaml
             hosts/vscode-plugin/package.json
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: "21"
-
-      - name: Determine version
-        id: version
+      - name: Inject VSCode version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-            echo "prerelease=${{ github.event.inputs.prerelease }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-            if [[ "${GITHUB_REF#refs/tags/}" == *"-"* ]]; then
-              echo "prerelease=true" >> $GITHUB_OUTPUT
-            else
-              echo "prerelease=false" >> $GITHUB_OUTPUT
-            fi
-          fi
-          # version without leading 'v' for use as OPENCODE_VERSION
-          VER="$(grep -oP '"version":\s*"\K[^"]+' packages/opencode/package.json)"
-          echo "version_number=$VER" >> $GITHUB_OUTPUT
-
-      - name: Inject version into plugin manifests
-        run: |
-          # Strip leading 'v' prefix if present (e.g. v1.2.3 -> 1.2.3)
-          RAW_VERSION="${{ steps.version.outputs.version }}"
-          CLEAN_VERSION="${RAW_VERSION#v}"
-          echo "Injecting version: $CLEAN_VERSION"
-
-          # VS Code requires semver (3 segments: major.minor.patch).
-          # Convert 4-segment CalVer YYYY.M.D.B to YYYY.MDD.B
-          # e.g. 2026.2.6.4 -> 2026.206.4
-          VSCODE_VERSION=$(node -e '
-            const v = process.argv[1];
-            const parts = v.split(".");
-            if (parts.length === 4) {
-              const [year, month, day, build] = parts;
-              console.log(year + "." + (parseInt(month) * 100 + parseInt(day)) + "." + build);
-            } else {
-              console.log(v);
-            }
-          ' "$CLEAN_VERSION")
-          echo "VSCode version: $VSCODE_VERSION"
-
-          # Update VSCode plugin package.json
           node -e '
             const fs = require("fs");
             const path = "hosts/vscode-plugin/package.json";
@@ -100,18 +135,58 @@ jobs:
             pkg.version = process.argv[1];
             fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
             console.log("Updated " + path + " to version " + process.argv[1]);
-          ' "$VSCODE_VERSION"
+          ' "${{ needs.preflight.outputs.vscode_version }}"
 
-          # Update JetBrains plugin build.gradle.kts fallback version
-          sed -i "s/^version = findProperty(\"plugin.version\")?.toString() ?: \".*\"/version = findProperty(\"plugin.version\")?.toString() ?: \"$CLEAN_VERSION\"/" hosts/jetbrains-plugin/build.gradle.kts
-          echo "Updated hosts/jetbrains-plugin/build.gradle.kts to version $CLEAN_VERSION"
-
-      - name: Build backend binaries
-        run: ./hosts/scripts/build_opencode.sh --exclude-os=linux
+      - name: Build backend binary (${{ matrix.target }})
+        run: |
+          cd packages/opencode
+          bun script/build.ts --include-target="${{ matrix.build_os }}-${{ matrix.build_arch }}"
         env:
-          OPENCODE_VERSION: ${{ steps.version.outputs.version_number }}
+          OPENCODE_VERSION: ${{ needs.preflight.outputs.version_number }}
 
-      - name: Install VSCode plugin dependencies (all)
+      - name: Copy binary to VSCode resources
+        run: |
+          BUILD_OS="${{ matrix.build_os }}"
+          BUILD_ARCH="${{ matrix.build_arch }}"
+          VSCODE_BIN_DIR="hosts/vscode-plugin/resources/bin"
+
+          # Clear previous binaries
+          rm -rf "$VSCODE_BIN_DIR"
+          mkdir -p "$VSCODE_BIN_DIR"
+
+          DIST_DIR="packages/opencode/dist"
+          for dir in "$DIST_DIR"/opencode-*; do
+            [ -d "$dir" ] || continue
+            name="$(basename "$dir")"
+            suffix="${name#opencode-}"
+
+            # Skip baseline builds
+            case "$suffix" in *baseline*) continue ;; esac
+
+            os="${suffix%%-*}"
+            arch="${suffix#${os}-}"
+
+            os_dir="$os"
+            [ "$os_dir" = "darwin" ] && os_dir="macos"
+
+            arch_dir="$arch"
+            [ "$arch_dir" = "x64" ] && arch_dir="amd64"
+
+            binary_name="opencode"
+            [ "$os" = "windows" ] && binary_name="opencode.exe"
+
+            binary_src="$dir/bin/$binary_name"
+            [ -f "$binary_src" ] || continue
+
+            target="$VSCODE_BIN_DIR/$os_dir/$arch_dir"
+            mkdir -p "$target"
+            cp "$binary_src" "$target/$binary_name"
+            [ "$os" != "windows" ] && chmod +x "$target/$binary_name"
+
+            echo "=> Prepared VSCode binary for $os/$arch"
+          done
+
+      - name: Install VSCode plugin dependencies
         working-directory: hosts/vscode-plugin
         run: |
           if [ -f pnpm-lock.yaml ]; then
@@ -129,7 +204,7 @@ jobs:
             npm run compile:production
           fi
 
-      - name: Package VSCode plugin (standard) from staging
+      - name: Package VSCode plugin for ${{ matrix.target }}
         working-directory: hosts/vscode-plugin
         run: |
           STAGE_DIR="../tmp_opencode_vscode_stage"
@@ -155,83 +230,238 @@ jobs:
             fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
           '
 
-          # Package from staging directory without touching dependencies
-          ( cd "$STAGE_DIR" && npx -y @vscode/vsce package --no-dependencies --out "opencode-standard.vsix" )
+          # Package with --target for platform-specific vsix
+          ( cd "$STAGE_DIR" && npx -y @vscode/vsce package \
+              --no-dependencies \
+              --target "${{ matrix.target }}" \
+              --out "opencode-${{ matrix.target }}.vsix" )
 
-          # Move artifact back into plugin dir for later collection
           mv "$STAGE_DIR"/*.vsix .
-
-          # Clean up staging
           rm -rf "$STAGE_DIR"
+
+      - name: Upload VSCode artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-${{ matrix.target }}
+          path: hosts/vscode-plugin/opencode-${{ matrix.target }}.vsix
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # 3.  Build per-platform JetBrains plugins (parallel matrix)
+  # ---------------------------------------------------------------------------
+  build-jetbrains:
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: windows-x64
+            build_os: win32
+            build_arch: x64
+            os_dir: windows
+            arch_dir: amd64
+            binary: opencode.exe
+          - label: macos-x64
+            build_os: darwin
+            build_arch: x64
+            os_dir: macos
+            arch_dir: amd64
+            binary: opencode
+          - label: macos-arm64
+            build_os: darwin
+            build_arch: arm64
+            os_dir: macos
+            arch_dir: arm64
+            binary: opencode
+          - label: linux-x64
+            build_os: linux
+            build_arch: x64
+            os_dir: linux
+            arch_dir: amd64
+            binary: opencode
+          - label: linux-arm64
+            build_os: linux
+            build_arch: arm64
+            os_dir: linux
+            arch_dir: arm64
+            binary: opencode
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
 
-      - name: Build JetBrains plugin distribution (standard)
+      - name: Inject JetBrains version
+        run: |
+          RAW_VERSION="${{ needs.preflight.outputs.version }}"
+          CLEAN_VERSION="${RAW_VERSION#v}"
+          sed -i "s/^version = findProperty(\"plugin.version\")?.toString() ?: \".*\"/version = findProperty(\"plugin.version\")?.toString() ?: \"$CLEAN_VERSION\"/" hosts/jetbrains-plugin/build.gradle.kts
+          echo "Updated hosts/jetbrains-plugin/build.gradle.kts to version $CLEAN_VERSION"
+
+      - name: Build single-target backend binary
+        run: |
+          cd packages/opencode
+          rm -rf dist
+          bun script/build.ts --include-target="${{ matrix.build_os }}-${{ matrix.build_arch }}"
+        env:
+          OPENCODE_VERSION: ${{ needs.preflight.outputs.version_number }}
+
+      - name: Copy binary to JetBrains resources
+        run: |
+          JETBRAINS_BIN_DIR="hosts/jetbrains-plugin/src/main/resources/bin"
+          rm -rf "$JETBRAINS_BIN_DIR"
+          mkdir -p "$JETBRAINS_BIN_DIR/${{ matrix.os_dir }}/${{ matrix.arch_dir }}"
+
+          DIST_DIR="packages/opencode/dist"
+          for dir in "$DIST_DIR"/opencode-*; do
+            [ -d "$dir" ] || continue
+            name="$(basename "$dir")"
+            # Skip baseline builds
+            case "$name" in *baseline*) continue ;; esac
+
+            binary_src="$dir/bin/${{ matrix.binary }}"
+            [ -f "$binary_src" ] || continue
+
+            cp "$binary_src" "$JETBRAINS_BIN_DIR/${{ matrix.os_dir }}/${{ matrix.arch_dir }}/${{ matrix.binary }}"
+            [ "${{ matrix.build_os }}" != "win32" ] && chmod +x "$JETBRAINS_BIN_DIR/${{ matrix.os_dir }}/${{ matrix.arch_dir }}/${{ matrix.binary }}"
+            echo "=> Prepared JetBrains binary for ${{ matrix.label }}"
+            break
+          done
+
+      - name: Build JetBrains plugin (${{ matrix.label }})
         working-directory: hosts/jetbrains-plugin
         run: gradle buildPlugin -x test -x unitTest
 
-      - name: Prepare release artifacts
+      - name: Rename JetBrains zip with platform label
         run: |
+          VERSION="${{ needs.preflight.outputs.version }}"
+          for f in hosts/jetbrains-plugin/build/distributions/*.zip; do
+            [ -f "$f" ] || continue
+            mv "$f" "hosts/jetbrains-plugin/build/distributions/opencode-jetbrains-${{ matrix.label }}-${VERSION}.zip"
+          done
+
+      - name: Upload JetBrains artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jetbrains-${{ matrix.label }}
+          path: hosts/jetbrains-plugin/build/distributions/opencode-jetbrains-*.zip
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # 4.  Collect all artifacts and publish a single GitHub Release
+  # ---------------------------------------------------------------------------
+  release:
+    needs: [preflight, build-vscode, build-jetbrains]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all VSCode artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: vscode-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Download all JetBrains artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: jetbrains-*
+          path: jb-tmp
+          merge-multiple: true
+
+      - name: Rename artifacts
+        run: |
+          VERSION="${{ needs.preflight.outputs.version }}"
           mkdir -p release-artifacts
 
-          # Copy and rename VSCode standard extension
-          if [ -f hosts/vscode-plugin/opencode-standard.vsix ]; then
-            cp hosts/vscode-plugin/opencode-standard.vsix \
-              "release-artifacts/opencode-vscode-${{ steps.version.outputs.version }}.vsix"
-          fi
+          # Rename VSCode extensions (already named opencode-<target>.vsix)
+          for f in release-artifacts/opencode-*.vsix; do
+            [ -f "$f" ] || continue
+            base="$(basename "$f" .vsix)"
+            target="${base#opencode-}"
+            mv "$f" "release-artifacts/opencode-vscode-${target}-${VERSION}.vsix"
+          done
 
-          # Copy and rename JetBrains plugin
-          zipfile=$(find hosts/jetbrains-plugin/build/distributions -name "*.zip" -type f | head -n1)
-          if [ -n "$zipfile" ]; then
-            cp "$zipfile" "release-artifacts/opencode-jetbrains-${{ steps.version.outputs.version }}.zip"
-          fi
+          # Move JetBrains plugins (already named with platform label and version)
+          for f in jb-tmp/*.zip; do
+            [ -f "$f" ] || continue
+            mv "$f" "release-artifacts/$(basename "$f")"
+          done
 
-          ls -la
+          ls -la release-artifacts/
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: OpenCode Release ${{ steps.version.outputs.version }}
-          prerelease: ${{ steps.version.outputs.prerelease }}
+          tag_name: ${{ needs.preflight.outputs.version }}
+          name: OpenCode Release ${{ needs.preflight.outputs.version }}
+          prerelease: ${{ needs.preflight.outputs.prerelease }}
           generate_release_notes: true
           files: |
             release-artifacts/*
           body: |
-            ## OpenCode Release ${{ steps.version.outputs.version }}
+            ## OpenCode Release ${{ needs.preflight.outputs.version }}
 
-            This release includes:
-            - **VSCode Extension (standard)**: `opencode-vscode-${{ steps.version.outputs.version }}.vsix` — bundles opencode binaries
-            - **JetBrains Plugin (standard)**: `opencode-jetbrains-${{ steps.version.outputs.version }}.zip` — bundles opencode binaries
+            Each package bundles **only the binary for its platform**, keeping download sizes small.
 
-            ### Installation Instructions
+            ### VSCode Extension
+            | Platform | File |
+            |----------|------|
+            | Windows x64 | `opencode-vscode-win32-x64-${{ needs.preflight.outputs.version }}.vsix` |
+            | macOS x64 | `opencode-vscode-darwin-x64-${{ needs.preflight.outputs.version }}.vsix` |
+            | macOS ARM64 | `opencode-vscode-darwin-arm64-${{ needs.preflight.outputs.version }}.vsix` |
+            | Linux x64 | `opencode-vscode-linux-x64-${{ needs.preflight.outputs.version }}.vsix` |
+            | Linux ARM64 | `opencode-vscode-linux-arm64-${{ needs.preflight.outputs.version }}.vsix` |
 
-            #### VSCode Extension (standard — includes binaries)
-            1. Download `opencode-vscode-${{ steps.version.outputs.version }}.vsix`
-            2. Install using: `code --install-extension opencode-vscode-${{ steps.version.outputs.version }}.vsix`
+            Install: `code --install-extension <file>.vsix`
 
-            #### JetBrains Plugin (standard — includes binaries)
-            1. Download `opencode-jetbrains-${{ steps.version.outputs.version }}.zip`
-            2. In your JetBrains IDE, go to Settings → Plugins → Install Plugin from Disk
-            3. Select the downloaded zip file
+            ### JetBrains Plugin
+            Each JetBrains zip bundles only its platform binary.
+
+            Install: Settings → Plugins → Install Plugin from Disk → select the zip.
 
             ### What's Changed
             See the auto-generated release notes below for detailed changes.
 
+  # ---------------------------------------------------------------------------
+  # 5.  Post-release artifact verification
+  # ---------------------------------------------------------------------------
   test-artifacts:
     runs-on: ubuntu-latest
-    needs: build-release
-    if: always()
-
+    needs: release
+    if: always() && needs.release.result != 'skipped'
     steps:
-      - name: Download artifacts
+      - name: Download VSCode artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-artifacts
+          pattern: vscode-*
           path: ./test-artifacts
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Download JetBrains artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: jetbrains-*
+          path: ./test-artifacts
+          merge-multiple: true
         continue-on-error: true
 
       - name: Verify artifacts
@@ -239,16 +469,26 @@ jobs:
           echo "Checking release artifacts..."
           ls -la ./test-artifacts/ || echo "No artifacts found"
 
-          # Check if VSCode standard extension exists
-          if ls ./test-artifacts/opencode-vscode-v*.vsix 1> /dev/null 2>&1; then
-            echo "✓ VSCode extension (standard) found"
-          else
-            echo "✗ VSCode extension (standard) missing"
-          fi
+          MISSING=0
+          for target in win32-x64 darwin-x64 darwin-arm64 linux-x64 linux-arm64; do
+            if ls ./test-artifacts/opencode-*${target}*.vsix 1>/dev/null 2>&1; then
+              echo "✓ VSCode extension ($target) found"
+            else
+              echo "✗ VSCode extension ($target) missing"
+              MISSING=1
+            fi
+          done
 
-          # Check if JetBrains standard plugin exists
-          if ls ./test-artifacts/opencode-jetbrains-*.zip 1> /dev/null 2>&1; then
-            echo "✓ JetBrains plugin (standard) found"
-          else
-            echo "✗ JetBrains plugin (standard) missing"
+          for label in windows-x64 macos-x64 macos-arm64 linux-x64 linux-arm64; do
+            if ls ./test-artifacts/opencode-jetbrains-${label}*.zip 1>/dev/null 2>&1; then
+              echo "✓ JetBrains plugin ($label) found"
+            else
+              echo "✗ JetBrains plugin ($label) missing"
+              MISSING=1
+            fi
+          done
+
+          if [ "$MISSING" -eq 1 ]; then
+            echo "::error::Some release artifacts are missing!"
+            exit 1
           fi
