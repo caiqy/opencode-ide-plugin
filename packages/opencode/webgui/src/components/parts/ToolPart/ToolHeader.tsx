@@ -3,7 +3,7 @@ import type { ReactNode } from "react"
 import { useOpenFile } from "../../../hooks/useOpenFile"
 import { useProject } from "../../../state/ProjectContext"
 import { toDisplayPath } from "../../../utils/path"
-import { getStatusIcon, getStatusClasses, getToolLabel } from "./utils"
+import { getStatusIcon, getStatusClasses, getBlockedIcon, getBlockedClasses, getToolLabel } from "./utils"
 
 interface ToolHeaderProps {
   tool: string
@@ -17,6 +17,8 @@ interface ToolHeaderProps {
   time?: { start: number; end?: number }
   rightActions?: ReactNode
   lineRange?: string
+  blocked?: "permission" | "question" | null
+  onBlockedClick?: () => void
 }
 
 function getFileName(path: string): string {
@@ -35,6 +37,8 @@ export function ToolHeader({
   time,
   rightActions,
   lineRange,
+  blocked = null,
+  onBlockedClick,
 }: ToolHeaderProps) {
   const openFile = useOpenFile()
   const { worktree } = useProject()
@@ -91,12 +95,12 @@ export function ToolHeader({
       role={isExpandable ? "button" : undefined}
       tabIndex={isExpandable ? 0 : undefined}
       onKeyDown={onKeyDown}
-      onClick={isExpandable ? onToggle : undefined}
+      onClick={blocked && onBlockedClick ? onBlockedClick : isExpandable ? onToggle : undefined}
       title={tool}
       data-tip={tool}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left ${getStatusClasses(status)} ${isExpandable ? "hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer" : ""} transition-colors`}
+      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left ${blocked ? getBlockedClasses(blocked) : getStatusClasses(status)} ${isExpandable ? "hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer" : ""} transition-colors`}
     >
-      {getStatusIcon(status)}
+      {blocked ? getBlockedIcon(blocked) : getStatusIcon(status)}
       {showFileLink || showPatchFileLinks ? (
         <span className="text-xs font-medium flex-1 min-w-0 truncate">
           {`${toolLabel}：`}
