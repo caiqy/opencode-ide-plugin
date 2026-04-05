@@ -107,11 +107,17 @@ export function getStatusClasses(status: "pending" | "running" | "completed" | "
   return "bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-100"
 }
 
-export function getBorderColor(status: "pending" | "running" | "completed" | "error", hasPermission: boolean) {
+export function getBorderColor(
+  status: "pending" | "running" | "completed" | "error",
+  hasPermission: boolean,
+  blocked?: "permission" | "question" | null,
+) {
   switch (status) {
     case "error":
       return "border-red-300 dark:border-red-700"
     default:
+      if (blocked === "permission") return "border-amber-400 dark:border-amber-600"
+      if (blocked === "question") return "border-blue-500 dark:border-blue-600"
       return hasPermission ? "border-amber-400 dark:border-amber-600" : "border-gray-200 dark:border-gray-700"
   }
 }
@@ -189,4 +195,36 @@ export function getToolDisplayName(
     default:
       return toolLabel
   }
+}
+
+export function getBlockedIcon(type: "permission" | "question"): ReactElement {
+  if (type === "permission") {
+    return (
+      <svg className="w-3.5 h-3.5 animate-pulse text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"
+        />
+      </svg>
+    )
+  }
+  return (
+    <svg className="w-3.5 h-3.5 animate-pulse text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+      />
+    </svg>
+  )
+}
+
+export function getBlockedClasses(type: "permission" | "question") {
+  if (type === "permission") {
+    return "bg-amber-50/50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-300"
+  }
+  return "bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-300"
 }
