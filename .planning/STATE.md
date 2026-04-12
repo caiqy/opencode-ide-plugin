@@ -1,45 +1,45 @@
-# 项目状态
+# Project State
 
-## 项目参考
+## Project Reference
 
-参见：.planning/PROJECT.md（更新于 2026-04-12）
+See: .planning/PROJECT.md (updated 2026-04-12)
 
-**核心价值：** 上游合并后构建通过且功能不退化
-**当前焦点：** 阶段 1 — 合并基础
+**Core value:** 上游合并后构建通过且功能不退化
+**Current focus:** Phase 1 — Merge Foundation
 
-## 当前位置
+## Current Position
 
-阶段：第 1 阶段，共 4 阶段（合并基础）
-计划：当前阶段 0/3
-状态：准备制定计划
-最近活动：2026-04-12 — 路线图已创建
+Phase: 1 of 4 (Merge Foundation)
+Plan: 0 of 3 in current phase
+Status: Ready to plan
+Last activity: 2026-04-12 — 路线图已创建
 
-进度：[░░░░░░░░░░] 0%
+Progress: [░░░░░░░░░░] 0%
 
-## 绩效指标
+## Performance Metrics
 
-**速度：**
+**Velocity:**
 
 - 已完成计划总数：0
 - 平均耗时：—
 - 总执行时间：0 小时
 
-**按阶段统计：**
+**By Phase:**
 
-| 阶段 | 计划数 | 总计 | 平均/计划 |
-| ---- | ------ | ---- | --------- |
-| -    | -      | -    | -         |
+| Phase | Plans | Total | Avg/Plan |
+| ----- | ----- | ----- | -------- |
+| -     | -     | -     | -        |
 
-**近期趋势：**
+**Recent Trend:**
 
 - 最近 5 个计划：—
 - 趋势：—
 
 _每次计划完成后更新_
 
-## 积累的上下文
+## Accumulated Context
 
-### 决策
+### Decisions
 
 决策记录在 PROJECT.md 的关键决策表中。
 影响当前工作的近期决策：
@@ -47,18 +47,18 @@ _每次计划完成后更新_
 - [路线图]：基于调研推导出的 4 阶段自动化演进路径（手动 → 脚本化 → 检测 → 分析）
 - [路线图]：阶段 2 和阶段 3 都依赖阶段 1，但彼此独立（可并行执行）
 
-### 待办事项
+### Pending Todos
 
 暂无。
 
-### 阻塞/关注点
+### Blockers/Concerns
 
 - 调研标记 `git rerere` 预填充需在阶段 1 执行期间进行验证
 - JetBrains 插件构建是软性门槛——不确定是否阻塞发布（在阶段 2 中验证）
 - `git merge-tree` 输出解析需在阶段 3 中进行原型验证
 
-## 会话连续性
+## Session Continuity
 
-上次会话：2026-04-12
-停止于：路线图和状态已初始化
-恢复文件：无
+Last session: 2026-04-12
+Stopped at: 路线图和状态已初始化
+Resume file: None
