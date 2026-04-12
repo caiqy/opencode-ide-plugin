@@ -9,12 +9,12 @@
 
 ### Sync Foundation
 
-- [ ] **SYNC-01**: 开发者可以在专用 sync 分支上执行上游 fetch + merge，不影响主开发分支
+- [x] **SYNC-01**: 开发者可以在专用 sync 分支上执行上游 fetch + merge，不影响主开发分支
 - [ ] **SYNC-02**: 合并后生成冲突检测报告，按风险区域分类（downstream-only / upstream-only / shared）
 - [ ] **SYNC-03**: 合并后自动检查 SDK 是否需要重新生成（检测 server routes / openapi spec 变更）
 - [ ] **SYNC-04**: 合并后检查 4 个 dependency patch 是否仍能正常应用
-- [ ] **SYNC-05**: 提供清晰的回滚路径（sync 分支隔离，merge --abort / reset --hard）
-- [ ] **SYNC-06**: 记录可重复的合并流程文档（检查单格式）
+- [x] **SYNC-05**: 提供清晰的回滚路径（sync 分支隔离，merge --abort / reset --hard）
+- [x] **SYNC-06**: 记录可重复的合并流程文档（检查单格式）
 
 ### Build Verification
 
@@ -66,12 +66,12 @@
 
 | Requirement | Phase                       | Status  |
 | ----------- | --------------------------- | ------- |
-| SYNC-01     | Phase 1: Merge Foundation   | Pending |
+| SYNC-01     | Phase 1: Merge Foundation   | Complete |
 | SYNC-02     | Phase 3: Conflict Detection | Pending |
 | SYNC-03     | Phase 3: Conflict Detection | Pending |
 | SYNC-04     | Phase 3: Conflict Detection | Pending |
-| SYNC-05     | Phase 1: Merge Foundation   | Pending |
-| SYNC-06     | Phase 1: Merge Foundation   | Pending |
+| SYNC-05     | Phase 1: Merge Foundation   | Complete |
+| SYNC-06     | Phase 1: Merge Foundation   | Complete |
 | BUILD-01    | Phase 2: Build Verification | Pending |
 | BUILD-02    | Phase 2: Build Verification | Pending |
 | BUILD-03    | Phase 2: Build Verification | Pending |
