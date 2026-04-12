@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-04-12)
 Phase: 1 of 4 (Merge Foundation)
 Plan: 0 of 3 in current phase
 Status: Ready to plan
-Last activity: 2026-04-12 — 路线图已创建
+Last activity: 2026-04-12 - Completed quick task 260412-sto: 展示委派子任务的subagent类型信息
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -56,6 +56,12 @@ _每次计划完成后更新_
 - 调研标记 `git rerere` 预填充需在阶段 1 执行期间进行验证
 - JetBrains 插件构建是软性门槛——不确定是否阻塞发布（在阶段 2 中验证）
 - `git merge-tree` 输出解析需在阶段 3 中进行原型验证
+
+### Quick Tasks Completed
+
+| #          | Description                      | Date       | Commit    | Directory                                           |
+| ---------- | -------------------------------- | ---------- | --------- | --------------------------------------------------- |
+| 260412-sto | 展示委派子任务的subagent类型信息 | 2026-04-12 | ded98d653 | [260412-sto-subagent](./quick/260412-sto-subagent/) |
 
 ## Session Continuity
 
