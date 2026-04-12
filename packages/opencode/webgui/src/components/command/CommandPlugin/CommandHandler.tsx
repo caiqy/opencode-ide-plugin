@@ -8,12 +8,7 @@ export interface CommandMetadata {
   source?: "command" | "mcp" | "skill"
 }
 
-export function useCommandHandler(
-  editor: LexicalEditor,
-  commandStartOffset: number | null,
-  resetState: () => void,
-) {
-
+export function useCommandHandler(editor: LexicalEditor, commandStartOffset: number | null, resetState: () => void) {
   const insertCommand = useCallback(
     (metadata: CommandMetadata) => {
       const res = { inserted: false }
@@ -42,7 +37,7 @@ export function useCommandHandler(
         const before = textContent.slice(0, start)
         const after = textContent.slice(offset)
 
-        const commandText = `/${metadata.name}`
+        const commandText = `/${metadata.name} `
         const newText = before + commandText + after
         const textNode = node as TextNode
         textNode.setTextContent(newText)
