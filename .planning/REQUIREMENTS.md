@@ -64,30 +64,30 @@ Deferred to future release. Tracked but not in current roadmap.
 
 Which phases cover which requirements. Updated during roadmap creation.
 
-| Requirement | Phase | Status  |
-| ----------- | ----- | ------- |
-| SYNC-01     | —     | Pending |
-| SYNC-02     | —     | Pending |
-| SYNC-03     | —     | Pending |
-| SYNC-04     | —     | Pending |
-| SYNC-05     | —     | Pending |
-| SYNC-06     | —     | Pending |
-| BUILD-01    | —     | Pending |
-| BUILD-02    | —     | Pending |
-| BUILD-03    | —     | Pending |
-| BUILD-04    | —     | Pending |
-| BUILD-05    | —     | Pending |
-| BUILD-06    | —     | Pending |
-| IMPACT-01   | —     | Pending |
-| IMPACT-02   | —     | Pending |
-| IMPACT-03   | —     | Pending |
-| IMPACT-04   | —     | Pending |
+| Requirement | Phase                       | Status  |
+| ----------- | --------------------------- | ------- |
+| SYNC-01     | Phase 1: Merge Foundation   | Pending |
+| SYNC-02     | Phase 3: Conflict Detection | Pending |
+| SYNC-03     | Phase 3: Conflict Detection | Pending |
+| SYNC-04     | Phase 3: Conflict Detection | Pending |
+| SYNC-05     | Phase 1: Merge Foundation   | Pending |
+| SYNC-06     | Phase 1: Merge Foundation   | Pending |
+| BUILD-01    | Phase 2: Build Verification | Pending |
+| BUILD-02    | Phase 2: Build Verification | Pending |
+| BUILD-03    | Phase 2: Build Verification | Pending |
+| BUILD-04    | Phase 2: Build Verification | Pending |
+| BUILD-05    | Phase 2: Build Verification | Pending |
+| BUILD-06    | Phase 2: Build Verification | Pending |
+| IMPACT-01   | Phase 4: Impact Analysis    | Pending |
+| IMPACT-02   | Phase 4: Impact Analysis    | Pending |
+| IMPACT-03   | Phase 4: Impact Analysis    | Pending |
+| IMPACT-04   | Phase 4: Impact Analysis    | Pending |
 
 **Coverage:**
 
 - v1 requirements: 16 total
-- Mapped to phases: 0
-- Unmapped: 16 ⚠️
+- Mapped to phases: 16 ✓
+- Unmapped: 0
 
 ---
 
