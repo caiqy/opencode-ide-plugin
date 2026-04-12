@@ -239,12 +239,19 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     return typeof desc === "string" && desc.length > 0 ? desc : null
   }, [part.tool, part.state.title, part.state.input])
 
+  const subagentType = useMemo(() => {
+    if (part.tool !== "task") return null
+    const raw = part.state.input?.subagent_type
+    return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null
+  }, [part.tool, part.state.input])
+
   const progress = useMemo(() => {
     if (part.tool !== "task") return null
     if (!subtaskSessionId) return null
 
     const label = getToolLabel(part.tool)
-    const base = `${label}${subtaskTitle ? `：${subtaskTitle}` : ""}`
+    const agentTag = subagentType ? ` (${subagentType})` : ""
+    const base = `${label}${agentTag}${subtaskTitle ? `：${subtaskTitle}` : ""}`
 
     if (blocked === "permission") return `${base} [ ⚠ 等待授权 — 点击查看 ]`
     if (blocked === "question") return `${base} [ ❓ 等待回答 — 点击查看 ]`
@@ -263,7 +270,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
         ? "已完成"
         : "空闲"
     return `${base} [ ${toolParts.length} 工具调用 / ${currentLabel} ]`
-  }, [part.tool, part.state.status, subtaskSessionId, subtaskTitle, blocked, getMessagesBySession])
+  }, [part.tool, part.state.status, subtaskSessionId, subtaskTitle, subagentType, blocked, getMessagesBySession])
 
   const heading = progress ?? toolName
 
@@ -278,9 +285,10 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
       openSubtaskDrawer({
         sessionId: subtaskSessionId,
         title: subtaskTitle,
+        subagentType,
         parent: drawerParent,
       })
-  }, [blocked, subtaskSessionId, subtaskTitle, drawerParent, openSubtaskDrawer])
+  }, [blocked, subtaskSessionId, subtaskTitle, subagentType, drawerParent, openSubtaskDrawer])
 
   const rightActions = useMemo(() => {
     if (!subtaskSessionId) return undefined
@@ -293,6 +301,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
           openSubtaskDrawer({
             sessionId: subtaskSessionId,
             title: subtaskTitle,
+            subagentType,
             parent: drawerParent,
           })
         }
@@ -308,7 +317,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
         }
       />
     )
-  }, [subtaskSessionId, subtaskTitle, drawerParent, openSubtaskDrawer])
+  }, [subtaskSessionId, subtaskTitle, subagentType, drawerParent, openSubtaskDrawer])
 
   return (
     <div

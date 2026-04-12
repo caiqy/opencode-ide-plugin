@@ -131,7 +131,7 @@ describe("ToolPart", () => {
 
     render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
 
-    expect(screen.getByText("委派子任务：Demo Task [ 2 工具调用 / 执行命令 ]")).toBeInTheDocument()
+    expect(screen.getByText("委派子任务 (general)：Demo Task [ 2 工具调用 / 执行命令 ]")).toBeInTheDocument()
 
     const btn = screen.getByLabelText("查看子任务")
     fireEvent.click(btn)
@@ -139,6 +139,7 @@ describe("ToolPart", () => {
     expect(mocks.openSubtaskDrawer).toHaveBeenCalledWith({
       sessionId: "s-child",
       title: "Demo Task",
+      subagentType: "general",
       parent: { sessionId: "s1", messageId: "m1", partId: "p3" },
     })
   })
@@ -170,7 +171,7 @@ describe("ToolPart", () => {
 
     render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
 
-    expect(screen.getByText("委派子任务：Demo Task [ 2 工具调用 / 已完成 ]")).toBeInTheDocument()
+    expect(screen.getByText("委派子任务 (general)：Demo Task [ 2 工具调用 / 已完成 ]")).toBeInTheDocument()
   })
 
   it("task 工具仅渲染 task_result 标签内 Markdown", () => {
@@ -427,6 +428,7 @@ describe("ToolPart", () => {
     expect(mocks.openSubtaskDrawer).toHaveBeenCalledWith({
       sessionId: "s-child",
       title: "My Task",
+      subagentType: "general",
       parent: { sessionId: "s1", messageId: "m1", partId: "p-click-blocked" },
     })
   })

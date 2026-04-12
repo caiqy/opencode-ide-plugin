@@ -11,7 +11,7 @@ function isToolPart(part: WebguiPart): part is Extract<WebguiPart, { type: "tool
 }
 
 export function SubtaskDrawer() {
-  const { isOpen, sessionId, title, parent, closeSubtaskDrawer } = useSubtaskDrawer()
+  const { isOpen, sessionId, title, subagentType, parent, closeSubtaskDrawer } = useSubtaskDrawer()
   const { ensureSession, getMessagesBySession, isSessionLoadError } = useMessages()
   const [ready, setReady] = useState<{ key: string | null; done: boolean }>({ key: null, done: false })
 
@@ -77,11 +77,12 @@ export function SubtaskDrawer() {
 
   const headerSummary = useMemo(() => {
     const toolName = getToolLabel("task")
-    const base = `${toolName}${title ? `：${title}` : ""}`
+    const agentTag = subagentType ? ` (${subagentType})` : ""
+    const base = `${toolName}${agentTag}${title ? `：${title}` : ""}`
     if (load) return `${base} [ 正在加载子任务… ]`
     if (err) return `${base} [ 子任务加载失败 ]`
     return `${base} [ 已加载 ${toolStats.totalCalls} 个工具调用 / ${currentToolLabel} ]`
-  }, [err, load, toolStats.totalCalls, currentToolLabel, title])
+  }, [err, load, toolStats.totalCalls, currentToolLabel, title, subagentType])
 
   useEffect(() => {
     if (!isOpen) return
