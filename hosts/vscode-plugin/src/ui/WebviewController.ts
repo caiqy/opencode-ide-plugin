@@ -144,7 +144,6 @@ export class WebviewController {
           storageSet: this.storageSet,
         },
         {
-          minVersion: vscode.workspace.getConfiguration("opencode").get<string>("minVersion", "1.1.1"),
           restartMode: "window",
         },
       )

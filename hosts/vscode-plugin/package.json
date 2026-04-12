@@ -2,7 +2,7 @@
   "name": "opencode-ui",
   "displayName": "OpenCode UI (unofficial)",
   "description": "OpenCode UI VSCode extension",
-  "version": "26.3.301",
+  "version": "26.4.121",
   "publisher": "qtkj",
   "author": {
     "name": "qtkj"
@@ -166,8 +166,8 @@
         },
         "opencode.minVersion": {
           "type": "string",
-          "default": "1.1.1",
-          "description": "Minimum required OpenCode server version"
+          "default": "",
+          "description": "Minimum required OpenCode server version. Leave empty to disable the compatibility gate."
         }
       }
     }
