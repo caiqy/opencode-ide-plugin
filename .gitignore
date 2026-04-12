@@ -82,3 +82,6 @@ opencode-dev
 logs/
 *.bun-build
 tsconfig.tsbuildinfo
+
+# Superpowers skills (injected by gsd-superpowers-init)
+.skills/superpowers/
