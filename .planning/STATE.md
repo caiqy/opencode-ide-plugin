@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-04-12)
 Phase: 1 of 4 (Merge Foundation)
 Plan: 0 of 3 in current phase
 Status: Ready to plan
-Last activity: 2026-04-12 - Completed quick task 260412-sto: 展示委派子任务的subagent类型信息
+Last activity: 2026-04-12 - Completed quick task 260412-w80: fix webgui command popup not closing after selection
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -59,12 +59,13 @@ _每次计划完成后更新_
 
 ### Quick Tasks Completed
 
-| #          | Description                      | Date       | Commit    | Directory                                           |
-| ---------- | -------------------------------- | ---------- | --------- | --------------------------------------------------- |
-| 260412-sto | 展示委派子任务的subagent类型信息 | 2026-04-12 | ded98d653 | [260412-sto-subagent](./quick/260412-sto-subagent/) |
+| #          | Description                                   | Date       | Commit    | Directory                                                                                                           |
+| ---------- | --------------------------------------------- | ---------- | --------- | ------------------------------------------------------------------------------------------------------------------- |
+| 260412-sto | 展示委派子任务的subagent类型信息              | 2026-04-12 | ded98d653 | [260412-sto-subagent](./quick/260412-sto-subagent/)                                                                 |
+| 260412-w80 | Fix command popup not closing after selection | 2026-04-12 | 82e1243dc | [260412-w80-fix-webgui-command-popup-not-closing-aft](./quick/260412-w80-fix-webgui-command-popup-not-closing-aft/) |
 
 ## Session Continuity
 
 Last session: 2026-04-12
-Stopped at: 路线图和状态已初始化
+Stopped at: Completed quick task 260412-w80
 Resume file: None
