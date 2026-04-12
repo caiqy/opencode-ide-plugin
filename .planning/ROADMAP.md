@@ -31,13 +31,12 @@
 2. 开发者可以在 1 分钟内中止或回滚失败的合并，恢复到干净状态
 3. 存在一份书面检查单，其他开发者可以按照它完成完整的上游同步
 4. 该检查单已通过至少一次端到端的实际上游合并验证
-   **Plans**: TBD
+   **Plans**: 2 plans
 
 Plans:
 
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01-PLAN.md — Configure git rerere and write upstream merge checklist document
+- [ ] 01-02-PLAN.md — Execute real end-to-end upstream merge to validate checklist
 
 ### Phase 2: Build Verification
 
@@ -103,7 +102,7 @@ Plans:
 
 | Phase                 | Plans Complete | Status      | Completed |
 | --------------------- | -------------- | ----------- | --------- |
-| 1. Merge Foundation   | 0/3            | Not started | -         |
+| 1. Merge Foundation   | 0/2            | Planned     | -         |
 | 2. Build Verification | 0/3            | Not started | -         |
 | 3. Conflict Detection | 0/3            | Not started | -         |
 | 4. Impact Analysis    | 0/3            | Not started | -         |
