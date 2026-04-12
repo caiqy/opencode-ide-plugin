@@ -1,211 +1,211 @@
-# Technology Stack: Upstream Fork Synchronization
+# 技术栈：上游 Fork 同步
 
-**Project:** opencode-ide-plugin — Upstream Sync Workflow
-**Researched:** 2026-04-12
-**Overall Confidence:** HIGH (based on codebase evidence + verified tools)
+**项目:** opencode-ide-plugin — 上游同步工作流
+**研究日期:** 2026-04-12
+**总体置信度:** 高（基于代码库证据 + 已验证工具）
 
-## Context
+## 背景
 
-This project is a downstream fork of [anomalyco/opencode](https://github.com/anomalyco/opencode) that adds WebGUI frontend and IDE plugin packaging. The upstream moves fast (~100+ commits/week, release cadence of ~1 per week from v1.3.0 to v1.4.3+). The last manual merge integrated 355 commits and resolved 15 conflicts. The current divergence is 436 upstream commits vs 384 downstream commits across 637 changed files, with 12 conflict-prone files identified.
+本项目是 [anomalyco/opencode](https://github.com/anomalyco/opencode) 的下游 Fork，添加了 WebGUI 前端和 IDE 插件包装。上游推进很快（每周约 100+ 提交，从 v1.3.0 到 v1.4.3+ 大约每周发布一次）。上一次手动合并集成了 355 个提交并解决了 15 个冲突。当前分歧为 436 个上游提交 vs 384 个下游提交，横跨 637 个变更文件，已识别 12 个易冲突文件。
 
-**Core problem:** No automated workflow exists. Merges are manual, infrequent, and high-risk.
+**核心问题:** 不存在自动化工作流。合并都是手动的、不频繁的、高风险的。
 
-## Recommended Stack
+## 推荐技术栈
 
-### CI/CD — GitHub Actions (core automation layer)
+### CI/CD — GitHub Actions（核心自动化层）
 
-| Technology                  | Version        | Purpose                               | Why                                                                                                                           |
-| --------------------------- | -------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| GitHub Actions              | N/A (platform) | Workflow orchestration                | Already in use (`test.yml`, `typecheck.yml`). All existing CI runs on Blacksmith runners. No reason to add another CI system. |
-| `actions/checkout@v4`       | v4             | Repository checkout with full history | Already used. Need `fetch-depth: 0` for merge operations.                                                                     |
-| `.github/actions/setup-bun` | local          | Bun setup with caching                | Already exists as composite action. Reuse for build verification.                                                             |
+| 技术                        | 版本        | 用途                 | 原因                                                                                                     |
+| --------------------------- | ----------- | -------------------- | -------------------------------------------------------------------------------------------------------- |
+| GitHub Actions              | N/A（平台） | 工作流编排           | 已在使用（`test.yml`、`typecheck.yml`）。所有现有 CI 在 Blacksmith runner 上运行。无需添加其他 CI 系统。 |
+| `actions/checkout@v4`       | v4          | 带完整历史的仓库检出 | 已在使用。合并操作需要 `fetch-depth: 0`。                                                                |
+| `.github/actions/setup-bun` | 本地        | 带缓存的 Bun 设置    | 已作为 composite action 存在。可复用于构建验证。                                                         |
 
-**Confidence:** HIGH — these are already in the codebase.
+**置信度:** 高——这些已在代码库中。
 
-### Upstream Sync Detection
+### 上游同步检测
 
-| Technology            | Version | Purpose                                                         | Why                                                                                                                                                                                                                                                              |
-| --------------------- | ------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Native `git` commands | ≥2.38   | Merge-tree conflict prediction, fetch, diff-stat                | `git merge-tree --write-tree` (available since git 2.38) can predict conflicts without touching the working tree. This is the best tool for conflict detection — zero dependencies, runs in CI. Verified: it correctly identifies all 12 current conflict files. |
-| `@octokit/rest`       | 22.0.1  | GitHub API for PR creation, label management, commit comparison | Already a dependency. Use for programmatic PR creation + commenting with conflict reports.                                                                                                                                                                       |
+| 技术            | 版本   | 用途                                          | 原因                                                                                                                                                                            |
+| --------------- | ------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 原生 `git` 命令 | ≥2.38  | merge-tree 冲突预测、fetch、diff-stat         | `git merge-tree --write-tree`（自 git 2.38 起可用）可以在不触碰工作树的情况下预测冲突。这是冲突检测的最佳工具——零依赖，在 CI 中运行。已验证：能正确识别所有 12 个当前冲突文件。 |
+| `@octokit/rest` | 22.0.1 | 用于 PR 创建、标签管理、提交比较的 GitHub API | 已是依赖项。用于程序化 PR 创建 + 带冲突报告的评论。                                                                                                                             |
 
-**Confidence:** HIGH — `git merge-tree --write-tree` verified against actual codebase state.
+**置信度:** 高——`git merge-tree --write-tree` 已对实际代码库状态验证。
 
-### Why NOT use third-party sync actions
+### 为什么不使用第三方同步 Action
 
-| Action                                          | Stars | Why Not                                                                                                                                                                                           |
-| ----------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `aormsby/Fork-Sync-With-Upstream-action` v3.4.3 | 311   | Designed for simple fast-forward syncs. Does NOT handle merge conflicts — just fails. Our repo always has conflicts (12 files currently). Also, "not currently in active development" per README. |
-| `peter-evans/create-pull-request` v8.1.1        | 2.7k  | Useful as a helper for PR creation after merge attempt, but doesn't solve conflict detection or merge strategy. We need the conflict analysis BEFORE creating a PR.                               |
-| GitHub's built-in "Sync Fork" button            | N/A   | Only does fast-forward. Useless when branches have diverged, which ours always will.                                                                                                              |
+| Action                                          | Stars | 不使用原因                                                                                                                                                 |
+| ----------------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aormsby/Fork-Sync-With-Upstream-action` v3.4.3 | 311   | 设计用于简单的 fast-forward 同步。不处理合并冲突——直接失败。我们的仓库始终有冲突（当前 12 个文件）。另外，README 称"not currently in active development"。 |
+| `peter-evans/create-pull-request` v8.1.1        | 2.7k  | 作为合并尝试后 PR 创建的辅助工具有用，但不解决冲突检测或合并策略。我们需要在创建 PR 之前进行冲突分析。                                                     |
+| GitHub 内置的"Sync Fork"按钮                    | N/A   | 只做 fast-forward。当分支已分歧时无用，而我们的分支始终会分歧。                                                                                            |
 
-**Recommendation:** Write a **custom GitHub Actions workflow** using native git commands + `@octokit/rest`. The problem is too specific for generic sync actions — we need conflict prediction, selective merge, and build verification in a single pipeline.
+**建议:** 使用原生 git 命令 + `@octokit/rest` 编写**自定义 GitHub Actions 工作流**。问题太具体，无法使用通用同步 Action——我们需要在单一管道中完成冲突预测、选择性合并和构建验证。
 
-### Conflict Detection & Analysis
+### 冲突检测与分析
 
-| Technology                                           | Version   | Purpose                                                 | Why                                                                                                                                                                          |
-| ---------------------------------------------------- | --------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `git merge-tree --write-tree`                        | git ≥2.38 | Predict merge conflicts without modifying worktree      | Outputs conflicting file paths with 3-way merge stage info. Already verified: correctly identifies `bun.lock`, `config.ts`, `mcp/index.ts`, `provider.ts`, `server.ts`, etc. |
-| `git diff --stat`                                    | native    | Summarize upstream changes scope                        | Generates readable change summaries for PR descriptions.                                                                                                                     |
-| `git log --oneline` with path filters                | native    | Track which upstream commits touch conflict-prone files | Critical for understanding WHY a conflict exists — "these 5 commits changed config.ts".                                                                                      |
-| Custom TypeScript script (`script/upstream-sync.ts`) | N/A       | Orchestrate detection + reporting                       | Bun-native script that runs `git merge-tree`, parses output, classifies conflicts by severity (lockfile vs API code vs config), generates a merge report.                    |
+| 技术                                                | 版本      | 用途                             | 原因                                                                                                                              |
+| --------------------------------------------------- | --------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `git merge-tree --write-tree`                       | git ≥2.38 | 不修改工作树即可预测合并冲突     | 输出带有三方合并阶段信息的冲突文件路径。已验证：正确识别 `bun.lock`、`config.ts`、`mcp/index.ts`、`provider.ts`、`server.ts` 等。 |
+| `git diff --stat`                                   | 原生      | 总结上游变更范围                 | 为 PR 描述生成可读的变更摘要。                                                                                                    |
+| `git log --oneline` 加路径过滤                      | 原生      | 跟踪哪些上游提交触及了易冲突文件 | 对理解冲突原因至关重要——"这 5 个提交更改了 config.ts"。                                                                           |
+| 自定义 TypeScript 脚本（`script/upstream-sync.ts`） | N/A       | 编排检测 + 报告                  | Bun 原生脚本，运行 `git merge-tree`、解析输出、按严重程度分类冲突（锁文件 vs API 代码 vs 配置）、生成合并报告。                   |
 
-**Confidence:** HIGH for git tools (verified). MEDIUM for custom script (design choice, not verified).
+**置信度:** git 工具为高（已验证）。自定义脚本为中（设计选择，未验证）。
 
-### Build Verification
+### 构建验证
 
-| Technology                        | Version   | Purpose                      | Why                                                                                                                |
-| --------------------------------- | --------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Turborepo                         | 2.8.13    | Parallel build orchestration | Already configured. `bun turbo typecheck`, `bun turbo test`, `bun turbo build` cover the full verification matrix. |
-| `tsgo --noEmit`                   | 7.0.0-dev | Fast type checking           | Already used via `bun typecheck`. 10-50x faster than `tsc`. Critical for quick merge validation.                   |
-| Vitest                            | 4.0.13    | WebGUI unit tests            | Already configured. Must pass after merge.                                                                         |
-| Bun test                          | N/A       | Core opencode tests          | Already configured. Must pass after merge.                                                                         |
-| Mocha                             | 10.2.0    | VSCode extension tests       | Already configured.                                                                                                |
-| `hosts/scripts/build_opencode.sh` | N/A       | Cross-platform binary build  | Already exists. Verifies the merged code actually compiles for all targets.                                        |
+| 技术                              | 版本      | 用途               | 原因                                                                                  |
+| --------------------------------- | --------- | ------------------ | ------------------------------------------------------------------------------------- |
+| Turborepo                         | 2.8.13    | 并行构建编排       | 已配置。`bun turbo typecheck`、`bun turbo test`、`bun turbo build` 覆盖完整验证矩阵。 |
+| `tsgo --noEmit`                   | 7.0.0-dev | 快速类型检查       | 已通过 `bun typecheck` 使用。比 `tsc` 快 10-50 倍。对快速合并验证至关重要。           |
+| Vitest                            | 4.0.13    | WebGUI 单元测试    | 已配置。合并后必须通过。                                                              |
+| Bun test                          | N/A       | 核心 opencode 测试 | 已配置。合并后必须通过。                                                              |
+| Mocha                             | 10.2.0    | VSCode 扩展测试    | 已配置。                                                                              |
+| `hosts/scripts/build_opencode.sh` | N/A       | 跨平台二进制构建   | 已存在。验证合并后的代码确实能为所有目标平台编译。                                    |
 
-**Confidence:** HIGH — all tools already in the codebase.
+**置信度:** 高——所有工具已在代码库中。
 
-### Changelog & Merge Tracking
+### 变更日志与合并跟踪
 
-| Technology                               | Version | Purpose                                         | Why                                                                                                                                                      |
-| ---------------------------------------- | ------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `git log --format` with custom templates | native  | Extract upstream changelog between merge points | Parse upstream commit messages for release notes. Upstream uses conventional commit style (`feat:`, `fix:`, `refactor:`, etc.).                          |
-| Markdown files in `.planning/merges/`    | N/A     | Persistent merge records                        | Store merge reports: upstream range, conflicts found, resolution strategy, build results. Human-readable, git-tracked.                                   |
-| GitHub PR body + labels                  | N/A     | Per-merge tracking                              | Each upstream sync gets a PR with structured body: upstream range, conflict list, build status. Labels: `upstream-sync`, `has-conflicts`, `clean-merge`. |
+| 技术                                   | 版本 | 用途                         | 原因                                                                                                                         |
+| -------------------------------------- | ---- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `git log --format` 加自定义模板        | 原生 | 提取合并点之间的上游变更日志 | 解析上游提交信息用于发布说明。上游使用约定式提交风格（`feat:`、`fix:`、`refactor:` 等）。                                    |
+| `.planning/merges/` 中的 Markdown 文件 | N/A  | 持久化合并记录               | 存储合并报告：上游范围、发现的冲突、解决策略、构建结果。人类可读，用 git 跟踪。                                              |
+| GitHub PR body + labels                | N/A  | 每次合并的跟踪               | 每次上游同步得到一个带结构化内容的 PR：上游范围、冲突列表、构建状态。标签：`upstream-sync`、`has-conflicts`、`clean-merge`。 |
 
-**Why NOT use automated changelog tools:**
+**为什么不使用自动化变更日志工具:**
 
-- `conventional-changelog`, `changesets`, `release-it` — designed for YOUR project's releases, not tracking upstream's releases
-- The upstream already has its own release notes. We need to TRACK what upstream changed, not generate our own changelog for upstream code.
+- `conventional-changelog`、`changesets`、`release-it`——设计用于你项目的发布，而不是跟踪上游的发布
+- 上游已经有自己的发布说明。我们需要跟踪上游改变了什么，而不是为上游代码生成我们自己的变更日志。
 
-**Confidence:** HIGH — this is a workflow design choice, not a library dependency.
+**置信度:** 高——这是工作流设计选择，不是库依赖。
 
-### Merge Strategy Tooling
+### 合并策略工具
 
-| Technology                     | Version | Purpose                                | Why                                                                                                                                                                          |
-| ------------------------------ | ------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `git merge --no-commit`        | native  | Stage merge without auto-committing    | Allows inspection + manual conflict resolution before finalizing.                                                                                                            |
-| `git rerere`                   | native  | Remember & replay conflict resolutions | Critical for recurring conflicts. The same files (`config.ts`, `mcp/index.ts`, `server.ts`) conflict every merge. `rerere` learns resolution patterns and auto-applies them. |
-| `.gitattributes` merge drivers | native  | Custom merge behavior per file         | Set `bun.lock` to use `ours` strategy (regenerate after merge). Set lockfiles to binary merge.                                                                               |
+| 技术                      | 版本 | 用途                     | 原因                                                                                                                        |
+| ------------------------- | ---- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `git merge --no-commit`   | 原生 | 暂存合并而不自动提交     | 允许在完成前检查 + 手动冲突解决。                                                                                           |
+| `git rerere`              | 原生 | 记住并重放冲突解决       | 对重复冲突至关重要。同样的文件（`config.ts`、`mcp/index.ts`、`server.ts`）每次合并都冲突。`rerere` 学习解决模式并自动应用。 |
+| `.gitattributes` 合并驱动 | 原生 | 每个文件的自定义合并行为 | 设置 `bun.lock` 使用 `ours` 策略（合并后重新生成）。设置锁文件为二进制合并。                                                |
 
-**Confidence:** HIGH for `git merge/rerere` (standard git). MEDIUM for custom merge drivers (needs testing).
+**置信度:** `git merge/rerere` 为高（标准 git）。自定义合并驱动为中（需要测试）。
 
-## Supporting Libraries (already in project)
+## 支持库（已在项目中）
 
-| Library         | Version        | Relevant Use                                   | Notes                                                                                                      |
-| --------------- | -------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `@octokit/rest` | 22.0.1         | PR creation, comment posting, label management | Already a dependency. Use for automated PR workflow.                                                       |
-| `semver`        | ^7.6.0         | Version comparison for upstream releases       | Already a devDependency. Parse upstream version tags.                                                      |
-| `glob`          | 13.0.5         | File pattern matching                          | Already a devDependency. Useful for conflict path classification.                                          |
-| `diff`          | ^7.0.0 / 8.0.2 | Text diffing                                   | Already used in WebGUI for file change display. Could be used for conflict visualization in merge reports. |
+| 库              | 版本           | 相关用途                    | 说明                                                           |
+| --------------- | -------------- | --------------------------- | -------------------------------------------------------------- |
+| `@octokit/rest` | 22.0.1         | PR 创建、评论发布、标签管理 | 已是依赖项。用于自动化 PR 工作流。                             |
+| `semver`        | ^7.6.0         | 上游发布的版本比较          | 已是 devDependency。解析上游版本标签。                         |
+| `glob`          | 13.0.5         | 文件模式匹配                | 已是 devDependency。用于冲突路径分类。                         |
+| `diff`          | ^7.0.0 / 8.0.2 | 文本差异比较                | 已在 WebGUI 中用于文件变更显示。可用于合并报告中的冲突可视化。 |
 
-**Confidence:** HIGH — all verified in `package.json`.
+**置信度:** 高——均在 `package.json` 中验证。
 
-## New Dependencies Required
+## 需要的新依赖
 
-**None.** The entire upstream sync workflow can be built with:
+**无。** 整个上游同步工作流可以用以下工具构建：
 
-1. Native git commands (available on all CI runners)
-2. Libraries already in the project (`@octokit/rest`, `semver`, `glob`)
-3. GitHub Actions (already the CI platform)
-4. Bun runtime (already the script runtime)
+1. 原生 git 命令（所有 CI runner 上可用）
+2. 项目中已有的库（`@octokit/rest`、`semver`、`glob`）
+3. GitHub Actions（已是 CI 平台）
+4. Bun 运行时（已是脚本运行时）
 
-This is a deliberate choice. Fork synchronization is a **workflow problem**, not a **library problem**. Adding dependencies for this creates maintenance burden in a project that already tracks a fast-moving upstream.
+这是刻意的选择。Fork 同步是一个**工作流问题**，而不是**库问题**。为此添加依赖会在一个已经跟踪快速演进上游的项目中增加维护负担。
 
-## Alternatives Considered
+## 备选方案评估
 
-| Category           | Recommended                         | Alternative                                        | Why Not                                                                                                                                   |
-| ------------------ | ----------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Sync automation    | Custom GHA workflow                 | `aormsby/Fork-Sync-With-Upstream-action`           | Can't handle conflicts, not actively maintained                                                                                           |
-| Sync automation    | Custom GHA workflow                 | Renovate/Dependabot for fork tracking              | These tools track dependency updates, not upstream fork code changes                                                                      |
-| Conflict detection | `git merge-tree --write-tree`       | Try-merge in ephemeral branch                      | merge-tree is cleaner, faster, and doesn't create throwaway branches                                                                      |
-| Conflict detection | `git merge-tree --write-tree`       | Third-party merge analysis tools (mergify, kodiak) | Overkill for a single-upstream-repo scenario. These are designed for multi-contributor PR management.                                     |
-| Changelog tracking | Git log parsing + markdown          | `conventional-changelog` / `changesets`            | Wrong tool — designed for YOUR releases, not tracking someone else's                                                                      |
-| PR creation        | `@octokit/rest` (already installed) | `peter-evans/create-pull-request`                  | create-pull-request is good but we need custom logic (conflict reports, labels, conditional creation). Direct Octokit gives full control. |
-| Build verification | Existing Turborepo pipeline         | Separate CI matrix                                 | Already have `bun turbo typecheck && bun turbo test && bun turbo build`. No reason to reinvent.                                           |
-| Merge memory       | `git rerere`                        | Custom conflict database                           | rerere is built into git, works automatically, zero maintenance                                                                           |
+| 类别         | 推荐方案                      | 备选方案                                 | 不使用原因                                                                                                |
+| ------------ | ----------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| 同步自动化   | 自定义 GHA 工作流             | `aormsby/Fork-Sync-With-Upstream-action` | 无法处理冲突，未积极维护                                                                                  |
+| 同步自动化   | 自定义 GHA 工作流             | Renovate/Dependabot 用于 Fork 跟踪       | 这些工具跟踪依赖更新，而非上游 Fork 代码变更                                                              |
+| 冲突检测     | `git merge-tree --write-tree` | 在临时分支中尝试合并                     | merge-tree 更干净、更快，不创建一次性分支                                                                 |
+| 冲突检测     | `git merge-tree --write-tree` | 第三方合并分析工具（mergify、kodiak）    | 对单一上游仓库场景来说过于复杂。这些是为多贡献者 PR 管理设计的。                                          |
+| 变更日志跟踪 | Git log 解析 + markdown       | `conventional-changelog` / `changesets`  | 工具不对——设计用于你的发布，而非跟踪别人的                                                                |
+| PR 创建      | `@octokit/rest`（已安装）     | `peter-evans/create-pull-request`        | create-pull-request 不错但我们需要自定义逻辑（冲突报告、标签、条件创建）。直接使用 Octokit 给予完全控制。 |
+| 构建验证     | 现有 Turborepo 管道           | 单独的 CI 矩阵                           | 已有 `bun turbo typecheck && bun turbo test && bun turbo build`。无需重新发明。                           |
+| 合并记忆     | `git rerere`                  | 自定义冲突数据库                         | rerere 内置于 git，自动工作，零维护                                                                       |
 
-## Workflow Architecture
+## 工作流架构
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ GitHub Actions: upstream-sync.yml (scheduled + manual trigger)  │
+│ GitHub Actions: upstream-sync.yml（定时 + 手动触发）             │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  1. DETECT                                                      │
+│  1. 检测                                                        │
 │     ├── git fetch opencode dev                                  │
-│     ├── git rev-list --count (new commits?)                     │
-│     └── git log --oneline (release tags in range?)              │
+│     ├── git rev-list --count（有新提交？）                       │
+│     └── git log --oneline（范围内有发布标签？）                   │
 │                                                                 │
-│  2. ANALYZE                                                     │
-│     ├── git merge-tree --write-tree (predict conflicts)         │
-│     ├── Classify conflicts:                                     │
-│     │   ├── LOCKFILE (bun.lock) → auto-resolve: regenerate      │
-│     │   ├── PACKAGE_JSON → auto-resolve: merge + bun install    │
-│     │   ├── OUR_CODE (webgui/, hosts/) → flag for review        │
-│     │   └── UPSTREAM_API (server.ts, config.ts, mcp/) → HIGH   │
-│     └── Generate merge report markdown                          │
+│  2. 分析                                                        │
+│     ├── git merge-tree --write-tree（预测冲突）                  │
+│     ├── 分类冲突：                                               │
+│     │   ├── 锁文件 (bun.lock) → 自动解决：重新生成               │
+│     │   ├── PACKAGE_JSON → 自动解决：合并 + bun install          │
+│     │   ├── 我们的代码 (webgui/, hosts/) → 标记待审查            │
+│     │   └── 上游 API (server.ts, config.ts, mcp/) → 高风险      │
+│     └── 生成合并报告 markdown                                    │
 │                                                                 │
-│  3. MERGE (if auto-resolvable or manual trigger)                │
+│  3. 合并（如果可自动解决或手动触发）                              │
 │     ├── git merge --no-commit opencode/dev                      │
-│     ├── git rerere (apply learned resolutions)                  │
-│     ├── Resolve lockfile: bun install → git add bun.lock        │
-│     └── git commit (structured message with range)              │
+│     ├── git rerere（应用已学习的解决方案）                        │
+│     ├── 解决锁文件：bun install → git add bun.lock              │
+│     └── git commit（带范围的结构化消息）                          │
 │                                                                 │
-│  4. VERIFY                                                      │
+│  4. 验证                                                        │
 │     ├── bun turbo typecheck                                     │
 │     ├── bun turbo test (packages/opencode)                      │
 │     ├── bun turbo build (webgui)                                │
-│     └── hosts/scripts/build_vscode.sh (VSCode ext compiles?)    │
+│     └── hosts/scripts/build_vscode.sh（VSCode 扩展能编译？）     │
 │                                                                 │
-│  5. REPORT                                                      │
-│     ├── Create/update PR via @octokit/rest                      │
-│     ├── Label: upstream-sync, conflict severity                 │
-│     ├── PR body: upstream range, conflicts, build results       │
-│     └── Write .planning/merges/YYYY-MM-DD.md                    │
+│  5. 报告                                                        │
+│     ├── 通过 @octokit/rest 创建/更新 PR                         │
+│     ├── 标签：upstream-sync、冲突严重程度                        │
+│     ├── PR 内容：上游范围、冲突、构建结果                        │
+│     └── 写入 .planning/merges/YYYY-MM-DD.md                     │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Known Conflict Hotspots (verified 2026-04-12)
+## 已知冲突热点（2026-04-12 验证）
 
-Files that conflict on virtually every upstream merge. These drive the tooling choices:
+几乎每次上游合并都会冲突的文件。这些驱动了工具选择：
 
-| File                                                      | Conflict Type      | Auto-Resolvable? | Strategy                                                               |
-| --------------------------------------------------------- | ------------------ | ---------------- | ---------------------------------------------------------------------- |
-| `bun.lock`                                                | Lockfile           | YES              | Regenerate after merge (`bun install`)                                 |
-| `packages/opencode/package.json`                          | Version + deps     | PARTIAL          | Merge text, then `bun install` to reconcile                            |
-| `packages/opencode/src/config/config.ts`                  | API additions      | NO               | Our skill permission overlay + upstream config changes. Manual review. |
-| `packages/opencode/src/mcp/index.ts`                      | Feature additions  | NO               | Our setEnabled/setToolEnabled + upstream MCP changes. Manual review.   |
-| `packages/opencode/src/provider/provider.ts`              | SSE normalization  | NO               | Our Anthropic SSE fix + upstream provider changes. Manual review.      |
-| `packages/opencode/src/server/server.ts`                  | Route ordering     | MAYBE            | Our /app route before WorkspaceRouter. Pattern may be rerere-able.     |
-| `packages/opencode/src/server/instance/index.ts`          | Webgui routes      | MAYBE            | Our webgui route registration. Pattern may be rerere-able.             |
-| `packages/opencode/src/session/compaction.ts`             | Bug fix overlay    | NO               | Our TypeValidationError recovery. Manual review.                       |
-| `packages/opencode/src/session/message-v2.ts`             | Feature additions  | NO               | Manual review required.                                                |
-| `packages/opencode/src/skill/index.ts`                    | Permission overlay | NO               | Our skill permission overlay. Manual review.                           |
-| `packages/opencode/test/session/llm.test.ts`              | Test updates       | MAYBE            | Usually just additive on both sides.                                   |
-| `packages/app/src/pages/session/use-session-commands.tsx` | Upstream Solid app | MAYBE            | We don't heavily modify this file.                                     |
+| 文件                                                      | 冲突类型        | 可自动解决？ | 策略                                                                |
+| --------------------------------------------------------- | --------------- | ------------ | ------------------------------------------------------------------- |
+| `bun.lock`                                                | 锁文件          | 是           | 合并后重新生成（`bun install`）                                     |
+| `packages/opencode/package.json`                          | 版本 + 依赖     | 部分         | 合并文本，然后 `bun install` 协调                                   |
+| `packages/opencode/src/config/config.ts`                  | API 新增        | 否           | 我们的技能权限覆盖层 + 上游配置变更。需手动审查。                   |
+| `packages/opencode/src/mcp/index.ts`                      | 功能新增        | 否           | 我们的 setEnabled/setToolEnabled + 上游 MCP 变更。需手动审查。      |
+| `packages/opencode/src/provider/provider.ts`              | SSE 规范化      | 否           | 我们的 Anthropic SSE 修复 + 上游 provider 变更。需手动审查。        |
+| `packages/opencode/src/server/server.ts`                  | 路由排序        | 可能         | 我们的 /app 路由在 WorkspaceRouter 之前。模式可能可被 rerere 记忆。 |
+| `packages/opencode/src/server/instance/index.ts`          | Webgui 路由     | 可能         | 我们的 webgui 路由注册。模式可能可被 rerere 记忆。                  |
+| `packages/opencode/src/session/compaction.ts`             | Bug 修复覆盖    | 否           | 我们的 TypeValidationError 恢复。需手动审查。                       |
+| `packages/opencode/src/session/message-v2.ts`             | 功能新增        | 否           | 需手动审查。                                                        |
+| `packages/opencode/src/skill/index.ts`                    | 权限覆盖        | 否           | 我们的技能权限覆盖层。需手动审查。                                  |
+| `packages/opencode/test/session/llm.test.ts`              | 测试更新        | 可能         | 通常双方只是追加。                                                  |
+| `packages/app/src/pages/session/use-session-commands.tsx` | 上游 Solid 应用 | 可能         | 我们不大量修改此文件。                                              |
 
-## File Classification for Merge Automation
+## 合并自动化的文件分类
 
 ```
-OURS_ONLY (never conflict — upstream doesn't touch):
+仅我方（永不冲突——上游不触碰）：
   hosts/vscode-plugin/**
   hosts/jetbrains-plugin/**
   hosts/scripts/**
-  packages/opencode/webgui/** (upstream has packages/app/ instead)
+  packages/opencode/webgui/**（上游有 packages/app/ 替代）
   .planning/**
 
-UPSTREAM_ONLY (take upstream — we don't modify):
-  .github/workflows/* (except our custom ones)
+仅上游（取上游——我们不修改）：
+  .github/workflows/*（除了我们自定义的）
   docs/**
   nix/**
-  packages/app/** (upstream's Solid web app)
+  packages/app/**（上游的 Solid Web 应用）
   packages/console/**
   packages/desktop/**
   README.*.md
 
-CONFLICT_ZONE (both sides modify):
+冲突区（双方都修改）：
   packages/opencode/src/server/**
   packages/opencode/src/config/**
   packages/opencode/src/mcp/**
@@ -217,42 +217,42 @@ CONFLICT_ZONE (both sides modify):
   package.json
 ```
 
-## Installation
+## 安装
 
-No new packages needed. For the custom sync script:
+无需新包。对于自定义同步脚本：
 
 ```bash
-# Already installed:
+# 已安装：
 # @octokit/rest@22.0.1, semver@^7.6.0, glob@13.0.5
 
-# New files to create (not packages):
-# .github/workflows/upstream-sync.yml    — scheduled + manual workflow
-# script/upstream-sync.ts                — Bun script for conflict analysis
-# script/upstream-report.ts              — Generate merge report markdown
-# .gitattributes                         — merge drivers for lockfiles
+# 需要创建的新文件（不是包）：
+# .github/workflows/upstream-sync.yml    — 定时 + 手动工作流
+# script/upstream-sync.ts                — Bun 脚本用于冲突分析
+# script/upstream-report.ts              — 生成合并报告 markdown
+# .gitattributes                         — 锁文件的合并驱动
 ```
 
-## Git Configuration
+## Git 配置
 
 ```bash
-# Enable rerere (remember conflict resolutions)
+# 启用 rerere（记住冲突解决）
 git config rerere.enabled true
 git config rerere.autoupdate true
 
-# .gitattributes for merge strategies
+# .gitattributes 用于合并策略
 echo "bun.lock merge=ours" >> .gitattributes
 ```
 
-## Sources
+## 来源
 
-- `git merge-tree --write-tree` — verified on this repo (2026-04-12), correctly predicts 12 conflict files
-- `@octokit/rest` — already in `package.json` at 22.0.1, verified via `grep`
-- `aormsby/Fork-Sync-With-Upstream-action` v3.4.3 — GitHub Marketplace page (inactive maintenance, 311 stars)
-- `peter-evans/create-pull-request` v8.1.1 — GitHub Marketplace page (2.7k stars, active)
-- Upstream release cadence — verified via `git log --grep="release:"` (v1.3.0 → v1.4.3+)
-- Conflict hotspots — verified via `git merge-tree --write-tree --no-messages ide-plugin opencode/dev`
-- All existing CI infrastructure — verified from `.github/workflows/`, `turbo.json`, `package.json`
+- `git merge-tree --write-tree`——在此仓库上验证（2026-04-12），正确预测 12 个冲突文件
+- `@octokit/rest`——已在 `package.json` 中，版本 22.0.1，通过 `grep` 验证
+- `aormsby/Fork-Sync-With-Upstream-action` v3.4.3——GitHub Marketplace 页面（未积极维护，311 stars）
+- `peter-evans/create-pull-request` v8.1.1——GitHub Marketplace 页面（2.7k stars，活跃）
+- 上游发布节奏——通过 `git log --grep="release:"` 验证（v1.3.0 → v1.4.3+）
+- 冲突热点——通过 `git merge-tree --write-tree --no-messages ide-plugin opencode/dev` 验证
+- 所有现有 CI 基础设施——从 `.github/workflows/`、`turbo.json`、`package.json` 验证
 
 ---
 
-_Stack research: 2026-04-12_
+_技术栈研究：2026-04-12_

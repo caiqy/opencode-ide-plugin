@@ -1,216 +1,216 @@
-# Project Research Summary
+# 项目研究总结
 
-**Project:** opencode-ide-plugin — Upstream Sync Workflow
-**Domain:** Downstream fork maintenance (CLI tool → WebGUI + IDE plugins)
-**Researched:** 2026-04-12
-**Confidence:** HIGH
+**项目:** opencode-ide-plugin — 上游同步工作流
+**领域:** 下游 Fork 维护（CLI 工具 → WebGUI + IDE 插件）
+**研究日期:** 2026-04-12
+**置信度:** 高
 
-## Executive Summary
+## 执行摘要
 
-This project is a deeply diverged downstream fork of `anomalyco/opencode` (384 commits ahead, 105K lines added) that adds a React WebGUI frontend and IDE plugin hosts (VSCode, JetBrains) on top of the upstream CLI tool. The upstream moves aggressively — ~100+ commits/week, weekly releases, and an ongoing Effect.js migration that rewrites function signatures across the codebase. No automated or documented sync process exists today. The last manual merge absorbed 355 commits, resolved 15 file conflicts, modified 790 files, and required multiple hours. The current divergence is 436 upstream commits with 12 known conflict-prone files.
+本项目是 `anomalyco/opencode` 的深度分歧下游 Fork（领先 384 个提交，新增 105K 行），在上游 CLI 工具基础上添加了 React WebGUI 前端和 IDE 插件宿主（VSCode、JetBrains）。上游推进非常激进——每周约 100+ 提交、每周发布，以及一场正在进行的 Effect.js 迁移，重写了整个代码库中的函数签名。目前不存在自动化或文档化的同步流程。上一次手动合并吸收了 355 个提交、解决了 15 个文件冲突、修改了 790 个文件，耗时数小时。当前分歧为 436 个上游提交，已识别 12 个易冲突文件。
 
-The recommended approach is a **pipeline-based sync workflow** using exclusively existing tools — native git commands, GitHub Actions (already in CI), `@octokit/rest` (already a dependency), Turborepo (already configured), and Bun (already the runtime). Zero new dependencies are needed. The critical insight from research is that `git merge-tree --write-tree` (verified against the actual codebase) can predict all 12 conflict files without touching the working tree, enabling a detect → analyze → merge → verify → gate pipeline. The conflict surface is finite and predictable (~28 files), making it tractable to maintain a registry of known hotspots with pre-planned resolution strategies.
+推荐方案是一套**基于管道的同步工作流**，完全使用现有工具——原生 git 命令、GitHub Actions（已在 CI 中）、`@octokit/rest`（已是依赖项）、Turborepo（已配置）和 Bun（已是运行时）。不需要新依赖。研究的关键发现是 `git merge-tree --write-tree`（已在实际代码库上验证）可以在不触碰工作树的情况下预测所有 12 个冲突文件，实现 检测 → 分析 → 合并 → 验证 → 门控 的管道。冲突面是有限且可预测的（约 28 个文件），使得维护一个带有预规划解决策略的已知热点注册表是可行的。
 
-The top risks are: (1) the ongoing upstream Effect.js migration changing function signatures in files the downstream has patched, (2) silent API drift when the SDK isn't regenerated after route changes (compounded by 434+ `any` types in the WebGUI), (3) `bun.lock` conflicts on every single merge, and (4) the exponential pain curve when merges are deferred. All four risks are mitigated by establishing a weekly merge cadence and a strict post-merge verification pipeline. The architecture research strongly recommends starting with a documented manual checklist before automating — a checklist that's followed beats a half-broken CI pipeline that's ignored.
+主要风险是：(1) 上游正在进行的 Effect.js 迁移更改了下游已打补丁文件中的函数签名，(2) SDK 未在路由变更后重新生成导致的静默 API 漂移（被 WebGUI 中 434+ 个 `any` 类型放大），(3) 每次合并都会发生的 `bun.lock` 冲突，以及 (4) 合并推迟时的指数级痛苦曲线。所有四个风险都可通过建立每周合并节奏和严格的合并后验证管道来缓解。架构研究强烈建议在自动化之前先建立文档化的手动检查清单——一个被遵循的检查清单胜过一个被忽略的半坏 CI 管道。
 
-## Key Findings
+## 关键发现
 
-### Recommended Stack
+### 推荐技术栈
 
-No new dependencies required. The entire sync system builds on tools already in the project: native git (≥2.38 for `merge-tree --write-tree`), GitHub Actions, `@octokit/rest`, Turborepo, Bun, and existing build/test infrastructure. Third-party sync actions (`aormsby/Fork-Sync-With-Upstream-action`, GitHub's Sync Fork button) were evaluated and rejected — they only handle fast-forward syncs and fail on the diverged history this project always has. See [STACK.md](STACK.md) for full evaluation.
+不需要新依赖。整个同步系统基于项目中已有的工具构建：原生 git（≥2.38 用于 `merge-tree --write-tree`）、GitHub Actions、`@octokit/rest`、Turborepo、Bun 和现有的构建/测试基础设施。第三方同步 Action（`aormsby/Fork-Sync-With-Upstream-action`、GitHub 的 Sync Fork 按钮）经过评估后被排除——它们只处理 fast-forward 同步，在本项目始终存在的分歧历史上会失败。详见 [STACK.md](STACK.md)。
 
-**Core technologies:**
+**核心技术：**
 
-- **`git merge-tree --write-tree`**: Conflict prediction without modifying worktree — verified against actual codebase, correctly identifies all 12 conflict files
-- **`git rerere`**: Remember and replay conflict resolutions for recurring conflicts in `config.ts`, `server.ts`, `mcp/index.ts`
-- **GitHub Actions (custom workflow)**: Orchestrate the detect → analyze → merge → verify → report pipeline, triggered manually (not on schedule)
-- **Turborepo pipeline**: Parallel build verification across all packages (`bun typecheck`, `bun test`, WebGUI build, SDK regen, IDE plugin compiles)
-- **`@octokit/rest` (already installed)**: Programmatic PR creation with conflict reports, labels, and structured bodies
+- **`git merge-tree --write-tree`**：不修改工作树即可预测冲突——已在实际代码库上验证，正确识别所有 12 个冲突文件
+- **`git rerere`**：记住并重放 `config.ts`、`server.ts`、`mcp/index.ts` 中重复冲突的解决方案
+- **GitHub Actions（自定义工作流）**：编排 检测 → 分析 → 合并 → 验证 → 报告 管道，手动触发（非定时）
+- **Turborepo 管道**：跨所有包的并行构建验证（`bun typecheck`、`bun test`、WebGUI 构建、SDK 重新生成、IDE 插件编译）
+- **`@octokit/rest`（已安装）**：程序化 PR 创建，带冲突报告、标签和结构化内容
 
-### Expected Features
+### 预期功能
 
-See [FEATURES.md](FEATURES.md) for full landscape including dependency graph.
+详见 [FEATURES.md](FEATURES.md) 的完整功能全景和依赖图。
 
-**Must have (table stakes):**
+**必须有（基本要求）：**
 
-- Upstream fetch + merge on isolated sync branch — foundation of the entire workflow
-- Conflict detection report categorized by risk zone — immediate situational awareness
-- SDK regeneration check — #1 source of post-merge breakage
-- Patch compatibility check — #2 source of post-merge breakage
-- Build verification (typecheck, tests, WebGUI, SDK, IDE plugins) — the acceptance gate
-- Rollback path — safety net via sync branch isolation
+- 在隔离同步分支上的上游 fetch + 合并——整个工作流的基础
+- 按风险区域分类的冲突检测报告——即时态势感知
+- SDK 重新生成检查——合并后断裂的 #1 来源
+- 补丁兼容性检查——合并后断裂的 #2 来源
+- 构建验证（类型检查、测试、WebGUI、SDK、IDE 插件）——验收门控
+- 回滚路径——通过同步分支隔离提供安全网
 
-**Should have (differentiators):**
+**应该有（差异化因素）：**
 
-- Impact analysis by zone — classify upstream changes into safe/risky zones, low effort + high payoff
-- Pre-merge dry run — scout conflicts before committing to merge
-- Changelog extraction — understand what upstream did without reading 100+ commits
-- Sync frequency tracking — detect when merge cadence is slipping
+- 按区域的影响分析——将上游变更分类为安全/有风险区域，低成本 + 高回报
+- 合并前试运行——在提交合并前预探冲突
+- 变更日志提取——无需阅读 100+ 提交即可了解上游做了什么
+- 同步频率跟踪——检测合并节奏是否在下滑
 
-**Defer (v2+):**
+**推迟（v2+）：**
 
-- API change detection (parse Hono routes, diff OpenAPI spec) — high complexity
-- Config schema change detection — medium complexity, valuable for `any`-typed WebGUI
-- Merge strategy advisor — heuristic-based per-file strategy suggestions
-- Upstream feature parity tracker — ongoing maintenance burden
-- Dependency drift report — medium complexity, TS version alignment
+- API 变更检测（解析 Hono 路由、diff OpenAPI 规范）——高复杂度
+- 配置 schema 变更检测——中等复杂度，对 `any` 类型的 WebGUI 有价值
+- 合并策略顾问——基于启发式的每文件策略建议
+- 上游功能对等跟踪器——持续维护负担
+- 依赖漂移报告——中等复杂度，TS 版本对齐
 
-**Anti-features (explicitly do NOT build):**
+**反功能（明确不构建）：**
 
-- Automatic conflict resolution — silent bugs with 434+ `any` types
-- Cherry-pick workflow — creates parallel history, compounds merge debt
-- Rebase onto upstream — rewrites 384 downstream commits
-- Automated cron-based sync — unattended merges with no human context
-- Bidirectional sync — almost nothing is directly upstreamable
+- 自动冲突解决——有 434+ 个 `any` 类型时会产生静默 bug
+- Cherry-pick 工作流——创建并行历史，加剧合并债务
+- Rebase 到上游——重写 384 个下游提交
+- 自动定时同步——无人看管的合并缺乏人类上下文
+- 双向同步——几乎没有什么可以直接上推
 
-### Architecture Approach
+### 架构方案
 
-The sync system is a 5-component pipeline: Fetch & Detect → Impact Analysis → Merge Execute → Build Verify → Regression Gate. Each component is discrete, can fail and retry independently, and communicates via well-defined outputs. The architecture deliberately follows an automation spectrum: start with a manual checklist, then script build verification (most mechanically complex), then script conflict detection, and only CI-integrate the full pipeline last. See [ARCHITECTURE.md](ARCHITECTURE.md) for component boundaries and data flow.
+同步系统是一个 5 组件管道：获取与检测 → 影响分析 → 合并执行 → 构建验证 → 回归门控。每个组件是独立的，可以独立失败和重试，并通过定义良好的输出进行通信。架构有意遵循自动化频谱：从手动检查清单开始，然后脚本化构建验证（机械复杂度最高），接着脚本化冲突检测，最后才将完整管道集成到 CI。详见 [ARCHITECTURE.md](ARCHITECTURE.md) 的组件边界和数据流。
 
-**Major components:**
+**主要组件：**
 
-1. **Fetch & Detect** — poll upstream, determine commit range since last merge-base (read-only)
-2. **Impact Analysis** — classify upstream changes against known conflict surface registry (~28 files)
-3. **Merge Execute** — `git merge` on isolated `sync/upstream-YYYYMMDD` branch, apply `rerere` for recurring conflicts
-4. **Build Verify** — ordered pipeline: `bun install` → typecheck → [tests | WebGUI | SDK] in parallel → IDE plugin compiles
-5. **Regression Gate** — go/no-go decision with structured report, merge sync branch into `ide-plugin` on pass
+1. **获取与检测**——轮询上游，确定自上次 merge-base 以来的提交范围（只读）
+2. **影响分析**——将上游变更与已知冲突面注册表（约 28 个文件）进行对比分类
+3. **合并执行**——在隔离的 `sync/upstream-YYYYMMDD` 分支上 `git merge`，为重复冲突应用 `rerere`
+4. **构建验证**——有序管道：`bun install` → 类型检查 → [测试 | WebGUI | SDK] 并行 → IDE 插件编译
+5. **回归门控**——带结构化报告的通过/不通过决策，通过时将同步分支合并到 `ide-plugin`
 
-**Key patterns:**
+**关键模式：**
 
-- Known Conflict Surface Registry — finite list of ~28 files with pre-planned resolution strategies
-- Sync Branch Isolation — never merge directly into `ide-plugin`, always through throwaway sync branch
-- Lock File Regeneration — always accept upstream `bun.lock`, then `bun install` to regenerate
-- SDK Regeneration After Merge — mandatory when server routes change
+- 已知冲突面注册表——约 28 个文件的有限列表，带有预规划的解决策略
+- 同步分支隔离——永远不直接合并到 `ide-plugin`，始终通过一次性同步分支
+- 锁文件重新生成——始终接受上游 `bun.lock`，然后 `bun install` 重新生成
+- 合并后 SDK 重新生成——服务器路由变更时强制执行
 
-### Critical Pitfalls
+### 严重陷阱
 
-See [PITFALLS.md](PITFALLS.md) for full analysis with detection strategies.
+详见 [PITFALLS.md](PITFALLS.md) 的完整分析和检测策略。
 
-1. **Upstream core modifications as permanent merge tax** — 12 downstream-modified files in `packages/opencode/src/` create recurring conflicts. Mitigate by auditing and extracting patches into extension points; target ≤3 upstream files touched.
-2. **Effect.js migration avalanche** — upstream is aggressively migrating to Effect.js (20+ "destroy facade" commits recently), changing function signatures in files the downstream patches. Mitigate by never importing internal Effect-wrapped functions directly; always go through HTTP API/SDK boundary.
-3. **SDK regeneration gap causing silent API drift** — 566 lines of manual fetch wrappers typed as `any` + stale SDK = silent runtime failures. Mitigate by making SDK regen a mandatory post-merge step and incrementally migrating manual wrappers.
-4. **bun.lock merge hell** — conflicts on every single merge, with 4 patched deps at risk. Mitigate by scripting lockfile regeneration and post-install patch validation.
-5. **Merge frequency decay** — exponential pain curve when merges are deferred (355-commit merge was a multi-hour ordeal). Mitigate by enforcing weekly merge cadence and tracking merge duration.
+1. **上游核心修改成为永久性合并税**——`packages/opencode/src/` 中 12 个被下游修改的文件产生重复冲突。通过审计并将补丁提取到扩展点来缓解；目标是被修改的上游文件 ≤3 个。
+2. **Effect.js 迁移雪崩**——上游正在激进地迁移到 Effect.js（最近有 20+ "destroy facade"提交），更改了下游打过补丁的文件中的函数签名。通过永远不直接导入内部 Effect 包装的函数来缓解；始终通过 HTTP API/SDK 边界。
+3. **SDK 重新生成间隙导致静默 API 漂移**——566 行类型为 `any` 的手动 fetch 包装器 + 过时的 SDK = 静默运行时故障。通过使 SDK 重新生成成为强制性合并后步骤和逐步迁移手动包装器来缓解。
+4. **bun.lock 合并地狱**——每次合并都冲突，4 个被补丁依赖有风险。通过脚本化锁文件重新生成和安装后补丁验证来缓解。
+5. **合并频率衰减**——合并推迟时的指数级痛苦曲线（355 个提交的合并耗时数小时）。通过强制每周合并节奏和跟踪合并时长来缓解。
 
-**Compound risk:** Pitfalls #1, #2, #4, and #6 can activate simultaneously during a big upstream Effect.js refactor that bumps deps. Prevention: never let the merge gap exceed 2 weeks.
+**复合风险:** 陷阱 #1、#2、#4 和 #6 可在上游大的 Effect.js 重构升级依赖时同时触发。预防：永远不让合并间隙超过 2 周。
 
-## Implications for Roadmap
+## 路线图影响
 
-Based on combined research across all four dimensions, the sync system should be built in 4 phases following the automation spectrum (manual → scripted → semi-auto → CI-integrated).
+基于四个维度的综合研究，同步系统应分 4 个阶段构建，遵循自动化频谱（手动 → 脚本化 → 半自动 → CI 集成）。
 
-### Phase 1: Merge Foundation & Manual Checklist
+### 阶段 1：合并基础与手动检查清单
 
-**Rationale:** All four research files identify this as the prerequisite. You can't automate what you haven't done manually. The architecture research explicitly recommends "checklist first" based on the repo's history of ~15 manual merges with no documented process.
-**Delivers:** A documented, repeatable merge process that any developer can follow. Establishes the sync branch pattern, lockfile resolution flow, SDK regeneration step, and build verification order.
-**Addresses:** All 7 table-stakes features from FEATURES.md (fetch, conflict detection, SDK check, patch check, build verify, test suite, rollback)
-**Avoids:** Pitfall #4 (bun.lock hell — script the regeneration), Pitfall #12 (merge frequency decay — establish weekly cadence), Pitfall #1 (core modifications — audit and document current patch surface)
-**Includes:**
+**理由:** 所有四份研究文件都将此确定为前提条件。你无法自动化你还没有手动完成过的事情。架构研究明确建议"先建清单"，基于该仓库约 15 次手动合并但无文档化流程的历史。
+**交付物:** 一个文档化的、可重复的合并流程，任何开发者都可以遵循。建立同步分支模式、锁文件解决流程、SDK 重新生成步骤和构建验证顺序。
+**解决:** FEATURES.md 中所有 7 个基本要求（fetch、冲突检测、SDK 检查、补丁检查、构建验证、测试套件、回滚）
+**规避:** 陷阱 #4（bun.lock 地狱——脚本化重新生成）、陷阱 #12（合并频率衰减——建立每周节奏）、陷阱 #1（核心修改——审计并文档化当前补丁面）
+**包含:**
 
-- Document the manual merge checklist in `.planning/`
-- Create the Known Conflict Surface Registry (the ~28 files with risk levels and strategies)
-- Configure `git rerere` for recurring conflict patterns
-- Add `.gitattributes` merge drivers for lockfiles
-- Validate the checklist by performing one actual upstream merge
+- 在 `.planning/` 中文档化手动合并检查清单
+- 创建已知冲突面注册表（约 28 个文件的风险级别和策略）
+- 配置 `git rerere` 用于重复冲突模式
+- 添加 `.gitattributes` 锁文件合并驱动
+- 通过执行一次实际上游合并来验证检查清单
 
-### Phase 2: Build Verification Script
+### 阶段 2：构建验证脚本
 
-**Rationale:** Architecture research identifies Build Verify as "the most mechanically complex component" and recommends building it first because it's useful beyond just syncs — it validates regular development too. STACK.md confirms all build tools are already in place.
-**Delivers:** A single script that runs the full verification pipeline: `bun install` → typecheck → tests + WebGUI + SDK in parallel → IDE plugin compiles. Pass/fail per step with structured output.
-**Addresses:** Build verification and test suite features; also serves as CI enhancement for regular PRs
-**Avoids:** Pitfall #3 (SDK regeneration gap — makes it mandatory), Pitfall #7 (dual package manager — builds both bun and pnpm targets), Pitfall #8 (server mount fragility — adds smoke test)
-**Includes:**
+**理由:** 架构研究将构建验证确定为"机械复杂度最高的组件"，并建议优先构建，因为它不仅用于同步——也能验证日常开发。STACK.md 确认所有构建工具已就位。
+**交付物:** 运行完整验证管道的单一脚本：`bun install` → 类型检查 → 测试 + WebGUI + SDK 并行 → IDE 插件编译。每步有通过/失败的结构化输出。
+**解决:** 构建验证和测试套件功能；也作为常规 PR 的 CI 增强
+**规避:** 陷阱 #3（SDK 重新生成间隙——使其强制）、陷阱 #7（双包管理器——构建 bun 和 pnpm 两个目标）、陷阱 #8（服务器挂载脆弱性——添加冒烟测试）
+**包含:**
 
-- Verification script (`script/verify-merge.ts` or similar)
-- SDK regeneration as mandatory step when routes change
-- VSCode plugin compile (pnpm) and JetBrains plugin compile (gradle)
-- Minimal smoke test: start server, verify WebGUI mount responds
+- 验证脚本（`script/verify-merge.ts` 或类似）
+- 路由变更时 SDK 重新生成为强制步骤
+- VSCode 插件编译（pnpm）和 JetBrains 插件编译（gradle）
+- 最小冒烟测试：启动服务器，验证 WebGUI 挂载点响应
 
-### Phase 3: Conflict Detection & Impact Analysis Script
+### 阶段 3：冲突检测与影响分析脚本
 
-**Rationale:** With the manual checklist proven and verification automated, the next bottleneck is understanding what upstream changed before attempting a merge. STACK.md verified that `git merge-tree --write-tree` correctly predicts conflicts. FEATURES.md identifies impact analysis by zone as the highest-value differentiator.
-**Delivers:** A script that fetches upstream, predicts conflicts, classifies them by risk zone (safe/risky/guaranteed), generates a merge report with changelog, and advises on merge difficulty.
-**Addresses:** Pre-merge dry run, impact analysis by zone, changelog extraction, sync frequency tracking
-**Avoids:** Pitfall #2 (Effect.js migration — scan for signature changes before merge), Pitfall #6 (patch dep breakage — detect bumped patched deps before merge)
-**Includes:**
+**理由:** 手动检查清单验证通过且验证已自动化后，下一个瓶颈是在尝试合并前了解上游改变了什么。STACK.md 验证了 `git merge-tree --write-tree` 能正确预测冲突。FEATURES.md 将按区域的影响分析确定为最有价值的差异化因素。
+**交付物:** 一个脚本，获取上游、预测冲突、按风险区域（安全/有风险/必定冲突）分类、生成带变更日志的合并报告，并给出合并难度建议。
+**解决:** 合并前试运行、按区域影响分析、变更日志提取、同步频率跟踪
+**规避:** 陷阱 #2（Effect.js 迁移——合并前扫描签名变更）、陷阱 #6（补丁依赖中断——合并前检测被升级的补丁依赖）
+**包含:**
 
-- Fetch & Detect component (commit range, changelog summary)
-- Impact Analysis component (conflict surface comparison, risk classification)
-- Merge report generation (markdown with categorized file lists)
-- Patch version change detection (compare before/after for 4 patched deps)
+- 获取与检测组件（提交范围、变更日志摘要）
+- 影响分析组件（冲突面对比、风险分类）
+- 合并报告生成（带分类文件列表的 markdown）
+- 补丁版本变更检测（比较 4 个被补丁依赖的前后版本）
 
-### Phase 4: GitHub Actions CI Integration
+### 阶段 4：GitHub Actions CI 集成
 
-**Rationale:** Only automate after the manual process is proven and individual components are scripted. Architecture research positions this as "BUILD LAST" on the automation spectrum. Premature CI integration creates a pipeline that breaks and gets ignored.
-**Delivers:** A GitHub Actions workflow (`upstream-sync.yml`) that runs the full pipeline: detect → analyze → (optionally) merge → verify → report via PR. Manually triggered with optional auto-merge for clean merges.
-**Addresses:** Full automation of the sync loop; PR creation with structured conflict reports and labels
-**Avoids:** Anti-feature of automated cron sync — trigger is manual, human reviews conflicts
-**Includes:**
+**理由:** 仅在手动流程验证通过且各组件已脚本化后才自动化。架构研究将此定位为自动化频谱上的"最后构建"。过早的 CI 集成会创建一个坏掉且被忽略的管道。
+**交付物:** 一个 GitHub Actions 工作流（`upstream-sync.yml`），运行完整管道：检测 → 分析 →（可选）合并 → 验证 → 通过 PR 报告。手动触发，干净合并时可选自动合并。
+**解决:** 同步循环的完全自动化；带结构化冲突报告和标签的 PR 创建
+**规避:** 自动定时同步的反功能——触发是手动的，人工审查冲突
+**包含:**
 
-- GitHub Actions workflow with manual trigger (`workflow_dispatch`)
-- Automated PR creation via `@octokit/rest` with conflict reports
-- Labels: `upstream-sync`, `has-conflicts`, `clean-merge`, severity levels
-- Merge report archived in `.planning/merges/YYYY-MM-DD.md`
-- Optional: scheduled detection-only run (detect + report, no merge)
+- 带手动触发的 GitHub Actions 工作流（`workflow_dispatch`）
+- 通过 `@octokit/rest` 自动创建 PR 并附冲突报告
+- 标签：`upstream-sync`、`has-conflicts`、`clean-merge`、严重程度级别
+- 合并报告归档到 `.planning/merges/YYYY-MM-DD.md`
+- 可选：仅检测的定时运行（检测 + 报告，不合并）
 
-### Phase Ordering Rationale
+### 阶段排序理由
 
-- **Phase 1 before automation** because the architecture research shows this repo has done ~15 manual merges with undocumented, inconsistent processes. Documenting what works comes before scripting it.
-- **Phase 2 before Phase 3** because build verification is useful for ALL development, not just syncs. It has independent value. Detection scripts are sync-specific.
-- **Phase 3 before Phase 4** because CI integration wraps the detection + verification scripts. Building the components first means the CI workflow is thin orchestration, not complex logic.
-- **Phases avoid the "Everything Breaks at Once" compound risk** by establishing merge cadence (Phase 1), verification (Phase 2), and early warning (Phase 3) before relying on automation (Phase 4).
+- **阶段 1 在自动化之前**——因为架构研究表明该仓库已进行约 15 次手动合并，流程未文档化、不一致。文档化有效做法先于脚本化。
+- **阶段 2 在阶段 3 之前**——因为构建验证对所有开发都有用，不仅是同步。它有独立价值。检测脚本是同步特有的。
+- **阶段 3 在阶段 4 之前**——因为 CI 集成包装了检测 + 验证脚本。先构建组件意味着 CI 工作流是薄编排层，而非复杂逻辑。
+- **各阶段避免"一切同时崩溃"的复合风险**——通过建立合并节奏（阶段 1）、验证（阶段 2）和预警（阶段 3），然后再依赖自动化（阶段 4）。
 
-### Research Flags
+### 研究标记
 
-Phases likely needing deeper research during planning:
+规划阶段可能需要更深入研究的：
 
-- **Phase 1:** Needs research into optimal `git rerere` configuration and whether existing recurring conflict patterns can be pre-seeded. Also needs an audit of the 12 downstream-modified upstream files to identify extraction candidates.
-- **Phase 3:** `git merge-tree` output parsing needs prototyping — the output format is structured but not well-documented for programmatic consumption.
+- **阶段 1:** 需要研究最佳 `git rerere` 配置，以及现有重复冲突模式是否可以预先填充。还需要审计 12 个被下游修改的上游文件以识别提取候选者。
+- **阶段 3:** `git merge-tree` 输出解析需要原型开发——输出格式是结构化的但对程序化消费的文档不充分。
 
-Phases with standard patterns (skip research-phase):
+使用标准模式的阶段（跳过研究阶段）：
 
-- **Phase 2:** All build tools are already configured and running in CI. This is pure scripting of existing commands in the correct order. No research needed.
-- **Phase 4:** GitHub Actions workflow authoring is well-documented. The workflow wraps existing scripts. Standard patterns apply.
+- **阶段 2:** 所有构建工具已配置并在 CI 中运行。这是纯粹按正确顺序编排现有命令的脚本。不需要研究。
+- **阶段 4:** GitHub Actions 工作流编写有充分文档。工作流包装现有脚本。标准模式适用。
 
-## Confidence Assessment
+## 置信度评估
 
-| Area         | Confidence | Notes                                                                                                                                     |
-| ------------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Stack        | HIGH       | Zero new dependencies. All tools verified in existing codebase. `git merge-tree` verified against actual conflict state.                  |
-| Features     | HIGH       | Feature landscape derived from direct codebase analysis, git history, and PROJECT.md requirements. Dependency chain validated.            |
-| Architecture | HIGH       | Pipeline components derived from actual past merge patterns (commit `41ce0564a`). Build verification order validated against existing CI. |
-| Pitfalls     | HIGH       | All pitfalls sourced from actual codebase evidence — merge history, commit messages, known conflict files, upstream branch analysis.      |
+| 领域   | 置信度 | 说明                                                                                 |
+| ------ | ------ | ------------------------------------------------------------------------------------ |
+| 技术栈 | 高     | 零新依赖。所有工具在现有代码库中验证。`git merge-tree` 已对实际冲突状态验证。        |
+| 功能   | 高     | 功能全景来自直接的代码库分析、git 历史和 PROJECT.md 需求。依赖链已验证。             |
+| 架构   | 高     | 管道组件来自实际过去的合并模式（提交 `41ce0564a`）。构建验证顺序对照现有 CI 已验证。 |
+| 陷阱   | 高     | 所有陷阱来源于实际代码库证据——合并历史、提交信息、已知冲突文件、上游分支分析。       |
 
-**Overall confidence:** HIGH — This is unusually high confidence because the research is grounded entirely in direct codebase analysis rather than external sources. The conflict surface, merge history, build pipeline, and dependency graph are all observable facts.
+**总体置信度:** 高——这是异常高的置信度，因为研究完全基于直接的代码库分析而非外部来源。冲突面、合并历史、构建管道和依赖图都是可观察的事实。
 
-### Gaps to Address
+### 待解决差距
 
-- **`git rerere` pre-seeding:** Can past conflict resolutions be recorded to bootstrap `rerere`? Needs testing during Phase 1 execution.
-- **Effect.js migration velocity:** How fast is upstream migrating? Need to monitor during Phase 1 to calibrate merge frequency recommendation.
-- **JetBrains plugin build:** Marked as SOFT gate in architecture — unclear if it blocks releases today. Validate during Phase 2.
-- **Upstream competing UI:** The `sdks/vscode/` upstream branch is a strategic risk. Not addressable through sync tooling — requires monitoring and product strategy decisions at milestone boundaries.
-- **`any` type elimination in WebGUI:** All research files flag this as amplifying risk. Not part of the sync workflow itself, but a parallel workstream that reduces sync risk over time. Should be tracked as a separate initiative.
+- **`git rerere` 预填充:** 过去的冲突解决能否被记录以引导 `rerere`？需要在阶段 1 执行期间测试。
+- **Effect.js 迁移速度:** 上游迁移有多快？需要在阶段 1 期间监控以校准合并频率建议。
+- **JetBrains 插件构建:** 在架构中标记为软门控——不清楚它今天是否阻塞发布。在阶段 2 验证。
+- **上游竞争 UI:** 上游的 `sdks/vscode/` 分支是战略风险。无法通过同步工具解决——需要在里程碑边界进行监控和产品策略决策。
+- **WebGUI 中的 `any` 类型消除:** 所有研究文件都标记这放大了风险。不属于同步工作流本身，但是一个并行的工作流，随时间降低同步风险。应作为独立项目跟踪。
 
-## Sources
+## 来源
 
-### Primary (HIGH confidence)
+### 主要（高置信度）
 
-- Actual repository state: `git merge-tree --write-tree`, `git diff --stat`, `git log`, `git remote -v` — all run 2026-04-12
-- Merge commit `41ce0564a` — detailed conflict documentation from the 355-commit merge
-- Existing CI: `.github/workflows/test.yml`, `.github/workflows/typecheck.yml`
-- Existing build config: `turbo.json`, `package.json`, `hosts/scripts/build_vscode.sh`
-- Project context: `.planning/PROJECT.md`, `.planning/codebase/ARCHITECTURE.md`, `CONCERNS.md`
+- 实际仓库状态：`git merge-tree --write-tree`、`git diff --stat`、`git log`、`git remote -v`——均于 2026-04-12 运行
+- 合并提交 `41ce0564a`——355 个提交合并的详细冲突文档
+- 现有 CI：`.github/workflows/test.yml`、`.github/workflows/typecheck.yml`
+- 现有构建配置：`turbo.json`、`package.json`、`hosts/scripts/build_vscode.sh`
+- 项目上下文：`.planning/PROJECT.md`、`.planning/codebase/ARCHITECTURE.md`、`CONCERNS.md`
 
-### Secondary (MEDIUM confidence)
+### 次要（中置信度）
 
-- Third-party action evaluation: `aormsby/Fork-Sync-With-Upstream-action` (GitHub Marketplace), `peter-evans/create-pull-request` (GitHub Marketplace)
-- GitHub fork sync docs: https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/syncing-a-fork
+- 第三方 Action 评估：`aormsby/Fork-Sync-With-Upstream-action`（GitHub Marketplace）、`peter-evans/create-pull-request`（GitHub Marketplace）
+- GitHub Fork 同步文档：https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/syncing-a-fork
 
-### Tertiary (LOW confidence)
+### 补充（低置信度）
 
-- `git merge-tree` programmatic output format — well-documented for human use, less so for scripted parsing. Needs prototyping.
-- Upstream roadmap intent — inferred from branch names (`sdks/vscode/`, `app/startup-splash`), not confirmed
+- `git merge-tree` 程序化输出格式——人类使用文档充分，脚本解析文档较少。需要原型开发。
+- 上游路线图意图——从分支名推断（`sdks/vscode/`、`app/startup-splash`），未确认
 
 ---
 
-_Research completed: 2026-04-12_
-_Ready for roadmap: yes_
+_研究完成：2026-04-12_
+_可进入路线图：是_

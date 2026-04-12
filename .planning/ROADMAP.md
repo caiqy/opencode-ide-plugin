@@ -1,109 +1,109 @@
-# Roadmap: OpenCode IDE Plugin — Upstream Sync Workflow
+# 路线图：OpenCode IDE Plugin — 上游同步工作流
 
-## Overview
+## 概述
 
-This roadmap builds a reliable upstream sync pipeline for a deeply diverged fork (384 commits ahead, 105K lines added). The journey follows the automation spectrum: establish a safe, documented merge process → prove merges don't break anything via automated verification → automate conflict detection and SDK/patch checks → add pre-merge impact analysis for informed decision-making. Every phase delivers a complete, independently useful capability.
+本路线图为一个深度分叉的 fork（领先 384 个 commit，新增 10.5 万行代码）构建可靠的上游同步流水线。演进路径遵循自动化阶梯：建立安全、有文档的合并流程 → 通过自动化验证证明合并未破坏任何内容 → 自动化冲突检测和 SDK/补丁检查 → 增加合并前影响分析以辅助决策。每个阶段都交付一个完整且独立可用的能力。
 
-## Phases
+## 阶段
 
-**Phase Numbering:**
+**阶段编号说明：**
 
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+- 整数阶段（1, 2, 3）：已规划的里程碑工作
+- 小数阶段（2.1, 2.2）：紧急插入项（标记为 INSERTED）
 
-Decimal phases appear between their surrounding integers in numeric order.
+小数阶段按数值顺序排列在相邻整数阶段之间。
 
-- [ ] **Phase 1: Merge Foundation** - Safe, documented, repeatable upstream merge process on isolated sync branches
-- [ ] **Phase 2: Build Verification** - Automated post-merge verification pipeline proving nothing broke
-- [ ] **Phase 3: Conflict Detection** - Automated conflict reporting, SDK regeneration checks, and patch compatibility validation
-- [ ] **Phase 4: Impact Analysis** - Pre-merge change classification, dry-run previews, changelog extraction, and sync tracking
+- [ ] **阶段 1：合并基础** - 在隔离的 sync 分支上建立安全、有文档、可重复的上游合并流程
+- [ ] **阶段 2：构建验证** - 自动化的合并后验证流水线，证明没有任何内容被破坏
+- [ ] **阶段 3：冲突检测** - 自动化冲突报告、SDK 重新生成检查和补丁兼容性验证
+- [ ] **阶段 4：影响分析** - 合并前变更分类、试运行预览、变更日志提取和同步追踪
 
-## Phase Details
+## 阶段详情
 
-### Phase 1: Merge Foundation
+### 阶段 1：合并基础
 
-**Goal**: Developer can safely merge upstream changes on an isolated branch with a documented process and clear rollback path
-**Depends on**: Nothing (first phase)
-**Requirements**: SYNC-01, SYNC-05, SYNC-06
-**Success Criteria** (what must be TRUE):
+**目标**：开发者可以在隔离分支上安全地合并上游变更，具备文档化的流程和清晰的回滚路径
+**依赖**：无（第一阶段）
+**需求**：SYNC-01, SYNC-05, SYNC-06
+**成功标准**（以下条件必须为 TRUE）：
 
-1. Developer can create a sync branch, fetch upstream, and merge — without touching the main dev branch
-2. Developer can abort or roll back a failed merge to a clean state in under 1 minute
-3. A written checklist exists that another developer could follow to perform a complete upstream sync
-4. The checklist has been validated by performing at least one actual upstream merge end-to-end
-   **Plans**: TBD
+1. 开发者可以创建 sync 分支、拉取上游并合并——不影响主开发分支
+2. 开发者可以在 1 分钟内中止或回滚失败的合并，恢复到干净状态
+3. 存在一份书面检查单，其他开发者可以按照它完成完整的上游同步
+4. 该检查单已通过至少一次端到端的实际上游合并验证
+   **计划**：待定
 
-Plans:
+计划：
 
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01：待定
+- [ ] 01-02：待定
+- [ ] 01-03：待定
 
-### Phase 2: Build Verification
+### 阶段 2：构建验证
 
-**Goal**: After any merge, a single command verifies type safety, builds, and tests across all components — with structured pass/fail reporting
-**Depends on**: Phase 1
-**Requirements**: BUILD-01, BUILD-02, BUILD-03, BUILD-04, BUILD-05, BUILD-06
-**Success Criteria** (what must be TRUE):
+**目标**：每次合并后，一条命令即可验证所有组件的类型安全、构建和测试——并输出结构化的通过/失败报告
+**依赖**：阶段 1
+**需求**：BUILD-01, BUILD-02, BUILD-03, BUILD-04, BUILD-05, BUILD-06
+**成功标准**（以下条件必须为 TRUE）：
 
-1. Running the verification script produces a structured report showing pass/fail for each component (typecheck, webgui, vscode, jetbrains, tests)
-2. A type error in any package causes the verification to report failure for that component
-3. WebGUI vite build, VSCode pnpm compile, and JetBrains gradle build are all verified in one run
-4. Test suites (vitest for webgui, mocha for vscode) run and their results appear in the report
-5. The verification script can be run independently of the sync workflow (useful for regular development)
-   **Plans**: TBD
+1. 运行验证脚本生成结构化报告，显示每个组件（typecheck、webgui、vscode、jetbrains、tests）的通过/失败状态
+2. 任何包中的类型错误会导致该组件在验证中报告失败
+3. WebGUI vite build、VSCode pnpm compile 和 JetBrains gradle build 在一次运行中全部验证
+4. 测试套件（webgui 的 vitest、vscode 的 mocha）运行并在报告中显示结果
+5. 验证脚本可以独立于同步工作流运行（对日常开发同样有用）
+   **计划**：待定
 
-Plans:
+计划：
 
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
-- [ ] 02-03: TBD
+- [ ] 02-01：待定
+- [ ] 02-02：待定
+- [ ] 02-03：待定
 
-### Phase 3: Conflict Detection
+### 阶段 3：冲突检测
 
-**Goal**: After a merge, automatically detect and report conflicts by risk zone, flag SDK regeneration needs, and validate dependency patches
-**Depends on**: Phase 1
-**Requirements**: SYNC-02, SYNC-03, SYNC-04
-**Success Criteria** (what must be TRUE):
+**目标**：合并后自动按风险区域检测并报告冲突，标记 SDK 重新生成需求，验证依赖补丁兼容性
+**依赖**：阶段 1
+**需求**：SYNC-02, SYNC-03, SYNC-04
+**成功标准**（以下条件必须为 TRUE）：
 
-1. After a merge, a conflict report is generated categorizing files as downstream-only / upstream-only / shared with risk levels
-2. When upstream changes server routes or OpenAPI spec, the report flags that SDK regeneration is needed
-3. When upstream bumps versions of the 4 patched dependencies, the report flags which patches need re-validation
-   **Plans**: TBD
+1. 合并后生成冲突报告，将文件分类为 downstream-only / upstream-only / shared 并标注风险等级
+2. 当上游修改 server routes 或 OpenAPI spec 时，报告标记需要重新生成 SDK
+3. 当上游升级 4 个已打补丁依赖的版本时，报告标记哪些补丁需要重新验证
+   **计划**：待定
 
-Plans:
+计划：
 
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
-- [ ] 03-03: TBD
+- [ ] 03-01：待定
+- [ ] 03-02：待定
+- [ ] 03-03：待定
 
-### Phase 4: Impact Analysis
+### 阶段 4：影响分析
 
-**Goal**: Before committing to a merge, developer can preview expected conflicts, understand upstream changes, and track sync health over time
-**Depends on**: Phase 3
-**Requirements**: IMPACT-01, IMPACT-02, IMPACT-03, IMPACT-04
-**Success Criteria** (what must be TRUE):
+**目标**：在提交合并之前，开发者可以预览预期冲突、理解上游变更，并追踪同步健康度
+**依赖**：阶段 3
+**需求**：IMPACT-01, IMPACT-02, IMPACT-03, IMPACT-04
+**成功标准**（以下条件必须为 TRUE）：
 
-1. Upstream changes are classified into safe zones (upstream-only dirs) and risk zones (shared dirs) before the merge happens
-2. Developer can run a dry-run that shows which files will conflict — without modifying the working tree
-3. A changelog is extracted from upstream commits grouped by category (feat/fix/refactor/breaking)
-4. Each sync records metadata (date, commits absorbed, conflicts encountered) enabling merge frequency tracking
-   **Plans**: TBD
+1. 合并发生前，上游变更被分类为安全区域（upstream-only 目录）和风险区域（shared 目录）
+2. 开发者可以执行试运行，查看哪些文件会冲突——而不修改工作树
+3. 从上游 commit 中提取变更日志，按类别分组（feat/fix/refactor/breaking）
+4. 每次同步记录元数据（日期、吸收的 commit 数、遇到的冲突数），支持合并频率追踪
+   **计划**：待定
 
-Plans:
+计划：
 
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
-- [ ] 04-03: TBD
+- [ ] 04-01：待定
+- [ ] 04-02：待定
+- [ ] 04-03：待定
 
-## Progress
+## 进度
 
-**Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4
+**执行顺序：**
+阶段按数值顺序执行：1 → 2 → 3 → 4
 
-| Phase                 | Plans Complete | Status      | Completed |
-| --------------------- | -------------- | ----------- | --------- |
-| 1. Merge Foundation   | 0/3            | Not started | -         |
-| 2. Build Verification | 0/3            | Not started | -         |
-| 3. Conflict Detection | 0/3            | Not started | -         |
-| 4. Impact Analysis    | 0/3            | Not started | -         |
+| 阶段        | 已完成计划 | 状态   | 完成时间 |
+| ----------- | ---------- | ------ | -------- |
+| 1. 合并基础 | 0/3        | 未开始 | -        |
+| 2. 构建验证 | 0/3        | 未开始 | -        |
+| 3. 冲突检测 | 0/3        | 未开始 | -        |
+| 4. 影响分析 | 0/3        | 未开始 | -        |

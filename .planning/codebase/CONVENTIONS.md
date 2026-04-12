@@ -1,53 +1,53 @@
-# Coding Conventions
+# 编码规范
 
-**Analysis Date:** 2026-04-12
+**分析日期：** 2026-04-12
 
-## Style Guide
+## 风格指南
 
-### Authoritative Source
+### 权威来源
 
-The style guide is defined in `AGENTS.md` at the repo root. All rules below are enforced project-wide.
+风格指南定义在仓库根目录的 `AGENTS.md` 中。以下所有规则在项目范围内强制执行。
 
-### General Principles
+### 通用原则
 
-- Keep things in one function unless composable or reusable
-- Avoid `try`/`catch` where possible
-- Avoid using the `any` type
-- Prefer single word variable names where possible
-- Use Bun APIs when possible (e.g., `Bun.file()`)
-- Rely on type inference; avoid explicit type annotations or interfaces unless necessary for exports or clarity
-- Prefer functional array methods (`flatMap`, `filter`, `map`) over `for` loops; use type guards on `filter` to maintain type inference downstream
+- 除非需要组合或复用，否则将逻辑保留在一个函数中
+- 尽可能避免 `try`/`catch`
+- 避免使用 `any` 类型
+- 尽可能使用单词变量名
+- 尽可能使用 Bun API（例如 `Bun.file()`）
+- 依赖类型推断；除非为了导出或清晰性，否则避免显式类型注解或接口
+- 优先使用函数式数组方法（`flatMap`、`filter`、`map`）而非 `for` 循环；在 `filter` 上使用类型守卫以维持下游的类型推断
 
-### Formatting
+### 格式化
 
-- **Prettier** (configured in root `package.json`):
-  - `semi: false` — no semicolons
-  - `printWidth: 120` — line wrap at 120 characters
-- **EditorConfig** (`.editorconfig`):
+- **Prettier**（在根 `package.json` 中配置）：
+  - `semi: false` — 不使用分号
+  - `printWidth: 120` — 120 字符处换行
+- **EditorConfig**（`.editorconfig`）：
   - `charset: utf-8`
   - `end_of_line: lf`
   - `indent_style: space`
   - `indent_size: 2`
   - `insert_final_newline: true`
-- **Husky** (`.husky/`) is configured for git hooks (via `prepare` script)
+- **Husky**（`.husky/`）配置了 git hooks（通过 `prepare` 脚本）
 
-### Module System
+### 模块系统
 
-- All packages use `"type": "module"` (ES modules)
-- Use `import`/`export` syntax exclusively, never `require()`
+- 所有包使用 `"type": "module"`（ES 模块）
+- 仅使用 `import`/`export` 语法，不使用 `require()`
 
-### TypeScript Strictness
+### TypeScript 严格性
 
-- WebGUI (`packages/opencode/webgui/tsconfig.app.json`): `strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true`, `noFallthroughCasesInSwitch: true`
-- VSCode plugin (`hosts/vscode-plugin/tsconfig.json`): standard TypeScript compilation
-- Root extends `@tsconfig/bun/tsconfig.json`
-- Type checking: always run `bun typecheck` from package directories, never `tsc` directly
+- WebGUI（`packages/opencode/webgui/tsconfig.app.json`）：`strict: true`、`noUnusedLocals: true`、`noUnusedParameters: true`、`noFallthroughCasesInSwitch: true`
+- VSCode 插件（`hosts/vscode-plugin/tsconfig.json`）：标准 TypeScript 编译
+- 根目录继承 `@tsconfig/bun/tsconfig.json`
+- 类型检查：始终从包目录运行 `bun typecheck`，不直接使用 `tsc`
 
-## Naming Conventions
+## 命名规范
 
-### MANDATORY Naming Enforcement (Agent-Written Code)
+### 强制命名规则（Agent 编写的代码）
 
-This rule is mandatory. Use single word names by default for new locals, params, and helper functions:
+此规则为强制性。新的局部变量、参数和辅助函数默认使用单词命名：
 
 ```ts
 // Good
@@ -59,39 +59,39 @@ const fooBar = 1
 function prepareJournal(dir: string) {}
 ```
 
-**Preferred short names:** `pid`, `cfg`, `err`, `opts`, `dir`, `root`, `child`, `state`, `timeout`
+**推荐短名称：** `pid`、`cfg`、`err`、`opts`、`dir`、`root`、`child`、`state`、`timeout`
 
-**Avoid unless truly required:** `inputPID`, `existingClient`, `connectTimeout`, `workerPath`
+**除非确实需要否则避免：** `inputPID`、`existingClient`、`connectTimeout`、`workerPath`
 
-### Files
+### 文件
 
-- **WebGUI components:** PascalCase for React components (`MessageInput.tsx`, `CompactHeader/`, `SubtaskDrawer/`)
-- **WebGUI hooks:** camelCase prefixed with `use` (`useDebounce.ts`, `useClickOutside.ts`)
-- **WebGUI state:** PascalCase for Context files (`SessionContext.tsx`, `ThemeContext.tsx`), camelCase for stores (`tabStore.ts`, `scopedStorage.ts`)
-- **WebGUI lib/utils:** camelCase (`ideBridge.ts`, `classNames.ts`, `formatting.ts`)
-- **WebGUI repos (state/repo/):** camelCase suffixed with `Repo` (`draftRepo.ts`, `tabsRepo.ts`, `themeRepo.ts`)
-- **VSCode plugin:** PascalCase for classes (`BackendLauncher.ts`, `WebviewManager.ts`, `ErrorHandler.ts`)
-- **VSCode plugin commands:** PascalCase (`AddToContextCommand.ts`, `PastePathCommand.ts`)
-- **Test files:** co-located, same name with `.test.ts` or `.test.tsx` suffix (`tabPolicy.test.ts`, `SessionContext.test.tsx`)
-- **Test files (topic-scoped):** dot-separated topic suffix before `.test` (`MessagesContext.questions.test.tsx`, `MessagesContext.pagination.test.tsx`)
-- **Upstream opencode schemas:** snake_case suffixed with `.sql.ts` (`session.sql.ts`, `project.sql.ts`)
+- **WebGUI 组件：** React 组件使用 PascalCase（`MessageInput.tsx`、`CompactHeader/`、`SubtaskDrawer/`）
+- **WebGUI hooks：** camelCase 并以 `use` 为前缀（`useDebounce.ts`、`useClickOutside.ts`）
+- **WebGUI 状态：** Context 文件使用 PascalCase（`SessionContext.tsx`、`ThemeContext.tsx`），store 使用 camelCase（`tabStore.ts`、`scopedStorage.ts`）
+- **WebGUI lib/utils：** camelCase（`ideBridge.ts`、`classNames.ts`、`formatting.ts`）
+- **WebGUI repos（state/repo/）：** camelCase 并以 `Repo` 为后缀（`draftRepo.ts`、`tabsRepo.ts`、`themeRepo.ts`）
+- **VSCode 插件：** 类使用 PascalCase（`BackendLauncher.ts`、`WebviewManager.ts`、`ErrorHandler.ts`）
+- **VSCode 插件命令：** PascalCase（`AddToContextCommand.ts`、`PastePathCommand.ts`）
+- **测试文件：** 同名并置，添加 `.test.ts` 或 `.test.tsx` 后缀（`tabPolicy.test.ts`、`SessionContext.test.tsx`）
+- **测试文件（主题范围）：** 在 `.test` 前使用点分隔的主题后缀（`MessagesContext.questions.test.tsx`、`MessagesContext.pagination.test.tsx`）
+- **上游 opencode schema：** snake_case 并以 `.sql.ts` 为后缀（`session.sql.ts`、`project.sql.ts`）
 
-### Variables and Functions
+### 变量和函数
 
-- Prefer single word names: `gate`, `draft`, `proc`, `conn`
-- camelCase when multi-word is necessary: `handleNewSession`, `loadSessionMessages`
-- React callback handlers: prefix with `handle` (`handleRetrySessionLoad`, `handleOpenPanel`)
-- Boolean variables: use `is`/`has` prefix when needed (`isCreating`, `isRunning`, `disposed`)
+- 优先使用单词名称：`gate`、`draft`、`proc`、`conn`
+- 多词时使用 camelCase：`handleNewSession`、`loadSessionMessages`
+- React 回调处理程序：以 `handle` 为前缀（`handleRetrySessionLoad`、`handleOpenPanel`）
+- 布尔变量：需要时使用 `is`/`has` 前缀（`isCreating`、`isRunning`、`disposed`）
 
-### Types and Interfaces
+### 类型和接口
 
-- PascalCase for types and interfaces: `Message`, `StorageScope`, `ClassNameValue`
-- Type-only imports: use `import type` when importing types only
-- Branded schemas use `Schema.brand` for single-value types (upstream Effect code)
+- 类型和接口使用 PascalCase：`Message`、`StorageScope`、`ClassNameValue`
+- 仅类型导入：仅导入类型时使用 `import type`
+- 品牌 schema 使用 `Schema.brand` 用于单值类型（上游 Effect 代码）
 
-### Drizzle Schema (Database)
+### Drizzle Schema（数据库）
 
-Use snake_case for field names so column names don't need to be redefined as strings:
+字段名使用 snake_case，这样列名不需要重新定义为字符串：
 
 ```ts
 // Good
@@ -109,9 +109,9 @@ const table = sqliteTable("session", {
 })
 ```
 
-## Destructuring
+## 解构
 
-Avoid unnecessary destructuring. Use dot notation to preserve context:
+避免不必要的解构。使用点号表示法以保留上下文：
 
 ```ts
 // Good
@@ -122,11 +122,11 @@ obj.b
 const { a, b } = obj
 ```
 
-**Exception observed:** React hooks return values are commonly destructured in the WebGUI codebase (e.g., `const { currentSession, sessions } = useSession()`). This is accepted for React hook patterns.
+**观察到的例外：** WebGUI 代码库中 React hooks 的返回值通常会解构（例如 `const { currentSession, sessions } = useSession()`）。这对于 React hook 模式是可接受的。
 
-## Variables
+## 变量
 
-Prefer `const` over `let`. Use ternaries or early returns instead of reassignment:
+优先使用 `const` 而非 `let`。使用三元运算符或提前返回代替重赋值：
 
 ```ts
 // Good
@@ -138,7 +138,7 @@ if (condition) foo = 1
 else foo = 2
 ```
 
-Reduce total variable count by inlining when a value is only used once:
+当值只使用一次时，通过内联减少变量总数：
 
 ```ts
 // Good
@@ -149,9 +149,9 @@ const journalPath = path.join(dir, "journal.json")
 const journal = await Bun.file(journalPath).json()
 ```
 
-## Control Flow
+## 控制流
 
-Avoid `else` statements. Prefer early returns:
+避免 `else` 语句。优先使用提前返回：
 
 ```ts
 // Good
@@ -167,60 +167,60 @@ function foo() {
 }
 ```
 
-## File Organization Patterns
+## 文件组织模式
 
 ### WebGUI (`packages/opencode/webgui/src/`)
 
 ```
 src/
-├── components/     # React components (PascalCase), may have subdirectories
-├── hooks/          # Custom React hooks (useXxx.ts)
-├── lib/            # Non-React logic, utilities, API clients
-│   ├── api/        # API client, events, SDK wrappers
-│   └── selection/  # Selection logic
-├── state/          # React contexts and state management
-│   └── repo/       # Data repositories (scoped storage wrappers)
-├── config/         # Configuration constants
-├── types/          # Shared type definitions
-├── utils/          # Pure utility functions
-├── test/           # Test setup, helpers, mocks
-├── assets/         # Static assets
-├── App.tsx         # Root application component
-└── main.tsx        # Entry point (ReactDOM.createRoot)
+├── components/     # React 组件（PascalCase），可含子目录
+├── hooks/          # 自定义 React hooks（useXxx.ts）
+├── lib/            # 非 React 逻辑、工具、API 客户端
+│   ├── api/        # API 客户端、事件、SDK 包装器
+│   └── selection/  # 选择逻辑
+├── state/          # React Context 和状态管理
+│   └── repo/       # 数据仓库（scoped storage 包装器）
+├── config/         # 配置常量
+├── types/          # 共享类型定义
+├── utils/          # 纯工具函数
+├── test/           # 测试设置、辅助函数、mock
+├── assets/         # 静态资源
+├── App.tsx         # 根应用组件
+└── main.tsx        # 入口点（ReactDOM.createRoot）
 ```
 
-### VSCode Plugin (`hosts/vscode-plugin/src/`)
+### VSCode 插件 (`hosts/vscode-plugin/src/`)
 
 ```
 src/
-├── backend/        # Backend process management (launching opencode server)
-├── commands/       # VSCode command implementations
-├── settings/       # Settings management
-├── ui/             # Webview and activity bar providers
-├── utils/          # Error handling, file operations
-├── types/          # Type definitions
-├── test/           # Test suite (Mocha + @vscode/test-electron)
-│   └── suite/      # Test files
-├── extension.ts    # Entry point (activate/deactivate)
-└── globals.ts      # Shared globals (logger)
+├── backend/        # 后端进程管理（启动 opencode 服务器）
+├── commands/       # VSCode 命令实现
+├── settings/       # 设置管理
+├── ui/             # Webview 和活动栏提供者
+├── utils/          # 错误处理、文件操作
+├── types/          # 类型定义
+├── test/           # 测试套件（Mocha + @vscode/test-electron）
+│   └── suite/      # 测试文件
+├── extension.ts    # 入口点（activate/deactivate）
+└── globals.ts      # 共享全局变量（logger）
 ```
 
-### Upstream opencode (`packages/opencode/src/`)
+### 上游 opencode (`packages/opencode/src/`)
 
-- Feature modules organized by domain: `session/`, `project/`, `account/`, `share/`, etc.
-- Each domain has schema in `*.sql.ts` files
-- Effect-based architecture with services
+- 按领域组织的功能模块：`session/`、`project/`、`account/`、`share/` 等
+- 每个领域在 `*.sql.ts` 文件中有 schema
+- 基于 Effect 的架构和服务
 
-## Common Patterns
+## 常用模式
 
-### React Context Provider Pattern (WebGUI)
+### React Context Provider 模式（WebGUI）
 
-State management uses React Context with a Provider + hook pattern:
+状态管理使用 React Context 的 Provider + hook 模式：
 
 ```tsx
-// State definition in XxxContext.tsx
+// XxxContext.tsx 中的状态定义
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  // ... state logic
+  // ... 状态逻辑
   return <SessionContext.Provider value={...}>{children}</SessionContext.Provider>
 }
 
@@ -229,14 +229,14 @@ export function useSession() {
 }
 ```
 
-Providers are nested in `main.tsx` at the application root in a specific order.
+Provider 在 `main.tsx` 的应用根部按特定顺序嵌套。
 
-### Testable Pure Functions Extracted from Components (WebGUI)
+### 从组件中提取可测试的纯函数（WebGUI）
 
-Complex logic is extracted as pure, exported functions that can be tested without React rendering:
+复杂逻辑被提取为导出的纯函数，可在不渲染 React 的情况下测试：
 
 ```ts
-// In App.tsx - extracted pure functions
+// 在 App.tsx 中 - 提取的纯函数
 export function chatState(input: { loading: boolean; loaded: boolean; error: boolean; ready: boolean }) {
   if (input.ready) return { loading: false, error: false, blocked: false }
   const loading = input.loading || (!input.loaded && !input.error)
@@ -244,67 +244,67 @@ export function chatState(input: { loading: boolean; loaded: boolean; error: boo
 }
 ```
 
-### Scoped Storage / Repo Pattern (WebGUI)
+### Scoped Storage / Repo 模式（WebGUI）
 
-Data repositories in `state/repo/` wrap scoped storage operations with business logic:
+`state/repo/` 中的数据仓库用业务逻辑包装 scoped storage 操作：
 
 ```ts
-// draftRepo.ts pattern
+// draftRepo.ts 模式
 export async function loadDrafts(): Promise<Record<string, string>> { ... }
 export async function saveDrafts(drafts: Record<string, string>): Promise<void> { ... }
-export function resetDraftRepoForTest(): void { ... }  // Test reset function
+export function resetDraftRepoForTest(): void { ... }  // 测试重置函数
 ```
 
-### VSCode Extension Class Pattern
+### VSCode 扩展类模式
 
-The VSCode extension uses a class-based pattern with lifecycle management:
+VSCode 扩展使用基于类的模式，带有生命周期管理：
 
 ```ts
 class OpenCodeExtension {
   private webviewManager?: WebviewManager
-  // Initialize, register commands, coordinate components
+  // 初始化、注册命令、协调组件
   async initialize(context: vscode.ExtensionContext): Promise<void> { ... }
   dispose(): void { ... }
 }
 
-// Module-level singleton
+// 模块级单例
 let extensionInstance: OpenCodeExtension | undefined
 export async function activate(context: vscode.ExtensionContext): Promise<void> { ... }
 export function deactivate(): void { ... }
 ```
 
-### IDE Bridge Communication
+### IDE 桥接通信
 
-WebGUI communicates with the host IDE via HTTP-based SSE bridge (`lib/ideBridge.ts`):
+WebGUI 通过基于 HTTP 的 SSE 桥接与宿主 IDE 通信（`lib/ideBridge.ts`）：
 
-- Uses EventSource for server-sent events
-- Request/response via POST with correlation IDs
-- Reconnection with exponential backoff
-- Scoped storage (global/workspace/mem) for state persistence
+- 使用 EventSource 接收服务端推送事件
+- 通过 POST 请求配合关联 ID 实现请求/响应
+- 指数退避重连
+- Scoped storage（global/workspace/mem）用于状态持久化
 
-### Typing Indicator Pattern
+### 输入指示器模式
 
-The `cn()` utility in `utils/classNames.ts` provides a custom className merging function (similar to `clsx`):
+`utils/classNames.ts` 中的 `cn()` 工具提供自定义的 className 合并函数（类似 `clsx`）：
 
 ```ts
 cn("foo", condition && "bar", { baz: true }) // => 'foo bar baz'
 ```
 
-## Error Handling
+## 错误处理
 
 ### WebGUI
 
-- Errors from SDK calls return `{ data, error }` tuples — check `error` field rather than using try/catch
-- Toast notifications for user-facing errors via `useToast()` context
-- `ErrorBoundary` component wraps the entire app for React rendering errors
-- Console logging with `[Component]` prefixes for debug: `console.log("[App] Session created:", id)`
+- SDK 调用的错误返回 `{ data, error }` 元组——检查 `error` 字段而非使用 try/catch
+- 通过 `useToast()` context 以 Toast 通知显示面向用户的错误
+- `ErrorBoundary` 组件包裹整个应用以捕获 React 渲染错误
+- 使用 `[Component]` 前缀的 console 日志用于调试：`console.log("[App] Session created:", id)`
 
-### VSCode Plugin
+### VSCode 插件
 
-- Centralized `ErrorHandler` utility with categorized errors (`ErrorCategory`, `ErrorSeverity`)
-- `errorHandler.handleError()` with structured error contexts
-- Specialized handlers: `handleBackendLaunchError()`, `handleWebviewLoadError()`, `handleFileOperationError()`
-- Safe disposal pattern: errors during dispose are caught and logged, cleanup continues:
+- 集中式 `ErrorHandler` 工具，带分类错误（`ErrorCategory`、`ErrorSeverity`）
+- `errorHandler.handleError()` 带结构化错误上下文
+- 特化处理程序：`handleBackendLaunchError()`、`handleWebviewLoadError()`、`handleFileOperationError()`
+- 安全释放模式：释放期间的错误被捕获和记录，清理继续：
 
 ```ts
 const drop = (name: string, fn: () => void) => {
@@ -316,27 +316,27 @@ const drop = (name: string, fn: () => void) => {
 }
 ```
 
-### Upstream opencode
+### 上游 opencode
 
-- Effect-based error handling with `Schema.TaggedErrorClass` for typed errors
-- `yield* new MyError(...)` for early failure in `Effect.gen` / `Effect.fn`
-- Avoid `try`/`catch` as stated in AGENTS.md
+- 基于 Effect 的错误处理，使用 `Schema.TaggedErrorClass` 实现类型化错误
+- `yield* new MyError(...)` 用于在 `Effect.gen` / `Effect.fn` 中提前失败
+- 如 AGENTS.md 所述，避免 `try`/`catch`
 
-## Import/Export Patterns
+## 导入/导出模式
 
-### WebGUI Import Order (Observed)
+### WebGUI 导入顺序（观察到的）
 
-1. React imports (`react`, `react-dom`)
-2. Testing library imports (in test files)
-3. Internal lib/api imports (`./lib/api/events`, `./lib/api/sdkClient`)
-4. Internal state imports (`./state/SessionContext`, `./state/ToastContext`)
-5. Internal component imports (`./components/MessageInput`, etc.)
-6. Internal hook imports (`./hooks/useKeyboardShortcuts`)
-7. Internal util imports (`./utils/classNames`)
+1. React 导入（`react`、`react-dom`）
+2. 测试库导入（测试文件中）
+3. 内部 lib/api 导入（`./lib/api/events`、`./lib/api/sdkClient`）
+4. 内部 state 导入（`./state/SessionContext`、`./state/ToastContext`）
+5. 内部 component 导入（`./components/MessageInput` 等）
+6. 内部 hook 导入（`./hooks/useKeyboardShortcuts`）
+7. 内部 util 导入（`./utils/classNames`）
 
-### WebGUI Re-exports
+### WebGUI 重导出
 
-Test utilities use re-export pattern:
+测试工具使用重导出模式：
 
 ```ts
 // test/test-utils.tsx
@@ -344,27 +344,27 @@ export * from "@testing-library/react"
 export { customRender as render }
 ```
 
-### VSCode Plugin Import Order
+### VSCode 插件导入顺序
 
-1. VSCode API (`import * as vscode from "vscode"`)
-2. Internal module imports (relative paths)
-3. Node.js built-ins when needed
+1. VSCode API（`import * as vscode from "vscode"`）
+2. 内部模块导入（相对路径）
+3. 需要时导入 Node.js 内置模块
 
-### Path Aliases
+### 路径别名
 
-- WebGUI uses `@/` alias mapped to `./src/` (configured in `vitest.config.ts`, but not consistently used — most imports use relative paths)
+- WebGUI 使用 `@/` 别名映射到 `./src/`（在 `vitest.config.ts` 中配置，但未一致使用——大多数导入使用相对路径）
 
-### Module Exports
+### 模块导出
 
-- WebGUI: named exports preferred over default exports (exception: `App.tsx` default export)
-- Upstream: barrel exports from `exports` field in `package.json`: `"./*": "./src/*.ts"`
-- VSCode plugin: named class exports
+- WebGUI：优先使用命名导出而非默认导出（例外：`App.tsx` 的默认导出）
+- 上游：通过 `package.json` 的 `exports` 字段进行桶导出：`"./*": "./src/*.ts"`
+- VSCode 插件：命名类导出
 
-## Language Notes
+## 语言说明
 
-- Some test descriptions and UI strings are in Chinese (e.g., `"replyQuestion 遇到结构化 error 时不应移除本地问题"`, `"创建会话失败"`)
-- This is intentional and part of the codebase conventions for this fork
+- 部分测试描述和 UI 字符串使用中文（例如 `"replyQuestion 遇到结构化 error 时不应移除本地问题"`、`"创建会话失败"`）
+- 这是有意为之，属于本分叉的代码库规范
 
 ---
 
-_Convention analysis: 2026-04-12_
+_规范分析：2026-04-12_

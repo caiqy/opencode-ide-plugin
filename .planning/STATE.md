@@ -1,64 +1,64 @@
-# Project State
+# 项目状态
 
-## Project Reference
+## 项目参考
 
-See: .planning/PROJECT.md (updated 2026-04-12)
+参见：.planning/PROJECT.md（更新于 2026-04-12）
 
-**Core value:** 上游合并后构建通过且功能不退化
-**Current focus:** Phase 1 — Merge Foundation
+**核心价值：** 上游合并后构建通过且功能不退化
+**当前焦点：** 阶段 1 — 合并基础
 
-## Current Position
+## 当前位置
 
-Phase: 1 of 4 (Merge Foundation)
-Plan: 0 of 3 in current phase
-Status: Ready to plan
-Last activity: 2026-04-12 — Roadmap created
+阶段：第 1 阶段，共 4 阶段（合并基础）
+计划：当前阶段 0/3
+状态：准备制定计划
+最近活动：2026-04-12 — 路线图已创建
 
-Progress: [░░░░░░░░░░] 0%
+进度：[░░░░░░░░░░] 0%
 
-## Performance Metrics
+## 绩效指标
 
-**Velocity:**
+**速度：**
 
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: 0 hours
+- 已完成计划总数：0
+- 平均耗时：—
+- 总执行时间：0 小时
 
-**By Phase:**
+**按阶段统计：**
 
-| Phase | Plans | Total | Avg/Plan |
-| ----- | ----- | ----- | -------- |
-| -     | -     | -     | -        |
+| 阶段 | 计划数 | 总计 | 平均/计划 |
+| ---- | ------ | ---- | --------- |
+| -    | -      | -    | -         |
 
-**Recent Trend:**
+**近期趋势：**
 
-- Last 5 plans: —
-- Trend: —
+- 最近 5 个计划：—
+- 趋势：—
 
-_Updated after each plan completion_
+_每次计划完成后更新_
 
-## Accumulated Context
+## 积累的上下文
 
-### Decisions
+### 决策
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
+决策记录在 PROJECT.md 的关键决策表中。
+影响当前工作的近期决策：
 
-- [Roadmap]: 4-phase automation spectrum (manual → scripted → detection → analysis) derived from research
-- [Roadmap]: Phases 2 and 3 both depend on Phase 1 but are independent of each other (could parallelize)
+- [路线图]：基于调研推导出的 4 阶段自动化演进路径（手动 → 脚本化 → 检测 → 分析）
+- [路线图]：阶段 2 和阶段 3 都依赖阶段 1，但彼此独立（可并行执行）
 
-### Pending Todos
+### 待办事项
 
-None yet.
+暂无。
 
-### Blockers/Concerns
+### 阻塞/关注点
 
-- Research flags `git rerere` pre-seeding as needing investigation during Phase 1 execution
-- JetBrains plugin build is a SOFT gate — unclear if it blocks releases (validate during Phase 2)
-- `git merge-tree` output parsing needs prototyping for Phase 3
+- 调研标记 `git rerere` 预填充需在阶段 1 执行期间进行验证
+- JetBrains 插件构建是软性门槛——不确定是否阻塞发布（在阶段 2 中验证）
+- `git merge-tree` 输出解析需在阶段 3 中进行原型验证
 
-## Session Continuity
+## 会话连续性
 
-Last session: 2026-04-12
-Stopped at: Roadmap and state initialized
-Resume file: None
+上次会话：2026-04-12
+停止于：路线图和状态已初始化
+恢复文件：无

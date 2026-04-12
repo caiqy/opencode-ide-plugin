@@ -1,10 +1,10 @@
-# Architecture
+# 架构
 
-**Analysis Date:** 2026-04-12
+**分析日期：** 2026-04-12
 
-## System Overview
+## 系统概览
 
-The system is an AI-powered development tool built on the open-source **opencode** project, extended with IDE plugin support. It follows a **client-server architecture with embedded web UI**:
+本系统是基于开源 **opencode** 项目构建的 AI 驱动开发工具，并扩展了 IDE 插件支持。采用**客户端-服务器架构，内嵌 Web UI**：
 
 ```
 +------------------------------------------------------+
@@ -40,256 +40,256 @@ The system is an AI-powered development tool built on the open-source **opencode
 +------------------------------------------------------+
 ```
 
-## Component Map
+## 组件图
 
-### 1. Opencode Core (`packages/opencode/`)
+### 1. Opencode 核心 (`packages/opencode/`)
 
-The main backend: a CLI tool and HTTP server built with Bun and Hono.
+主要后端：基于 Bun 和 Hono 构建的 CLI 工具及 HTTP 服务器。
 
-- **Purpose:** AI agent orchestration, session management, code editing, tool execution
-- **Entry Point:** `packages/opencode/src/index.ts` (CLI via yargs)
-- **Server:** `packages/opencode/src/server/server.ts` (Hono HTTP server with SSE)
-- **Key Subsystems:**
-  - `src/agent/` - AI agent definitions and orchestration
-  - `src/session/` - Chat session lifecycle and message management
-  - `src/provider/` - AI model provider integrations (Anthropic, OpenAI, Google, etc.)
-  - `src/tool/` - Tool implementations for file editing, shell commands, etc.
-  - `src/bus/` - Internal event bus (Effect PubSub-based)
-  - `src/config/` - Configuration management (`opencode.json`)
-  - `src/storage/` - SQLite database (Drizzle ORM)
-  - `src/mcp/` - Model Context Protocol server/client
-  - `src/project/` - Project/workspace detection and management
-  - `src/server/` - HTTP API server with routes
+- **用途：** AI Agent 编排、会话管理、代码编辑、工具执行
+- **入口点：** `packages/opencode/src/index.ts`（通过 yargs 的 CLI）
+- **服务器：** `packages/opencode/src/server/server.ts`（支持 SSE 的 Hono HTTP 服务器）
+- **核心子系统：**
+  - `src/agent/` - AI Agent 定义与编排
+  - `src/session/` - 聊天会话生命周期和消息管理
+  - `src/provider/` - AI 模型提供商集成（Anthropic、OpenAI、Google 等）
+  - `src/tool/` - 工具实现：文件编辑、Shell 命令等
+  - `src/bus/` - 内部事件总线（基于 Effect PubSub）
+  - `src/config/` - 配置管理（`opencode.json`）
+  - `src/storage/` - SQLite 数据库（Drizzle ORM）
+  - `src/mcp/` - Model Context Protocol 服务端/客户端
+  - `src/project/` - 项目/工作区检测与管理
+  - `src/server/` - HTTP API 服务器及路由
 
 ### 2. WebGUI (`packages/opencode/webgui/`)
 
-A React 19 SPA that provides the chat UI. Built with Vite, served either:
+一个 React 19 单页应用（SPA），提供聊天 UI。基于 Vite 构建，有两种服务方式：
 
-- **Embedded:** Pre-built and base64-encoded into `packages/opencode/src/webgui/embed.generated.ts`, served at `/app` by the opencode server
-- **Development:** Vite dev server with proxy to opencode backend
+- **嵌入模式：** 预构建并 base64 编码到 `packages/opencode/src/webgui/embed.generated.ts`，由 opencode 服务器在 `/app` 路径提供服务
+- **开发模式：** Vite 开发服务器，代理请求到 opencode 后端
 
-- **Purpose:** Chat interface, session management, settings, file browsing
-- **Entry Point:** `packages/opencode/webgui/src/main.tsx`
-- **Key Areas:**
-  - `src/components/` - React components (MessageList, MessageInput, CommandPalette, etc.)
-  - `src/state/` - React Context providers (SessionContext, MessagesContext, ThemeContext, etc.)
-  - `src/lib/api/` - SDK client and SSE event stream
-  - `src/lib/ideBridge.ts` - IDE bridge client for host communication
-  - `src/hooks/` - Custom React hooks
+- **用途：** 聊天界面、会话管理、设置、文件浏览
+- **入口点：** `packages/opencode/webgui/src/main.tsx`
+- **核心区域：**
+  - `src/components/` - React 组件（MessageList、MessageInput、CommandPalette 等）
+  - `src/state/` - React Context 提供者（SessionContext、MessagesContext、ThemeContext 等）
+  - `src/lib/api/` - SDK 客户端和 SSE 事件流
+  - `src/lib/ideBridge.ts` - IDE 桥接客户端，用于宿主通信
+  - `src/hooks/` - 自定义 React hooks
 
-### 3. VSCode Plugin (`hosts/vscode-plugin/`)
+### 3. VSCode 插件 (`hosts/vscode-plugin/`)
 
-TypeScript extension that hosts the WebGUI in a VSCode webview.
+TypeScript 扩展，在 VSCode webview 中承载 WebGUI。
 
-- **Purpose:** Integrate opencode into VSCode as an activity bar panel
-- **Entry Point:** `hosts/vscode-plugin/src/extension.ts`
-- **Key Components:**
-  - `src/backend/BackendLauncher.ts` - Spawns `opencode serve` as a child process
-  - `src/ui/ActivityBarProvider.ts` - VSCode `WebviewViewProvider` for sidebar
-  - `src/ui/WebviewController.ts` - Manages webview lifecycle, iframe loading, bridge setup
-  - `src/ui/IdeBridgeServer.ts` - Local HTTP+SSE server for IDE<->WebGUI communication
-  - `src/ui/CommunicationBridge.ts` - Routes messages between IDE and webview
-  - `src/commands/` - VSCode commands (add file to context, paste path, etc.)
-  - `src/settings/SettingsManager.ts` - VSCode settings integration
+- **用途：** 将 opencode 集成到 VSCode 活动栏面板中
+- **入口点：** `hosts/vscode-plugin/src/extension.ts`
+- **核心组件：**
+  - `src/backend/BackendLauncher.ts` - 以子进程方式启动 `opencode serve`
+  - `src/ui/ActivityBarProvider.ts` - VSCode `WebviewViewProvider`，用于侧边栏
+  - `src/ui/WebviewController.ts` - 管理 webview 生命周期、iframe 加载、桥接设置
+  - `src/ui/IdeBridgeServer.ts` - 本地 HTTP+SSE 服务器，用于 IDE↔WebGUI 通信
+  - `src/ui/CommunicationBridge.ts` - 在 IDE 和 webview 之间路由消息
+  - `src/commands/` - VSCode 命令（添加文件到上下文、粘贴路径等）
+  - `src/settings/SettingsManager.ts` - VSCode 设置集成
 
-### 4. JetBrains Plugin (`hosts/jetbrains-plugin/`)
+### 4. JetBrains 插件 (`hosts/jetbrains-plugin/`)
 
-Kotlin/JVM plugin that hosts the WebGUI in a JCEF browser panel.
+Kotlin/JVM 插件，在 JCEF 浏览器面板中承载 WebGUI。
 
-- **Purpose:** Integrate opencode into JetBrains IDEs as a tool window
-- **Entry Point:** `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt`
-- **Key Components:**
-  - `backendprocess/BackendLauncher.kt` - Launches `opencode serve` in an IDE terminal
-  - `ui/IdeBridge.kt` - Local HTTP+SSE server (same protocol as VSCode)
-  - `ui/ChatToolWindowFactory.kt` - JCEF browser setup and backend coordination
-  - `ui/DragAndDropInstaller.kt` - Drag-and-drop file support
-  - `ui/IdeOpenFilesUpdater.kt` - Tracks open files and sends updates to WebGUI
-  - `actions/` - IDE actions (add to context, paste path, etc.)
-  - `settings/OpenCodeSettings.kt` - Plugin settings
+- **用途：** 将 opencode 集成到 JetBrains IDE 的工具窗口中
+- **入口点：** `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt`
+- **核心组件：**
+  - `backendprocess/BackendLauncher.kt` - 在 IDE 终端中启动 `opencode serve`
+  - `ui/IdeBridge.kt` - 本地 HTTP+SSE 服务器（与 VSCode 协议相同）
+  - `ui/ChatToolWindowFactory.kt` - JCEF 浏览器设置和后端协调
+  - `ui/DragAndDropInstaller.kt` - 拖放文件支持
+  - `ui/IdeOpenFilesUpdater.kt` - 追踪打开的文件并向 WebGUI 发送更新
+  - `actions/` - IDE 操作（添加到上下文、粘贴路径等）
+  - `settings/OpenCodeSettings.kt` - 插件设置
 
 ### 5. SDK (`packages/sdk/js/`)
 
-Auto-generated TypeScript SDK from the OpenAPI spec.
+从 OpenAPI 规范自动生成的 TypeScript SDK。
 
-- **Purpose:** Type-safe client for the opencode HTTP API
-- **Source:** `packages/sdk/openapi.json` (generated from Hono route metadata)
-- **Used by:** WebGUI (`packages/opencode/webgui/src/lib/api/sdkClient.ts`)
+- **用途：** opencode HTTP API 的类型安全客户端
+- **来源：** `packages/sdk/openapi.json`（从 Hono 路由元数据生成）
+- **使用者：** WebGUI（`packages/opencode/webgui/src/lib/api/sdkClient.ts`）
 
-## Data Flow
+## 数据流
 
-### Chat Message Flow
+### 聊天消息流
 
-1. User types in WebGUI `MessageInput` component
-2. WebGUI calls `sdk.session.prompt()` via HTTP POST to `/session/{id}/message`
-3. Opencode server routes request through `WorkspaceRouterMiddleware` to `SessionRoutes`
-4. Backend creates agent task, streams responses via the event bus
-5. Bus publishes `message.part.updated`, `message.part.delta` events
-6. Events flow to WebGUI via SSE at `/event` endpoint
-7. `useEventStream` hook in `events.ts` receives events via `EventSource`
-8. `EventEmitter` dispatches to `MessagesContext` which updates React state
-9. `MessageList` component re-renders with new/updated message parts
+1. 用户在 WebGUI 的 `MessageInput` 组件中输入
+2. WebGUI 通过 HTTP POST 调用 `sdk.session.prompt()` 到 `/session/{id}/message`
+3. Opencode 服务器通过 `WorkspaceRouterMiddleware` 将请求路由到 `SessionRoutes`
+4. 后端创建 Agent 任务，通过事件总线流式传输响应
+5. 总线发布 `message.part.updated`、`message.part.delta` 事件
+6. 事件通过 `/event` 端点的 SSE 流向 WebGUI
+7. `events.ts` 中的 `useEventStream` hook 通过 `EventSource` 接收事件
+8. `EventEmitter` 分发到 `MessagesContext`，更新 React 状态
+9. `MessageList` 组件使用新的/更新的消息部分重新渲染
 
-### IDE Plugin Lifecycle (VSCode)
+### IDE 插件生命周期（VSCode）
 
-1. Extension activates, `OpenCodeExtension.initialize()` called
-2. `ActivityBarProvider` registered as `WebviewViewProvider` for `opencode.main`
-3. On first webview resolve:
-   a. `BackendLauncher.launchBackend()` spawns `opencode serve` process
-   b. Parses stdout for `opencode server listening on http://...` to get port
-   c. `IdeBridgeServer` starts on ephemeral port, creates session with handlers
-   d. `WebviewController.load()` builds iframe URL with bridge params
-   e. WebGUI loads in iframe, connects to opencode server and IDE bridge
+1. 扩展激活，调用 `OpenCodeExtension.initialize()`
+2. `ActivityBarProvider` 注册为 `opencode.main` 的 `WebviewViewProvider`
+3. 首次 webview 解析时：
+   a. `BackendLauncher.launchBackend()` 生成 `opencode serve` 进程
+   b. 解析 stdout 中的 `opencode server listening on http://...` 获取端口
+   c. `IdeBridgeServer` 在临时端口启动，创建带处理程序的会话
+   d. `WebviewController.load()` 构建带桥接参数的 iframe URL
+   e. WebGUI 在 iframe 中加载，连接 opencode 服务器和 IDE 桥接
 
-### IDE Plugin Lifecycle (JetBrains)
+### IDE 插件生命周期（JetBrains）
 
-1. `ChatToolWindowFactory.createToolWindowContent()` called
-2. `BackendLauncher.launchBackend()` launches `opencode serve` in IDE terminal
-3. Terminal output parsed for server URL
-4. JCEF browser created, `IdeBridge.createSession()` provides bridge params
-5. Browser loads WebGUI URL with `ideBridge` and `ideBridgeToken` query params
+1. 调用 `ChatToolWindowFactory.createToolWindowContent()`
+2. `BackendLauncher.launchBackend()` 在 IDE 终端中启动 `opencode serve`
+3. 解析终端输出获取服务器 URL
+4. 创建 JCEF 浏览器，`IdeBridge.createSession()` 提供桥接参数
+5. 浏览器加载带有 `ideBridge` 和 `ideBridgeToken` 查询参数的 WebGUI URL
 
-### IDE Bridge Communication
+### IDE 桥接通信
 
-Both IDE plugins use identical HTTP+SSE transport (documented in `hosts/IDE_BRIDGE_HTTP_SSE.md`):
+两个 IDE 插件均使用相同的 HTTP+SSE 传输协议（文档见 `hosts/IDE_BRIDGE_HTTP_SSE.md`）：
 
-1. **WebGUI -> IDE:** HTTP POST to `{bridgeBase}/send?token=...`
-   - Message types: `openFile`, `openUrl`, `reloadPath`, `clipboardWrite`, `storageGet`, `storageSet`, `restartHost`, `ensureAndOpenFile`
-2. **IDE -> WebGUI:** SSE stream at `{bridgeBase}/events?token=...`
-   - Message types: `insertPaths`, `pastePath`, `updateOpenedFiles`
-3. **Request/Response:** JSON messages with `id`/`replyTo` for RPC-style calls
-4. **Auth:** Per-session random UUID token in query params
+1. **WebGUI → IDE：** HTTP POST 到 `{bridgeBase}/send?token=...`
+   - 消息类型：`openFile`、`openUrl`、`reloadPath`、`clipboardWrite`、`storageGet`、`storageSet`、`restartHost`、`ensureAndOpenFile`
+2. **IDE → WebGUI：** SSE 流在 `{bridgeBase}/events?token=...`
+   - 消息类型：`insertPaths`、`pastePath`、`updateOpenedFiles`
+3. **请求/响应：** 带有 `id`/`replyTo` 的 JSON 消息，用于 RPC 风格调用
+4. **认证：** 每个会话使用随机 UUID token 作为查询参数
 
-### State Management (WebGUI)
+### 状态管理（WebGUI）
 
-- **SessionContext:** Current session selection, session CRUD, session list management
-- **MessagesContext:** Per-session message store, handles SSE events for live updates
-- **ThemeContext:** Light/dark mode detection and synchronization
-- **ProjectContext:** Current project directory info
-- **ProvidersContext:** AI provider configuration
-- **UISettingsContext:** User preferences (persisted via IDE bridge storage)
-- **TabStore:** Multi-tab session management
-- **SubtaskDrawerContext:** Agent subtask visualization
+- **SessionContext：** 当前会话选择、会话 CRUD、会话列表管理
+- **MessagesContext：** 按会话的消息存储，处理 SSE 事件用于实时更新
+- **ThemeContext：** 明/暗模式检测和同步
+- **ProjectContext：** 当前项目目录信息
+- **ProvidersContext：** AI 提供商配置
+- **UISettingsContext：** 用户偏好设置（通过 IDE 桥接存储持久化）
+- **TabStore：** 多标签页会话管理
+- **SubtaskDrawerContext：** Agent 子任务可视化
 
-State flows down via React Context. Server events flow up via SSE -> EventEmitter -> Context updates.
+状态通过 React Context 向下传递。服务端事件通过 SSE → EventEmitter → Context 更新向上传递。
 
-## Key Patterns
+## 核心模式
 
-### Event-Driven Architecture
+### 事件驱动架构
 
-The opencode core uses an **Effect-based PubSub event bus** (`src/bus/index.ts`):
+opencode 核心使用**基于 Effect 的 PubSub 事件总线**（`src/bus/index.ts`）：
 
-- All domain events are defined as `BusEvent.define()` with Zod schemas
-- Components publish events; the SSE `/event` route subscribes to all events and streams them
-- `Bus.subscribeAll()` is the primary pattern for SSE consumers
-- Heartbeats every 10s prevent stale connections
+- 所有领域事件通过 `BusEvent.define()` 配合 Zod schema 定义
+- 组件发布事件；SSE `/event` 路由订阅所有事件并流式传输
+- `Bus.subscribeAll()` 是 SSE 消费者的主要模式
+- 每 10 秒发送心跳以防止连接过期
 
-### Instance/Workspace Isolation
+### 实例/工作区隔离
 
-The server supports multiple concurrent workspaces via `WorkspaceRouterMiddleware`:
+服务器通过 `WorkspaceRouterMiddleware` 支持多个并发工作区：
 
-- Each request carries a `directory` query param or `x-opencode-directory` header
-- `Instance.provide()` sets up AsyncLocalStorage context per request
-- `InstanceState` (Effect `ScopedCache`) manages per-directory state with automatic cleanup
+- 每个请求携带 `directory` 查询参数或 `x-opencode-directory` 请求头
+- `Instance.provide()` 为每个请求设置 AsyncLocalStorage 上下文
+- `InstanceState`（Effect `ScopedCache`）管理每个目录的状态，支持自动清理
 
-### Embedded Web UI Pattern
+### 嵌入式 Web UI 模式
 
-The WebGUI is compiled to static assets, then base64-encoded into a generated TypeScript file:
+WebGUI 编译为静态资源，然后 base64 编码到生成的 TypeScript 文件中：
 
-- Build: `packages/opencode/webgui/` -> Vite build -> `packages/opencode/webgui-dist/`
-- Embed: Generated into `packages/opencode/src/webgui/embed.generated.ts`
-- Serve: `packages/opencode/src/webgui/server/app.ts` resolves paths, serves from memory
-- Routes: `/app` and `/app/*` on the Hono server
+- 构建：`packages/opencode/webgui/` → Vite 构建 → `packages/opencode/webgui-dist/`
+- 嵌入：生成到 `packages/opencode/src/webgui/embed.generated.ts`
+- 服务：`packages/opencode/src/webgui/server/app.ts` 解析路径，从内存提供服务
+- 路由：Hono 服务器上的 `/app` 和 `/app/*`
 
-### Unified IDE Bridge Protocol
+### 统一 IDE 桥接协议
 
-Both VSCode and JetBrains plugins implement the same HTTP+SSE bridge protocol:
+VSCode 和 JetBrains 插件均实现相同的 HTTP+SSE 桥接协议：
 
-- Local HTTP server on `127.0.0.1:0` (ephemeral port)
-- Session-based with UUID tokens
-- SSE for server-push, HTTP POST for client-send
-- Keepalive pings every 15s
-- Supports VSCode Remote-SSH via `vscode.env.asExternalUri()`
+- 在 `127.0.0.1:0` 上的本地 HTTP 服务器（临时端口）
+- 基于会话，使用 UUID token
+- SSE 用于服务端推送，HTTP POST 用于客户端发送
+- 每 15 秒 Keepalive ping
+- 通过 `vscode.env.asExternalUri()` 支持 VSCode Remote-SSH
 
-## Entry Points
+## 入口点
 
 ### CLI
 
-- **Location:** `packages/opencode/src/index.ts`
-- **Triggers:** `opencode` binary via yargs CLI
-- **Key Commands:** `serve` (headless server), `run` (TUI), `web` (browser UI)
+- **位置：** `packages/opencode/src/index.ts`
+- **触发方式：** 通过 yargs CLI 的 `opencode` 二进制文件
+- **关键命令：** `serve`（无头服务器）、`run`（TUI）、`web`（浏览器 UI）
 
-### HTTP Server
+### HTTP 服务器
 
-- **Location:** `packages/opencode/src/server/server.ts`
-- **Triggers:** `opencode serve` command
-- **Listens:** Configurable hostname/port (default `0.0.0.0:4096`)
-- **Routes:** Global routes at `/global/*`, instance routes via workspace middleware, WebGUI at `/app/*`
-
-### WebGUI
-
-- **Location:** `packages/opencode/webgui/src/main.tsx`
-- **Triggers:** Browser/webview loads `/app` URL
-- **Connects to:** Same-origin opencode server (REST + SSE)
-
-### VSCode Extension
-
-- **Location:** `hosts/vscode-plugin/src/extension.ts`
-- **Triggers:** `onView:opencode.main`, `onCommand:opencode.openPanel`
-- **Exports:** `activate()`, `deactivate()`
-
-### JetBrains Plugin
-
-- **Location:** `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt`
-- **Triggers:** Tool window factory registration in `plugin.xml`
-
-## Error Handling
-
-### Server-Side
-
-- **Strategy:** Hono `onError` middleware catches and formats errors
-- **Typed Errors:** `NamedError` base class with structured `toObject()` serialization
-- **Logging:** `Log` utility writes to file-based logs
+- **位置：** `packages/opencode/src/server/server.ts`
+- **触发方式：** `opencode serve` 命令
+- **监听：** 可配置的主机名/端口（默认 `0.0.0.0:4096`）
+- **路由：** 全局路由在 `/global/*`，实例路由通过工作区中间件，WebGUI 在 `/app/*`
 
 ### WebGUI
 
-- **Strategy:** `ErrorBoundary` component at top level catches React render errors
-- **API Errors:** SDK client returns `{ data, error }` tuples (never throws)
-- **Connection Errors:** `OfflineBanner` shows when SSE connection drops
-- **Reconnection:** Exponential backoff in `useEventStream` (1s initial, 30s max)
+- **位置：** `packages/opencode/webgui/src/main.tsx`
+- **触发方式：** 浏览器/webview 加载 `/app` URL
+- **连接到：** 同源 opencode 服务器（REST + SSE）
 
-### IDE Plugins
+### VSCode 扩展
 
-- **VSCode:** `ErrorHandler` utility with categorized errors (`BACKEND_LAUNCH`, `NETWORK`, `PERMISSION`, etc.)
-- **JetBrains:** Standard IntelliJ `Logger` with error panels in tool window
+- **位置：** `hosts/vscode-plugin/src/extension.ts`
+- **触发方式：** `onView:opencode.main`、`onCommand:opencode.openPanel`
+- **导出：** `activate()`、`deactivate()`
 
-## Cross-Cutting Concerns
+### JetBrains 插件
 
-### Logging
+- **位置：** `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt`
+- **触发方式：** 在 `plugin.xml` 中注册的工具窗口工厂
 
-- **Backend:** `Log` utility from `packages/opencode/src/util/log.ts` - file-based, with service tags
-- **WebGUI:** `console.log` with `[App]`, `[SSE Event]` prefixes; `sdk` also logs remotely via `POST /log`
-- **IDE Plugins:** VSCode `OutputChannel` (`logger` in `globals.ts`); JetBrains IntelliJ `Logger`
+## 错误处理
 
-### Configuration
+### 服务端
 
-- **Backend:** `opencode.json` in project root + global config in XDG data dir
-- **WebGUI:** Reads config via `sdk.config.get()` HTTP API
-- **VSCode:** `vscode.workspace.getConfiguration("opencode")` for `customCommand`, `minVersion`
-- **JetBrains:** `OpenCodeSettings` persistent state component
+- **策略：** Hono `onError` 中间件捕获并格式化错误
+- **类型化错误：** `NamedError` 基类，带有结构化 `toObject()` 序列化
+- **日志：** `Log` 工具写入文件日志
 
-### Authentication
+### WebGUI
 
-- **AI Providers:** OAuth flow and API key management via `/auth` and `/provider` routes
-- **Server Auth:** Optional basic auth via `OPENCODE_SERVER_PASSWORD` env var
-- **IDE Bridge:** Per-session random UUID tokens (not persistent)
+- **策略：** 顶层 `ErrorBoundary` 组件捕获 React 渲染错误
+- **API 错误：** SDK 客户端返回 `{ data, error }` 元组（不抛出异常）
+- **连接错误：** SSE 连接断开时显示 `OfflineBanner`
+- **重连：** `useEventStream` 中的指数退避重连（初始 1 秒，最大 30 秒）
 
-### Build Pipeline
+### IDE 插件
 
-- **Monorepo:** Bun workspaces + Turborepo for task orchestration
-- **WebGUI Build:** Vite -> `webgui-dist/` -> embed script -> `embed.generated.ts`
-- **VSCode Plugin:** `hosts/scripts/build_vscode.sh` - compiles TS, optionally bundles opencode binary, packages `.vsix`
-- **JetBrains Plugin:** Gradle with `org.jetbrains.intellij.platform` plugin -> `.zip`
+- **VSCode：** `ErrorHandler` 工具，带分类错误（`BACKEND_LAUNCH`、`NETWORK`、`PERMISSION` 等）
+- **JetBrains：** 标准 IntelliJ `Logger`，在工具窗口中显示错误面板
+
+## 横切关注点
+
+### 日志
+
+- **后端：** `packages/opencode/src/util/log.ts` 的 `Log` 工具——基于文件，带服务标签
+- **WebGUI：** 带 `[App]`、`[SSE Event]` 前缀的 `console.log`；`sdk` 也通过 `POST /log` 远程记录日志
+- **IDE 插件：** VSCode `OutputChannel`（`globals.ts` 中的 `logger`）；JetBrains IntelliJ `Logger`
+
+### 配置
+
+- **后端：** 项目根目录的 `opencode.json` + XDG 数据目录中的全局配置
+- **WebGUI：** 通过 `sdk.config.get()` HTTP API 读取配置
+- **VSCode：** `vscode.workspace.getConfiguration("opencode")` 获取 `customCommand`、`minVersion`
+- **JetBrains：** `OpenCodeSettings` 持久化状态组件
+
+### 认证
+
+- **AI 提供商：** 通过 `/auth` 和 `/provider` 路由的 OAuth 流程和 API 密钥管理
+- **服务器认证：** 通过 `OPENCODE_SERVER_PASSWORD` 环境变量的可选基本认证
+- **IDE 桥接：** 每个会话使用随机 UUID token（非持久化）
+
+### 构建流水线
+
+- **Monorepo：** Bun 工作区 + Turborepo 任务编排
+- **WebGUI 构建：** Vite → `webgui-dist/` → 嵌入脚本 → `embed.generated.ts`
+- **VSCode 插件：** `hosts/scripts/build_vscode.sh` - 编译 TS，可选打包 opencode 二进制文件，打包 `.vsix`
+- **JetBrains 插件：** Gradle 配合 `org.jetbrains.intellij.platform` 插件 → `.zip`
 
 ---
 
-_Architecture analysis: 2026-04-12_
+_架构分析：2026-04-12_
