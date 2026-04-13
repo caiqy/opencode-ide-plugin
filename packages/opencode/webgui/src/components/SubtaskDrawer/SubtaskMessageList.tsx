@@ -1,5 +1,7 @@
+import { useMemo } from "react"
 import { useMessages } from "../../state/MessagesContext"
 import { useSession } from "../../state/SessionContext"
+import { computeTurnMeta } from "../MessageList/turnMeta"
 import { TypingIndicator } from "../TypingIndicator"
 import { EmptyState } from "../MessageList/EmptyState"
 import { MessageRow } from "../MessageList/MessageRow"
@@ -55,6 +57,7 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
   })
 
   const lastMessageID = sortedMessages.at(-1)?.info.id
+  const turnMeta = useMemo(() => computeTurnMeta(sortedMessages), [sortedMessages])
 
   return (
     <>
@@ -67,6 +70,8 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
                 message={message}
                 sessionID={sessionID}
                 isLast={message.info.id === lastMessageID}
+                showMeta={message.info.id === turnMeta.lastAssistantID}
+                turnDurationMs={message.info.id === turnMeta.lastAssistantID ? turnMeta.turnDurationMs : undefined}
               />
             ))}
 
