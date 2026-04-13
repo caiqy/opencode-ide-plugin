@@ -21,7 +21,7 @@ export function RetryPart({ part }: RetryPartProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   return (
-    <div className="border border-orange-300 dark:border-orange-700 rounded-lg overflow-hidden bg-orange-50 dark:bg-orange-900/10">
+    <div className="my-1 border border-orange-300 dark:border-orange-700 rounded-lg overflow-hidden bg-orange-50 dark:bg-orange-900/10">
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
