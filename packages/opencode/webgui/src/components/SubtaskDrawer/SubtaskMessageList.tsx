@@ -34,6 +34,8 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
     isReasoning,
   )
 
+  const turnMeta = useMemo(() => computeTurnMeta(sortedMessages), [sortedMessages])
+
   if (!sessionID) {
     return <EmptyState />
   }
@@ -57,7 +59,6 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
   })
 
   const lastMessageID = sortedMessages.at(-1)?.info.id
-  const turnMeta = useMemo(() => computeTurnMeta(sortedMessages), [sortedMessages])
 
   return (
     <>

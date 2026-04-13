@@ -138,11 +138,11 @@ export function MessageRow({
         )}
 
         {/* Assistant turn meta (model, duration, etc.) */}
-        {showMeta && isAssistant && assistantInfo?.time?.completed && (
+        {showMeta && isAssistant && (assistantInfo?.time?.completed || error?.name === "MessageAbortedError") && (
           <AssistantMeta
-            agent={(assistantInfo as any).agent ?? ""}
-            modelName={resolveModelName((assistantInfo as any).providerID ?? "", (assistantInfo as any).modelID ?? "")}
-            variant={(assistantInfo as any).variant || undefined}
+            agent={assistantInfo?.agent ?? ""}
+            modelName={resolveModelName(assistantInfo?.providerID ?? "", assistantInfo?.modelID ?? "")}
+            variant={assistantInfo?.variant || undefined}
             durationMs={turnDurationMs}
             interrupted={error?.name === "MessageAbortedError"}
           />
