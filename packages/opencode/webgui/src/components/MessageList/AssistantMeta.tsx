@@ -17,8 +17,10 @@ export function AssistantMeta({ agent, modelName, variant, durationMs, interrupt
   if (items.length === 0) return null
 
   return (
-    <div className="pt-1 pb-2 text-xs text-gray-400 dark:text-gray-500" data-testid="assistant-meta">
-      {items.join(" · ")}
+    <div className="flex items-center pt-2 pb-1" data-testid="assistant-meta">
+      <div className="flex-1 border-t border-gray-200 dark:border-gray-800" />
+      <span className="mx-3 text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">{items.join(" · ")}</span>
+      <div className="flex-1 border-t border-gray-200 dark:border-gray-800" />
     </div>
   )
 }
