@@ -4,8 +4,10 @@ import { isAssistantMessage, type AssistantMessage } from "../../types/messages"
 import { MessagePart } from "./MessagePart"
 import { SessionErrorPart } from "./SessionErrorPart"
 import { ActionButtons } from "./ActionButtons"
+import { AssistantMeta } from "./AssistantMeta"
 import { getPartStart, getPartEnd, sortParts } from "./utils"
 import { cn } from "../../utils/classNames"
+import { useProviderStore } from "../../hooks/useProviderStore"
 
 interface MessageRowProps {
   message: Message
@@ -14,13 +16,25 @@ interface MessageRowProps {
   revertBusy?: boolean
   sessionID?: string
   isLast?: boolean
+  showMeta?: boolean
+  turnDurationMs?: number
 }
 
-export function MessageRow({ message, onFork, onRevert, revertBusy, sessionID, isLast }: MessageRowProps) {
+export function MessageRow({
+  message,
+  onFork,
+  onRevert,
+  revertBusy,
+  sessionID,
+  isLast,
+  showMeta,
+  turnDurationMs,
+}: MessageRowProps) {
   const [isHovered, setIsHovered] = useState(false)
   const isUser = message.info.role === "user"
   const isAssistant = isAssistantMessage(message.info)
   const skipPartIds = new Set<string>()
+  const { resolveModelName } = useProviderStore()
 
   const copyText = message.parts
     .flatMap((p) => {
@@ -120,6 +134,17 @@ export function MessageRow({ message, onFork, onRevert, revertBusy, sessionID, i
               messageID: message.info.id,
               message: errorMessage!,
             }}
+          />
+        )}
+
+        {/* Assistant turn meta (model, duration, etc.) */}
+        {showMeta && isAssistant && assistantInfo?.time?.completed && (
+          <AssistantMeta
+            agent={(assistantInfo as any).agent ?? ""}
+            modelName={resolveModelName((assistantInfo as any).providerID ?? "", (assistantInfo as any).modelID ?? "")}
+            variant={(assistantInfo as any).variant || undefined}
+            durationMs={turnDurationMs}
+            interrupted={error?.name === "MessageAbortedError"}
           />
         )}
 
