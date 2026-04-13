@@ -321,7 +321,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
   return (
     <div
-      className={`border ${getBorderColor(part.state.status, Boolean(permission), blocked)} overflow-hidden bg-gray-50 dark:bg-gray-900`}
+      className={`my-0.5 border ${getBorderColor(part.state.status, Boolean(permission), blocked)} overflow-hidden bg-gray-50 dark:bg-gray-900`}
     >
       {/* Header */}
       <ToolHeader
