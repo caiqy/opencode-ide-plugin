@@ -12,7 +12,7 @@ export function SnapshotPart({ part }: SnapshotPartProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   return (
-    <div className="my-1 border border-purple-300 dark:border-purple-700 rounded-lg overflow-hidden bg-purple-50 dark:bg-purple-900/10">
+    <div className="border border-purple-300 dark:border-purple-700 rounded-lg overflow-hidden bg-purple-50 dark:bg-purple-900/10">
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
