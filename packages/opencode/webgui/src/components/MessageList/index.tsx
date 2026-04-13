@@ -259,7 +259,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
     <>
       <div data-testid="message-scroll-shell" ref={messagesContainerRef} className="min-h-full">
         <PartOpenProvider items={items}>
-          <div data-testid="message-scroll-root" className="space-y-2">
+          <div data-testid="message-scroll-root" className="space-y-4">
             <div data-testid="history-zone">
               <div ref={trim.topRef} />
               <div data-testid="history-trim-spacer" style={{ height: trim.top }} />
