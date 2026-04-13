@@ -5,7 +5,7 @@ import { TypingIndicator } from "../TypingIndicator"
 import { ConfirmModal } from "../ConfirmModal"
 import { EmptyState } from "./EmptyState"
 import { MessageRow } from "./MessageRow"
-import { computeTurnMeta } from "./turnMeta"
+import { computeAllTurnMetas } from "./turnMeta"
 import { RevertBanner } from "./RevertBanner"
 import { RevertSummary } from "./RevertSummary"
 import { QuestionPart } from "./Parts/QuestionPart"
@@ -181,7 +181,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
   }, [visibleMessages])
 
   const lastMessageID = visibleMessages.at(-1)?.info.id
-  const turnMeta = useMemo(() => computeTurnMeta(visibleMessages), [visibleMessages])
+  const turnMetas = useMemo(() => computeAllTurnMetas(visibleMessages), [visibleMessages])
 
   const renderRow = useCallback(
     (
@@ -210,13 +210,13 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
             revertBusy={isRevertBusy}
             sessionID={sessionID || undefined}
             isLast={message.info.id === lastMessageID}
-            showMeta={message.info.id === turnMeta.lastAssistantID}
-            turnDurationMs={message.info.id === turnMeta.lastAssistantID ? turnMeta.turnDurationMs : undefined}
+            showMeta={!!turnMetas.get(message.info.id)}
+            turnDurationMs={turnMetas.get(message.info.id)?.turnDurationMs}
           />
         </div>
       )
     },
-    [handleForkStart, handleRevert, isRevertBusy, lastMessageID, revertBoundaryID, sessionID, turnMeta],
+    [handleForkStart, handleRevert, isRevertBusy, lastMessageID, revertBoundaryID, sessionID, turnMetas],
   )
 
   const rows = useMemo(() => {
