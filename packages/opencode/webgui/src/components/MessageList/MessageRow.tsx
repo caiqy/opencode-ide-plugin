@@ -91,7 +91,7 @@ export function MessageRow({
   return (
     <div
       key={message.info.id}
-      className={cn("group relative", isUser && "flex justify-end")}
+      className={cn("group relative", isUser && "flex justify-end pb-2")}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
