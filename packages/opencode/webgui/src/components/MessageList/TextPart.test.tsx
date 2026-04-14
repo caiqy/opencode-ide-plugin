@@ -24,4 +24,23 @@ describe("TextPart", () => {
     expect(wrap).toHaveClass("flex")
     expect(wrap).toHaveClass("justify-end")
   })
+
+  it("用户消息应使用更克制的面板卡片样式，并与 ToolPart 保持同级圆角", () => {
+    render(
+      <TextPart
+        part={{ id: "p2", type: "text", text: "根据历史提交惯例生成commit信息执行commit & push" } as any}
+        isUser={true}
+      />,
+    )
+
+    const content = screen.getByText("根据历史提交惯例生成commit信息执行commit & push")
+    const bubble = content.parentElement
+
+    expect(bubble).toBeTruthy()
+    expect(bubble).toHaveClass("rounded-lg")
+    expect(bubble).toHaveClass("border")
+    expect(bubble).not.toHaveClass("rounded-xl")
+    expect(bubble).not.toHaveClass("bg-blue-50")
+    expect(bubble).not.toHaveClass("border-blue-400")
+  })
 })
