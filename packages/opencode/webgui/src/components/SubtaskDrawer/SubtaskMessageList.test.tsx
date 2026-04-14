@@ -19,17 +19,33 @@ vi.mock("../MessageList/hooks/useMessageScroll", () => ({
   useMessageScroll: (...args: unknown[]) => mocks.useMessageScroll(...args),
 }))
 
-vi.mock("../MessageList/PartOpenContext", () => ({
-  PartOpenProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}))
-
 vi.mock("../MessageList/EmptyState", () => ({
   EmptyState: () => <div data-testid="empty-state" />,
 }))
 
-vi.mock("../MessageList/MessageRow", () => ({
-  MessageRow: () => <div data-testid="message-row" />,
-}))
+vi.mock("../MessageList/MessageRow", async () => {
+  const actual = await vi.importActual<typeof import("../MessageList/PartOpenContext")>(
+    "../MessageList/PartOpenContext",
+  )
+
+  return {
+    MessageRow: ({ message }: { message: any }) => {
+      const open = actual.usePartOpen()
+      const toolParts = message.parts.filter((part: any) => part.type === "tool")
+
+      return (
+        <div data-testid={`message-row-${message.info.id}`}>
+          {toolParts.length === 0 ? <div data-testid="message-row" /> : null}
+          {toolParts.map((part: any) => (
+            <div key={part.id} data-testid={`part-${part.id}`}>
+              {open.isOpen(part.id) ? "open" : "closed"}
+            </div>
+          ))}
+        </div>
+      )
+    },
+  }
+})
 
 vi.mock("../MessageList/Parts/QuestionPart", () => ({
   QuestionPart: () => <div data-testid="question-part" />,
@@ -110,5 +126,26 @@ describe("SubtaskMessageList", () => {
     expect(sorted.map((m: any) => m.info.id)).toEqual(["m1", "m2"])
     expect(isIdle).toBe(false)
     expect(isReasoning).toBe(true)
+  })
+
+  it("子任务消息中的多个 task 卡片默认只展开最后一个", () => {
+    mocks.useMessages.mockReturnValue({
+      getMessagesBySession: () => [
+        {
+          info: { id: "m1", sessionID: "s-child", role: "assistant", time: { created: 1 } },
+          parts: [{ id: "task-1", type: "tool", tool: "task", state: { status: "completed" } }],
+        },
+        {
+          info: { id: "m2", sessionID: "s-child", role: "assistant", time: { created: 2 } },
+          parts: [{ id: "task-2", type: "tool", tool: "task", state: { status: "running" } }],
+        },
+      ],
+      getQuestionsBySession: () => [],
+    })
+
+    render(<SubtaskMessageList sessionID="s-child" />)
+
+    expect(screen.getByTestId("part-task-1")).toHaveTextContent("closed")
+    expect(screen.getByTestId("part-task-2")).toHaveTextContent("open")
   })
 })

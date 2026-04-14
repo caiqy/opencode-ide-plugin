@@ -15,11 +15,15 @@ function View() {
       <div data-testid="b1">{open.isOpen("b1") ? "open" : "closed"}</div>
       <div data-testid="b2">{open.isOpen("b2") ? "open" : "closed"}</div>
       <div data-testid="b3">{open.isOpen("b3") ? "open" : "closed"}</div>
+      <div data-testid="task1">{open.isOpen("task1") ? "open" : "closed"}</div>
+      <div data-testid="task2">{open.isOpen("task2") ? "open" : "closed"}</div>
+      <div data-testid="task3">{open.isOpen("task3") ? "open" : "closed"}</div>
       <button onClick={() => open.setOpen("r1", false)}>close-r1</button>
       <button onClick={() => open.setOpen("r1", true)}>open-r1</button>
       <button onClick={() => open.setOpen("r2", false)}>close-r2</button>
       <button onClick={() => open.setOpen("r2", true)}>open-r2</button>
       <button onClick={() => open.setOpen("b1", true)}>open-b1</button>
+      <button onClick={() => open.setOpen("task1", true)}>open-task1</button>
     </div>
   )
 }
@@ -226,6 +230,50 @@ describe("PartOpenProvider", () => {
       expect(screen.getByTestId("b1")).toHaveTextContent("open")
       expect(screen.getByTestId("b2")).toHaveTextContent("closed")
       expect(screen.getByTestId("b3")).toHaveTextContent("open")
+      expect(screen.getByTestId("t1")).toHaveTextContent("open")
+    })
+  })
+
+  it("task 工具只展开最后一个，新增时自动折叠上一个且保留用户手动展开项", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <PartOpenProvider
+        items={[
+          { type: "tool", id: "task1", tool: "task", status: "completed" },
+          { type: "tool", id: "task2", tool: "task", status: "running" },
+          { type: "tool", id: "t1", tool: "read", status: "completed" },
+        ]}
+      >
+        <View />
+      </PartOpenProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId("task1")).toHaveTextContent("closed")
+      expect(screen.getByTestId("task2")).toHaveTextContent("open")
+      expect(screen.getByTestId("t1")).toHaveTextContent("open")
+    })
+
+    await user.click(screen.getByRole("button", { name: "open-task1" }))
+    expect(screen.getByTestId("task1")).toHaveTextContent("open")
+
+    rerender(
+      <PartOpenProvider
+        items={[
+          { type: "tool", id: "task1", tool: "task", status: "completed" },
+          { type: "tool", id: "task2", tool: "task", status: "completed" },
+          { type: "tool", id: "task3", tool: "task", status: "running" },
+          { type: "tool", id: "t1", tool: "read", status: "completed" },
+        ]}
+      >
+        <View />
+      </PartOpenProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId("task1")).toHaveTextContent("open")
+      expect(screen.getByTestId("task2")).toHaveTextContent("closed")
+      expect(screen.getByTestId("task3")).toHaveTextContent("open")
       expect(screen.getByTestId("t1")).toHaveTextContent("open")
     })
   })

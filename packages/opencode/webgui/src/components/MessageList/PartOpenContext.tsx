@@ -15,7 +15,7 @@ interface PartOpenValue {
 const PartOpenContext = createContext<PartOpenValue | undefined>(undefined)
 
 // Tools that use "auto-expand last, collapse previous" behavior
-const AUTO_EXPAND_TOOLS = new Set(["bash"])
+const AUTO_EXPAND_TOOLS = new Set(["bash", "task"])
 
 // Tools that should be collapsed by default (user can still click to expand)
 const COLLAPSED_BY_DEFAULT_TOOLS = new Set(["skill"])
@@ -34,7 +34,7 @@ export function PartOpenProvider(props: { items: PartOpenItem[]; children: React
     return null
   }, [props.items])
 
-  // Find the last auto-expand tool ID (bash)
+  // Find the last auto-expand tool ID (bash/task)
   const lastAutoExpandToolId = useMemo(() => {
     for (let i = props.items.length - 1; i >= 0; i--) {
       const item = props.items[i]
@@ -114,7 +114,7 @@ export function PartOpenProvider(props: { items: PartOpenItem[]; children: React
         return id === lastReasoningId
       }
 
-      // Auto-expand tools (bash): only the last one is expanded by default
+      // Auto-expand tools (bash/task): only the last one is expanded by default
       if (autoExpandToolIds.has(id)) {
         return id === lastAutoExpandToolId
       }
