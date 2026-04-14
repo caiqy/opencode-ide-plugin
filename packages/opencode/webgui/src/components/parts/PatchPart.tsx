@@ -49,7 +49,7 @@ export function PatchPart({ part, sessionID, messageID }: PatchPartProps) {
 
   return (
     <>
-      <div className="my-1 border border-amber-300 dark:border-amber-700 rounded-lg overflow-hidden bg-amber-50 dark:bg-amber-900/10">
+      <div className="border border-amber-300 dark:border-amber-700 rounded-lg overflow-hidden bg-amber-50 dark:bg-amber-900/10">
         {/* Header */}
         <button
           onClick={() => setIsExpanded((v) => !v)}

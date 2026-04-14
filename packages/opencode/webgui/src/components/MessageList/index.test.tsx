@@ -251,6 +251,52 @@ describe("MessageList", () => {
     expect(parent.style.overflowAnchor).toBe("none")
   })
 
+  it("消息列表根容器使用 flex gap 统一消息间距", () => {
+    render(<MessageList sessionID="s1" onUndoToInput={vi.fn()} />)
+
+    const root = screen.getByTestId("message-scroll-root")
+    expect(root).toHaveClass("flex", "flex-col", "gap-4")
+    expect(root).not.toHaveClass("space-y-4")
+  })
+
+  it("history 与 tail 各自的消息行容器使用与单条消息内部一致的 12px 间距", () => {
+    mocks.useMessages.mockReturnValue({
+      getMessagesBySession: () => [msg("m1", 1), msg("m2", 2)],
+      getQuestionsBySession: () => [{ id: "q1" }],
+      getSessionPagination: () => page(),
+      loadOlder: vi.fn(async () => []),
+      permissions: [],
+    })
+    mocks.useSession.mockReturnValue({ isIdle: false, isReasoning: false, currentSession: null })
+    mocks.useTopTrim.mockReturnValue({
+      topRef: { current: null },
+      top: 0,
+      visible: [
+        {
+          id: "m1",
+          kind: "history-message",
+          msg: msg("m1", 1),
+        },
+        {
+          id: "m2",
+          kind: "history-message",
+          msg: msg("m2", 2),
+        },
+      ],
+      row: () => vi.fn(),
+      preparePrepend: mocks.preparePrepend,
+      cancelPrepend: mocks.cancelPrepend,
+    })
+
+    render(<MessageList sessionID="s1" onUndoToInput={vi.fn()} />)
+
+    const historyRows = screen.getByTestId("history-rows")
+    const tailRows = screen.getByTestId("tail-rows")
+
+    expect(historyRows).toHaveClass("flex", "flex-col", "gap-3")
+    expect(tailRows).toHaveClass("flex", "flex-col", "gap-3")
+  })
+
   it("没有消息但有尾部问题时不显示 EmptyState", () => {
     mocks.useMessages.mockReturnValue({
       getMessagesBySession: () => [],

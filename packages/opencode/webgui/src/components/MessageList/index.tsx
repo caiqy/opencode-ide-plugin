@@ -259,7 +259,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
     <>
       <div data-testid="message-scroll-shell" ref={messagesContainerRef} className="min-h-full">
         <PartOpenProvider items={items}>
-          <div data-testid="message-scroll-root" className="space-y-4">
+          <div data-testid="message-scroll-root" className="flex flex-col gap-4">
             <div data-testid="history-zone">
               <div ref={trim.topRef} />
               <div data-testid="history-trim-spacer" style={{ height: trim.top }} />
@@ -274,7 +274,9 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
                   {bar.text}
                 </button>
               )}
-              {rows}
+              <div data-testid="history-rows" className="flex flex-col gap-3">
+                {rows}
+              </div>
             </div>
             {/* Revert banner (pinned to top of scroll area) */}
             {currentSession?.revert?.messageID && (
@@ -286,7 +288,9 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
             )}
 
             <div ref={tailRef} data-testid="tail-zone">
-              {tail}
+              <div data-testid="tail-rows" className="flex flex-col gap-3">
+                {tail}
+              </div>
               <div data-testid="tail-anchor" ref={messagesEndRef} />
             </div>
           </div>

@@ -92,10 +92,14 @@ describe("SubtaskMessageList", () => {
   })
 
   it("有消息时应渲染消息行，并使用子会话 idle/reasoning 状态驱动滚动", () => {
-    render(<SubtaskMessageList sessionID="s-child" />)
+    const { container } = render(<SubtaskMessageList sessionID="s-child" />)
 
     expect(screen.getAllByTestId("message-row")).toHaveLength(2)
     expect(mocks.useMessageScroll).toHaveBeenCalled()
+
+    const stack = container.querySelector(".min-h-full > div")
+    expect(stack).toHaveClass("flex", "flex-col", "gap-3")
+    expect(stack).not.toHaveClass("space-y-4")
 
     const call = mocks.useMessageScroll.mock.calls.at(-1)
     expect(call).toBeTruthy()

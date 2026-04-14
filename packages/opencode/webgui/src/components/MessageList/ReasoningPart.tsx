@@ -16,7 +16,7 @@ export function ReasoningPart({ part, durationMs }: ReasoningPartProps) {
   const text = (part.text || "").trim()
   if (!text) {
     return (
-      <div className="my-1">
+      <div>
         <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
       </div>
     )

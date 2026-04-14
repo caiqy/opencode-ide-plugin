@@ -104,6 +104,26 @@ describe("ToolPart", () => {
     expect(expanded).toHaveClass("[overflow-wrap:anywhere]")
   })
 
+  it("工具卡片使用圆角边框，并移除根节点外边距由父层统一控间距", () => {
+    const part = {
+      id: "p-spacing",
+      type: "tool",
+      callID: "c-spacing",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "pwd" },
+        output: "ok",
+      },
+    } as any
+
+    const { container } = render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+    const root = container.firstElementChild
+
+    expect(root).toHaveClass("rounded-lg")
+    expect(root).not.toHaveClass("my-1")
+  })
+
   it("task 工具在头部提供查看子任务入口", () => {
     mocks.getMessagesBySession.mockReturnValue([
       {

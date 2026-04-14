@@ -64,7 +64,7 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
     <>
       <div ref={messagesContainerRef} className="min-h-full">
         <PartOpenProvider items={items}>
-          <div className="space-y-4">
+          <div className="flex flex-col gap-3">
             {sortedMessages.map((message) => (
               <MessageRow
                 key={message.info.id}

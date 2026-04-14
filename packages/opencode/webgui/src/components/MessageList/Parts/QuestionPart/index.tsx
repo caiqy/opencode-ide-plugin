@@ -217,7 +217,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
   }
 
   return (
-    <div className="my-0.5 border rounded-lg border-blue-300 dark:border-blue-700 overflow-hidden bg-gray-50 dark:bg-gray-900">
+    <div className="border rounded-lg border-blue-300 dark:border-blue-700 overflow-hidden bg-gray-50 dark:bg-gray-900">
       {/* Header */}
       <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
         <div className="text-xs font-medium text-blue-700 dark:text-blue-300">来自助手的问题</div>

@@ -17,7 +17,7 @@ describe("TypingIndicator", () => {
     })
   })
 
-  it("显示 Generating 时应与底部保持更大间距", () => {
+  it("不再使用根节点外边距，由父层 gap 控制与其他消息项的间距", () => {
     render(<TypingIndicator visible={true} />)
 
     const text = screen.getByText("生成中")
@@ -25,7 +25,8 @@ describe("TypingIndicator", () => {
     expect(button).toBeTruthy()
     const wrap = button?.parentElement
 
-    expect(wrap).toHaveClass("mb-3")
+    expect(wrap).not.toHaveClass("mt-1")
+    expect(wrap).not.toHaveClass("mb-3")
   })
 
   it("retry 状态会显示中文重试提示", () => {

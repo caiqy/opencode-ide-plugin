@@ -33,7 +33,7 @@ export function CollapsiblePart({
   }
 
   return (
-    <div className="my-1">
+    <div>
       <button onClick={toggle} className={cn("relative inline-flex items-center gap-1 pr-4", triggerClassName)}>
         {trigger}
         <span className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 flex h-3 w-3 items-center justify-center text-gray-400">
