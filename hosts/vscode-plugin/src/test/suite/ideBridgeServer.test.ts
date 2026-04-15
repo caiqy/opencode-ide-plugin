@@ -19,7 +19,7 @@ type Reply = {
   replyTo: string
   ok: boolean
   error?: string
-  result?: Record<string, string | undefined>
+  result?: Record<string, unknown>
 }
 
 function post(url: string, body: object): Promise<{ status: number }> {
@@ -502,6 +502,109 @@ suite("IdeBridgeServer restartHost", () => {
     const res = await requestReply(baseUrl, token, { type: "restartHost", payload: {} })
 
     assert.strictEqual(res.ok, true)
+  })
+})
+
+suite("IdeBridgeServer update bridge", () => {
+  let baseUrl: string
+  let token: string
+  let sessionId: string
+  let installCalls: string[]
+  let checkCalls: number
+  let extensionVersionCalls: number
+
+  setup(async () => {
+    installCalls = []
+    checkCalls = 0
+    extensionVersionCalls = 0
+
+    const handlers: SessionHandlers = {
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+      getExtensionVersion: async () => {
+        extensionVersionCalls += 1
+        return { version: "26.4.1503" }
+      },
+      checkForUpdates: async () => {
+        checkCalls += 1
+        return {
+          checkedAt: "2026-04-14T00:00:00.000Z",
+          hasUpdate: true,
+        }
+      },
+      getUpdateInfo: async () => ({
+        latest: { version: "26.4.1406" },
+        hasUpdate: true,
+      }),
+      installUpdate: async (version) => {
+        installCalls.push(version)
+      },
+    }
+
+    const session = await bridgeServer.createSession(handlers)
+    baseUrl = session.baseUrl
+    token = session.token
+    sessionId = session.sessionId
+  })
+
+  teardown(() => {
+    bridgeServer.removeSession(sessionId)
+  })
+
+  test("getUpdateInfo 返回 result", async () => {
+    const res = await requestRoundtrip(baseUrl, token, {
+      type: "getUpdateInfo",
+      payload: {},
+    })
+
+    assert.strictEqual(res.status, 204)
+    assert.strictEqual(res.reply.ok, true)
+    assert.deepStrictEqual(res.reply.result, {
+      latest: { version: "26.4.1406" },
+      hasUpdate: true,
+    })
+  })
+
+  test("getExtensionVersion 返回 result", async () => {
+    const res = await requestRoundtrip(baseUrl, token, {
+      type: "getExtensionVersion",
+      payload: {},
+    })
+
+    assert.strictEqual(res.status, 204)
+    assert.strictEqual(res.reply.ok, true)
+    assert.deepStrictEqual(res.reply.result, {
+      version: "26.4.1503",
+    })
+    assert.strictEqual(extensionVersionCalls, 1)
+  })
+
+  test("checkForUpdates 返回 result", async () => {
+    const res = await requestRoundtrip(baseUrl, token, {
+      type: "checkForUpdates",
+      payload: {},
+    })
+
+    assert.strictEqual(res.status, 204)
+    assert.strictEqual(res.reply.ok, true)
+    assert.deepStrictEqual(res.reply.result, {
+      checkedAt: "2026-04-14T00:00:00.000Z",
+      hasUpdate: true,
+    })
+    assert.strictEqual(checkCalls, 1)
+  })
+
+  test("installUpdate 返回 ok", async () => {
+    const res = await requestRoundtrip(baseUrl, token, {
+      type: "installUpdate",
+      payload: { version: "26.4.1406" },
+    })
+
+    assert.strictEqual(res.status, 204)
+    assert.strictEqual(res.reply.ok, true)
+    assert.deepStrictEqual(installCalls, ["26.4.1406"])
   })
 })
 

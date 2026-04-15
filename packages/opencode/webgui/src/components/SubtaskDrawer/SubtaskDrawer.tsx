@@ -3,7 +3,7 @@ import { IconButton } from "../common"
 import { useMessages } from "../../state/MessagesContext"
 import { useSubtaskDrawer } from "../../state/SubtaskDrawerContext"
 import { SubtaskMessageList } from "./SubtaskMessageList"
-import { getToolLabel } from "../parts/ToolPart/utils"
+import { getSubtaskStatusLabel, getToolLabel } from "../parts/ToolPart/utils"
 import type { WebguiPart } from "../../types/messages"
 
 function isToolPart(part: WebguiPart): part is Extract<WebguiPart, { type: "tool" }> {
@@ -17,7 +17,7 @@ export function SubtaskDrawer() {
 
   const toolStats = useMemo(() => {
     if (!sessionId) {
-      return { totalCalls: 0, currentToolLabel: "空闲" }
+      return { totalCalls: 0, currentToolLabel: null }
     }
 
     const toolParts = getMessagesBySession(sessionId)
@@ -30,7 +30,7 @@ export function SubtaskDrawer() {
 
     return {
       totalCalls: toolParts.length,
-      currentToolLabel: currentTool ? getToolLabel(currentTool.tool) : "空闲",
+      currentToolLabel: currentTool ? getToolLabel(currentTool.tool) : null,
     }
   }, [sessionId, getMessagesBySession])
 
@@ -58,8 +58,10 @@ export function SubtaskDrawer() {
     return false
   }, [parent, getMessagesBySession])
 
-  const currentToolLabel =
-    toolStats.currentToolLabel === "空闲" && isParentCompleted ? "已完成" : toolStats.currentToolLabel
+  const currentToolLabel = getSubtaskStatusLabel({
+    currentToolLabel: toolStats.currentToolLabel,
+    isParentCompleted,
+  })
 
   const key = isOpen && sessionId ? sessionId : null
   const cold = !sessionId || getMessagesBySession(sessionId).length === 0

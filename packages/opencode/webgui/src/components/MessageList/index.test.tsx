@@ -77,7 +77,12 @@ vi.mock("./RevertSummary", () => ({
 }))
 
 vi.mock("./Parts/QuestionPart", () => ({
-  QuestionPart: () => <div data-testid="question-part" />,
+  QuestionPart: ({ request }: { request?: { id?: string; questions?: Array<{ header?: string }> } }) => (
+    <div data-testid="question-part">
+      <span data-testid="question-request-id">{request?.id ?? "unknown"}</span>
+      <span data-testid="question-request-header">{request?.questions?.[0]?.header ?? "no-header"}</span>
+    </div>
+  ),
 }))
 
 vi.mock("../TypingIndicator", () => ({
@@ -310,6 +315,34 @@ describe("MessageList", () => {
 
     expect(screen.queryByTestId("empty-state")).not.toBeInTheDocument()
     expect(screen.getByTestId("question-part")).toBeInTheDocument()
+  })
+
+  it("未完成问题仍走现有 QuestionPart 交互路径", () => {
+    mocks.useMessages.mockReturnValue({
+      getMessagesBySession: () => [],
+      getQuestionsBySession: () => [
+        {
+          id: "q-pending",
+          sessionID: "s1",
+          questions: [
+            {
+              header: "来源",
+              question: "应该从哪个 GitHub Release 页面查询更新？",
+              options: [{ label: "当前项目自身的 Release", description: "当前项目 repo 的 Release" }],
+            },
+          ],
+        },
+      ],
+      getSessionPagination: () => page(),
+      loadOlder: vi.fn(async () => []),
+      permissions: [],
+    })
+
+    render(<MessageList sessionID="s1" onUndoToInput={vi.fn()} />)
+
+    expect(screen.getByTestId("question-part")).toBeInTheDocument()
+    expect(screen.getByTestId("question-request-id")).toHaveTextContent("q-pending")
+    expect(screen.getByTestId("question-request-header")).toHaveTextContent("来源")
   })
 
   it("session 存在且消息与问题都为空时显示 EmptyState", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { getToolDisplayName } from "./utils"
+import { getSubtaskStatusLabel, getToolDisplayName } from "./utils"
 
 describe("getToolDisplayName", () => {
   it("在有 title 时使用中文工具名", () => {
@@ -62,5 +62,19 @@ describe("getToolDisplayName", () => {
     expect(getToolDisplayName("skill", undefined, "Loaded skill: brainstorming", undefined)).toBe(
       "加载技能：brainstorming",
     )
+  })
+})
+
+describe("getSubtaskStatusLabel", () => {
+  it("有进行中工具时返回当前工具名", () => {
+    expect(getSubtaskStatusLabel({ currentToolLabel: "执行命令", isParentCompleted: false })).toBe("执行命令")
+  })
+
+  it("无进行中工具且父 task 未完成时返回思考中", () => {
+    expect(getSubtaskStatusLabel({ currentToolLabel: null, isParentCompleted: false })).toBe("思考中")
+  })
+
+  it("无进行中工具且父 task 已完成时返回已完成", () => {
+    expect(getSubtaskStatusLabel({ currentToolLabel: null, isParentCompleted: true })).toBe("已完成")
   })
 })

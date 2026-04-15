@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useEffect, useState, useMemo } from "react"
 import type { TaskResultParsed } from "../../../types/messages"
 import { DiffModal } from "../../DiffModal"
 import { IconButton } from "../../common"
@@ -14,8 +14,10 @@ import { TodoTool } from "./TodoTool"
 import { GenericOutput } from "./GenericOutput"
 import { ErrorDisplay } from "./ErrorDisplay"
 import { TaskTool } from "./TaskTool"
-import { getToolDisplayName, getBorderColor, getToolLabel } from "./utils"
+import { QuestionTool } from "./QuestionTool"
+import { getToolDisplayName, getBorderColor, getSubtaskStatusLabel, getToolLabel } from "./utils"
 import { parseTaskResult } from "../../../lib/task-result"
+import type { QuestionInfo } from "@opencode-ai/sdk/v2/client"
 
 interface ToolPartProps {
   part: {
@@ -58,8 +60,14 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
   const { openSubtaskDrawer } = useSubtaskDrawer()
 
-  const { getPermissionForCall, getMessagesBySession, respondPermission, permissions, getQuestionsBySession } =
-    useMessages()
+  const {
+    getPermissionForCall,
+    getMessagesBySession,
+    ensureSession,
+    respondPermission,
+    permissions,
+    getQuestionsBySession,
+  } = useMessages()
   const permission = useMemo(() => {
     return sessionID ? getPermissionForCall(sessionID, part.callID) : undefined
   }, [getPermissionForCall, sessionID, part.callID])
@@ -145,6 +153,46 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     Boolean(part.state.metadata?.diff)
   const showError = part.state.status === "error" && Boolean(part.state.error)
 
+  const questionInput = useMemo(() => {
+    if (part.tool !== "question") return [] as QuestionInfo[]
+    const raw = part.state.input?.questions
+    return Array.isArray(raw) ? (raw as QuestionInfo[]) : ([] as QuestionInfo[])
+  }, [part.tool, part.state.input])
+
+  const questionAnswers = useMemo(() => {
+    if (part.tool !== "question") return [] as string[][]
+    const raw = part.state.metadata?.answers
+    return Array.isArray(raw) ? (raw as string[][]) : ([] as string[][])
+  }, [part.tool, part.state.metadata])
+
+  const questionDismissed = useMemo(() => {
+    return part.tool === "question" && part.state.status === "error" && /dismissed/i.test(part.state.error ?? "")
+  }, [part.tool, part.state.status, part.state.error])
+
+  const questionMode = useMemo(() => {
+    if (part.tool !== "question") return null
+    if (!questionInput.length) return null
+    if (part.state.status === "completed") return "completed" as const
+    if (questionDismissed) return "ignored" as const
+    return null
+  }, [part.tool, part.state.status, questionDismissed, questionInput.length])
+
+  const answeredQuestionCount = useMemo(() => {
+    return questionAnswers.filter((answer) => Array.isArray(answer) && answer.length > 0).length
+  }, [questionAnswers])
+
+  const questionHeading = useMemo(() => {
+    if (!questionMode) return null
+    if (questionMode === "ignored")
+      return `${getToolLabel("question")}：已忽略 ${answeredQuestionCount}/${questionInput.length}`
+    return `${getToolLabel("question")}：已完成 ${answeredQuestionCount}/${questionInput.length}`
+  }, [questionMode, answeredQuestionCount, questionInput.length])
+
+  const questionToolContent = useMemo(() => {
+    if (!questionMode) return null
+    return <QuestionTool questions={questionInput} answers={questionAnswers} mode={questionMode} />
+  }, [questionMode, questionInput, questionAnswers])
+
   // Header-only tools: no expand
   const isHeaderOnlyTool =
     part.tool === "read" ||
@@ -184,7 +232,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
       return <TodoTool output={part.state.output!} />
     }
 
-    if (part.tool === "task") return null
+    if (part.tool === "task" || part.tool === "question") return null
 
     // Generic output for all other tools
     return <GenericOutput output={part.state.output!} />
@@ -213,8 +261,9 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
       : ""
   const showApplyPatchContent = part.tool === "apply_patch" && Boolean(applyPatchContent)
 
-  const isExpandable = !isHeaderOnlyTool
-  const shouldShowExpandedContent = isExpandable && isExpanded
+  const isQuestionStatic = Boolean(questionMode)
+  const isExpandable = !isHeaderOnlyTool && !isQuestionStatic
+  const shouldShowExpandedContent = isQuestionStatic || (isExpandable && isExpanded)
   const showPermission = Boolean(permission)
   const expandedBorder = showPermission ? "" : "border-t border-gray-200 dark:border-gray-800"
 
@@ -225,12 +274,12 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     return value.length > 0 ? value : null
   }, [part.tool, part.state.metadata])
 
-  const blocked = useMemo(() => {
+  const blocked = (() => {
     if (!subtaskSessionId) return null
     if (permissions.some((p) => p.sessionID === subtaskSessionId)) return "permission" as const
     if (getQuestionsBySession(subtaskSessionId).length > 0) return "question" as const
     return null
-  }, [subtaskSessionId, permissions, getQuestionsBySession])
+  })()
 
   const subtaskTitle = useMemo(() => {
     if (part.tool !== "task") return null
@@ -245,7 +294,12 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null
   }, [part.tool, part.state.input])
 
-  const progress = useMemo(() => {
+  useEffect(() => {
+    if (!subtaskSessionId) return
+    void ensureSession(subtaskSessionId)
+  }, [subtaskSessionId, ensureSession])
+
+  const progress = (() => {
     if (part.tool !== "task") return null
     if (!subtaskSessionId) return null
 
@@ -264,15 +318,15 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
       .reverse()
       .find((toolPart) => toolPart.state?.status === "running" || toolPart.state?.status === "pending")
 
-    const currentLabel = currentTool
-      ? getToolLabel(currentTool.tool)
-      : part.state.status === "completed"
-        ? "已完成"
-        : "空闲"
+    const currentLabel = getSubtaskStatusLabel({
+      currentToolLabel: currentTool ? getToolLabel(currentTool.tool) : null,
+      isParentCompleted: part.state.status === "completed",
+    })
     return `${base} [ ${toolParts.length} 工具调用 / ${currentLabel} ]`
-  }, [part.tool, part.state.status, subtaskSessionId, subtaskTitle, subagentType, blocked, getMessagesBySession])
+  })()
 
-  const heading = progress ?? toolName
+  const heading = questionHeading ?? progress ?? toolName
+  const displayStatus = questionMode === "ignored" ? "completed" : part.state.status
 
   const drawerParent = useMemo(
     () => (sessionID ? { sessionId: sessionID, messageId: messageID, partId: part.id } : null),
@@ -321,12 +375,12 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
   return (
     <div
-      className={`rounded-lg border ${getBorderColor(part.state.status, Boolean(permission), blocked)} overflow-hidden bg-gray-50 dark:bg-gray-900`}
+      className={`rounded-lg border ${getBorderColor(displayStatus, Boolean(permission), blocked)} overflow-hidden bg-gray-50 dark:bg-gray-900`}
     >
       {/* Header */}
       <ToolHeader
         tool={part.tool}
-        status={part.state.status}
+        status={displayStatus}
         toolName={heading}
         filePath={filePath}
         patchFilePaths={patchFilePaths}
@@ -350,6 +404,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
       {/* Expanded content */}
       {shouldShowExpandedContent && (
         <div className={`${expandedBorder} bg-gray-50 dark:bg-gray-950 break-words [overflow-wrap:anywhere]`}>
+          {questionToolContent}
           {task ? <TaskTool text={task.text} empty={task.empty} /> : null}
 
           {/* Output/Result (bash, todo, generic — not read/edit/write/apply_patch) */}
@@ -365,7 +420,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
           {showApplyPatchContent && <WriteTool content={applyPatchContent} filePath={filePath || ""} />}
 
           {/* Error */}
-          {showError && <ErrorDisplay error={part.state.error!} />}
+          {showError && !questionMode ? <ErrorDisplay error={part.state.error!} /> : null}
         </div>
       )}
 

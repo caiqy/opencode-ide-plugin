@@ -5,7 +5,7 @@ import { CommunicationBridge } from "./CommunicationBridge"
 import { FileMonitor } from "../utils/FileMonitor"
 import { errorHandler } from "../utils/ErrorHandler"
 import { PathInserter } from "../utils/PathInserter"
-import { logger } from "../globals"
+import { getUpdateService, logger } from "../globals"
 import { bridgeServer } from "./IdeBridgeServer"
 
 /**
@@ -72,6 +72,12 @@ export class WebviewController {
   private static readonly SW_RETRY_INITIAL_DELAY_MS = 200
   private static readonly SW_RETRY_MAX_DELAY_MS = 3_000
 
+  private ensureLoadNotDisposed(): void {
+    if (this.disposed) {
+      throw new Error("WebviewController.load cancelled: controller disposed")
+    }
+  }
+
   private async setHtmlWithRetry(html: string): Promise<void> {
     // When webviews are disposed/recreated rapidly (e.g. quick project switching),
     // VS Code may throw a transient SW registration InvalidStateError during webview init.
@@ -108,6 +114,9 @@ export class WebviewController {
   async load(connection: BackendConnection): Promise<void> {
     this.connection = connection
     this.disposed = false
+    const updateService = getUpdateService()
+    let attachedSessionId: string | null = null
+    let startedFileMonitor = false
 
     try {
       // Initialize communication bridge
@@ -142,15 +151,47 @@ export class WebviewController {
           },
           storageGet: this.storageGet,
           storageSet: this.storageSet,
+          getExtensionVersion: async () => {
+            return { version: this.context.extension.packageJSON.version }
+          },
+          checkForUpdates: updateService
+            ? async () => {
+                return (await updateService.checkForUpdates()) as Record<string, unknown>
+              }
+            : undefined,
+          getUpdateInfo: updateService
+            ? async () => {
+                return updateService.getUpdateInfo() as Record<string, unknown>
+              }
+            : undefined,
+          installUpdate: updateService
+            ? async (version) => {
+                await updateService.installUpdate(version)
+              }
+            : undefined,
         },
         {
           restartMode: "window",
         },
       )
       this.bridgeSessionId = session.sessionId
+      this.ensureLoadNotDisposed()
+      if (updateService) {
+        updateService.attachSession(session.sessionId, (type, payload) => {
+          bridgeServer.send(session.sessionId, {
+            type,
+            payload,
+          })
+        })
+        attachedSessionId = session.sessionId
+        void updateService.checkNow().catch((error) => {
+          logger.appendLine(`update check failed for session ${session.sessionId}: ${error}`)
+        })
+      }
 
       // Tell CommunicationBridge to route ideBridge messages through SSE
       this.communicationBridge.setBridgeSession(session.sessionId, bridgeServer)
+      this.ensureLoadNotDisposed()
 
       // Initialize file monitor (best effort)
       try {
@@ -170,13 +211,17 @@ export class WebviewController {
             logger.appendLine(`updateOpenedFiles failed: ${e}`)
           }
         })
+        startedFileMonitor = true
       } catch (e) {
         logger.appendLine(`FileMonitor init failed: ${e}`)
       }
+      this.ensureLoadNotDisposed()
 
       // Use asExternalUri for Remote-SSH compatibility
       const externalUi = await vscode.env.asExternalUri(vscode.Uri.parse(connection.uiBase))
+      this.ensureLoadNotDisposed()
       const externalBridge = await vscode.env.asExternalUri(vscode.Uri.parse(session.baseUrl))
+      this.ensureLoadNotDisposed()
 
       // Build iframe src with bridge params
       const uiUrlWithMode = this.buildUiUrlWithMode(externalUi.toString())
@@ -187,10 +232,17 @@ export class WebviewController {
       const bridgeOrigin = new URL(externalBridge.toString()).origin
 
       const html = await this.generateHtmlContent(iframeSrc, { uiOrigin, bridgeOrigin })
+      this.ensureLoadNotDisposed()
       await this.setHtmlWithRetry(html)
 
       // Message handling is now done entirely by CommunicationBridge
     } catch (error) {
+      this.rollbackFailedLoad({
+        attachedSessionId,
+        startedFileMonitor,
+        updateService,
+      })
+
       // If we were disposed while loading (common during rapid project switching),
       // treat as a cancellation and avoid surfacing an error toast.
       if (this.disposed) {
@@ -202,6 +254,37 @@ export class WebviewController {
       })
       throw error
     }
+  }
+
+  private rollbackFailedLoad(input: {
+    attachedSessionId: string | null
+    startedFileMonitor: boolean
+    updateService?: ReturnType<typeof getUpdateService>
+  }): void {
+    if (input.startedFileMonitor) {
+      try {
+        this.fileMonitor?.stopMonitoring()
+      } catch {}
+      this.fileMonitor = undefined
+    }
+
+    if (input.attachedSessionId) {
+      try {
+        input.updateService?.detachSession(input.attachedSessionId)
+      } catch {}
+    }
+
+    if (this.bridgeSessionId) {
+      try {
+        bridgeServer.removeSession(this.bridgeSessionId)
+      } catch {}
+      this.bridgeSessionId = null
+    }
+
+    try {
+      this.communicationBridge?.dispose()
+    } catch {}
+    this.communicationBridge = undefined
   }
 
   private async handleReadUris(uris: string[]): Promise<void> {
@@ -382,6 +465,7 @@ export class WebviewController {
     } catch {}
     // NOTE: container owns PathInserter pointer
     if (this.bridgeSessionId) {
+      getUpdateService()?.detachSession(this.bridgeSessionId)
       bridgeServer.removeSession(this.bridgeSessionId)
       this.bridgeSessionId = null
     }

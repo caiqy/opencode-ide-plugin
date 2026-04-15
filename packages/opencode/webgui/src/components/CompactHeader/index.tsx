@@ -17,6 +17,7 @@ import { useToast } from "../../state/ToastContext"
 import { useTabStore } from "../../state/tabStore"
 import { ideBridge } from "../../lib/ideBridge"
 import { switchSessionWithTabRollback } from "../../state/switchSession"
+import { useUpdate } from "../../state/UpdateContext"
 
 interface CompactHeaderProps {
   connectionState: ConnectionState
@@ -47,6 +48,7 @@ const CompactHeader = forwardRef<
   } = useSession()
   const tabStore = useTabStore()
   const toast = useToast()
+  const { isChecking, checkForUpdates, confirmOpen, confirmVersion, confirmInstall, cancelInstallConfirm } = useUpdate()
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
@@ -57,6 +59,7 @@ const CompactHeader = forwardRef<
   const [restarting, setRestarting] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [displayVersion, setDisplayVersion] = useState(__APP_VERSION__)
   const activeRef = useRef("")
   const statusRef = useRef<HTMLButtonElement>(null)
   const sessionsEverLoaded = useRef(false)
@@ -79,6 +82,23 @@ const CompactHeader = forwardRef<
     window.addEventListener("opencode:idebridge-connected", syncRestartMode)
     return () => {
       window.removeEventListener("opencode:idebridge-connected", syncRestartMode)
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    void ideBridge
+      .request<{ version?: unknown }>("getExtensionVersion")
+      .then((reply) => {
+        if (cancelled) return
+        if (typeof reply.result?.version !== "string" || reply.result.version.length === 0) return
+        setDisplayVersion(reply.result.version)
+      })
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
     }
   }, [])
 
@@ -485,6 +505,11 @@ const CompactHeader = forwardRef<
             toggleTheme={toggleTheme}
             onOpenCommandPalette={onOpenCommandPalette}
             onOpenConfigFile={handleOpenConfigFile}
+            displayVersion={displayVersion}
+            isCheckingForUpdates={isChecking}
+            onCheckForUpdates={() => {
+              void checkForUpdates()
+            }}
             canRestart={canRestart}
             onRestart={handleOpenRestartConfirm}
             onOpenSettings={() => setIsSettingsOpen(true)}
@@ -570,6 +595,19 @@ const CompactHeader = forwardRef<
         cancelText="取消"
         variant="warning"
         isLoading={restarting}
+      />
+
+      <ConfirmModal
+        isOpen={confirmOpen}
+        onClose={cancelInstallConfirm}
+        onConfirm={() => {
+          void confirmInstall()
+        }}
+        title="发现新版本"
+        message={`检测到新版本 v${confirmVersion ?? ""}，是否立即更新？`}
+        confirmText="立即更新"
+        cancelText="稍后"
+        variant="info"
       />
 
       {/* Settings panel */}

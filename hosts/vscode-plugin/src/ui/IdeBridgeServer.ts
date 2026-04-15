@@ -13,6 +13,10 @@ export interface SessionHandlers {
   restartHost?: () => Promise<void>
   storageGet?: (scope: StorageScope, keys: string[]) => Promise<Record<string, string | undefined>>
   storageSet?: (scope: StorageScope, key: string, value: string) => Promise<void>
+  getExtensionVersion?: () => Promise<Record<string, unknown>>
+  checkForUpdates?: () => Promise<Record<string, unknown>>
+  getUpdateInfo?: () => Promise<Record<string, unknown>>
+  installUpdate?: (version: string) => Promise<void>
 }
 
 type StorageScope = "global" | "workspace" | "mem"
@@ -358,6 +362,80 @@ class IdeBridgeServer {
           } else {
             this.replyError(session, id, "Missing key or value")
           }
+          break
+        }
+
+        case "getUpdateInfo": {
+          if (!session.handlers.getUpdateInfo) {
+            this.replyError(session, id, "getUpdateInfo not supported")
+            break
+          }
+          const updateInfo = await session.handlers.getUpdateInfo()
+          if (id) {
+            this.broadcastSSE(
+              session,
+              JSON.stringify({
+                replyTo: id,
+                ok: true,
+                result: updateInfo,
+                timestamp: Date.now(),
+              }),
+            )
+          }
+          break
+        }
+
+        case "getExtensionVersion": {
+          if (!session.handlers.getExtensionVersion) {
+            this.replyError(session, id, "getExtensionVersion not supported")
+            break
+          }
+          const result = await session.handlers.getExtensionVersion()
+          if (id) {
+            this.broadcastSSE(
+              session,
+              JSON.stringify({
+                replyTo: id,
+                ok: true,
+                result,
+                timestamp: Date.now(),
+              }),
+            )
+          }
+          break
+        }
+
+        case "checkForUpdates": {
+          if (!session.handlers.checkForUpdates) {
+            this.replyError(session, id, "checkForUpdates not supported")
+            break
+          }
+          const result = await session.handlers.checkForUpdates()
+          if (id) {
+            this.broadcastSSE(
+              session,
+              JSON.stringify({
+                replyTo: id,
+                ok: true,
+                result,
+                timestamp: Date.now(),
+              }),
+            )
+          }
+          break
+        }
+
+        case "installUpdate": {
+          if (!session.handlers.installUpdate) {
+            this.replyError(session, id, "installUpdate not supported")
+            break
+          }
+          if (typeof payload?.version !== "string" || payload.version.trim().length === 0) {
+            this.replyError(session, id, "Missing version")
+            break
+          }
+          await session.handlers.installUpdate(payload.version)
+          this.replyOk(session, id)
           break
         }
 

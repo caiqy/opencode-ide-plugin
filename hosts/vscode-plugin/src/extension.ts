@@ -5,7 +5,10 @@ import { SettingsManager } from "./settings/SettingsManager"
 import { ActivityBarProvider } from "./ui/ActivityBarProvider"
 import { bridgeServer } from "./ui/IdeBridgeServer"
 import { ErrorCategory, errorHandler, ErrorSeverity } from "./utils/ErrorHandler"
-import { logger } from "./globals"
+import { logger, setUpdateService } from "./globals"
+import { ReleaseChecker } from "./update/ReleaseChecker"
+import { UpdateInstaller } from "./update/UpdateInstaller"
+import { UpdateService } from "./update/UpdateService"
 
 function withCacheBuster(url: string, version: string): string {
   if (url.includes("v=")) {
@@ -14,6 +17,14 @@ function withCacheBuster(url: string, version: string): string {
 
   const sep = url.includes("?") ? "&" : "?"
   return `${url}${sep}v=${encodeURIComponent(version)}`
+}
+
+const extensionFetch: typeof fetch = (input, init) => {
+  if (typeof globalThis.fetch !== "function") {
+    return Promise.reject(new Error("fetch is not available")) as ReturnType<typeof fetch>
+  }
+
+  return globalThis.fetch(input, init)
 }
 
 /**
@@ -33,6 +44,7 @@ class OpenCodeExtension {
   private backendLauncher?: BackendLauncher
   private settingsManager?: SettingsManager
   private activityBarProvider?: ActivityBarProvider
+  private updateService?: UpdateService
   private registration?: vscode.Disposable
   private context?: vscode.ExtensionContext
   private disposed = false
@@ -89,6 +101,15 @@ class OpenCodeExtension {
 
     // Initialize backend launcher (pass extension path for binary resolution)
     this.backendLauncher = new BackendLauncher(this.context!.extensionUri.fsPath)
+
+    const currentVersion = this.context!.extension.packageJSON.version
+    this.updateService = new UpdateService({
+      currentVersion,
+      checker: new ReleaseChecker({ owner: "caiqy", name: "opencode-ide-plugin" }, extensionFetch),
+      installer: new UpdateInstaller(extensionFetch),
+    })
+    this.updateService.start()
+    setUpdateService(this.updateService)
 
     // Initialize webview manager
     this.webviewManager = new WebviewManager()
@@ -390,6 +411,11 @@ class OpenCodeExtension {
       drop("settingsManager", () => this.settingsManager!.dispose())
       this.settingsManager = undefined
     }
+    if (this.updateService) {
+      drop("updateService", () => this.updateService!.dispose())
+    }
+    this.updateService = undefined
+    setUpdateService(undefined)
 
     this.context = undefined
     logger.appendLine("OpenCode extension disposed")

@@ -14,6 +14,7 @@ import { UISettingsProvider } from "./state/UISettingsContext"
 import { initGlobalDnD } from "./lib/dnd"
 import { VersionGate } from "./components/VersionGate"
 import { TabStoreProvider } from "./state/tabStore"
+import { UpdateProvider } from "./state/UpdateContext"
 
 ideBridge.init()
 installTooltipPolyfillBridge()
@@ -29,9 +30,11 @@ createRoot(document.getElementById("root")!).render(
               <ToastProvider>
                 <IdeBridgeProvider>
                   <ProvidersProvider>
-                    <UISettingsProvider>
-                      <App />
-                    </UISettingsProvider>
+                    <UpdateProvider>
+                      <UISettingsProvider>
+                        <App />
+                      </UISettingsProvider>
+                    </UpdateProvider>
                   </ProvidersProvider>
                 </IdeBridgeProvider>
               </ToastProvider>

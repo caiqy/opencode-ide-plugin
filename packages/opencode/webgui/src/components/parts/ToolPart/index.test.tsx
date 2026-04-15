@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   setOpen: vi.fn(),
   getPermissionForCall: vi.fn(),
   getMessagesBySession: vi.fn(),
+  ensureSession: vi.fn(),
+  isSessionLoaded: vi.fn(),
+  isSessionLoadError: vi.fn(),
   respondPermission: vi.fn(),
   openSubtaskDrawer: vi.fn(),
   permissions: [] as Array<{ id: string; sessionID: string; tool?: { messageID: string; callID: string } }>,
@@ -19,6 +22,9 @@ vi.mock("../../../state/MessagesContext", () => ({
   useMessages: () => ({
     getPermissionForCall: mocks.getPermissionForCall,
     getMessagesBySession: mocks.getMessagesBySession,
+    ensureSession: mocks.ensureSession,
+    isSessionLoaded: mocks.isSessionLoaded,
+    isSessionLoadError: mocks.isSessionLoadError,
     respondPermission: mocks.respondPermission,
     permissions: mocks.permissions,
     getQuestionsBySession: mocks.getQuestionsBySession,
@@ -54,6 +60,9 @@ describe("ToolPart", () => {
     mocks.isOpen.mockReturnValue(true)
     mocks.getPermissionForCall.mockReturnValue(undefined)
     mocks.getMessagesBySession.mockReturnValue([])
+    mocks.ensureSession.mockResolvedValue([])
+    mocks.isSessionLoaded.mockReturnValue(true)
+    mocks.isSessionLoadError.mockReturnValue(false)
     mocks.respondPermission.mockResolvedValue(true)
     mocks.openSubtaskDrawer.mockReset()
     mocks.permissions = []
@@ -164,6 +173,100 @@ describe("ToolPart", () => {
     })
   })
 
+  it("task 子会话冷启动时默认显示 0 工具调用/思考中，并主动触发加载", async () => {
+    mocks.isSessionLoaded.mockReturnValue(false)
+    mocks.getMessagesBySession.mockReturnValue([])
+
+    const part = {
+      id: "p3-loading",
+      type: "tool",
+      callID: "c3-loading",
+      tool: "task",
+      state: {
+        status: "running",
+        title: "Demo Task",
+        input: { description: "Demo Task", subagent_type: "general", prompt: "do" },
+        metadata: { sessionId: "s-child" },
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("委派子任务 (general)：Demo Task [ 0 工具调用 / 思考中 ]")).toBeInTheDocument()
+    expect(screen.queryByText("委派子任务 (general)：Demo Task [ 正在加载子任务… ]")).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(mocks.ensureSession).toHaveBeenCalledWith("s-child")
+    })
+  })
+
+  it("task 子会话预加载失败时头部仍显示 0 工具调用/思考中", async () => {
+    mocks.isSessionLoaded.mockReturnValue(false)
+    mocks.isSessionLoadError.mockReturnValue(true)
+    mocks.getMessagesBySession.mockReturnValue([])
+
+    const part = {
+      id: "p3-load-error",
+      type: "tool",
+      callID: "c3-load-error",
+      tool: "task",
+      state: {
+        status: "running",
+        title: "Demo Task",
+        input: { description: "Demo Task", subagent_type: "general", prompt: "do" },
+        metadata: { sessionId: "s-child" },
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("委派子任务 (general)：Demo Task [ 0 工具调用 / 思考中 ]")).toBeInTheDocument()
+    expect(screen.queryByText("委派子任务 (general)：Demo Task [ 子任务加载失败 ]")).not.toBeInTheDocument()
+    expect(screen.queryByText("委派子任务 (general)：Demo Task [ 正在加载子任务… ]")).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(mocks.ensureSession).toHaveBeenCalledWith("s-child")
+    })
+  })
+
+  it("task 子会话消息到达后头部立即更新工具调用数，不需要切换会话", () => {
+    mocks.isSessionLoaded.mockReturnValue(false)
+    mocks.getMessagesBySession.mockReturnValue([])
+
+    const part = {
+      id: "p3-update",
+      type: "tool",
+      callID: "c3-update",
+      tool: "task",
+      state: {
+        status: "running",
+        title: "Demo Task",
+        input: { description: "Demo Task", subagent_type: "general", prompt: "do" },
+        metadata: { sessionId: "s-child" },
+      },
+    } as any
+
+    const view = render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("委派子任务 (general)：Demo Task [ 0 工具调用 / 思考中 ]")).toBeInTheDocument()
+
+    mocks.isSessionLoaded.mockReturnValue(true)
+    mocks.getMessagesBySession.mockReturnValue([
+      {
+        info: { id: "m1", sessionID: "s-child", role: "assistant", time: { created: 1 } },
+        parts: [{ id: "t1", type: "tool", tool: "read", state: { status: "completed" } }],
+      },
+      {
+        info: { id: "m2", sessionID: "s-child", role: "assistant", time: { created: 2 } },
+        parts: [{ id: "t2", type: "tool", tool: "bash", state: { status: "running" } }],
+      },
+    ])
+
+    view.rerender(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("委派子任务 (general)：Demo Task [ 2 工具调用 / 执行命令 ]")).toBeInTheDocument()
+  })
+
   it("子任务完成后头部显示已完成", () => {
     mocks.getMessagesBySession.mockReturnValue([
       {
@@ -192,6 +295,36 @@ describe("ToolPart", () => {
     render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
 
     expect(screen.getByText("委派子任务 (general)：Demo Task [ 2 工具调用 / 已完成 ]")).toBeInTheDocument()
+  })
+
+  it("子任务无进行中工具且未完成时头部显示思考中", () => {
+    mocks.getMessagesBySession.mockReturnValue([
+      {
+        info: { id: "m1", sessionID: "s-child", role: "assistant", time: { created: 1 } },
+        parts: [{ id: "t1", type: "tool", tool: "read", state: { status: "completed" } }],
+      },
+      {
+        info: { id: "m2", sessionID: "s-child", role: "assistant", time: { created: 2 } },
+        parts: [{ id: "t2", type: "tool", tool: "bash", state: { status: "completed" } }],
+      },
+    ])
+
+    const part = {
+      id: "p-thinking",
+      type: "tool",
+      callID: "c-thinking",
+      tool: "task",
+      state: {
+        status: "running",
+        title: "Demo Task",
+        input: { description: "Demo Task", subagent_type: "general", prompt: "wait" },
+        metadata: { sessionId: "s-child" },
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("委派子任务 (general)：Demo Task [ 2 工具调用 / 思考中 ]")).toBeInTheDocument()
   })
 
   it("task 工具仅渲染 task_result 标签内 Markdown", () => {
@@ -285,6 +418,123 @@ describe("ToolPart", () => {
     render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
 
     expect(screen.queryByText("无可展示内容")).not.toBeInTheDocument()
+  })
+
+  it("question 完成后显示已完成头部和完整只读内容，并可切换问题", () => {
+    const part = {
+      id: "p-question-completed",
+      type: "tool",
+      callID: "c-question-completed",
+      tool: "question",
+      state: {
+        status: "completed",
+        input: {
+          questions: [
+            {
+              header: "路径",
+              question: "要把哪些文件一起提交？",
+              options: [
+                { label: "只提交相关文件", description: "只处理本次需求范围" },
+                { label: "连同版本号一起", description: "把旧提交一起带上" },
+              ],
+            },
+            {
+              header: "提交",
+              question: "是否继续 push 当前分支？",
+              options: [
+                { label: "继续 push", description: "把当前分支推送到远端" },
+                { label: "先暂停", description: "稍后再处理" },
+              ],
+            },
+          ],
+        },
+        metadata: {
+          answers: [["只提交相关文件"], ["继续 push"]],
+        },
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("提问：已完成 2/2")).toBeInTheDocument()
+    expect(screen.getByText("要把哪些文件一起提交？")).toBeInTheDocument()
+    expect(screen.getByText("只处理本次需求范围")).toBeInTheDocument()
+    expect(screen.getByText("已完成 · 当前为只读")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /提交/ }))
+
+    expect(screen.getByText("是否继续 push 当前分支？")).toBeInTheDocument()
+    expect(screen.getByText("把当前分支推送到远端")).toBeInTheDocument()
+  })
+
+  it("question 忽略后显示已忽略头部和完整只读内容，而不是错误态", () => {
+    const part = {
+      id: "p-question-dismissed",
+      type: "tool",
+      callID: "c-question-dismissed",
+      tool: "question",
+      state: {
+        status: "error",
+        error: "question Dismissed: user dismissed this question",
+        input: {
+          questions: [
+            {
+              header: "范围",
+              question: "无关文件要不要一起处理？",
+              options: [
+                { label: "不处理", description: "只关注当前需求" },
+                { label: "一起处理", description: "顺手整理无关改动" },
+              ],
+            },
+          ],
+        },
+        metadata: {
+          answers: [[]],
+        },
+      },
+    } as any
+
+    const { container } = render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("提问：已忽略 0/1")).toBeInTheDocument()
+    expect(screen.getByText("无关文件要不要一起处理？")).toBeInTheDocument()
+    expect(screen.getByText("只关注当前需求")).toBeInTheDocument()
+    expect(screen.getByText("已忽略 · 当前为只读")).toBeInTheDocument()
+    expect(screen.queryByText("question Dismissed: user dismissed this question")).not.toBeInTheDocument()
+    expect(container.firstElementChild).not.toHaveClass("border-red-300")
+  })
+
+  it("question 在已完成状态下不提供二次折叠，且即使 isOpen=false 也展示完整内容", () => {
+    mocks.isOpen.mockReturnValue(false)
+
+    const part = {
+      id: "p-question-fixed-open",
+      type: "tool",
+      callID: "c-question-fixed-open",
+      tool: "question",
+      state: {
+        status: "completed",
+        input: {
+          questions: [
+            {
+              header: "来源",
+              question: "应该从哪个 GitHub Release 页面查询更新？",
+              options: [{ label: "当前项目自身的 Release", description: "当前项目 repo 的 Release" }],
+            },
+          ],
+        },
+        metadata: {
+          answers: [["当前项目自身的 Release"]],
+        },
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("提问：已完成 1/1")).toBeInTheDocument()
+    expect(screen.getByText("应该从哪个 GitHub Release 页面查询更新？")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /提问：已完成 1\/1/i })).not.toBeInTheDocument()
+    expect(mocks.toggle).not.toHaveBeenCalled()
   })
 
   it("read 文件输出包含 type 文本片段时仍显示行号范围", () => {

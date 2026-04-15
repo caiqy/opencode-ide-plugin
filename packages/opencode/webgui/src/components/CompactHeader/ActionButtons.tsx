@@ -5,6 +5,9 @@ interface ActionButtonsProps {
   toggleTheme: () => void
   onOpenCommandPalette: () => void
   onOpenConfigFile: () => void
+  displayVersion?: string
+  isCheckingForUpdates?: boolean
+  onCheckForUpdates?: () => void
   canRestart?: boolean
   onRestart?: () => void
   onOpenSettings: () => void
@@ -23,6 +26,9 @@ export function ActionButtons({
   toggleTheme,
   onOpenCommandPalette,
   onOpenConfigFile,
+  displayVersion = __APP_VERSION__,
+  isCheckingForUpdates = false,
+  onCheckForUpdates,
   canRestart = false,
   onRestart,
   onOpenSettings,
@@ -251,8 +257,31 @@ export function ActionButtons({
             <div className="my-1 h-px bg-gray-200 dark:bg-gray-700" />
 
             {/* Version */}
-            <div className="px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 text-center select-none">
-              v{__APP_VERSION__}
+            <div className="px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 flex items-center justify-center gap-2 select-none">
+              <span>v{displayVersion}</span>
+              {onCheckForUpdates ? (
+                <button
+                  onClick={onCheckForUpdates}
+                  disabled={isCheckingForUpdates}
+                  className="flex h-4 w-4 items-center justify-center text-gray-500 transition hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-100"
+                  title="检查更新"
+                  data-tip="检查更新"
+                >
+                  <svg
+                    className={`h-3.5 w-3.5 ${isCheckingForUpdates ? "animate-spin" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                </button>
+              ) : null}
             </div>
           </div>
         )}

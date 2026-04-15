@@ -106,7 +106,7 @@ describe("SubtaskDrawer", () => {
     render(<SubtaskDrawer />)
 
     expect(screen.getByText("委派子任务：demo [ 正在加载子任务… ]")).toBeInTheDocument()
-    expect(screen.queryByText("委派子任务：demo [ 已加载 0 个工具调用 / 空闲 ]")).not.toBeInTheDocument()
+    expect(screen.queryByText("委派子任务：demo [ 已加载 0 个工具调用 / 思考中 ]")).not.toBeInTheDocument()
   })
 
   it("冷启动加载失败时显示失败态与重试入口，不伪装成成功加载", async () => {
@@ -137,7 +137,7 @@ describe("SubtaskDrawer", () => {
     expect(document.body.style.userSelect).toBe("")
   })
 
-  it("没有进行中的工具调用时，显示当前为空闲", () => {
+  it("没有进行中的工具调用且父 task 未完成时，显示当前为思考中", () => {
     mocks.getMessagesBySession.mockReturnValue([
       {
         info: { id: "m1", sessionID: "s-child", role: "assistant", time: { created: 1 } },
@@ -147,7 +147,7 @@ describe("SubtaskDrawer", () => {
 
     render(<SubtaskDrawer />)
 
-    expect(screen.getByText("委派子任务：demo [ 已加载 1 个工具调用 / 空闲 ]")).toBeInTheDocument()
+    expect(screen.getByText("委派子任务：demo [ 已加载 1 个工具调用 / 思考中 ]")).toBeInTheDocument()
   })
 
   it("子任务完成后应显示已完成", () => {

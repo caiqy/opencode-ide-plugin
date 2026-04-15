@@ -111,4 +111,36 @@ describe("CompactHeader/ActionButtons", () => {
     await user.click(screen.getByTitle("更多选项"))
     expect(onMenuOpenChange).toHaveBeenCalledWith(true)
   })
+
+  it("版本号右侧显示检查更新按钮", async () => {
+    const user = userEvent.setup()
+    renderButtons({ onCheckForUpdates: vi.fn() })
+
+    await user.click(screen.getByTitle("更多选项"))
+
+    const versionRow = screen.getByText("vtest").parentElement
+    expect(versionRow).toBeTruthy()
+    expect(screen.getByTitle("检查更新")).toBeInTheDocument()
+    expect(versionRow).toContainElement(screen.getByTitle("检查更新"))
+  })
+
+  it("点击检查更新按钮时触发 onCheckForUpdates", async () => {
+    const user = userEvent.setup()
+    const onCheckForUpdates = vi.fn()
+    renderButtons({ onCheckForUpdates })
+
+    await user.click(screen.getByTitle("更多选项"))
+    await user.click(screen.getByTitle("检查更新"))
+
+    expect(onCheckForUpdates).toHaveBeenCalledOnce()
+  })
+
+  it("checking 时检查更新按钮禁用", async () => {
+    const user = userEvent.setup()
+    renderButtons({ onCheckForUpdates: vi.fn(), isCheckingForUpdates: true })
+
+    await user.click(screen.getByTitle("更多选项"))
+
+    expect(screen.getByTitle("检查更新")).toBeDisabled()
+  })
 })

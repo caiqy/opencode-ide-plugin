@@ -30,6 +30,11 @@ export function getToolLabel(tool: string): string {
   return TOOL_LABELS[tool] ?? tool
 }
 
+export function getSubtaskStatusLabel(input: { currentToolLabel: string | null; isParentCompleted: boolean }) {
+  if (input.currentToolLabel) return input.currentToolLabel
+  return input.isParentCompleted ? "已完成" : "思考中"
+}
+
 export function getLanguageFromFilename(filename?: string | unknown): string {
   if (typeof filename !== "string") return "text"
   const ext = filename.split(".").pop()?.toLowerCase()

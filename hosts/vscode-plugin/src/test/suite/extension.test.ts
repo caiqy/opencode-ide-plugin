@@ -2,6 +2,7 @@ import * as assert from "assert"
 import * as vscode from "vscode"
 import { BackendLauncher } from "../../backend/BackendLauncher"
 import { activate, deactivate, getExtensionInstance } from "../../extension"
+import { getUpdateService } from "../../globals"
 import { ActivityBarProvider } from "../../ui/ActivityBarProvider"
 import { bridgeServer } from "../../ui/IdeBridgeServer"
 import { WebviewManager } from "../../ui/WebviewManager"
@@ -69,7 +70,7 @@ function createContext() {
       extensionUri: uri,
       extensionPath: uri.fsPath,
       isActive: false,
-      packageJSON: { version: "test" },
+      packageJSON: { version: "26.4.1404" },
       exports: undefined,
       activate: async () => {},
       extensionKind: vscode.ExtensionKind.Workspace,
@@ -226,6 +227,58 @@ suite("Extension Test Suite", () => {
       ActivityBarProvider.prototype.dispose = activity
       BackendLauncher.prototype.terminate = backend
       bridgeServer.stop = bridge
+      vscode.window.registerWebviewViewProvider = register
+      vscode.commands.registerCommand = command
+      deactivate()
+    }
+  })
+
+  test("手动检查更新会访问当前项目的 GitHub latest release API", async () => {
+    const register = vscode.window.registerWebviewViewProvider
+    const command = vscode.commands.registerCommand
+    const originalFetch = globalThis.fetch
+    const urls: string[] = []
+
+    vscode.window.registerWebviewViewProvider = (() => ({
+      dispose() {},
+    })) as typeof vscode.window.registerWebviewViewProvider
+    vscode.commands.registerCommand = (() => ({
+      dispose() {},
+    })) as typeof vscode.commands.registerCommand
+    globalThis.fetch = (async (input) => {
+      urls.push(String(input))
+
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            tag_name: "26.4.1405",
+            html_url: "https://github.com/caiqy/opencode-ide-plugin/releases/tag/26.4.1405",
+            assets: [
+              {
+                name: "opencode-vscode-win32-x64-26.4.1405.vsix",
+                browser_download_url:
+                  "https://github.com/caiqy/opencode-ide-plugin/releases/download/26.4.1405/opencode-vscode-win32-x64-26.4.1405.vsix",
+              },
+            ],
+          }
+        },
+      } as Response
+    }) as typeof fetch
+
+    try {
+      await activate(createContext())
+      const updateService = getUpdateService()
+
+      assert.ok(updateService)
+
+      const result = await updateService.checkForUpdates()
+
+      assert.deepStrictEqual(result.status, "available")
+      assert.deepStrictEqual(urls, ["https://api.github.com/repos/caiqy/opencode-ide-plugin/releases/latest"])
+    } finally {
+      globalThis.fetch = originalFetch
       vscode.window.registerWebviewViewProvider = register
       vscode.commands.registerCommand = command
       deactivate()

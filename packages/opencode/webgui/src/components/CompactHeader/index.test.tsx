@@ -46,6 +46,7 @@ const mocks = vi.hoisted(() => ({
   useTheme: vi.fn(),
   useSession: vi.fn(),
   useTabStore: vi.fn(),
+  useUpdate: vi.fn(),
   useSessionDropdown: vi.fn(),
   useSessionActions: vi.fn(),
   useToast: vi.fn(),
@@ -86,6 +87,10 @@ vi.mock("./hooks/useSessionActions", () => ({
 
 vi.mock("../../state/ToastContext", () => ({
   useToast: (...args: unknown[]) => mocks.useToast(...args),
+}))
+
+vi.mock("../../state/UpdateContext", () => ({
+  useUpdate: (...args: unknown[]) => mocks.useUpdate(...args),
 }))
 
 vi.mock("../SettingsPanel", () => ({
@@ -236,6 +241,15 @@ describe("CompactHeader", () => {
       pruneTabs: vi.fn(),
     })
 
+    mocks.useUpdate.mockReturnValue({
+      isChecking: false,
+      checkForUpdates: vi.fn(),
+      confirmOpen: false,
+      confirmVersion: null,
+      confirmInstall: vi.fn(),
+      cancelInstallConfirm: vi.fn(),
+    })
+
     mocks.useSessionDropdown.mockReturnValue(createBaseDropdownMock())
     mocks.useSessionActions.mockReturnValue(createBaseActionsMock())
     mocks.useToast.mockReturnValue({ showToast: vi.fn() })
@@ -286,6 +300,56 @@ describe("CompactHeader", () => {
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith("https://example.com/share")
       expect(showToast).toHaveBeenCalledWith("分享链接已复制到剪贴板", { variant: "success" })
+    })
+  })
+
+  it("优先显示 IDE 扩展版本号", async () => {
+    const user = userEvent.setup()
+    mocks.ideBridgeRequest.mockImplementation(async (type: string) => {
+      if (type === "getExtensionVersion") {
+        return { result: { version: "26.4.1503" } }
+      }
+      return { ok: true }
+    })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByTitle("更多选项"))
+
+    await waitFor(() => {
+      expect(screen.getByText("v26.4.1503")).toBeInTheDocument()
+    })
+  })
+
+  it("拿不到 IDE 扩展版本时回退显示 WebGUI 版本号", async () => {
+    const user = userEvent.setup()
+    mocks.ideBridgeRequest.mockImplementation(async (type: string) => {
+      if (type === "getExtensionVersion") {
+        throw new Error("bridge unavailable")
+      }
+      return { ok: true }
+    })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByTitle("更多选项"))
+
+    await waitFor(() => {
+      expect(screen.getByText("vtest")).toBeInTheDocument()
     })
   })
 

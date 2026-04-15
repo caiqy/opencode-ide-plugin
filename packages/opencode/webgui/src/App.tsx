@@ -11,6 +11,7 @@ import { MessagesProvider, useMessages } from "./state/MessagesContext"
 import { ThemeProvider } from "./state/ThemeContext"
 import { CompactHeader } from "./components/CompactHeader"
 import { OfflineBanner } from "./components/OfflineBanner"
+import { UpdateBanner } from "./components/UpdateBanner"
 import { CommandPalette } from "./components/CommandPalette"
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp"
 import { SubtaskDrawerProvider } from "./state/SubtaskDrawerContext"
@@ -381,6 +382,8 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
         isCreatingSession={isCreating}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
       />
+
+      <UpdateBanner />
 
       {/* Offline Banner */}
       <OfflineBanner connectionState={connectionState} />
