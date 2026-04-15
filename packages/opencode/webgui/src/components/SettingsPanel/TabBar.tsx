@@ -1,23 +1,19 @@
 interface TabBarProps {
-  activeTab: "general" | "api-keys" | "models" | "advanced" | "quick-phrases"
-  onTabChange: (tab: "general" | "api-keys" | "models" | "advanced" | "quick-phrases") => void
-  hideApiKeys?: boolean
+  activeTab: "general" | "advanced" | "quick-phrases"
+  onTabChange: (tab: "general" | "advanced" | "quick-phrases") => void
 }
 
-export function TabBar({ activeTab, onTabChange, hideApiKeys }: TabBarProps) {
+export function TabBar({ activeTab, onTabChange }: TabBarProps) {
   const all: { id: typeof activeTab; label: string; icon: string }[] = [
     { id: "general", label: "常规", icon: "⚙️" },
-    { id: "api-keys", label: "API 密钥", icon: "🔑" },
-    { id: "models", label: "模型", icon: "🤖" },
     { id: "quick-phrases", label: "快捷短语", icon: "🏷️" },
     { id: "advanced", label: "高级", icon: "🔧" },
   ]
-  const tabs = hideApiKeys ? all.filter((t) => t.id !== "api-keys") : all
 
   return (
     <div className="border-b border-gray-200 dark:border-gray-800">
       <div className="flex px-4">
-        {tabs.map((tab) => (
+        {all.map((tab) => (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}

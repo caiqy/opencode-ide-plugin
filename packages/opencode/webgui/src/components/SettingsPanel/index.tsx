@@ -2,12 +2,8 @@ import { useEffect, useState } from "react"
 import { sdk } from "../../lib/api/sdkClient"
 import { ConfirmModal } from "../ConfirmModal"
 import { GeneralTab } from "../settings/GeneralTab"
-import { ApiKeysTab } from "../settings/ApiKeysTab"
-import { ModelsTab } from "../settings/ModelsTab"
 import { AdvancedTab } from "../settings/AdvancedTab"
 import { QuickPhrasesTab } from "../settings/QuickPhrasesTab"
-import { useProviders } from "../../state/ProvidersContext.tsx"
-import { useCustomApi } from "../../state/IdeBridgeContext"
 import { useSettingsForm } from "./hooks/useSettingsForm"
 import { useUnsavedChanges } from "./hooks/useUnsavedChanges"
 import { TabBar } from "./TabBar"
@@ -19,36 +15,16 @@ interface SettingsPanelProps {
   onClose: () => void
 }
 
-type TabType = "general" | "api-keys" | "models" | "advanced" | "quick-phrases"
+type TabType = "general" | "advanced" | "quick-phrases"
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("general")
   const [isSaving, setIsSaving] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const { markProvidersDirty } = useProviders()
-  const customApi = useCustomApi()
 
-  const {
-    formData,
-    setFormData,
-    originalFormData,
-    setOriginalFormData,
-    apiKeys,
-    setApiKeys,
-    showApiKeys,
-    setShowApiKeys,
-    providers,
-    configuredProviders,
-    setConfiguredProviders,
-    isLoading,
-    error,
-  } = useSettingsForm(isOpen, customApi)
+  const { formData, setFormData, originalFormData, setOriginalFormData, isLoading, error } = useSettingsForm(isOpen)
 
-  const { hasUnsavedChanges, showCloseConfirm, setShowCloseConfirm } = useUnsavedChanges(
-    formData,
-    originalFormData,
-    apiKeys,
-  )
+  const { hasUnsavedChanges, showCloseConfirm, setShowCloseConfirm } = useUnsavedChanges(formData, originalFormData)
 
   // Close handler with unsaved changes check
   const handleClose = () => {
@@ -101,23 +77,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         }
       }
 
-      // Save API keys (only when custom API is available)
-      if (customApi) {
-        const apiKeyEntries = Object.entries(apiKeys).filter(([_, key]) => key && key.trim())
-
-        for (const [providerID, key] of apiKeyEntries) {
-          await sdk.auth.set(providerID, {
-            type: "api",
-            key: key.trim(),
-          })
-        }
-
-        // Clear API keys after successful save
-        setApiKeys({})
-      }
-
       setSuccessMessage("设置已保存")
-      markProvidersDirty()
       setTimeout(() => {
         setSuccessMessage(null)
         onClose()
@@ -137,7 +97,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         <div className="modern-card w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col shadow-2xl">
           <SettingsHeader onClose={handleClose} />
 
-          <TabBar activeTab={activeTab} onTabChange={setActiveTab} hideApiKeys={!customApi} />
+          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto px-3 py-3">
@@ -152,27 +112,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             ) : (
               <>
                 {activeTab === "general" && <GeneralTab formData={formData} setFormData={setFormData} />}
-
-                {customApi && activeTab === "api-keys" && (
-                  <ApiKeysTab
-                    providers={providers}
-                    configuredProviders={configuredProviders}
-                    setConfiguredProviders={setConfiguredProviders}
-                    apiKeys={apiKeys}
-                    setApiKeys={setApiKeys}
-                    showApiKeys={showApiKeys}
-                    setShowApiKeys={setShowApiKeys}
-                  />
-                )}
-
-                {activeTab === "models" && (
-                  <ModelsTab
-                    formData={formData}
-                    setFormData={setFormData}
-                    providers={providers}
-                    configuredProviders={configuredProviders}
-                  />
-                )}
 
                 {activeTab === "advanced" && <AdvancedTab formData={formData} setFormData={setFormData} />}
 

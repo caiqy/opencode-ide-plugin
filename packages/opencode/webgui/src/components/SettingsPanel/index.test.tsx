@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({
   useSettingsForm: vi.fn(),
   useUnsavedChanges: vi.fn(),
   globalConfigUpdate: vi.fn(),
-  configUpdate: vi.fn(),
   authSet: vi.fn(),
 }))
 
@@ -40,9 +39,6 @@ vi.mock("../../lib/api/sdkClient", () => ({
         update: (...args: unknown[]) => mocks.globalConfigUpdate(...args),
       },
     },
-    config: {
-      update: (...args: unknown[]) => mocks.configUpdate(...args),
-    },
     auth: {
       set: (...args: unknown[]) => mocks.authSet(...args),
     },
@@ -54,7 +50,6 @@ import { SettingsPanel } from "./index"
 describe("SettingsPanel", () => {
   beforeEach(() => {
     mocks.globalConfigUpdate.mockResolvedValue({ data: {}, error: null })
-    mocks.configUpdate.mockResolvedValue({ data: {}, error: null })
     mocks.authSet.mockResolvedValue(undefined)
 
     mocks.useSettingsForm.mockReturnValue({
@@ -62,13 +57,6 @@ describe("SettingsPanel", () => {
       setFormData: vi.fn(),
       originalFormData: {},
       setOriginalFormData: vi.fn(),
-      apiKeys: {},
-      setApiKeys: vi.fn(),
-      showApiKeys: {},
-      setShowApiKeys: vi.fn(),
-      providers: [],
-      configuredProviders: [],
-      setConfiguredProviders: vi.fn(),
       isLoading: true,
       error: null,
     })
@@ -108,13 +96,6 @@ describe("SettingsPanel", () => {
       setFormData,
       originalFormData: { snapshot: false },
       setOriginalFormData,
-      apiKeys: {},
-      setApiKeys: vi.fn(),
-      showApiKeys: {},
-      setShowApiKeys: vi.fn(),
-      providers: [],
-      configuredProviders: [],
-      setConfiguredProviders: vi.fn(),
       isLoading: false,
       error: null,
     })
@@ -132,7 +113,23 @@ describe("SettingsPanel", () => {
         body: { snapshot: true },
       })
     })
-    expect(mocks.configUpdate).not.toHaveBeenCalled()
+    expect(mocks.authSet).not.toHaveBeenCalled()
+  })
+
+  it("设置中不再显示 API 密钥与模型标签页", () => {
+    mocks.useSettingsForm.mockReturnValue({
+      formData: {},
+      setFormData: vi.fn(),
+      originalFormData: {},
+      setOriginalFormData: vi.fn(),
+      isLoading: false,
+      error: null,
+    })
+
+    render(<SettingsPanel isOpen={true} onClose={vi.fn()} />)
+
+    expect(screen.queryByRole("button", { name: /API\s*密钥/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /模型/ })).not.toBeInTheDocument()
   })
 
   it("可以切换到快捷短语标签页", async () => {
@@ -141,13 +138,6 @@ describe("SettingsPanel", () => {
       setFormData: vi.fn(),
       originalFormData: {},
       setOriginalFormData: vi.fn(),
-      apiKeys: {},
-      setApiKeys: vi.fn(),
-      showApiKeys: {},
-      setShowApiKeys: vi.fn(),
-      providers: [],
-      configuredProviders: [],
-      setConfiguredProviders: vi.fn(),
       isLoading: false,
       error: null,
     })

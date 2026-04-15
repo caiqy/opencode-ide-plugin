@@ -1,19 +1,10 @@
 import { useState, useEffect } from "react"
 import { sdk } from "../../../lib/api/sdkClient"
-import type { Config, Provider } from "@opencode-ai/sdk/client"
+import type { Config } from "@opencode-ai/sdk/client"
 
-interface ProviderWithAuth extends Provider {
-  hasAuth?: boolean
-  authKey?: string
-}
-
-export function useSettingsForm(isOpen: boolean, customApi?: boolean) {
+export function useSettingsForm(isOpen: boolean) {
   const [formData, setFormData] = useState<Partial<Config>>({})
   const [originalFormData, setOriginalFormData] = useState<Partial<Config>>({})
-  const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
-  const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({})
-  const [providers, setProviders] = useState<ProviderWithAuth[]>([])
-  const [configuredProviders, setConfiguredProviders] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -40,24 +31,6 @@ export function useSettingsForm(isOpen: boolean, customApi?: boolean) {
           setFormData({})
           setOriginalFormData({})
         }
-
-        // Fetch providers
-        const providersRes = await sdk.config.providers()
-        if (providersRes.error) {
-          throw new Error("Failed to load providers")
-        }
-        if (providersRes.data) {
-          setProviders(providersRes.data.providers.sort((a, b) => a.name.localeCompare(b.name)))
-        }
-
-        // Fetch configured providers (requires custom API)
-        if (customApi !== false) {
-          const authList = await sdk.auth.list()
-          setConfiguredProviders(Object.keys(authList))
-        }
-
-        // Reset API keys to empty (they should be entered fresh)
-        setApiKeys({})
       } catch (err) {
         setError(String(err))
       } finally {
@@ -66,20 +39,13 @@ export function useSettingsForm(isOpen: boolean, customApi?: boolean) {
     }
 
     fetchData()
-  }, [isOpen, customApi])
+  }, [isOpen])
 
   return {
     formData,
     setFormData,
     originalFormData,
     setOriginalFormData,
-    apiKeys,
-    setApiKeys,
-    showApiKeys,
-    setShowApiKeys,
-    providers,
-    configuredProviders,
-    setConfiguredProviders,
     isLoading,
     error,
   }

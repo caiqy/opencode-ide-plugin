@@ -9,12 +9,6 @@ vi.mock("../../../lib/api/sdkClient", () => {
           get: vi.fn(),
         },
       },
-      config: {
-        providers: vi.fn(),
-      },
-      auth: {
-        list: vi.fn(),
-      },
     },
   }
 })
@@ -22,45 +16,34 @@ vi.mock("../../../lib/api/sdkClient", () => {
 import { sdk } from "../../../lib/api/sdkClient"
 import { useSettingsForm } from "./useSettingsForm"
 
-describe("useSettingsForm migration", () => {
+describe("useSettingsForm", () => {
   beforeEach(() => {
     vi.resetAllMocks()
   })
 
-  it("settings form loads providers from provider.list all[]", async () => {
-    ;((sdk as any).global.config.get as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.config.providers as any).mockResolvedValue({
-      data: {
-        providers: [
-          { id: "zeta", name: "Zeta", models: {}, source: {}, options: {} },
-          { id: "alpha", name: "Alpha", models: {}, source: {}, options: {} },
-        ],
-        default: {},
-      },
+  it("打开设置时加载全局配置", async () => {
+    ;((sdk as any).global.config.get as any).mockResolvedValue({
+      data: { username: "demo", snapshot: true },
       error: null,
     })
-    ;(sdk.auth.list as any).mockResolvedValue({ alpha: true })
 
     const { result } = renderHook(() => useSettingsForm(true))
 
     await waitFor(() => {
-      expect(result.current.providers.map((item) => item.id)).toEqual(["alpha", "zeta"])
+      expect(result.current.formData).toEqual({ username: "demo", snapshot: true })
+      expect(result.current.originalFormData).toEqual({ username: "demo", snapshot: true })
     })
     expect((sdk as any).global.config.get).toHaveBeenCalledTimes(1)
   })
 
-  it("configuredProviders derived from connected[] compatibility mapping", async () => {
-    ;((sdk as any).global.config.get as any).mockResolvedValue({ data: {}, error: null })
-    ;(sdk.config.providers as any).mockResolvedValue({
-      data: { providers: [], default: {} },
-      error: null,
-    })
-    ;(sdk.auth.list as any).mockResolvedValue({ openai: true, anthropic: true })
+  it("配置为空时回退为默认空对象", async () => {
+    ;((sdk as any).global.config.get as any).mockResolvedValue({ data: null, error: null })
 
     const { result } = renderHook(() => useSettingsForm(true))
 
     await waitFor(() => {
-      expect(result.current.configuredProviders.sort()).toEqual(["anthropic", "openai"])
+      expect(result.current.formData).toEqual({})
+      expect(result.current.originalFormData).toEqual({})
     })
   })
 })
