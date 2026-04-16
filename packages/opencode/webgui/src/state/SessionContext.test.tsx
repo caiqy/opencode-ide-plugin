@@ -46,6 +46,7 @@ vi.mock("../lib/api/sdkClient", () => {
       session: {
         list: vi.fn(),
         retry: vi.fn(),
+        regenerateTitle: vi.fn(),
         get: vi.fn(),
         diff: vi.fn(),
         create: vi.fn(),
@@ -123,6 +124,8 @@ describe("SessionContext migration", () => {
     resetDraftRepoForTest()
     ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.session.diff as any).mockResolvedValue({ data: [], error: null })
+    ;(sdk.session.regenerateTitle as any).mockResolvedValue({ data: null, error: null })
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.providers as any).mockResolvedValue({
       data: {
@@ -611,6 +614,7 @@ describe("SessionContext virtual API removed", () => {
     resetDraftRepoForTest()
     ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.session.diff as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.config.providers as any).mockResolvedValue({ data: { providers: [] }, error: null })
     ;(ideBridge.isInstalled as any).mockReturnValue(false)
@@ -1068,6 +1072,48 @@ describe("SessionContext session paging", () => {
 
     await waitFor(() => {
       expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE)
+    })
+  })
+
+  it("regenerateSessionTitle 成功后会更新本地 sessions 与当前会话", async () => {
+    const initial = {
+      id: "s1",
+      title: "旧标题",
+      parentID: null,
+      time: { created: 1, updated: 1 },
+    }
+    const updated = {
+      ...initial,
+      title: "新标题",
+      time: { created: 1, updated: 2 },
+    }
+    ;(sdk.session.list as any).mockResolvedValueOnce({ data: [initial], error: null })
+    ;(sdk.session.get as any).mockResolvedValueOnce({ data: initial, error: null })
+    ;(sdk.session.diff as any).mockResolvedValueOnce({ data: [], error: null })
+    ;(sdk.session.regenerateTitle as any).mockResolvedValueOnce({ data: updated, error: null })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(1)
+    })
+
+    await act(async () => {
+      await result.current.switchSession("s1")
+    })
+
+    await act(async () => {
+      const ok = await result.current.regenerateSessionTitle("s1")
+      expect(ok).toBe(true)
+    })
+
+    expect(sdk.session.regenerateTitle).toHaveBeenCalledWith({
+      path: { sessionID: "s1" },
+    })
+
+    await waitFor(() => {
+      expect(result.current.sessions[0]?.title).toBe("新标题")
+      expect(result.current.currentSession?.title).toBe("新标题")
     })
   })
 })

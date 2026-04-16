@@ -293,6 +293,37 @@ export const SessionRoutes = lazy(() =>
       },
     )
     .post(
+      "/:sessionID/title/regenerate",
+      describeRoute({
+        summary: "Regenerate session title",
+        description:
+          "Regenerate a session title from the conversation history using the existing title generation logic.",
+        operationId: "session.regenerateTitle",
+        responses: {
+          200: {
+            description: "Successfully regenerated session title",
+            content: {
+              "application/json": {
+                schema: resolver(Session.Info),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: SessionID.zod,
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const session = await SessionPrompt.regenerateTitle({ sessionID })
+        return c.json(session)
+      },
+    )
+    .post(
       "/:sessionID/init",
       describeRoute({
         summary: "Initialize session",

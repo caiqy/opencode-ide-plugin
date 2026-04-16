@@ -1,16 +1,26 @@
 import path from "path"
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test"
 import { NamedError } from "@opencode-ai/util/error"
 import { fileURLToPath } from "url"
+import { Agent } from "../../src/agent/agent"
 import { Instance } from "../../src/project/instance"
+import * as ProviderModule from "../../src/provider/provider"
 import { ModelID, ProviderID } from "../../src/provider/schema"
 import { Session } from "../../src/session"
+import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionPrompt } from "../../src/session/prompt"
+import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { Log } from "../../src/util/log"
+import { resetDatabase } from "../fixture/db"
 import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
+
+afterEach(async () => {
+  mock.restore()
+  await resetDatabase()
+})
 
 describe("session.prompt missing file", () => {
   test("does not fail the prompt when a file part is missing", async () => {
@@ -285,4 +295,171 @@ describe("session.agent-resolution", () => {
       },
     })
   }, 30000)
+})
+
+describe("session title regeneration", () => {
+  const titleModel = {
+    id: "test-small-model",
+    providerID: ProviderID.make("test"),
+    name: "Test Small Model",
+    api: {
+      id: "test-small-model",
+      npm: "@ai-sdk/openai",
+    },
+    limit: {
+      context: 8192,
+      output: 1024,
+    },
+    capabilities: {
+      toolcall: true,
+      attachment: false,
+      reasoning: false,
+      temperature: true,
+      input: { text: true, image: false, audio: false, video: false },
+      output: { text: true, image: false, audio: false, video: false },
+    },
+    options: {},
+    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+  } as any
+
+  async function addUserMessage(sessionID: SessionID, text: string) {
+    const message = await Session.updateMessage({
+      id: MessageID.ascending(),
+      sessionID,
+      role: "user",
+      time: { created: Date.now() },
+      agent: "build",
+      model: {
+        providerID: ProviderID.make("test"),
+        modelID: ModelID.make("test-model"),
+      },
+      tools: {},
+      mode: "",
+    } as unknown as MessageV2.Info)
+
+    await Session.updatePart({
+      id: PartID.ascending(),
+      sessionID,
+      messageID: message.id,
+      type: "text",
+      text,
+    })
+  }
+
+  async function addSubtaskOnlyUserMessage(sessionID: SessionID, prompt: string) {
+    const message = await Session.updateMessage({
+      id: MessageID.ascending(),
+      sessionID,
+      role: "user",
+      time: { created: Date.now() },
+      agent: "build",
+      model: {
+        providerID: ProviderID.make("test"),
+        modelID: ModelID.make("test-model"),
+      },
+      tools: {},
+      mode: "",
+    } as unknown as MessageV2.Info)
+
+    await Session.updatePart({
+      id: PartID.ascending(),
+      sessionID,
+      messageID: message.id,
+      type: "subtask",
+      prompt,
+      description: "子任务描述",
+      agent: "build",
+      model: {
+        providerID: ProviderID.make("test"),
+        modelID: ModelID.make("test-model"),
+      },
+    })
+  }
+
+  test("regenerateTitle 会复用标题生成逻辑并覆盖现有手动标题", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title: "手动旧标题" })
+        await addUserMessage(session.id, "请根据这段对话生成一个新的标签名")
+
+        spyOn(Agent, "get").mockImplementation(async (name) => {
+          if (name === "title") return { name: "title" } as any
+          return null
+        })
+        spyOn(ProviderModule.Provider, "getSmallModel").mockResolvedValue(titleModel)
+
+        const stream = spyOn(LLM, "stream").mockResolvedValue({
+          text: Promise.resolve("<think>ignore</think>\n重新生成后的标题\n"),
+        } as any)
+
+        const updated = await SessionPrompt.regenerateTitle({ sessionID: session.id })
+
+        expect(stream).toHaveBeenCalled()
+        expect(updated.title).toBe("重新生成后的标题")
+        expect((await Session.get(session.id)).title).toBe("重新生成后的标题")
+      },
+    })
+  })
+
+  test("regenerateTitle 会使用当前整段会话内容生成标题", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title: "手动旧标题" })
+        await addUserMessage(session.id, "这是第一轮问题")
+        await addUserMessage(session.id, "这是最后一轮问题，应该参与重新生成")
+
+        spyOn(Agent, "get").mockImplementation(async (name) => {
+          if (name === "title") return { name: "title" } as any
+          return null
+        })
+        spyOn(ProviderModule.Provider, "getSmallModel").mockResolvedValue(titleModel)
+
+        const stream = spyOn(LLM, "stream").mockResolvedValue({
+          text: Promise.resolve("重新生成后的标题"),
+        } as any)
+
+        await SessionPrompt.regenerateTitle({ sessionID: session.id })
+
+        const promptMessages = stream.mock.calls[0]?.[0]?.messages ?? []
+        const serialized = JSON.stringify(promptMessages)
+        expect(serialized).toContain("这是最后一轮问题，应该参与重新生成")
+      },
+    })
+  })
+
+  test("regenerateTitle 在最后一条用户消息仅包含 subtask 时仍保留整段会话上下文", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title: "手动旧标题" })
+        await addUserMessage(session.id, "前文中的真实问题")
+        await addSubtaskOnlyUserMessage(session.id, "最后一步子任务提示")
+
+        spyOn(Agent, "get").mockImplementation(async (name) => {
+          if (name === "title") return { name: "title" } as any
+          return null
+        })
+        spyOn(ProviderModule.Provider, "getSmallModel").mockResolvedValue(titleModel)
+
+        const stream = spyOn(LLM, "stream").mockResolvedValue({
+          text: Promise.resolve("重新生成后的标题"),
+        } as any)
+
+        await SessionPrompt.regenerateTitle({ sessionID: session.id })
+
+        const promptMessages = stream.mock.calls[0]?.[0]?.messages ?? []
+        const serialized = JSON.stringify(promptMessages)
+        expect(serialized).toContain("前文中的真实问题")
+        expect(serialized).toContain("最后一步子任务提示")
+      },
+    })
+  })
 })

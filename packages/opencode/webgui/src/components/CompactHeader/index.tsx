@@ -39,6 +39,7 @@ const CompactHeader = forwardRef<
     sessions,
     setSessions,
     switchSession,
+    regenerateSessionTitle,
     updateSessionTitle,
     deleteSession,
     hasMore,
@@ -347,6 +348,16 @@ const CompactHeader = forwardRef<
     [actions],
   )
 
+  const handleRegenerateTitle = useCallback(
+    async (sessionId: string) => {
+      const ok = await regenerateSessionTitle(sessionId)
+      if (!ok) {
+        toast.showToast("重新生成标签名失败", { variant: "error" })
+      }
+    },
+    [regenerateSessionTitle, toast],
+  )
+
   const handleToggleShareTab = useCallback(
     async (sessionId: string) => {
       const session = sessions.find((s) => s.id === sessionId)
@@ -478,6 +489,9 @@ const CompactHeader = forwardRef<
           }}
           onCloseTabsToRight={(id) => {
             void handleCloseTabsToRight(id)
+          }}
+          onRegenerateTitle={(id) => {
+            void handleRegenerateTitle(id)
           }}
           onRename={(id, title) => {
             void updateSessionTitle(id, title)

@@ -164,6 +164,30 @@ async function sessionList(options: SessionListOptions = {}): Promise<ApiResult<
   }
 }
 
+async function sessionRegenerateTitle(options: { path: { sessionID: string } }): Promise<ApiResult<Session>> {
+  try {
+    const response = await fetch(`/session/${encodeURIComponent(options.path.sessionID)}/title/regenerate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    })
+
+    if (!response.ok) {
+      return {
+        error: { message: "Failed to regenerate session title" },
+        data: null,
+      }
+    }
+
+    const data = (await response.json()) as Session
+    return { data, error: null }
+  } catch (error) {
+    return {
+      error: { message: error instanceof Error ? error.message : "Unknown error" },
+      data: null,
+    }
+  }
+}
+
 async function mcpTools(options: { path: { name: string } }): Promise<ApiResult<unknown>> {
   try {
     const response = await fetch(`/mcp/${encodeURIComponent(options.path.name)}/tools`, {
@@ -261,6 +285,7 @@ export const sdk = {
   }),
   session: Object.assign(baseClient.session, {
     list: sessionList,
+    regenerateTitle: sessionRegenerateTitle,
     retry: async (options: { path: { sessionID: string } }) => {
       try {
         const session = await baseClient.session.get({
@@ -330,6 +355,7 @@ export const sdk = {
     },
   }) as typeof baseClient.session & {
     list: (options?: SessionListOptions) => Promise<ApiResult<Session[]>>
+    regenerateTitle: (options: { path: { sessionID: string } }) => Promise<ApiResult<Session>>
     retry: (options: { path: { sessionID: string } }) => Promise<any>
   },
   mcp: Object.assign(baseClient.mcp, {

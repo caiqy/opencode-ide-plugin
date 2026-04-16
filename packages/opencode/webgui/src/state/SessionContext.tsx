@@ -87,6 +87,7 @@ interface SessionContextState {
   loadSessions: () => Promise<void>
   loadMoreSessions: () => Promise<void>
   switchSession: (sessionId: string) => Promise<void>
+  regenerateSessionTitle: (sessionId: string) => Promise<boolean>
   updateSessionTitle: (sessionId: string, title: string) => Promise<boolean>
   deleteSession: (sessionId: string) => Promise<boolean>
   forkSession: (sessionId: string, messageId: string) => Promise<Session | null>
@@ -776,6 +777,48 @@ export function SessionProvider({ children }: SessionProviderProps) {
     [currentSession],
   )
 
+  const regenerateSessionTitle = useCallback(
+    async (sessionId: string) => {
+      console.log("[SessionContext] Regenerating session title:", sessionId)
+
+      try {
+        const response = await sdk.session.regenerateTitle({
+          path: { sessionID: sessionId },
+        })
+
+        if (response.error) {
+          const errorMsg =
+            "data" in response.error &&
+            response.error.data &&
+            typeof response.error.data === "object" &&
+            "message" in response.error.data
+              ? String(response.error.data.message)
+              : response.error.message || "Failed to regenerate session title"
+          console.error("[SessionContext] Failed to regenerate session title:", errorMsg)
+          setError(new Error(errorMsg))
+          return false
+        }
+
+        if (response.data) {
+          console.log("[SessionContext] Session title regenerated:", response.data.id)
+          setSessions((prev) => prev.map((s) => (s.id === sessionId ? response.data! : s)))
+          if (currentSession?.id === sessionId) {
+            setCurrentSession(response.data)
+          }
+          return true
+        }
+
+        return false
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "Failed to regenerate session title"
+        console.error("[SessionContext] Failed to regenerate session title:", errorMsg)
+        setError(new Error(errorMsg))
+        return false
+      }
+    },
+    [currentSession],
+  )
+
   /**
    * Delete a session
    */
@@ -1195,6 +1238,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     loadSessions,
     loadMoreSessions,
     switchSession,
+    regenerateSessionTitle,
     updateSessionTitle,
     deleteSession,
     forkSession,

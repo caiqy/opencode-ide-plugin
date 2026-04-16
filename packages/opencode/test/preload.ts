@@ -11,7 +11,9 @@ const dir = path.join(os.tmpdir(), "opencode-test-data-" + process.pid)
 
 await fs.mkdir(dir, { recursive: true })
 afterAll(async () => {
+  const { Instance } = await import("../src/project/instance")
   const { Database } = await import("../src/storage/db")
+  await Instance.disposeAll()
   Database.close()
   await cleanupTestDir(dir)
 })
@@ -32,6 +34,7 @@ process.env["OPENCODE_TEST_HOME"] = testHome
 const testManagedConfigDir = path.join(dir, "managed")
 process.env["OPENCODE_TEST_MANAGED_CONFIG_DIR"] = testManagedConfigDir
 process.env["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "true"
+process.env["OPENCODE_DISABLE_CONFIG_DEPENDENCY_INSTALL"] = "true"
 
 // Write the cache version file to prevent global/index.ts from clearing the cache
 const cacheDir = path.join(dir, "cache", "opencode")

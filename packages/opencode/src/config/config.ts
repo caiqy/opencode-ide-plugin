@@ -91,6 +91,7 @@ export namespace Config {
   }
 
   export async function installDependencies(dir: string, input?: InstallInput) {
+    if (process.env["OPENCODE_DISABLE_CONFIG_DEPENDENCY_INSTALL"] === "true") return
     if (!(await needsInstall(dir))) return
 
     await using _ = await Flock.acquire(`config-install:${Filesystem.resolve(dir)}`, {
@@ -179,6 +180,7 @@ export namespace Config {
   }
 
   export async function needsInstall(dir: string) {
+    if (process.env["OPENCODE_DISABLE_CONFIG_DEPENDENCY_INSTALL"] === "true") return false
     // Some config dirs may be read-only.
     // Installing deps there will fail; skip installation in that case.
     const writable = await isWritable(dir)

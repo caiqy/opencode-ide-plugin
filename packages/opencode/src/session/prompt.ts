@@ -1979,35 +1979,36 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     return result
   }
 
-  async function ensureTitle(input: {
+  function titleGenerationContext(history: MessageV2.WithParts[], options?: { fullHistory?: boolean }) {
+    const realUserIndexes = history.flatMap((msg, index) => {
+      if (msg.info.role !== "user") return []
+      if (msg.parts.every((part) => "synthetic" in part && part.synthetic)) return []
+      return [index]
+    })
+    if (realUserIndexes.length === 0) return
+
+    const contextMessages = options?.fullHistory ? history : history.slice(0, realUserIndexes[0]! + 1)
+    const focusUser = history[options?.fullHistory ? realUserIndexes[realUserIndexes.length - 1]! : realUserIndexes[0]!]
+    const subtaskParts = focusUser.parts.filter((p) => p.type === "subtask") as MessageV2.SubtaskPart[]
+    const hasOnlySubtaskParts = subtaskParts.length > 0 && focusUser.parts.every((p) => p.type === "subtask")
+
+    return {
+      focusUser,
+      contextMessages,
+      subtaskParts,
+      hasOnlySubtaskParts,
+    }
+  }
+
+  async function generateTitleText(input: {
     session: Session.Info
     history: MessageV2.WithParts[]
     providerID: ProviderID
     modelID: ModelID
+    fullHistory?: boolean
   }) {
-    if (input.session.parentID) return
-    if (!Session.isDefaultTitle(input.session.title)) return
-
-    // Find first non-synthetic user message
-    const firstRealUserIdx = input.history.findIndex(
-      (m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic),
-    )
-    if (firstRealUserIdx === -1) return
-
-    const isFirst =
-      input.history.filter((m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic))
-        .length === 1
-    if (!isFirst) return
-
-    // Gather all messages up to and including the first real user message for context
-    // This includes any shell/subtask executions that preceded the user's first prompt
-    const contextMessages = input.history.slice(0, firstRealUserIdx + 1)
-    const firstRealUser = contextMessages[firstRealUserIdx]
-
-    // For subtask-only messages (from command invocations), extract the prompt directly
-    // since toModelMessage converts subtask parts to generic "The following tool was executed by the user"
-    const subtaskParts = firstRealUser.parts.filter((p) => p.type === "subtask") as MessageV2.SubtaskPart[]
-    const hasOnlySubtaskParts = subtaskParts.length > 0 && firstRealUser.parts.every((p) => p.type === "subtask")
+    const ctx = titleGenerationContext(input.history, { fullHistory: input.fullHistory })
+    if (!ctx) return
 
     const agent = await Agent.get("title")
     if (!agent) return
@@ -2018,9 +2019,18 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       )
     })
     try {
+      const content =
+        ctx.hasOnlySubtaskParts && !input.fullHistory
+          ? [{ role: "user" as const, content: ctx.subtaskParts.map((p) => p.prompt).join("\n") }]
+          : await MessageV2.toModelMessages(ctx.contextMessages, model).then((messages) =>
+              ctx.hasOnlySubtaskParts
+                ? [...messages, { role: "user" as const, content: ctx.subtaskParts.map((p) => p.prompt).join("\n") }]
+                : messages,
+            )
+
       const result = await LLM.stream({
         agent,
-        user: firstRealUser.info as MessageV2.User,
+        user: ctx.focusUser.info as MessageV2.User,
         system: [],
         small: true,
         tools: {},
@@ -2033,9 +2043,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             role: "user",
             content: "Generate a title for this conversation:\n",
           },
-          ...(hasOnlySubtaskParts
-            ? [{ role: "user" as const, content: subtaskParts.map((p) => p.prompt).join("\n") }]
-            : await MessageV2.toModelMessages(contextMessages, model)),
+          ...content,
         ],
       })
       const text = await result.text
@@ -2046,13 +2054,61 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         .find((line) => line.length > 0)
       if (!cleaned) return
 
-      const title = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
-      return Session.setTitle({ sessionID: input.session.id, title }).catch((err) => {
-        if (NotFoundError.isInstance(err)) return
-        throw err
-      })
+      return cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
     } catch (error) {
       log.error("failed to generate title", { error })
     }
+  }
+
+  async function ensureTitle(input: {
+    session: Session.Info
+    history: MessageV2.WithParts[]
+    providerID: ProviderID
+    modelID: ModelID
+  }) {
+    if (input.session.parentID) return
+    if (!Session.isDefaultTitle(input.session.title)) return
+
+    const isFirst =
+      input.history.filter((m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic))
+        .length === 1
+    if (!isFirst) return
+
+    const title = await generateTitleText(input)
+    if (!title) return
+
+    return Session.setTitle({ sessionID: input.session.id, title }).catch((err) => {
+      if (NotFoundError.isInstance(err)) return
+      throw err
+    })
+  }
+
+  export async function regenerateTitle(input: { sessionID: SessionID }) {
+    const session = await Session.get(input.sessionID)
+    const history = await MessageV2.filterCompacted(MessageV2.stream(input.sessionID))
+    const firstRealUser = history.find(
+      (m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic),
+    )
+    if (!firstRealUser || firstRealUser.info.role !== "user") {
+      throw new NamedError.Unknown({ message: "Cannot regenerate session title without a user message" })
+    }
+
+    const title = await generateTitleText({
+      session,
+      history,
+      providerID: firstRealUser.info.model.providerID,
+      modelID: firstRealUser.info.model.modelID,
+      fullHistory: true,
+    })
+    if (!title) {
+      throw new NamedError.Unknown({ message: "Failed to regenerate session title" })
+    }
+
+    await Session.setTitle({ sessionID: input.sessionID, title }).catch((err) => {
+      if (NotFoundError.isInstance(err)) return
+      throw err
+    })
+
+    return Session.get(input.sessionID)
   }
 }

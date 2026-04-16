@@ -14,6 +14,7 @@ interface TabBarProps {
   onReorder: (from: number, to: number) => void
   onCloseOtherTabs: (id: string) => void
   onCloseTabsToRight: (id: string) => void
+  onRegenerateTitle: (id: string) => void
   onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
   onToggleShare: (id: string) => void
@@ -44,6 +45,7 @@ export function TabBar({
   onReorder,
   onCloseOtherTabs,
   onCloseTabsToRight,
+  onRegenerateTitle,
   onRename,
   onDelete,
   onToggleShare,
@@ -253,6 +255,7 @@ export function TabBar({
           onCloseTab={() => onClose(ctxMenu.sessionId)}
           onCloseOtherTabs={() => onCloseOtherTabs(ctxMenu.sessionId)}
           onCloseTabsToRight={() => onCloseTabsToRight(ctxMenu.sessionId)}
+          onRegenerateTitle={() => onRegenerateTitle(ctxMenu.sessionId)}
           onRename={() => {
             setRenamingTabId(ctxMenu.sessionId)
             setCtxMenu(null)
