@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 import { ideBridge } from "../lib/ideBridge"
+import { scopedStateGetJSON, scopedStateSetJSON } from "./scopedStorage"
 import { useToast } from "./ToastContext"
 
 type UpdateStatus = "idle" | "available" | "downloading" | "installing" | "success" | "error"
@@ -17,8 +18,11 @@ type UpdateValue = {
   latest: UpdateRelease | null
   status: UpdateStatus
   isChecking: boolean
+  /** Whether the current latest version has been dismissed by the user */
+  dismissed: boolean
   installUpdate: (version: string) => Promise<void>
   checkForUpdates: () => Promise<void>
+  dismissUpdate: () => void
   confirmOpen: boolean
   confirmVersion: string | null
   confirmInstall: () => Promise<void>
@@ -102,6 +106,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
   const [isChecking, setIsChecking] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmVersion, setConfirmVersion] = useState<string | null>(null)
+  const [dismissedVersion, setDismissedVersion] = useState<string | null>(null)
 
   const clearInstallConfirm = useCallback(() => {
     setConfirmOpen(false)
@@ -113,13 +118,19 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
 
     let disposed = false
 
-    void ideBridge
-      .request<UpdateInfoResult>("getUpdateInfo")
-      .then((message) => {
+    void Promise.all([
+      ideBridge.request<UpdateInfoResult>("getUpdateInfo"),
+      scopedStateGetJSON<string | null>("global", "update.dismissedVersion", null),
+    ])
+      .then(([message, savedDismissed]) => {
         if (disposed) return
         const next = toRelease(message.result?.latest)
         setLatest(next)
-        setStatus(getInitialStatus(message.result, next))
+        if (savedDismissed) {
+          setDismissedVersion(savedDismissed)
+        }
+        const initialStatus = getInitialStatus(message.result, next)
+        setStatus(initialStatus)
       })
       .catch(() => {
         if (disposed) return
@@ -173,6 +184,8 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
   const installUpdate = useCallback(
     async (version: string) => {
       clearInstallConfirm()
+      setDismissedVersion(null)
+      void scopedStateSetJSON("global", "update.dismissedVersion", null)
       setStatus("downloading")
       try {
         await ideBridge.request("installUpdate", { version })
@@ -197,6 +210,9 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
 
   const checkForUpdates = useCallback(async () => {
     setIsChecking(true)
+    // Manual check always clears dismissed state
+    setDismissedVersion(null)
+    void scopedStateSetJSON("global", "update.dismissedVersion", null)
     try {
       const message = await ideBridge.request<CheckForUpdatesResult>("checkForUpdates")
       const result = message.result
@@ -242,14 +258,25 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
     window.open(latest.releaseUrl, "_blank", "noopener,noreferrer")
   }, [latest?.releaseUrl])
 
+  const dismissUpdate = useCallback(() => {
+    if (!latest?.version) return
+    const version = latest.version
+    setDismissedVersion(version)
+    void scopedStateSetJSON("global", "update.dismissedVersion", version)
+  }, [latest?.version])
+
+  const dismissed = !!(dismissedVersion && latest?.version === dismissedVersion)
+
   const value = useMemo<UpdateValue>(
     () => ({
       currentVersion: __APP_VERSION__,
       latest,
       status,
       isChecking,
+      dismissed,
       installUpdate,
       checkForUpdates,
+      dismissUpdate,
       confirmOpen,
       confirmVersion,
       confirmInstall,
@@ -262,6 +289,8 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       confirmInstall,
       confirmOpen,
       confirmVersion,
+      dismissed,
+      dismissUpdate,
       installUpdate,
       isChecking,
       latest,

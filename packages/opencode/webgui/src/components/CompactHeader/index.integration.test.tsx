@@ -74,6 +74,19 @@ vi.mock("./SessionDropdown", () => ({
   },
 }))
 
+vi.mock("../../state/UpdateContext", () => ({
+  useUpdate: () => ({
+    isChecking: false,
+    checkForUpdates: vi.fn(),
+    confirmOpen: false,
+    confirmVersion: null,
+    confirmInstall: vi.fn(),
+    cancelInstallConfirm: vi.fn(),
+    dismissed: false,
+    dismissUpdate: vi.fn(),
+  }),
+}))
+
 vi.mock("../../lib/api/sdkClient", () => ({
   sdk: {
     session: {

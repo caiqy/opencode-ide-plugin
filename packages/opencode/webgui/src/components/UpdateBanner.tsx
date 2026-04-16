@@ -21,7 +21,7 @@ const titleText = {
 export function UpdateBanner() {
   const update = useUpdate()
 
-  if (!update.latest || update.status === "idle") return null
+  if (!update.latest || update.status === "idle" || update.dismissed) return null
 
   const title = titleText[update.status]
   const disabled = update.status === "downloading" || update.status === "installing" || update.status === "success"
@@ -61,6 +61,15 @@ export function UpdateBanner() {
               查看 Release
             </button>
           ) : null}
+          <button
+            className="rounded border border-dashed border-blue-300 px-3 py-1 text-sm font-medium transition-colors hover:bg-blue-100 dark:border-blue-700 dark:hover:bg-blue-900 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={disabled}
+            onClick={() => {
+              update.dismissUpdate()
+            }}
+          >
+            暂不更新
+          </button>
         </div>
       </div>
     </div>

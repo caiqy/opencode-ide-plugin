@@ -5,6 +5,7 @@ import { render, screen } from "../test/test-utils"
 const mocks = vi.hoisted(() => ({
   installUpdate: vi.fn(),
   openRelease: vi.fn(),
+  dismissUpdate: vi.fn(),
   update: {
     currentVersion: "26.4.1405",
     latest: {
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
       releaseUrl: "https://example.test/releases/26.4.1406",
     } as { version: string; releaseUrl?: string },
     status: "available" as "available" | "downloading" | "installing" | "success" | "error" | "idle",
+    dismissed: false,
   },
 }))
 
@@ -20,8 +22,10 @@ vi.mock("../state/UpdateContext", () => ({
     currentVersion: mocks.update.currentVersion,
     latest: mocks.update.latest,
     status: mocks.update.status,
+    dismissed: mocks.update.dismissed,
     installUpdate: mocks.installUpdate,
     openRelease: mocks.openRelease,
+    dismissUpdate: mocks.dismissUpdate,
   }),
 }))
 
@@ -36,6 +40,7 @@ describe("UpdateBanner", () => {
       releaseUrl: "https://example.test/releases/26.4.1406",
     }
     mocks.update.status = "available"
+    mocks.update.dismissed = false
   })
 
   it("能显示版本信息并响应按钮点击", async () => {
@@ -92,5 +97,45 @@ describe("UpdateBanner", () => {
     render(<UpdateBanner />)
 
     expect(screen.queryByRole("button", { name: "查看 Release" })).not.toBeInTheDocument()
+  })
+
+  it("显示暂不更新按钮并响应点击", async () => {
+    const user = userEvent.setup()
+
+    render(<UpdateBanner />)
+
+    const btn = screen.getByRole("button", { name: "暂不更新" })
+    expect(btn).toBeInTheDocument()
+    expect(btn).not.toBeDisabled()
+
+    await user.click(btn)
+    expect(mocks.dismissUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it("downloading/installing/success 时暂不更新按钮禁用", () => {
+    for (const status of ["downloading", "installing", "success"] as const) {
+      mocks.update.status = status
+
+      const { unmount } = render(<UpdateBanner />)
+
+      expect(screen.getByRole("button", { name: "暂不更新" })).toBeDisabled()
+      unmount()
+    }
+  })
+
+  it("error 时暂不更新按钮可点击", () => {
+    mocks.update.status = "error"
+
+    render(<UpdateBanner />)
+
+    expect(screen.getByRole("button", { name: "暂不更新" })).not.toBeDisabled()
+  })
+
+  it("dismissed 为 true 时不渲染 Banner", () => {
+    mocks.update.dismissed = true
+
+    render(<UpdateBanner />)
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })
 })

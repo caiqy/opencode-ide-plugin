@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => {
   return {
     request: vi.fn(),
     showToast: vi.fn(),
+    scopedStateGetJSON: vi.fn(),
+    scopedStateSetJSON: vi.fn(),
     on: vi.fn((next: Handler) => {
       handler = next
     }),
@@ -36,6 +38,11 @@ vi.mock("./ToastContext", () => ({
   useToast: () => ({ showToast: mocks.showToast }),
 }))
 
+vi.mock("./scopedStorage", () => ({
+  scopedStateGetJSON: (...args: unknown[]) => mocks.scopedStateGetJSON(...args),
+  scopedStateSetJSON: (...args: unknown[]) => mocks.scopedStateSetJSON(...args),
+}))
+
 import { UpdateProvider, useUpdate } from "./UpdateContext"
 import { UpdateBanner } from "../components/UpdateBanner"
 
@@ -47,6 +54,8 @@ describe("UpdateContext", () => {
   beforeEach(() => {
     vi.resetAllMocks()
     Reflect.set(globalThis, "__APP_VERSION__", "26.4.1405")
+    mocks.scopedStateGetJSON.mockResolvedValue(null)
+    mocks.scopedStateSetJSON.mockResolvedValue({ ok: true })
     mocks.request.mockResolvedValue({
       result: {
         latest: {
@@ -487,5 +496,169 @@ describe("UpdateContext", () => {
     expect(result.current.confirmOpen).toBe(false)
     expect(result.current.confirmVersion).toBe(null)
     expect(result.current.status).toBe("downloading")
+  })
+
+  it("dismissUpdate 后 dismissed 为 true 且持久化到 scopedStorage", async () => {
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.latest?.version).toBe("26.4.1406")
+      expect(result.current.status).toBe("available")
+    })
+
+    act(() => {
+      result.current.dismissUpdate()
+    })
+
+    expect(result.current.dismissed).toBe(true)
+    expect(mocks.scopedStateSetJSON).toHaveBeenCalledWith("global", "update.dismissedVersion", "26.4.1406")
+  })
+
+  it("dismissed 状态下 Banner 不显示", async () => {
+    function TestHarness({ onUpdate }: { onUpdate: (u: ReturnType<typeof useUpdate>) => void }) {
+      const update = useUpdate()
+      onUpdate(update)
+      return <UpdateBanner />
+    }
+
+    let updateRef: ReturnType<typeof useUpdate> | null = null
+    const { rerender } = render(
+      <UpdateProvider>
+        <TestHarness
+          onUpdate={(u) => {
+            updateRef = u
+          }}
+        />
+      </UpdateProvider>,
+    )
+
+    await waitFor(() => {
+      expect(updateRef?.status).toBe("available")
+    })
+    expect(screen.getByRole("status")).toBeInTheDocument()
+
+    act(() => {
+      updateRef!.dismissUpdate()
+    })
+
+    rerender(
+      <UpdateProvider>
+        <TestHarness
+          onUpdate={(u) => {
+            updateRef = u
+          }}
+        />
+      </UpdateProvider>,
+    )
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+
+  it("dismissed 版本与新版本不同时 Banner 重新显示", async () => {
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.latest?.version).toBe("26.4.1406")
+    })
+
+    act(() => {
+      result.current.dismissUpdate()
+    })
+
+    expect(result.current.dismissed).toBe(true)
+
+    act(() => {
+      mocks.emit({
+        type: "updateAvailable",
+        payload: { version: "26.4.1407" },
+      })
+    })
+
+    expect(result.current.latest?.version).toBe("26.4.1407")
+    expect(result.current.dismissed).toBe(false)
+  })
+
+  it("手动检查更新会清除 dismissed 状态", async () => {
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        latest: {
+          version: "26.4.1406",
+          releaseUrl: "https://example.test/releases/26.4.1406",
+        },
+        hasUpdate: true,
+      },
+    })
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        status: "available",
+        latest: {
+          version: "26.4.1406",
+          releaseUrl: "https://example.test/releases/26.4.1406",
+        },
+      },
+    })
+
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("available")
+    })
+
+    act(() => {
+      result.current.dismissUpdate()
+    })
+
+    expect(result.current.dismissed).toBe(true)
+
+    await act(async () => {
+      await result.current.checkForUpdates()
+    })
+
+    expect(result.current.dismissed).toBe(false)
+    expect(mocks.scopedStateSetJSON).toHaveBeenCalledWith("global", "update.dismissedVersion", null)
+  })
+
+  it("installUpdate 会清除 dismissed 状态", async () => {
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        latest: {
+          version: "26.4.1406",
+          releaseUrl: "https://example.test/releases/26.4.1406",
+        },
+        hasUpdate: true,
+      },
+    })
+    mocks.request.mockResolvedValueOnce({ result: undefined })
+
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("available")
+    })
+
+    act(() => {
+      result.current.dismissUpdate()
+    })
+
+    expect(result.current.dismissed).toBe(true)
+
+    await act(async () => {
+      await result.current.installUpdate("26.4.1406")
+    })
+
+    expect(result.current.dismissed).toBe(false)
+    expect(result.current.status).toBe("downloading")
+  })
+
+  it("初始化时从 scopedStorage 恢复 dismissedVersion", async () => {
+    mocks.scopedStateGetJSON.mockResolvedValueOnce("26.4.1406")
+
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.latest?.version).toBe("26.4.1406")
+    })
+
+    expect(result.current.dismissed).toBe(true)
   })
 })
