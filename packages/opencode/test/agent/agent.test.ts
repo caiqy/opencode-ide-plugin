@@ -26,6 +26,7 @@ test("returns default native agents when no config", async () => {
       expect(names).toContain("plan")
       expect(names).toContain("general")
       expect(names).toContain("explore")
+      expect(names).toContain("reviewer")
       expect(names).toContain("compaction")
       expect(names).toContain("title")
       expect(names).toContain("summary")
@@ -102,6 +103,27 @@ test("general agent denies todo tools", async () => {
       expect(general?.mode).toBe("subagent")
       expect(general?.hidden).toBeUndefined()
       expect(evalPerm(general, "todowrite")).toBe("deny")
+    },
+  })
+})
+
+test("reviewer agent is a built-in read-only subagent", async () => {
+  await using tmp = await tmpdir()
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const reviewer = await Agent.get("reviewer")
+      expect(reviewer).toBeDefined()
+      expect(reviewer?.mode).toBe("subagent")
+      expect(reviewer?.native).toBe(true)
+      expect(reviewer?.description).toContain("Read-only review agent")
+      expect(evalPerm(reviewer, "read")).toBe("allow")
+      expect(evalPerm(reviewer, "grep")).toBe("allow")
+      expect(evalPerm(reviewer, "glob")).toBe("allow")
+      expect(evalPerm(reviewer, "edit")).toBe("deny")
+      expect(evalPerm(reviewer, "write")).toBe("deny")
+      expect(evalPerm(reviewer, "bash")).toBe("deny")
+      expect(evalPerm(reviewer, "todowrite")).toBe("deny")
     },
   })
 })
