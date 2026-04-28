@@ -1,7 +1,7 @@
 import { Permission } from "@/permission"
 import type { MessageID, SessionID } from "./schema"
 
-type AskInput = Parameters<typeof Permission.ask>[0]
+type AskInput = Permission.AskInput
 
 export function buildToolPermissionAsk(input: {
   sessionID: SessionID

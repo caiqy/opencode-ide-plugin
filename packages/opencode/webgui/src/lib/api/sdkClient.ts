@@ -60,6 +60,7 @@ interface SkillsResponse {
 interface PathResponse {
   state: string
   config: string
+  configFile: string
   worktree: string
   directory: string
 }

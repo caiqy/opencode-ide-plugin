@@ -52,6 +52,7 @@ const mocks = vi.hoisted(() => ({
   useToast: vi.fn(),
   sdkShare: vi.fn(),
   sdkUnshare: vi.fn(),
+  sdkPathGet: vi.fn(),
   ideBridgeRequest: vi.fn(),
   ideBridgeRestartMode: "window" as "window" | "ide" | null,
   tabBarProps: null as null | {
@@ -136,6 +137,9 @@ vi.mock("./TabBar", () => ({
 
 vi.mock("../../lib/api/sdkClient", () => ({
   sdk: {
+    path: {
+      get: (...args: unknown[]) => mocks.sdkPathGet(...args),
+    },
     session: {
       share: (...args: unknown[]) => mocks.sdkShare(...args),
       unshare: (...args: unknown[]) => mocks.sdkUnshare(...args),
@@ -212,6 +216,7 @@ describe("CompactHeader", () => {
     mocks.tabBarProps = null
     mocks.sdkShare.mockResolvedValue({ data: null })
     mocks.sdkUnshare.mockResolvedValue({ data: null })
+    mocks.sdkPathGet.mockResolvedValue({ data: { configFile: "/real/opencode.json" }, error: null })
     mocks.ideBridgeRequest.mockResolvedValue({ ok: true })
     mocks.ideBridgeRestartMode = "window"
 
@@ -1156,7 +1161,7 @@ describe("CompactHeader", () => {
     await user.click(screen.getByText("配置文件"))
 
     expect(mocks.ideBridgeRequest).toHaveBeenCalledWith("ensureAndOpenFile", {
-      path: "~/.config/opencode/opencode.jsonc",
+      path: "/real/opencode.json",
     })
   })
 

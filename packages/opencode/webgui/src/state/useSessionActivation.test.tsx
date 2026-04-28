@@ -183,6 +183,65 @@ describe("useSessionActivation", () => {
     expect(sdk.session.messages).toHaveBeenCalledTimes(1)
   })
 
+  it("会忽略 revert 边界及其后的 user 选择，只恢复可见消息里的最后一次选择", async () => {
+    ;(sdk.session.list as any).mockResolvedValue({
+      data: [{ id: "s1", title: "", time: { created: 1, updated: 1 }, revert: { messageID: "u2" } }],
+      error: null,
+    })
+    ;(sdk.session.messages as any).mockResolvedValue({
+      error: null,
+      data: [
+        {
+          info: {
+            id: "u1",
+            sessionID: "s1",
+            role: "user",
+            time: { created: 1 },
+            agent: "plan",
+            model: { providerID: "openai", modelID: "gpt-4.1" },
+            variant: "low",
+          },
+          parts: [],
+        },
+        {
+          info: {
+            id: "u2",
+            sessionID: "s1",
+            role: "user",
+            time: { created: 2 },
+            agent: "build",
+            model: { providerID: "anthropic", modelID: "claude-4-sonnet" },
+            variant: "high",
+          },
+          parts: [],
+        },
+      ],
+    })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.selectedAgent).toBe("plan")
+      expect(sessionApi!.selectedProviderId).toBe("openai")
+      expect(sessionApi!.selectedModelId).toBe("gpt-4.1")
+      expect(sessionApi!.selectedVariant).toBe("low")
+    })
+  })
+
   it("最近一页没有 user 消息时会继续向前加载，直到恢复最后一次 user 选择", async () => {
     const older = deferred<any>()
 
@@ -350,6 +409,91 @@ describe("useSessionActivation", () => {
     expect(messagesApi!.getSessionPagination("s1").olderLoading).toBe(false)
     expect(messagesApi!.getSessionPagination("s1").complete).toBe(false)
     expect(messagesApi!.getMessagesBySession("s1").some((m) => m.info.id === "u0")).toBe(false)
+  })
+
+  it("revert 边界不在最新页时，会继续向前扫描直到命中边界前的可见 user 选择", async () => {
+    ;(sdk.session.list as any).mockResolvedValue({
+      data: [{ id: "s1", title: "", time: { created: 1, updated: 1 }, revert: { messageID: "r1" } }],
+      error: null,
+    })
+    ;(sdk.session.messages as any)
+      .mockResolvedValueOnce({
+        error: null,
+        data: [
+          {
+            info: {
+              id: "u2",
+              sessionID: "s1",
+              role: "user",
+              time: { created: 3 },
+              agent: "build",
+              model: { providerID: "anthropic", modelID: "claude-4-sonnet" },
+              variant: "high",
+            },
+            parts: [],
+          },
+        ],
+        response: {
+          headers: new Headers({ "X-Next-Cursor": "c1" }),
+        },
+      })
+      .mockResolvedValueOnce({
+        error: null,
+        data: [
+          {
+            info: {
+              id: "u0",
+              sessionID: "s1",
+              role: "user",
+              time: { created: 1 },
+              agent: "plan",
+              model: { providerID: "openai", modelID: "gpt-4.1" },
+              variant: "low",
+            },
+            parts: [],
+          },
+          {
+            info: {
+              id: "r1",
+              sessionID: "s1",
+              role: "assistant",
+              time: { created: 2 },
+            },
+            parts: [],
+          },
+        ],
+        response: {
+          headers: new Headers(),
+        },
+      })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sdk.session.messages).toHaveBeenNthCalledWith(1, { path: { id: "s1" }, query: { limit: 50 } })
+      expect(sdk.session.messages).toHaveBeenNthCalledWith(2, {
+        path: { id: "s1" },
+        query: { before: "c1", limit: 50 },
+      })
+      expect(sessionApi!.selectedAgent).toBe("plan")
+      expect(sessionApi!.selectedProviderId).toBe("openai")
+      expect(sessionApi!.selectedModelId).toBe("gpt-4.1")
+      expect(sessionApi!.selectedVariant).toBe("low")
+    })
   })
 
   it("后台扫描有最大页数上限，避免激活阶段无限请求", async () => {

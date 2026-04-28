@@ -145,6 +145,7 @@
 - 尽可能使用 Bun API（例如 `Bun.file()`）
 - 依赖类型推断；除非为了导出或清晰性，否则避免显式类型注解或接口
 - 优先使用函数式数组方法（`flatMap`、`filter`、`map`）而非 `for` 循环；在 `filter` 上使用类型守卫以维持下游的类型推断
+- 在 `src/config` 中新增配置模块时，遵循文件顶部已有的 self-export 模式（例如 `export * as ConfigAgent from "./agent"`）。
 
 ### 格式化
 

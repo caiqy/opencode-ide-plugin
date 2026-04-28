@@ -60,7 +60,7 @@ const CompactHeader = forwardRef<
   const [restarting, setRestarting] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [displayVersion, setDisplayVersion] = useState(__APP_VERSION__)
+  const [displayVersion, setDisplayVersion] = useState(typeof __APP_VERSION__ === "undefined" ? "dev" : __APP_VERSION__)
   const activeRef = useRef("")
   const statusRef = useRef<HTMLButtonElement>(null)
   const sessionsEverLoaded = useRef(false)
@@ -104,9 +104,17 @@ const CompactHeader = forwardRef<
   }, [])
 
   const handleOpenConfigFile = useCallback(() => {
-    void ideBridge.request("ensureAndOpenFile", { path: "~/.config/opencode/opencode.jsonc" }).catch(() => {
-      toast.showToast("打开配置文件失败", { variant: "error" })
-    })
+    void sdk.path
+      .get()
+      .then((result) => {
+        if (typeof result.data?.configFile !== "string" || result.data.configFile.length === 0) {
+          throw new Error("configFile missing")
+        }
+        return ideBridge.request("ensureAndOpenFile", { path: result.data.configFile })
+      })
+      .catch(() => {
+        toast.showToast("打开配置文件失败", { variant: "error" })
+      })
   }, [toast])
 
   const handleOpenRestartConfirm = useCallback(() => {

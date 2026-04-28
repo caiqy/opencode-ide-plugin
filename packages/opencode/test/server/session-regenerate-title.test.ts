@@ -27,7 +27,7 @@ describe("session regenerate title route", () => {
           return Session.get(sessionID)
         })
 
-        const app = Server.Default()
+        const app = Server.createApp({})
         const response = await app.request(`/session/${session.id}/title/regenerate`, {
           method: "POST",
         })

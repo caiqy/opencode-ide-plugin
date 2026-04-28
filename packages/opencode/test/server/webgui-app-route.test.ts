@@ -3,6 +3,7 @@ import { embeddedWebGui } from "../../src/webgui/embed.generated"
 import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
 import { Log } from "../../src/util/log"
+import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
 
@@ -38,5 +39,19 @@ describe("webgui app route", () => {
     expect(response.status).toBe(200)
     expect(response.headers.get("content-type")).toContain("javascript")
     expect(text).toBe(expected)
+  })
+
+  test("default /path route exposes resolved configFile", async () => {
+    await using tmp = await tmpdir()
+
+    const response = await Server.createApp({}).request("/path", {
+      headers: { "x-opencode-directory": tmp.path },
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      directory: tmp.path,
+      configFile: expect.stringMatching(/opencode\.(jsonc|json)$|config\.json$/),
+    })
   })
 })

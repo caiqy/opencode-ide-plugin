@@ -25,6 +25,7 @@ const originalToolsByServer = mcp.toolsByServer
 let cfg: Record<string, boolean> = {}
 let payload: ToolsByServer = { connected: false, tools: [] }
 let cfgSpy: ReturnType<typeof spyOn<typeof Config, "get">>
+let mcpSpy: ReturnType<typeof spyOn<typeof MCP, "toolsByServer">>
 
 beforeEach(() => {
   cfg = {}
@@ -35,16 +36,14 @@ beforeEach(() => {
         tools: cfg,
       }) as Awaited<ReturnType<typeof Config.get>>,
   )
-  mcp.toolsByServer = async () => payload
+  mcpSpy = spyOn(MCP, "toolsByServer").mockImplementation(
+    async () => payload as Awaited<ReturnType<typeof MCP.toolsByServer>>,
+  )
 })
 
 afterEach(() => {
   cfgSpy.mockRestore()
-  if (originalToolsByServer) {
-    mcp.toolsByServer = originalToolsByServer
-    return
-  }
-  delete mcp.toolsByServer
+  mcpSpy.mockRestore()
 })
 
 describe("mcp tools route", () => {

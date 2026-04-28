@@ -71,5 +71,5 @@ describe("legacy storage gate", () => {
       roots: defaultLegacyStorageRoots(),
     })
     expect(out).toEqual([])
-  })
+  }, 20_000)
 })

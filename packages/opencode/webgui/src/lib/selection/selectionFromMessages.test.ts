@@ -97,6 +97,77 @@ describe("selectionFromMessages", () => {
     })
   })
 
+  it("兼容 SDK v2，把 variant 从 user.model.variant 恢复出来", () => {
+    const messages: Message[] = [
+      {
+        info: {
+          id: "message-100",
+          sessionID: "session-1",
+          role: "user",
+          time: { created: 100 },
+          agent: "build",
+          model: {
+            providerID: "anthropic",
+            modelID: "claude-4-sonnet",
+            variant: "high",
+          },
+        } as Message["info"],
+        parts: [],
+      },
+    ]
+
+    expect(selectionFromMessages(messages)).toEqual({
+      providerId: "anthropic",
+      modelId: "claude-4-sonnet",
+      agent: "build",
+      variant: "high",
+    })
+  })
+
+  it("有 revert 边界时，只从边界之前的 user message 恢复选择", () => {
+    const messages: Message[] = [
+      createMessage({
+        role: "user",
+        id: "u1",
+        created: 100,
+        agent: "plan",
+        model: { providerID: "openai", modelID: "gpt-4.1" },
+        variant: "low",
+      }),
+      createMessage({ role: "assistant", id: "a1", created: 150 }),
+      createMessage({
+        role: "user",
+        id: "u2",
+        created: 200,
+        agent: "build",
+        model: { providerID: "anthropic", modelID: "claude-4-sonnet" },
+        variant: "high",
+      }),
+    ]
+
+    expect(selectionFromMessages(messages, { messageID: "u2" })).toEqual({
+      providerId: "openai",
+      modelId: "gpt-4.1",
+      agent: "plan",
+      variant: "low",
+    })
+  })
+
+  it("revert 边界还未扫描到当前页时，不提前用隐藏 user message 恢复选择", () => {
+    const messages: Message[] = [
+      createMessage({
+        role: "user",
+        id: "u2",
+        created: 200,
+        agent: "build",
+        model: { providerID: "anthropic", modelID: "claude-4-sonnet" },
+        variant: "high",
+      }),
+    ]
+
+    expect(selectionFromMessages(messages, { messageID: "u1" })).toBeNull()
+  })
+
   it("当 user created 相同时，选择输入顺序更靠后的 user", () => {
     const messages: Message[] = [
       createMessage({

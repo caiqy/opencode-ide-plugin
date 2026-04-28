@@ -23,6 +23,7 @@ export function useSessionActivation() {
   const getRef = useRef(getMessagesBySession)
   const restoreRef = useRef(restoreSelections)
   const resolveRef = useRef(resolveSelections)
+  const revertRef = useRef(currentSession?.revert ?? null)
 
   useEffect(() => {
     ensureRef.current = ensureSession
@@ -48,6 +49,10 @@ export function useSessionActivation() {
     resolveRef.current = resolveSelections
   }, [resolveSelections])
 
+  useEffect(() => {
+    revertRef.current = currentSession?.revert ?? null
+  }, [currentSession?.revert])
+
   const activate = useCallback(async (sessionID?: string | null) => {
     if (!sessionID) return
 
@@ -56,7 +61,7 @@ export function useSessionActivation() {
     if (token !== activationTokenRef.current) return
     if (!loadedMessages) {
       const cached = getRef.current(sessionID)
-      const restored = selectionFromMessages(cached)
+      const restored = selectionFromMessages(cached, revertRef.current)
       if (restored) {
         restoreRef.current(restored, sessionID)
         return
@@ -66,7 +71,7 @@ export function useSessionActivation() {
     }
 
     let rows = merge(getRef.current(sessionID), loadedMessages)
-    let restoredSelection = selectionFromMessages(rows)
+    let restoredSelection = selectionFromMessages(rows, revertRef.current)
     let failed = false
     const max = 10
     const seen = new Set<string>()
@@ -82,7 +87,7 @@ export function useSessionActivation() {
       }
 
       rows = merge(rows, older.rows)
-      restoredSelection = selectionFromMessages(rows)
+      restoredSelection = selectionFromMessages(rows, revertRef.current)
 
       const next = older.cursor
       if (!next) break

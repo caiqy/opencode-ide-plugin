@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import { APICallError } from "ai"
+import { ProviderID } from "../../src/provider/schema"
 import { ProviderError } from "../../src/provider/error"
 
 describe("ProviderError.parseStreamError", () => {
@@ -44,5 +46,25 @@ describe("ProviderError.parseStreamError", () => {
     const input = { error: "stream_read_error" }
     const result = ProviderError.parseStreamError(input)
     expect(result!.responseBody).toBe(JSON.stringify(input))
+  })
+})
+
+describe("ProviderError.parseAPICallError", () => {
+  test("extracts nested error.message from response body", () => {
+    const result = ProviderError.parseAPICallError({
+      providerID: ProviderID.make("openai"),
+      error: new APICallError({
+        message: "Bad Request",
+        url: "https://example.com",
+        requestBodyValues: {},
+        statusCode: 400,
+        responseHeaders: { "content-type": "application/json" },
+        responseBody: JSON.stringify({ error: { message: "no_kv_space" } }),
+        isRetryable: false,
+      }),
+    })
+
+    expect(result.type).toBe("api_error")
+    expect(result.message).toBe("Bad Request: no_kv_space")
   })
 })
