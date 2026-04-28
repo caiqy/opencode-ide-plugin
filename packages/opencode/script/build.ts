@@ -16,7 +16,7 @@ await import("./generate.ts")
 
 import { Script } from "@opencode-ai/script"
 import pkg from "../package.json"
-import { targets as resolveTargets } from "./targets"
+import { installs, targets as resolveTargets } from "./targets"
 
 // Load migrations from migration directories
 const migrationDirs = (
@@ -121,8 +121,9 @@ await $`rm -rf dist`
 
 const binaries: Record<string, string> = {}
 if (!skipInstall) {
-  await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]}`
-  await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
+  for (const item of installs(targets)) {
+    await $`bun install --os=${item.os} --cpu=${item.arch} @opentui/core@${pkg.dependencies["@opentui/core"]} @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
+  }
 }
 for (const item of targets) {
   const name = [
