@@ -43,6 +43,7 @@ import { Shell } from "@/shell/shell"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { Truncate } from "@/tool"
 import { decodeDataUrl } from "@/util/data-url"
+import { classifyAttachment } from "@/util/media"
 import { Process } from "@/util"
 import { Cause, Effect, Exit, Layer, Option, Scope, Context, Schema } from "effect"
 import { zod } from "@/util/effect-zod"
@@ -56,6 +57,8 @@ import { makeRuntime } from "@/effect/run-service"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
+
+const FILE_SAMPLE_BYTES = 4096
 
 const STRUCTURED_OUTPUT_DESCRIPTION = `Use this tool to return your final response in the requested structured format.
 
@@ -109,6 +112,22 @@ export const layer = Layer.effect(
     const summary = yield* SessionSummary.Service
     const sys = yield* SystemPrompt.Service
     const llm = yield* LLM.Service
+    const readAttachmentSample = Effect.fn("SessionPrompt.readAttachmentSample")(function* (filepath: string) {
+      const stat = yield* fsys.stat(filepath).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      if (!stat || stat.type === "Directory" || Number(stat.size) === 0) {
+        return new Uint8Array()
+      }
+
+      return yield* Effect.scoped(
+        Effect.gen(function* () {
+          const file = yield* fsys.open(filepath, { flag: "r" })
+          return Option.getOrElse(
+            yield* file.readAlloc(Math.min(FILE_SAMPLE_BYTES, Number(stat.size))),
+            () => new Uint8Array(),
+          )
+        }),
+      ).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    })
     const runner = Effect.fn("SessionPrompt.runner")(function* () {
       return yield* EffectBridge.make()
     })
@@ -1044,6 +1063,29 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                     ask: () => Effect.void,
                   })
                   .pipe(Effect.onInterrupt(() => Effect.sync(() => controller.abort())))
+              }
+
+              if (part.mime !== "application/x-directory") {
+                const sample = yield* readAttachmentSample(filepath)
+
+                if (sample) {
+                  const fallbackMime = part.mime === "text/plain" ? AppFileSystem.mimeType(filepath) : part.mime
+                  const classified = classifyAttachment(filepath, sample, fallbackMime)
+
+                  if (classified.kind === "binary") {
+                    const reference = part.source?.path ?? filepath
+                    return [
+                      {
+                        messageID: info.id,
+                        sessionID: input.sessionID,
+                        type: "text",
+                        synthetic: true,
+                        text: `Referenced binary file path without reading contents: ${reference}`,
+                      },
+                      { ...part, messageID: info.id, sessionID: input.sessionID },
+                    ]
+                  }
+                }
               }
 
               if (part.mime === "text/plain") {

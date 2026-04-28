@@ -1,4 +1,38 @@
+import path from "path"
+
 const startsWith = (bytes: Uint8Array, prefix: number[]) => prefix.every((value, index) => bytes[index] === value)
+
+const binaryExtensions = new Set([
+  ".zip",
+  ".vsix",
+  ".tar",
+  ".gz",
+  ".exe",
+  ".dll",
+  ".so",
+  ".class",
+  ".jar",
+  ".war",
+  ".7z",
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".ppt",
+  ".pptx",
+  ".odt",
+  ".ods",
+  ".odp",
+  ".bin",
+  ".dat",
+  ".obj",
+  ".o",
+  ".a",
+  ".lib",
+  ".wasm",
+  ".pyc",
+  ".pyo",
+])
 
 export function isPdfAttachment(mime: string) {
   return mime === "application/pdf"
@@ -23,4 +57,38 @@ export function sniffAttachmentMime(bytes: Uint8Array, fallback: string) {
   }
 
   return fallback
+}
+
+export function isBinaryAttachment(filepath: string, bytes: Uint8Array) {
+  const ext = path.extname(filepath).toLowerCase()
+  if (binaryExtensions.has(ext)) return true
+  if (bytes.length === 0) return false
+
+  let nonPrintableCount = 0
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] === 0) return true
+    if (bytes[i] < 9 || (bytes[i] > 13 && bytes[i] < 32)) {
+      nonPrintableCount++
+    }
+  }
+
+  return nonPrintableCount / bytes.length > 0.3
+}
+
+export function classifyAttachment(filepath: string, bytes: Uint8Array, fallbackMime: string) {
+  const mime = sniffAttachmentMime(bytes, fallbackMime)
+
+  if (isImageAttachment(mime)) {
+    return { kind: "image" as const, mime }
+  }
+
+  if (isPdfAttachment(mime)) {
+    return { kind: "pdf" as const, mime }
+  }
+
+  if (isBinaryAttachment(filepath, bytes)) {
+    return { kind: "binary" as const, mime }
+  }
+
+  return { kind: "text" as const, mime }
 }

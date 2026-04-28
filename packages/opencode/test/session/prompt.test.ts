@@ -3,7 +3,7 @@ import { FetchHttpClient } from "effect/unstable/http"
 import { expect } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Layer } from "effect"
 import path from "path"
-import { fileURLToPath } from "url"
+import { fileURLToPath, pathToFileURL } from "url"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { Agent as AgentSvc } from "../../src/agent/agent"
 import { Bus } from "../../src/bus"
@@ -1690,6 +1690,176 @@ it.live("keeps stored part order stable when file resolution is async", () =>
         expect(text[0]?.startsWith("Called the Read tool with the following input:")).toBe(true)
         expect(text[1]?.includes("Read tool failed to read")).toBe(true)
         expect(text[2]).toBe("after-file")
+
+        yield* sessions.remove(session.id)
+      }),
+    { git: true, config: cfg },
+  ),
+)
+
+it.live("keeps text file range references readable", () =>
+  provideTmpdirInstance(
+    (dir) =>
+      Effect.gen(function* () {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const session = yield* sessions.create({})
+
+        const source = path.join(dir, "range.ts")
+        yield* Effect.promise(() => Bun.write(source, "one\ntwo\nthree\nfour\n"))
+
+        const url = pathToFileURL(source)
+        url.searchParams.set("start", "2")
+        url.searchParams.set("end", "3")
+
+        const message = yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [
+            { type: "text", text: "check the selected lines" },
+            { type: "file", mime: "text/plain", filename: "range.ts", url: url.toString() },
+          ],
+        })
+
+        const stored = MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+        const text = stored.parts.filter((part) => part.type === "text").map((part) => part.text)
+
+        expect(text.some((value) => value.includes('"offset":2') && value.includes('"limit":2'))).toBe(true)
+        expect(text.some((value) => value.includes("2: two"))).toBe(true)
+        expect(text.some((value) => value.includes("3: three"))).toBe(true)
+
+        yield* sessions.remove(session.id)
+      }),
+    { git: true, config: cfg },
+  ),
+)
+
+it.live("keeps pdf file references as attachments even when mention mime is text/plain", () =>
+  provideTmpdirInstance(
+    (dir) =>
+      Effect.gen(function* () {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const session = yield* sessions.create({})
+
+        const pdf = path.join(dir, "manual.pdf")
+        yield* Effect.promise(() => Bun.write(pdf, Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n")))
+
+        const message = yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [
+            { type: "text", text: "review the attached manual" },
+            { type: "file", mime: "text/plain", filename: "manual.pdf", url: pathToFileURL(pdf).toString() },
+          ],
+        })
+
+        const stored = MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+        const fileParts = stored.parts.filter((part) => part.type === "file")
+        const text = stored.parts.filter((part) => part.type === "text").map((part) => part.text)
+
+        expect(text.some((value) => value.includes("PDF read successfully"))).toBe(true)
+        expect(
+          fileParts.some(
+            (part) => part.mime === "application/pdf" && part.url.startsWith("data:application/pdf;base64,"),
+          ),
+        ).toBe(true)
+
+        yield* sessions.remove(session.id)
+      }),
+    { git: true, config: cfg },
+  ),
+)
+
+it.live("keeps binary file references as plain path mentions without read failures", () =>
+  provideTmpdirInstance(
+    (dir) =>
+      Effect.gen(function* () {
+        const bus = yield* Bus.Service
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const session = yield* sessions.create({})
+        const errors: string[] = []
+
+        const off = yield* bus.subscribeCallback(Session.Event.Error, (event) => {
+          if (event.properties.sessionID !== session.id) return
+          errors.push(event.properties.error.message)
+        })
+
+        const vsix = path.join(dir, "plugin.vsix")
+        yield* Effect.promise(() => Bun.write(vsix, Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00])))
+
+        const message = yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [
+            { type: "text", text: "look at @plugin.vsix" },
+            { type: "file", mime: "text/plain", filename: "plugin.vsix", url: pathToFileURL(vsix).toString() },
+          ],
+        })
+
+        const stored = MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+        const text = stored.parts.filter((part) => part.type === "text").map((part) => part.text)
+        const fileParts = stored.parts.filter((part) => part.type === "file")
+
+        expect(text.some((value) => value.startsWith("Called the Read tool"))).toBe(false)
+        expect(text.some((value) => value.includes("Cannot read binary file"))).toBe(false)
+        expect(
+          text.some(
+            (value) =>
+              value.includes("Referenced binary file path without reading contents:") && value.includes("plugin.vsix"),
+          ),
+        ).toBe(true)
+        expect(errors).toEqual([])
+        expect(
+          fileParts.some(
+            (part) => part.filename === "plugin.vsix" && part.mime === "text/plain" && part.url.startsWith("file://"),
+          ),
+        ).toBe(true)
+
+        off()
+
+        yield* sessions.remove(session.id)
+      }),
+    { git: true, config: cfg },
+  ),
+)
+
+it.live("keeps binary-only file references model-visible without read failures", () =>
+  provideTmpdirInstance(
+    (dir) =>
+      Effect.gen(function* () {
+        const bus = yield* Bus.Service
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const session = yield* sessions.create({})
+        const errors: string[] = []
+
+        const off = yield* bus.subscribeCallback(Session.Event.Error, (event) => {
+          if (event.properties.sessionID !== session.id) return
+          errors.push(event.properties.error.message)
+        })
+
+        const vsix = path.join(dir, "plugin.vsix")
+        yield* Effect.promise(() => Bun.write(vsix, Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00])))
+
+        const message = yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "file", mime: "text/plain", filename: "plugin.vsix", url: pathToFileURL(vsix).toString() }],
+        })
+
+        const stored = MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+        const text = stored.parts.filter((part) => part.type === "text").map((part) => part.text)
+
+        expect(text).toContain(`Referenced binary file path without reading contents: ${vsix}`)
+        expect(errors).toEqual([])
+
+        off()
 
         yield* sessions.remove(session.id)
       }),

@@ -9,7 +9,7 @@ import DESCRIPTION from "./read.txt"
 import { Instance } from "../project/instance"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { Instruction } from "../session/instruction"
-import { isImageAttachment, isPdfAttachment, sniffAttachmentMime } from "@/util/media"
+import { classifyAttachment } from "@/util/media"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -101,53 +101,6 @@ export const ReadTool = Tool.define(
       )
     })
 
-    const isBinaryFile = (filepath: string, bytes: Uint8Array) => {
-      const ext = path.extname(filepath).toLowerCase()
-      switch (ext) {
-        case ".zip":
-        case ".tar":
-        case ".gz":
-        case ".exe":
-        case ".dll":
-        case ".so":
-        case ".class":
-        case ".jar":
-        case ".war":
-        case ".7z":
-        case ".doc":
-        case ".docx":
-        case ".xls":
-        case ".xlsx":
-        case ".ppt":
-        case ".pptx":
-        case ".odt":
-        case ".ods":
-        case ".odp":
-        case ".bin":
-        case ".dat":
-        case ".obj":
-        case ".o":
-        case ".a":
-        case ".lib":
-        case ".wasm":
-        case ".pyc":
-        case ".pyo":
-          return true
-      }
-
-      if (bytes.length === 0) return false
-
-      let nonPrintableCount = 0
-      for (let i = 0; i < bytes.length; i++) {
-        if (bytes[i] === 0) return true
-        if (bytes[i] < 9 || (bytes[i] > 13 && bytes[i] < 32)) {
-          nonPrintableCount++
-        }
-      }
-
-      return nonPrintableCount / bytes.length > 0.3
-    }
-
     const run = Effect.fn("ReadTool.execute")(function* (
       params: Schema.Schema.Type<typeof Parameters>,
       ctx: Tool.Context,
@@ -217,10 +170,10 @@ export const ReadTool = Tool.define(
       const loaded = yield* instruction.resolve(ctx.messages, filepath, ctx.messageID)
       const sample = yield* readSample(filepath, Number(stat.size), SAMPLE_BYTES)
 
-      const mime = sniffAttachmentMime(sample, AppFileSystem.mimeType(filepath))
-      if (isImageAttachment(mime) || isPdfAttachment(mime)) {
+      const classified = classifyAttachment(filepath, sample, AppFileSystem.mimeType(filepath))
+      if (classified.kind === "image" || classified.kind === "pdf") {
         const bytes = yield* fs.readFile(filepath)
-        const msg = isPdfAttachment(mime) ? "PDF read successfully" : "Image read successfully"
+        const msg = classified.kind === "pdf" ? "PDF read successfully" : "Image read successfully"
         return {
           title,
           output: msg,
@@ -232,14 +185,14 @@ export const ReadTool = Tool.define(
           attachments: [
             {
               type: "file" as const,
-              mime,
-              url: `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`,
+              mime: classified.mime,
+              url: `data:${classified.mime};base64,${Buffer.from(bytes).toString("base64")}`,
             },
           ],
         }
       }
 
-      if (isBinaryFile(filepath, sample)) {
+      if (classified.kind === "binary") {
         return yield* Effect.fail(new Error(`Cannot read binary file: ${filepath}`))
       }
 

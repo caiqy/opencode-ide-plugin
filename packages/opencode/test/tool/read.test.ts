@@ -147,10 +147,9 @@ describe("tool.read external_directory permission", () => {
 
         const { items, next } = asks()
         const target = path.join(dir, "test.txt")
-        const alt = target
-          .replace(/^[A-Za-z]:/, "")
-          .replaceAll("\\", "/")
-          .toLowerCase()
+        const drive = target[0].toLowerCase()
+        const rest = target.slice(2).replaceAll("\\", "/")
+        const alt = `/${drive}${rest}`
 
         yield* exec(dir, { filePath: alt }, next)
         const read = items.find((item) => item.permission === "read")
@@ -420,6 +419,19 @@ describe("tool.read truncation", () => {
     }),
   )
 
+  it.live("reads pdf files as attachments", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const pdf = Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n")
+      yield* put(path.join(dir, "manual.pdf"), pdf)
+
+      const result = yield* exec(dir, { filePath: path.join(dir, "manual.pdf") })
+      expect(result.output).toBe("PDF read successfully")
+      expect(result.attachments?.[0].mime).toBe("application/pdf")
+      expect(result.attachments?.[0].url.startsWith("data:application/pdf;base64,")).toBe(true)
+    }),
+  )
+
   it.live(".fbs files (FlatBuffers schema) are read as text, not images", () =>
     Effect.gen(function* () {
       const dir = yield* tmpdirScoped()
@@ -477,6 +489,16 @@ describe("tool.read binary detection", () => {
       yield* put(path.join(dir, "module.wasm"), "not really wasm")
 
       const err = yield* fail(dir, { filePath: path.join(dir, "module.wasm") })
+      expect(err.message).toContain("Cannot read binary file")
+    }),
+  )
+
+  it.live("rejects vsix files as binary", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      yield* put(path.join(dir, "plugin.vsix"), Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00]))
+
+      const err = yield* fail(dir, { filePath: path.join(dir, "plugin.vsix") })
       expect(err.message).toContain("Cannot read binary file")
     }),
   )
