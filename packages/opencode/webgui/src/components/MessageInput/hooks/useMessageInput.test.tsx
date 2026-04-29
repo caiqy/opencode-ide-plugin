@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
     showToast: vi.fn(),
     addMessage: vi.fn(),
     setMessages: vi.fn(),
+    commandList: vi.fn(async () => ({ data: [{ name: "status" }, { name: "review" }], error: null })),
     command: vi.fn(async (_input: unknown) => ({ data: {}, error: null })),
     prompt: vi.fn(async (_input: unknown) => ({ data: {}, error: null })),
     summarize: vi.fn(async (_input: unknown): Promise<any> => ({ data: true, error: null })),
@@ -35,6 +36,9 @@ vi.mock("lexical", () => {
 vi.mock("../../../lib/api/sdkClient", () => {
   return {
     sdk: {
+      command: {
+        list: () => mocks.commandList(),
+      },
       session: {
         command: (input: unknown) => mocks.command(input),
         prompt: (input: unknown) => mocks.prompt(input),
@@ -84,12 +88,18 @@ vi.mock("../../../state/repo/draftRepo", () => {
   }
 })
 
+import { resetSlashInputCache } from "./resolveSlashInput"
 import { useMessageInput } from "./useMessageInput"
 
 describe("useMessageInput", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetSlashInputCache()
     mocks.root.getTextContent.mockReturnValue("/status")
+    mocks.commandList.mockResolvedValue({
+      data: [{ name: "status" }, { name: "review" }],
+      error: null,
+    })
     mocks.command.mockResolvedValue({ data: {}, error: null })
     mocks.prompt.mockResolvedValue({ data: {}, error: null })
     mocks.summarize.mockResolvedValue({ data: true, error: null })
@@ -253,6 +263,172 @@ describe("useMessageInput", () => {
     expect(mocks.command).toHaveBeenCalledWith(
       expect.objectContaining({
         path: { id: "s-draft" },
+      }),
+    )
+  })
+
+  it("已知 slash quick phrase 仍走 command", async () => {
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-known",
+        editor,
+        isEmpty: true,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => []),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.submitQuickPhrase("/review repo status")
+    })
+
+    expect(mocks.command).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { id: "s-known" },
+        body: expect.objectContaining({
+          command: "review",
+          arguments: "repo status",
+        }),
+      }),
+    )
+    expect(mocks.prompt).not.toHaveBeenCalled()
+  })
+
+  it("未知 slash quick phrase 会按普通消息原样发送", async () => {
+    mocks.commandList.mockResolvedValueOnce({
+      data: [{ name: "status" }],
+      error: null,
+    })
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-unknown",
+        editor,
+        isEmpty: true,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => []),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.submitQuickPhrase("/123 abc")
+    })
+
+    expect(mocks.command).not.toHaveBeenCalled()
+    expect(mocks.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { id: "s-unknown" },
+        body: expect.objectContaining({
+          parts: [{ type: "text", text: "/123 abc" }],
+        }),
+      }),
+    )
+  })
+
+  it("未知 slash editor submit 会按普通消息发送而不是命令", async () => {
+    mocks.root.getTextContent.mockReturnValue("/123 abc")
+    mocks.commandList.mockResolvedValueOnce({
+      data: [{ name: "status" }],
+      error: null,
+    })
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const extractMessageParts = vi.fn(() => [{ type: "text", text: "/123 abc" }])
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-editor-unknown",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts,
+      }),
+    )
+
+    await act(async () => {
+      await result.current.handleSubmit()
+    })
+
+    expect(mocks.command).not.toHaveBeenCalled()
+    expect(mocks.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { id: "s-editor-unknown" },
+        body: expect.objectContaining({
+          parts: [{ type: "text", text: "/123 abc" }],
+        }),
+      }),
+    )
+    expect(mocks.addMessage).toHaveBeenCalledTimes(1)
+    expect(extractMessageParts).toHaveBeenCalledTimes(1)
+  })
+
+  it("slash 列表加载失败时会降级为普通消息", async () => {
+    mocks.commandList.mockRejectedValueOnce(new Error("offline"))
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-offline",
+        editor,
+        isEmpty: true,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => []),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.submitQuickPhrase("/review repo status")
+    })
+
+    expect(mocks.command).not.toHaveBeenCalled()
+    expect(mocks.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { id: "s-offline" },
+        body: expect.objectContaining({
+          parts: [{ type: "text", text: "/review repo status" }],
+        }),
       }),
     )
   })

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react"
 import { sdk } from "../lib/api/sdkClient"
 import type { Command } from "@opencode-ai/sdk/client"
 
-type CommandWithSource = Command & { source?: "command" | "mcp" | "skill" }
+export type CommandWithSource = Command & { source?: "command" | "mcp" | "skill" }
 
 export interface CommandResult {
   id: string
@@ -16,7 +16,21 @@ export interface CommandResult {
 let commandsCache: CommandWithSource[] | null = null
 let commandsPromise: Promise<CommandWithSource[]> | null = null
 
-async function loadCommands() {
+export function resetCommandSearchCache() {
+  commandsCache = null
+  commandsPromise = null
+}
+
+export function hasCommandSearchCache() {
+  return commandsCache !== null
+}
+
+export async function loadCommandSearchCommands(options?: { force?: boolean }) {
+  if (options?.force) {
+    commandsCache = null
+    commandsPromise = null
+  }
+
   if (commandsCache) {
     return commandsCache
   }
@@ -28,6 +42,10 @@ async function loadCommands() {
   commandsPromise = (async () => {
     try {
       const response = await sdk.command.list()
+      if (response.error || !response.data) {
+        return []
+      }
+
       commandsCache = (response.data ?? []) as CommandWithSource[]
       return commandsCache
     } catch (err) {
@@ -56,7 +74,7 @@ export function useCommandSearch(query: string) {
     }
 
     setIsLoading(true)
-    loadCommands()
+    loadCommandSearchCommands()
       .then((loaded) => {
         if (cancelled) return
         setCommands(loaded)

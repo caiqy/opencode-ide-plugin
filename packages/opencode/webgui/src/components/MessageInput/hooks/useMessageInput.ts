@@ -6,6 +6,7 @@ import { useToast } from "../../../state/ToastContext"
 import { useMessages } from "../../../state/MessagesContext"
 import { createOptimisticUserMessage, removeMessage } from "../../../lib/messagesStore"
 import { loadDraftSession, saveDraftSession } from "../../../state/repo/draftRepo"
+import { resolveSlashInput } from "./resolveSlashInput"
 
 function errorMessage(input: unknown, fallback: string) {
   if (input instanceof Error && input.message) return input.message
@@ -69,9 +70,10 @@ export function useMessageInput({
       if (!sessionID) return
       const text = saved.trim()
       if (!text) return
+      const resolvedSlash = await resolveSlashInput(text)
+      const slashCommand = resolvedSlash.mode === "command" ? resolvedSlash : null
       const id = ++seq.current
-      const command = text.startsWith("/")
-      const optimistic = !command && source === "editor" ? createOptimisticUserMessage(sessionID, text) : null
+      const optimistic = !slashCommand && source === "editor" ? createOptimisticUserMessage(sessionID, text) : null
 
       setSessionIdle(sessionID, false)
 
@@ -94,11 +96,10 @@ export function useMessageInput({
       }
 
       try {
-        if (command) {
-          const parts = text.slice(1).split(/\s+/)
+        if (slashCommand) {
           const request: any = {
-            command: parts[0],
-            arguments: parts.slice(1).join(" "),
+            command: slashCommand.name,
+            arguments: slashCommand.arguments,
             agent: selectedAgent,
           }
           if (selectedProviderId && selectedModelId) {
@@ -116,7 +117,7 @@ export function useMessageInput({
           }
         }
 
-        if (!command) {
+        if (!slashCommand) {
           const request: any = {
             parts: source === "editor" ? extractMessageParts() : [{ type: "text", text }],
             agent: selectedAgent,
