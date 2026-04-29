@@ -1,24 +1,32 @@
-<h2>OpenCode UI (unofficial) JetBrains Plugin</h2>
-<p>Unofficial OpenCode JetBrains plugin.</p>
+<h2>OpenCode UI（非官方）</h2>
+
+<p>
+  <b>OpenCode UI（非官方）</b> 是一个非官方 JetBrains 插件，将 OpenCode 的本地 AI 编码能力带入 IDE。
+  你可以直接在侧边栏中发起对话、整理提示词，并把项目文件、当前文件或选中代码快速加入上下文，减少在 IDE 与终端之间来回切换。
+</p>
+
 <ul>
-  <li>Drag and drop files to context (JetBrains: from Project Window; VS Code: from Explorer or editor tab)</li>
-  <li>Add all opened files to context via command or shortcut</li>
-  <li>Add current opened file to context via command or shortcut</li>
-  <li>Add selected line ranges to context via command or shortcut</li>
-  <li>Easier prompt editing in a dedicated text area</li>
+  <li>支持将文件拖拽加入上下文（JetBrains 可从 Project Window 拖入）</li>
+  <li>支持通过命令或快捷键将所有已打开文件加入上下文</li>
+  <li>支持通过命令或快捷键将当前文件加入上下文</li>
+  <li>支持通过命令或快捷键将选中代码行范围加入上下文</li>
+  <li>提供更便于整理和编辑提示词的独立输入区域</li>
 </ul>
 
 <p>
-  <b>Install only one variant of the plugin.</b>
+  <b>重要提示：</b>这是一个非官方插件，请只安装一个 OpenCode JetBrains 变体，避免功能重复或行为冲突。
 </p>
 
 <p>
-  <b>OpenCode UI GUI only (unofficial)</b> plugin does not bundle the OpenCode backend executable and
-  <b>requires it to be installed on the system - PATH or OPENCODE_BIN</b>.
+  <b>OpenCode UI GUI only（非官方）</b> 不包含 OpenCode 后端可执行文件，
+  <b>要求你提前在系统中安装 OpenCode，并通过 PATH 或 OPENCODE_BIN 提供可执行文件</b>。
 </p>
 
 <p>
-  <b>OpenCode UI (unofficial)</b> plugin bundles the OpenCode backend executable for supported platforms and runs it
-  locally. The binaries are stored under <code>src/main/resources/bin</code>
-  inside the plugin and are used to provide the chat and analysis features.
+  <b>OpenCode UI（非官方）</b> 内置受支持平台的 OpenCode 后端，并在本地直接启动。
+  插件内置的二进制文件位于 <code>src/main/resources/bin</code>，用于提供聊天与分析能力。
+</p>
+
+<p>
+  适合已经在使用 OpenCode，并希望在 JetBrains IDE 内完成提问、上下文整理与本地 AI 编码工作流的开发者。
 </p>

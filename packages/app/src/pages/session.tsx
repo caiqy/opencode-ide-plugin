@@ -1036,7 +1036,6 @@ export default function Page() {
     navigateMessageByOffset,
     setActiveMessage,
     focusInput,
-    locked: composer.blocked,
     review: reviewTab,
   })
 

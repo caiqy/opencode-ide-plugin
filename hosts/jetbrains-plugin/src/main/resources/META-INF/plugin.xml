@@ -1,8 +1,8 @@
 <idea-plugin>
   <vendor>qtkj</vendor>
   <id>qtkj.opencode-ui</id>
-  <name>OpenCode UI (unofficial)</name>
-  <description>Runs local OpenCode backend and displays the chat UI.</description>
+  <name>OpenCode UI（非官方）</name>
+  <description>在 JetBrains IDE 内运行本地 OpenCode 后端，并提供聊天式 AI 编码界面。</description>
 
   <depends>com.intellij.modules.platform</depends>
   <depends>org.jetbrains.plugins.terminal</depends>

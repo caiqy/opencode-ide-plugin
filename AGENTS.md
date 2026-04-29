@@ -1,3 +1,12 @@
+## Memory
+
+`AGENTS.md` 是本仓库 agent 协作的主入口。长期记忆按轻量结构放在 `memory/` 目录中；当前仅建立模板结构，具体内容后续按需补充。
+
+- `memory/glossary.md`：术语、缩写、别名、项目代号的总索引
+- `memory/people/`：人员资料，文件名建议使用 lowercase kebab-case
+- `memory/projects/`：项目、功能线、长期任务资料
+- `memory/context/`：团队、流程、工具、协作背景等上下文资料
+
 <!-- GSD:project-start source:PROJECT.md -->
 
 ## Project

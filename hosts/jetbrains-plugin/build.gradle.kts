@@ -78,12 +78,12 @@ intellijPlatform {
         description = providers.provider {
             val f = file("description.html")
             if (!f.isFile) {
-                return@provider "Runs local OpenCode backend and displays the chat UI."
+                return@provider "在 JetBrains IDE 内运行本地 OpenCode 后端，并提供聊天式 AI 编码界面。"
             }
 
             val text = f.readText().trim()
             if (text.isEmpty()) {
-                "Runs local OpenCode backend and displays the chat UI."
+                "在 JetBrains IDE 内运行本地 OpenCode 后端，并提供聊天式 AI 编码界面。"
             } else {
                 text
             }
