@@ -32,16 +32,6 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
     private val logger = Logger.getInstance(ChatToolWindowFactory::class.java)
     private val maxLogChars = 200_000
 
-    private fun showError(mainPanel: JPanel, hideableLogs: JComponent, message: String) {
-        mainPanel.removeAll()
-        mainPanel.add(JPanel(BorderLayout()).apply {
-            add(JLabel("<html><center>$message</center></html>"), BorderLayout.CENTER)
-        }, BorderLayout.CENTER)
-        mainPanel.add(hideableLogs, BorderLayout.SOUTH)
-        mainPanel.revalidate()
-        mainPanel.repaint()
-    }
-
     private fun pluginVersion(): String {
         return javaClass.`package`?.implementationVersion ?: java.time.LocalDate.now().toString()
     }
@@ -53,7 +43,6 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
     }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        // vertical=true => top/bottom split; top takes 100% initially (logs collapsed)
         val mainPanel = JPanel(BorderLayout())
         val content = toolWindow.contentManager.factory.createContent(mainPanel, "", false)
         toolWindow.contentManager.addContent(content)
@@ -74,20 +63,19 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         }
         val logScroll = JScrollPane(logArea)
 
-        // Create collapsible logs panel (collapsed by default)
+        // Create backend logs panel but keep it detached until an error needs diagnostics.
         val logsPanel = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.empty(4)
             add(logScroll, BorderLayout.CENTER)
         }
         val hideableLogs = com.intellij.ui.HideableTitledPanel("Backend logs (merged stdout/stderr)", false)
         hideableLogs.setContentComponent(logsPanel)
+        val logsVisibility = BackendLogsVisibilityController(mainPanel, hideableLogs)
 
         // Placeholder center until browser loads
         mainPanel.add(JPanel(BorderLayout()).apply {
             add(JLabel("Starting backend..."), BorderLayout.CENTER)
         }, BorderLayout.CENTER)
-        // Add collapsible logs at the bottom
-        mainPanel.add(hideableLogs, BorderLayout.SOUTH)
 
         val procRef = AtomicReference<paviko.opencode.backendprocess.BackendProcess?>(null)
         val connected = AtomicBoolean(false)
@@ -130,7 +118,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
             if (connected.get()) return@schedule
             logger.warn("Backend connection timeout after ${timeoutMs}ms")
             SwingUtilities.invokeLater {
-                showError(mainPanel, hideableLogs, "Backend connection timeout.<br/>Check logs for details.")
+                BackendLogsErrorView.show(mainPanel, logsVisibility, "Backend connection timeout.<br/>Check logs for details.")
             }
             try { procRef.get()?.destroy() } catch (_: Throwable) {}
             try { procRef.get()?.inputStream?.close() } catch (_: Throwable) {}
@@ -148,7 +136,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
             } catch (e: Exception) {
                 logger.error("Failed to launch backend", e)
                 SwingUtilities.invokeLater {
-                    showError(mainPanel, hideableLogs, "Failed to start backend:<br/>${e.message}<br/><br/>Check logs for details.")
+                    BackendLogsErrorView.show(mainPanel, logsVisibility, "Failed to start backend:<br/>${e.message}<br/><br/>Check logs for details.")
                 }
                 timeoutFuture.cancel(false)
                 return@execute
@@ -199,7 +187,6 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
 
                                             mainPanel.removeAll()
                                             mainPanel.add(browser.component, BorderLayout.CENTER)
-                                            mainPanel.add(hideableLogs, BorderLayout.SOUTH)
                                             mainPanel.revalidate()
                                             mainPanel.repaint()
 
@@ -233,7 +220,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                             }
                                         } catch (e: Exception) {
                                             logger.error("Failed to create browser component", e)
-                                            showError(mainPanel, hideableLogs, "Failed to create browser:<br/>${e.message}")
+                                            BackendLogsErrorView.show(mainPanel, logsVisibility, "Failed to create browser:<br/>${e.message}")
                                         }
                                     }
                                 } catch (e: Exception) {
@@ -245,7 +232,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                 } catch (e: Exception) {
                     logger.error("Error reading backend output", e)
                     SwingUtilities.invokeLater {
-                        showError(mainPanel, hideableLogs, "Backend communication error:<br/>${e.message}")
+                        BackendLogsErrorView.show(mainPanel, logsVisibility, "Backend communication error:<br/>${e.message}")
                     }
                 } finally {
                     try { reader.close() } catch (_: Throwable) {}
