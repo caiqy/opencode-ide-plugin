@@ -143,8 +143,8 @@ describe("CompactHeader/useStatusPopoverData", () => {
     mocks.pathGet.mockResolvedValue(ok({ state: "ready", config: "cfg", worktree: "D:/repo", directory: "D:/repo" }))
     mocks.appSkills.mockResolvedValue(
       ok([
-        { name: "brainstorming", description: "Brainstorming skill" },
-        { name: "debugging", description: "Debugging skill" },
+        { name: "brainstorming", description: "Brainstorming skill", enabled: true },
+        { name: "debugging", description: "Debugging skill", enabled: true },
       ]),
     )
   })
@@ -173,6 +173,69 @@ describe("CompactHeader/useStatusPopoverData", () => {
     expect(view.result.current.plugins.data).toEqual(["foo", "bar"])
     expect(view.result.current.lsp.state).toBe("ready")
     expect(view.result.current.mcp.state).toBe("ready")
+  })
+
+  it("refreshAll 不等待 skills 慢请求即可更新其他分区", async () => {
+    const skills = deferred<ReturnType<typeof ok>>()
+    mocks.appSkills.mockImplementationOnce(() => skills.promise)
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.servers.state).toBe("ready")
+      expect(view.result.current.mcp.state).toBe("ready")
+      expect(view.result.current.plugins.state).toBe("ready")
+    })
+    expect(view.result.current.skills.state).toBe("empty")
+
+    await act(async () => {
+      skills.resolve(ok([{ name: "brainstorming", description: "Brainstorming skill", enabled: true }]))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(view.result.current.skills.state).toBe("ready")
+    })
+  })
+
+  it("refreshAll 不等待 config 慢请求即可更新非 config 分区", async () => {
+    const cfg = deferred<ReturnType<typeof ok>>()
+    mocks.configGet.mockImplementationOnce(() => cfg.promise)
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.servers.state).toBe("ready")
+      expect(view.result.current.mcp.state).toBe("ready")
+      expect(view.result.current.lsp.state).toBe("ready")
+    })
+    expect(view.result.current.plugins.state).toBe("empty")
+    await waitFor(() => {
+      expect(view.result.current.skills.state).toBe("ready")
+    })
+
+    await act(async () => {
+      cfg.resolve(ok({ plugin: ["foo"], tools: {} }))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(view.result.current.plugins.state).toBe("ready")
+      expect(view.result.current.skills.state).toBe("ready")
+    })
+  })
+
+  it("refreshAll 遇到 config 失败时只请求一次 config", async () => {
+    mocks.configGet.mockResolvedValue(fail("config error"))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.plugins.state).toBe("failed")
+      expect(view.result.current.skills.state).toBe("ready")
+    })
+
+    expect(mocks.configGet).toHaveBeenCalledTimes(1)
   })
 
   it("单个分区刷新失败时保留旧快照并标记 stale", async () => {
@@ -502,7 +565,6 @@ describe("CompactHeader/useStatusPopoverData", () => {
     const path = deferred<ReturnType<typeof ok>>()
     const mcp = deferred<ReturnType<typeof ok>>()
     const lsp = deferred<ReturnType<typeof ok>>()
-    const cfg = deferred<ReturnType<typeof ok>>()
 
     mocks.projectCurrent
       .mockImplementationOnce(() => project.promise)
@@ -516,7 +578,7 @@ describe("CompactHeader/useStatusPopoverData", () => {
     mocks.lspStatus
       .mockImplementationOnce(() => lsp.promise)
       .mockResolvedValueOnce(ok([{ id: "go", name: "Go", root: "D:/repo2", status: "connected" }]))
-    mocks.configGet.mockImplementationOnce(() => cfg.promise).mockResolvedValueOnce(ok({ plugin: ["bar"] }))
+    mocks.configGet.mockResolvedValueOnce(ok({ plugin: ["bar"] }))
 
     const view = hook(true, "connected")
     view.rerender({ open: true, connectionState: "disconnected" })
@@ -530,7 +592,6 @@ describe("CompactHeader/useStatusPopoverData", () => {
     path.resolve(ok({ state: "ready", config: "cfg", worktree: "D:/repo", directory: "D:/repo" }))
     mcp.resolve(ok({ alpha: { status: "connected" } }))
     lsp.resolve(ok([{ id: "ts", name: "TypeScript", root: "D:/repo", status: "connected" }]))
-    cfg.resolve(ok({ plugin: ["foo"] }))
     await waitFor(() => {
       expect(view.result.current.servers.data.connectionState).toBe("disconnected")
       expect(view.result.current.servers.data.project).toBe("p2")
@@ -586,13 +647,12 @@ describe("CompactHeader/useStatusPopoverData", () => {
     expect(view.result.current.mcp.data.alpha?.status).toBe("disabled")
   })
 
-  it("refreshAll 加载 skills 列表并从 config 读取 permission", async () => {
-    mocks.configGet.mockResolvedValue(
-      ok({
-        plugin: ["foo"],
-        tools: {},
-        permission: { skill: { debugging: "deny" } },
-      }),
+  it("refreshAll 使用后端返回的 effective enabled 状态", async () => {
+    mocks.appSkills.mockResolvedValue(
+      ok([
+        { name: "brainstorming", description: "Brainstorming skill", enabled: true },
+        { name: "debugging", description: "Debugging skill", enabled: false },
+      ]),
     )
 
     const view = hook(true)
@@ -603,6 +663,25 @@ describe("CompactHeader/useStatusPopoverData", () => {
 
     expect(view.result.current.skills.data.brainstorming?.enabled).toBe(true)
     expect(view.result.current.skills.data.debugging?.enabled).toBe(false)
+  })
+
+  it("refreshAll 不依赖 config 即可加载 skills effective 状态", async () => {
+    mocks.appSkills.mockResolvedValue(
+      ok([
+        { name: "allowed", description: "Allowed skill", enabled: true },
+        { name: "denied", description: "Denied skill", enabled: false },
+      ]),
+    )
+    mocks.configGet.mockResolvedValue(fail("config error"))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.skills.state).toBe("ready")
+    })
+
+    expect(view.result.current.skills.data.allowed?.enabled).toBe(true)
+    expect(view.result.current.skills.data.denied?.enabled).toBe(false)
   })
 
   it("skills 加载失败时走 failed 分支", async () => {
@@ -635,5 +714,189 @@ describe("CompactHeader/useStatusPopoverData", () => {
       path: { name: "brainstorming" },
       body: { enabled: false },
     })
+  })
+
+  it("toggleSkill 成功后刷新并更新本地 enabled 状态", async () => {
+    mocks.appSkills
+      .mockResolvedValueOnce(
+        ok([
+          { name: "brainstorming", description: "Brainstorming skill", enabled: true },
+          { name: "debugging", description: "Debugging skill", enabled: true },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        ok([
+          { name: "brainstorming", description: "Brainstorming skill", enabled: false },
+          { name: "debugging", description: "Debugging skill", enabled: true },
+        ]),
+      )
+    mocks.appSetSkillEnabled.mockResolvedValue(ok(true))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.skills.data.brainstorming?.enabled).toBe(true)
+    })
+
+    await act(async () => {
+      await view.result.current.toggleSkill("brainstorming")
+    })
+
+    expect(view.result.current.skills.state).toBe("ready")
+    expect(view.result.current.skills.data.brainstorming?.enabled).toBe(false)
+  })
+
+  it("toggleSkill 请求失败时保留旧数据并标记 stale", async () => {
+    mocks.appSetSkillEnabled.mockResolvedValue(fail("toggle error"))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.skills.state).toBe("ready")
+    })
+
+    await act(async () => {
+      await view.result.current.toggleSkill("brainstorming")
+    })
+
+    expect(view.result.current.skills.state).toBe("stale")
+    expect(view.result.current.skills.error).toBe("toggle error")
+    expect(view.result.current.skills.data.brainstorming?.enabled).toBe(true)
+  })
+
+  it("toggleSkill 刷新失败时保留旧数据并标记 stale", async () => {
+    mocks.appSkills
+      .mockResolvedValueOnce(
+        ok([
+          { name: "brainstorming", description: "Brainstorming skill", enabled: true },
+          { name: "debugging", description: "Debugging skill", enabled: true },
+        ]),
+      )
+      .mockResolvedValueOnce(fail("reload skill error"))
+    mocks.appSetSkillEnabled.mockResolvedValue(ok(true))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.skills.state).toBe("ready")
+    })
+
+    await act(async () => {
+      await view.result.current.toggleSkill("brainstorming")
+    })
+
+    expect(view.result.current.skills.state).toBe("stale")
+    expect(view.result.current.skills.error).toBe("reload skill error")
+    expect(view.result.current.skills.data.brainstorming?.enabled).toBe(true)
+  })
+
+  it("toggleSkill 对同一个 skill 防重入", async () => {
+    const gate = deferred<ReturnType<typeof ok>>()
+    mocks.appSetSkillEnabled.mockImplementation(() => gate.promise)
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.skills.state).toBe("ready")
+    })
+
+    await act(async () => {
+      const first = view.result.current.toggleSkill("brainstorming")
+      const second = view.result.current.toggleSkill("brainstorming")
+      gate.resolve(ok(true))
+      await Promise.all([first, second])
+    })
+
+    expect(mocks.appSetSkillEnabled).toHaveBeenCalledTimes(1)
+  })
+
+  it("toggleSkill 成功后不会被更早的 refreshAll 旧结果覆盖", async () => {
+    const oldSkills = deferred<ReturnType<typeof ok>>()
+    mocks.appSkills
+      .mockResolvedValueOnce(
+        ok([
+          { name: "brainstorming", description: "Brainstorming skill", enabled: true },
+          { name: "debugging", description: "Debugging skill", enabled: true },
+        ]),
+      )
+      .mockImplementationOnce(() => oldSkills.promise)
+      .mockResolvedValueOnce(
+        ok([
+          { name: "brainstorming", description: "Brainstorming skill", enabled: false },
+          { name: "debugging", description: "Debugging skill", enabled: true },
+        ]),
+      )
+    mocks.appSetSkillEnabled.mockResolvedValue(ok(true))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.skills.data.brainstorming?.enabled).toBe(true)
+    })
+
+    const refresh = view.result.current.refreshAll()
+
+    await waitFor(() => {
+      expect(mocks.appSkills).toHaveBeenCalledTimes(2)
+    })
+
+    await act(async () => {
+      await view.result.current.toggleSkill("brainstorming")
+    })
+    expect(view.result.current.skills.data.brainstorming?.enabled).toBe(false)
+
+    await act(async () => {
+      oldSkills.resolve(
+        ok([
+          { name: "brainstorming", description: "Brainstorming skill", enabled: true },
+          { name: "debugging", description: "Debugging skill", enabled: true },
+        ]),
+      )
+      await refresh
+    })
+
+    expect(view.result.current.skills.data.brainstorming?.enabled).toBe(false)
+  })
+
+  it("toggleSkill 不会取消并发 refreshAll 的非 skills 分区提交", async () => {
+    const project = deferred<ReturnType<typeof ok>>()
+    const path = deferred<ReturnType<typeof ok>>()
+    mocks.appSetSkillEnabled.mockResolvedValue(ok(true))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.servers.data.project).toBe("p1")
+      expect(view.result.current.skills.data.brainstorming?.enabled).toBe(true)
+    })
+
+    mocks.projectCurrent.mockImplementationOnce(() => project.promise)
+    mocks.pathGet.mockImplementationOnce(() => path.promise)
+
+    const refresh = view.result.current.refreshAll()
+
+    await waitFor(() => {
+      expect(mocks.projectCurrent).toHaveBeenCalledTimes(2)
+    })
+
+    mocks.appSkills.mockResolvedValueOnce(
+      ok([
+        { name: "brainstorming", description: "Brainstorming skill", enabled: false },
+        { name: "debugging", description: "Debugging skill", enabled: true },
+      ]),
+    )
+
+    await act(async () => {
+      await view.result.current.toggleSkill("brainstorming")
+    })
+
+    await act(async () => {
+      project.resolve(ok({ id: "p2", worktree: "D:/repo2", time: { created: 2 } }))
+      path.resolve(ok({ state: "ready", config: "cfg", worktree: "D:/repo2", directory: "D:/repo2" }))
+      await refresh
+    })
+
+    expect(view.result.current.servers.data.project).toBe("p2")
+    expect(view.result.current.skills.data.brainstorming?.enabled).toBe(false)
   })
 })

@@ -1,14 +1,16 @@
 import { Agent } from "@/agent/agent"
 import { Command } from "@/command"
+import { Config } from "@/config"
 import { globalConfigFile } from "@/config/config"
 import { Format } from "@/format"
 import { Global } from "@opencode-ai/core/global"
 import { LSP } from "@/lsp"
+import { Permission } from "@/permission"
 import { Vcs } from "@/project"
 import { Skill } from "@/skill"
 import * as InstanceState from "@/effect/instance-state"
 import { Effect, Layer, Schema } from "effect"
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "./auth"
 import { markInstanceForDisposal } from "./lifecycle"
 
@@ -20,6 +22,18 @@ const PathInfo = Schema.Struct({
   worktree: Schema.String,
   directory: Schema.String,
 }).annotate({ identifier: "Path" })
+
+const SkillInfo = Schema.Struct({
+  name: Schema.String,
+  description: Schema.String,
+  location: Schema.String,
+  content: Schema.String,
+  enabled: Schema.Boolean,
+}).annotate({ identifier: "Skill" })
+
+const SkillEnabledPayload = Schema.Struct({
+  enabled: Schema.Boolean,
+})
 
 const VcsDiffQuery = Schema.Struct({
   mode: Vcs.Mode,
@@ -33,6 +47,7 @@ export const InstancePaths = {
   command: "/command",
   agent: "/agent",
   skill: "/skill",
+  skillEnabled: "/skill/:name/enabled",
   lsp: "/lsp",
   formatter: "/formatter",
 } as const
@@ -99,12 +114,24 @@ export const InstanceApi = HttpApi.make("instance")
           }),
         ),
         HttpApiEndpoint.get("skill", InstancePaths.skill, {
-          success: Schema.Array(Skill.Info),
+          success: Schema.Array(SkillInfo),
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "app.skills",
             summary: "List skills",
             description: "Get a list of all available skills in the OpenCode system.",
+          }),
+        ),
+        HttpApiEndpoint.patch("skillEnabled", InstancePaths.skillEnabled, {
+          params: { name: Schema.String },
+          payload: SkillEnabledPayload,
+          success: Schema.Boolean,
+          error: HttpApiError.NotFound,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "app.skill.enabled",
+            summary: "Enable or disable skill",
+            description: "Persist and apply the enabled state for one skill.",
           }),
         ),
         HttpApiEndpoint.get("lsp", InstancePaths.lsp, {
@@ -129,7 +156,7 @@ export const InstanceApi = HttpApi.make("instance")
       .annotateMerge(
         OpenApi.annotations({
           title: "instance",
-          description: "Experimental HttpApi instance read routes.",
+          description: "Experimental HttpApi instance routes.",
         }),
       )
       .middleware(Authorization),
@@ -149,6 +176,7 @@ export const instanceHandlers = Layer.unwrap(
     const format = yield* Format.Service
     const lsp = yield* LSP.Service
     const skill = yield* Skill.Service
+    const config = yield* Config.Service
     const vcs = yield* Vcs.Service
 
     const dispose = Effect.fn("InstanceHttpApi.dispose")(function* () {
@@ -186,7 +214,32 @@ export const instanceHandlers = Layer.unwrap(
     })
 
     const getSkill = Effect.fn("InstanceHttpApi.skill")(function* () {
-      return yield* skill.all()
+      const ruleset = Permission.fromConfig({ skill: (yield* config.get()).permission?.skill ?? {} })
+      return (yield* skill.all()).map((item) => ({
+        ...item,
+        enabled: Permission.evaluate("skill", item.name, ruleset).action !== "deny",
+      }))
+    })
+
+    const setSkillEnabled = Effect.fn("InstanceHttpApi.skillEnabled")(function* (ctx: {
+      params: { name: string }
+      payload: typeof SkillEnabledPayload.Type
+    }) {
+      if (!(yield* skill.get(ctx.params.name))) return yield* new HttpApiError.NotFound({})
+      const action = ctx.payload.enabled ? "allow" : "deny"
+      const directory = yield* InstanceState.directory
+      const current = yield* config.get()
+      const perm = current.permission as Record<string, unknown> | undefined
+      const global = yield* config.getGlobal()
+      const globalPerm = global.permission as Record<string, unknown> | undefined
+      const existing = perm?.skill ?? globalPerm?.skill
+      if (typeof existing === "string") {
+        yield* config.patchProjectField(["permission", "skill"], undefined)
+        yield* config.patchProjectField(["permission", "skill", "*"], existing)
+      }
+      yield* config.patchProjectField(["permission", "skill", ctx.params.name], action)
+      Config.setSkillPermissionOverlay(directory, ctx.params.name, action)
+      return true
     })
 
     const getLsp = Effect.fn("InstanceHttpApi.lsp")(function* () {
@@ -206,6 +259,7 @@ export const instanceHandlers = Layer.unwrap(
         .handle("command", getCommand)
         .handle("agent", getAgent)
         .handle("skill", getSkill)
+        .handle("skillEnabled", setSkillEnabled)
         .handle("lsp", getLsp)
         .handle("formatter", getFormatter),
     )
@@ -216,5 +270,6 @@ export const instanceHandlers = Layer.unwrap(
   Layer.provide(Format.defaultLayer),
   Layer.provide(LSP.defaultLayer),
   Layer.provide(Skill.defaultLayer),
+  Layer.provide(Config.defaultLayer),
   Layer.provide(Vcs.defaultLayer),
 )

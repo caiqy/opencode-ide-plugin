@@ -13,6 +13,7 @@ import PROMPT_CODEX from "./prompt/codex.txt"
 import PROMPT_TRINITY from "./prompt/trinity.txt"
 import type { Provider } from "@/provider"
 import type { Agent } from "@/agent/agent"
+import { Config } from "@/config/config"
 import { Permission } from "@/permission"
 import { Skill } from "@/skill"
 
@@ -63,7 +64,9 @@ export const layer = Layer.effect(
       },
 
       skills: Effect.fn("SystemPrompt.skills")(function* (agent: Agent.Info) {
-        if (Permission.disabled(["skill"], agent.permission).has("skill")) return
+        const overlay = Config.getSkillPermissionOverlay(Instance.directory)
+        const hasOverlayAllow = Object.values(overlay).some((action) => action !== "deny")
+        if (Permission.disabled(["skill"], agent.permission).has("skill") && !hasOverlayAllow) return
 
         const list = yield* skill.available(agent)
 

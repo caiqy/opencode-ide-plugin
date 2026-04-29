@@ -101,6 +101,62 @@ describe("instance HttpApi", () => {
     expect(await formatter.json()).toEqual([])
   })
 
+  test("serves skill enabled state and toggle through Hono bridge", async () => {
+    await using tmp = await tmpdir({
+      config: { formatter: false, lsp: false, permission: { skill: { "*": "deny", "route-skill": "allow" } } },
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, ".opencode", "skill", "route-skill", "SKILL.md"),
+          `---
+name: route-skill
+description: Route skill.
+---
+
+# Route Skill
+`,
+        )
+      },
+    })
+
+    const listed = await app().request(InstancePaths.skill, { headers: { "x-opencode-directory": tmp.path } })
+
+    expect(listed.status).toBe(200)
+    expect(await listed.json()).toContainEqual(expect.objectContaining({ name: "route-skill", enabled: true }))
+
+    const toggled = await app().request(`${InstancePaths.skill}/route-skill/enabled`, {
+      method: "PATCH",
+      headers: { "x-opencode-directory": tmp.path, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    })
+
+    expect(toggled.status).toBe(200)
+    expect(await toggled.json()).toBe(true)
+
+    const refreshed = await app().request(InstancePaths.skill, { headers: { "x-opencode-directory": tmp.path } })
+    expect(await refreshed.json()).toContainEqual(expect.objectContaining({ name: "route-skill", enabled: false }))
+  })
+
+  test("returns 404 when toggling an unknown skill through Hono bridge", async () => {
+    await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
+
+    const response = await app().request(`${InstancePaths.skill}/missing-skill/enabled`, {
+      method: "PATCH",
+      headers: { "x-opencode-directory": tmp.path, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    })
+
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({
+      name: "NotFoundError",
+      data: { message: "Skill not found: missing-skill" },
+    })
+    expect(await Bun.file(path.join(tmp.path, "opencode.json")).json()).not.toHaveProperty([
+      "permission",
+      "skill",
+      "missing-skill",
+    ])
+  })
+
   test("serves project git init through Hono bridge", async () => {
     await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
     const disposed = waitDisposed(tmp.path)

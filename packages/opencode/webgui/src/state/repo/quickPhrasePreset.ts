@@ -13,18 +13,18 @@ export const quick_phrase_preset = {
     },
     {
       id: "preset:select-one",
-      title: "选1|A",
-      body: "选1|A",
+      title: "选1/A",
+      body: "选1/A",
     },
     {
       id: "preset:select-two",
-      title: "选2|B",
-      body: "选2|B",
+      title: "选2/B",
+      body: "选2/B",
     },
     {
       id: "preset:select-three",
-      title: "选3|C",
-      body: "选3|C",
+      title: "选3/C",
+      body: "选3/C",
     },
     {
       id: "preset:comprehensive-review",

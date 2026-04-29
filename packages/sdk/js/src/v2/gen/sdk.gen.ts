@@ -7,6 +7,8 @@ import type {
   AppAgentsResponses,
   AppLogErrors,
   AppLogResponses,
+  AppSkillEnabledErrors,
+  AppSkillEnabledResponses,
   AppSkillsResponses,
   Auth as Auth3,
   AuthRemoveErrors,
@@ -69,9 +71,13 @@ import type {
   McpAuthStartResponses,
   McpConnectResponses,
   McpDisconnectResponses,
+  McpEnabledErrors,
+  McpEnabledResponses,
   McpLocalConfig,
   McpRemoteConfig,
   McpStatusResponses,
+  McpToolEnabledErrors,
+  McpToolEnabledResponses,
   McpToolsResponses,
   OutputFormat,
   Part as Part2,
@@ -142,6 +148,8 @@ import type {
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
+  SessionRegenerateTitleErrors,
+  SessionRegenerateTitleResponses,
   SessionRevertErrors,
   SessionRevertResponses,
   SessionShareErrors,
@@ -406,6 +414,47 @@ export class Auth extends HeyApiClient {
   }
 }
 
+export class Skill extends HeyApiClient {
+  /**
+   * Enable or disable skill
+   *
+   * Persist and apply the enabled state for one skill.
+   */
+  public enabled<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+      workspace?: string
+      enabled?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "enabled" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<AppSkillEnabledResponses, AppSkillEnabledErrors, ThrowOnError>({
+      url: "/skill/{name}/enabled",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class App extends HeyApiClient {
   /**
    * Write log
@@ -510,6 +559,11 @@ export class App extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  private _skill?: Skill
+  get skill(): Skill {
+    return (this._skill ??= new Skill({ client: this.client }))
   }
 }
 
@@ -1918,6 +1972,42 @@ export class Session2 extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<SessionTodoResponses, SessionTodoErrors, ThrowOnError>({
       url: "/session/{sessionID}/todo",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Regenerate session title
+   *
+   * Regenerate a session title from the conversation history using the existing title generation logic.
+   */
+  public regenerateTitle<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionRegenerateTitleResponses,
+      SessionRegenerateTitleErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/title/regenerate",
       ...options,
       ...params,
     })
@@ -3408,6 +3498,49 @@ export class Event extends HeyApiClient {
   }
 }
 
+export class Tool2 extends HeyApiClient {
+  /**
+   * Enable or disable MCP tool
+   *
+   * Persist and apply the enabled state for one MCP tool.
+   */
+  public enabled<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      toolId: string
+      directory?: string
+      workspace?: string
+      enabled?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "path", key: "toolId" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "enabled" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<McpToolEnabledResponses, McpToolEnabledErrors, ThrowOnError>({
+      url: "/mcp/{name}/tools/{toolId}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Auth2 extends HeyApiClient {
   /**
    * Remove MCP OAuth
@@ -3549,38 +3682,6 @@ export class Auth2 extends HeyApiClient {
 
 export class Mcp extends HeyApiClient {
   /**
-   * Get MCP tools by server
-   *
-   * List tools exposed by an MCP server and whether each tool is enabled.
-   */
-  public tools<ThrowOnError extends boolean = false>(
-    parameters: {
-      name: string
-      directory?: string
-      workspace?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "name" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "workspace" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<McpToolsResponses, unknown, ThrowOnError>({
-      url: "/mcp/{name}/tools",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
    * Get MCP status
    *
    * Get the status of all Model Context Protocol (MCP) servers.
@@ -3650,6 +3751,77 @@ export class Mcp extends HeyApiClient {
   }
 
   /**
+   * List MCP tools by server
+   *
+   * List tools exposed by a specific Model Context Protocol (MCP) server.
+   */
+  public tools<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpToolsResponses, unknown, ThrowOnError>({
+      url: "/mcp/{name}/tools",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Enable or disable MCP server
+   *
+   * Persist and apply the enabled state for a Model Context Protocol (MCP) server.
+   */
+  public enabled<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+      workspace?: string
+      enabled?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "enabled" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<McpEnabledResponses, McpEnabledErrors, ThrowOnError>({
+      url: "/mcp/{name}/enabled",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Connect an MCP server
    */
   public connect<ThrowOnError extends boolean = false>(
@@ -3707,6 +3879,11 @@ export class Mcp extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  private _tool?: Tool2
+  get tool(): Tool2 {
+    return (this._tool ??= new Tool2({ client: this.client }))
   }
 
   private _auth?: Auth2

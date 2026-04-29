@@ -1,5 +1,7 @@
 import { describe, expect } from "bun:test"
 import { Effect, Layer } from "effect"
+import { Config } from "../../src/config"
+import { Permission } from "../../src/permission"
 import { Skill } from "../../src/skill"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { provideInstance, provideTmpdirInstance, tmpdir } from "../fixture/fixture"
@@ -137,6 +139,50 @@ description: Second test skill.
           expect(list.length).toBe(2)
           expect(list.find((x) => x.name === "skill-one")).toBeDefined()
           expect(list.find((x) => x.name === "skill-two")).toBeDefined()
+        }),
+      { git: true },
+    ),
+  )
+
+  it.live("available filters skills denied by permission overlay", () =>
+    provideTmpdirInstance(
+      (dir) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() =>
+            Promise.all([
+              Bun.write(
+                path.join(dir, ".opencode", "skill", "keep-skill", "SKILL.md"),
+                `---
+name: keep-skill
+description: Visible skill.
+---
+
+# Keep Skill
+`,
+              ),
+              Bun.write(
+                path.join(dir, ".opencode", "skill", "hide-skill", "SKILL.md"),
+                `---
+name: hide-skill
+description: Hidden skill.
+---
+
+# Hide Skill
+`,
+              ),
+            ]),
+          )
+
+          Config.setSkillPermissionOverlay(dir, "hide-skill", "deny")
+          const skill = yield* Skill.Service
+          const list = yield* skill.available({
+            name: "build",
+            mode: "primary",
+            permission: Permission.fromConfig({ skill: "allow" }),
+            options: {},
+          })
+
+          expect(list.map((item) => item.name)).toEqual(["keep-skill"])
         }),
       { git: true },
     ),

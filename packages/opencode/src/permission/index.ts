@@ -113,6 +113,7 @@ export const AskInput = Schema.Struct({
   ...Request.fields,
   id: Schema.optional(PermissionID),
   ruleset: Ruleset,
+  overrideRuleset: Schema.optional(Ruleset),
 })
   .annotate({ identifier: "PermissionAskInput" })
   .pipe(withStatics((s) => ({ zod: zod(s) })))
@@ -178,15 +179,17 @@ export const layer = Layer.effect(
 
     const ask = Effect.fn("Permission.ask")(function* (input: AskInput) {
       const { approved, pending } = yield* InstanceState.get(state)
-      const { ruleset, ...request } = input
+      const { ruleset, overrideRuleset, ...request } = input
       let needsAsk = false
 
       for (const pattern of request.patterns) {
-        const rule = evaluate(request.permission, pattern, ruleset, approved)
+        const rule = evaluate(request.permission, pattern, approved, ruleset, overrideRuleset ?? [])
         log.info("evaluated", { permission: request.permission, pattern, action: rule })
         if (rule.action === "deny") {
           return yield* new DeniedError({
-            ruleset: ruleset.filter((rule) => Wildcard.match(request.permission, rule.permission)),
+            ruleset: merge(approved, ruleset, overrideRuleset ?? []).filter((rule) =>
+              Wildcard.match(request.permission, rule.permission),
+            ),
           })
         }
         if (rule.action === "allow") continue

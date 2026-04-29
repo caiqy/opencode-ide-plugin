@@ -4,11 +4,14 @@ import type { UpgradeWebSocket } from "hono/ws"
 import { Context, Effect } from "effect"
 import z from "zod"
 import { Format } from "@/format"
+import { Config } from "@/config"
 import { TuiRoutes } from "./tui"
+import * as InstanceState from "@/effect/instance-state"
 import { Instance } from "@/project/instance"
 import { Vcs } from "@/project"
 import { Agent } from "@/agent/agent"
 import { Skill } from "@/skill"
+import { Permission } from "@/permission"
 import { Global } from "@opencode-ai/core/global"
 import { globalConfigFile } from "@/config/config"
 import { LSP } from "@/lsp"
@@ -38,7 +41,8 @@ import { ProviderRoutes } from "./provider"
 import { EventRoutes } from "./event"
 import { SyncRoutes } from "./sync"
 import { InstanceMiddleware } from "./middleware"
-import { jsonRequest } from "./trace"
+import { jsonRequest, runRequest } from "./trace"
+import { errors } from "../../error"
 
 export const InstanceRoutes = (upgrade: UpgradeWebSocket): Hono => {
   const app = new Hono()
@@ -87,6 +91,7 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket): Hono => {
     app.get(InstancePaths.command, (c) => handler(c.req.raw, context))
     app.get(InstancePaths.agent, (c) => handler(c.req.raw, context))
     app.get(InstancePaths.skill, (c) => handler(c.req.raw, context))
+    app.patch(InstancePaths.skillEnabled, (c) => handler(c.req.raw, context))
     app.get(InstancePaths.lsp, (c) => handler(c.req.raw, context))
     app.get(InstancePaths.formatter, (c) => handler(c.req.raw, context))
     app.get(McpPaths.status, (c) => handler(c.req.raw, context))
@@ -343,7 +348,17 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket): Hono => {
             description: "List of skills",
             content: {
               "application/json": {
-                schema: resolver(Skill.Info.zod.array()),
+                schema: resolver(
+                  z
+                    .object({
+                      name: z.string(),
+                      description: z.string(),
+                      location: z.string(),
+                      content: z.string(),
+                      enabled: z.boolean(),
+                    })
+                    .array(),
+                ),
               },
             },
           },
@@ -352,8 +367,63 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket): Hono => {
       async (c) =>
         jsonRequest("InstanceRoutes.skill.list", c, function* () {
           const skill = yield* Skill.Service
-          return yield* skill.all()
+          const cfg = yield* Config.Service
+          const ruleset = Permission.fromConfig({ skill: (yield* cfg.get()).permission?.skill ?? {} })
+          return (yield* skill.all()).map((item) => ({
+            ...item,
+            enabled: Permission.evaluate("skill", item.name, ruleset).action !== "deny",
+          }))
         }),
+    )
+    .patch(
+      "/skill/:name/enabled",
+      describeRoute({
+        summary: "Enable or disable skill",
+        description: "Persist and apply the enabled state for one skill.",
+        operationId: "app.skill.enabled",
+        responses: {
+          200: {
+            description: "Skill enabled state updated",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator("param", z.object({ name: z.string() })),
+      validator("json", z.object({ enabled: z.boolean() })),
+      async (c) => {
+        const found = await runRequest(
+          "InstanceRoutes.skill.enabled",
+          c,
+          Effect.gen(function* () {
+            const { name } = c.req.valid("param")
+            const { enabled } = c.req.valid("json")
+            const skill = yield* Skill.Service
+            if (!(yield* skill.get(name))) return false
+            const action = enabled ? "allow" : "deny"
+            const directory = yield* InstanceState.directory
+            const cfg = yield* Config.Service
+            const current = yield* cfg.get()
+            const perm = current.permission as Record<string, unknown> | undefined
+            const global = yield* cfg.getGlobal()
+            const globalPerm = global.permission as Record<string, unknown> | undefined
+            const existing = perm?.skill ?? globalPerm?.skill
+            if (typeof existing === "string") {
+              yield* cfg.patchProjectField(["permission", "skill"], undefined)
+              yield* cfg.patchProjectField(["permission", "skill", "*"], existing)
+            }
+            yield* cfg.patchProjectField(["permission", "skill", name], action)
+            Config.setSkillPermissionOverlay(directory, name, action)
+            return true
+          }),
+        )
+        if (!found) return c.json({ error: `Skill not found: ${c.req.valid("param").name}` }, 404)
+        return c.json(true)
+      },
     )
     .get(
       "/lsp",

@@ -99,14 +99,19 @@ Server tab 是状态面板的基础分区，用来快速判断 WebGUI 是否处�
 
 Skills 与 MCP 类似，属于项目能力开关，但语义不同：
 
-- Skills 状态来自 opencode skill 可用列表与项目配置。
+- Skills 状态来自 opencode 后端 `GET /skill` 返回的 effective `enabled`，这是 WebGUI 展示开关状态的唯一权威来源。
 - WebGUI 在状态面板中展示并允许启停。
-- 实际写回通过配置 overlay / permission skill 相关逻辑完成。
+- 实际写回通过 `PATCH /skill/:name/enabled` 完成：先写 `permission.skill` 到项目配置，再设置 runtime skill permission overlay，使同实例立即生效且不重建 Instance。
+- 前端不自行解释 `permission.skill`、wildcard、`?` 或平台大小写规则，避免 IDE 本地平台与 opencode 后端平台不一致时出现 UI/实际权限漂移。
+- Skills 刷新使用独立竞态版本号；toggle 后只使旧的 Skills 请求失效，不取消并发 refreshAll 中 Server/MCP/LSP/Plugins 的提交。
 
 关键文件：
 
 - `packages/opencode/webgui/src/components/CompactHeader/useStatusPopoverData.ts`
 - `packages/opencode/webgui/src/lib/api/sdkClient.ts`
+- `packages/opencode/src/server/routes/instance/index.ts`
+- `packages/opencode/src/config/config.ts`
+- `packages/opencode/src/permission/index.ts`
 - `packages/opencode/src/skill/index.ts`
 
 ## LSP 与 Plugins

@@ -2133,6 +2133,7 @@ export type Path = {
   home: string
   state: string
   config: string
+  configFile: string
   worktree: string
   directory: string
 }
@@ -3550,6 +3551,40 @@ export type SessionTodoResponses = {
 
 export type SessionTodoResponse = SessionTodoResponses[keyof SessionTodoResponses]
 
+export type SessionRegenerateTitleData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/title/regenerate"
+}
+
+export type SessionRegenerateTitleErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionRegenerateTitleError = SessionRegenerateTitleErrors[keyof SessionRegenerateTitleErrors]
+
+export type SessionRegenerateTitleResponses = {
+  /**
+   * Successfully regenerated session title
+   */
+  200: Session
+}
+
+export type SessionRegenerateTitleResponse = SessionRegenerateTitleResponses[keyof SessionRegenerateTitleResponses]
+
 export type SessionInitData = {
   body?: {
     modelID: string
@@ -4788,35 +4823,6 @@ export type FileStatusResponses = {
 
 export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
 
-export type McpToolsData = {
-  body?: never
-  path: {
-    name: string
-  }
-  query?: {
-    directory?: string
-    workspace?: string
-  }
-  url: "/mcp/{name}/tools"
-}
-
-export type McpToolsResponses = {
-  /**
-   * MCP tools
-   */
-  200: {
-    server: string
-    connected: boolean
-    tools: Array<{
-      id: string
-      name: string
-      enabled: boolean
-    }>
-  }
-}
-
-export type McpToolsResponse = McpToolsResponses[keyof McpToolsResponses]
-
 export type EventSubscribeData = {
   body?: never
   path?: never
@@ -4889,6 +4895,101 @@ export type McpAddResponses = {
 }
 
 export type McpAddResponse = McpAddResponses[keyof McpAddResponses]
+
+export type McpToolsData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/mcp/{name}/tools"
+}
+
+export type McpToolsResponses = {
+  /**
+   * MCP tools
+   */
+  200: {
+    server: string
+    connected: boolean
+    tools: Array<{
+      id: string
+      name: string
+      description?: string
+      enabled: boolean
+    }>
+  }
+}
+
+export type McpToolsResponse = McpToolsResponses[keyof McpToolsResponses]
+
+export type McpEnabledData = {
+  body?: {
+    enabled: boolean
+  }
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/mcp/{name}/enabled"
+}
+
+export type McpEnabledErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type McpEnabledError = McpEnabledErrors[keyof McpEnabledErrors]
+
+export type McpEnabledResponses = {
+  /**
+   * MCP server enabled state updated
+   */
+  200: boolean
+}
+
+export type McpEnabledResponse = McpEnabledResponses[keyof McpEnabledResponses]
+
+export type McpToolEnabledData = {
+  body?: {
+    enabled: boolean
+  }
+  path: {
+    name: string
+    toolId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/mcp/{name}/tools/{toolId}"
+}
+
+export type McpToolEnabledErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type McpToolEnabledError = McpToolEnabledErrors[keyof McpToolEnabledErrors]
+
+export type McpToolEnabledResponses = {
+  /**
+   * MCP tool enabled state updated
+   */
+  200: boolean
+}
+
+export type McpToolEnabledResponse = McpToolEnabledResponses[keyof McpToolEnabledResponses]
 
 export type McpAuthRemoveData = {
   body?: never
@@ -5517,10 +5618,41 @@ export type AppSkillsResponses = {
     description: string
     location: string
     content: string
+    enabled: boolean
   }>
 }
 
 export type AppSkillsResponse = AppSkillsResponses[keyof AppSkillsResponses]
+
+export type AppSkillEnabledData = {
+  body?: {
+    enabled: boolean
+  }
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/skill/{name}/enabled"
+}
+
+export type AppSkillEnabledErrors = {
+  /**
+   * Skill not found
+   */
+  404: unknown
+}
+
+export type AppSkillEnabledResponses = {
+  /**
+   * Skill enabled state updated
+   */
+  200: boolean
+}
+
+export type AppSkillEnabledResponse = AppSkillEnabledResponses[keyof AppSkillEnabledResponses]
 
 export type LspStatusData = {
   body?: never

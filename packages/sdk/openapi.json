@@ -2872,6 +2872,76 @@
         ]
       }
     },
+    "/session/{sessionID}/title/regenerate": {
+      "post": {
+        "operationId": "session.regenerateTitle",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Regenerate session title",
+        "description": "Regenerate a session title from the conversation history using the existing title generation logic.",
+        "responses": {
+          "200": {
+            "description": "Successfully regenerated session title",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.regenerateTitle({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/init": {
       "post": {
         "operationId": "session.init",
@@ -6041,6 +6111,241 @@
         ]
       }
     },
+    "/mcp/{name}/tools": {
+      "get": {
+        "operationId": "mcp.tools",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "List MCP tools by server",
+        "description": "List tools exposed by a specific Model Context Protocol (MCP) server.",
+        "responses": {
+          "200": {
+            "description": "MCP tools",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "server": {
+                      "type": "string"
+                    },
+                    "connected": {
+                      "type": "boolean"
+                    },
+                    "tools": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["id", "name", "enabled"]
+                      }
+                    }
+                  },
+                  "required": ["server", "connected", "tools"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.tools({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/enabled": {
+      "patch": {
+        "operationId": "mcp.enabled",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Enable or disable MCP server",
+        "description": "Persist and apply the enabled state for a Model Context Protocol (MCP) server.",
+        "responses": {
+          "200": {
+            "description": "MCP server enabled state updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["enabled"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.enabled({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/tools/{toolId}": {
+      "patch": {
+        "operationId": "mcp.tool.enabled",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "toolId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Enable or disable MCP tool",
+        "description": "Persist and apply the enabled state for one MCP tool.",
+        "responses": {
+          "200": {
+            "description": "MCP tool enabled state updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["enabled"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.tool.enabled({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/mcp/{name}/auth": {
       "post": {
         "operationId": "mcp.auth.start",
@@ -7429,9 +7734,12 @@
                       },
                       "content": {
                         "type": "string"
+                      },
+                      "enabled": {
+                        "type": "boolean"
                       }
                     },
-                    "required": ["name", "description", "location", "content"]
+                    "required": ["name", "description", "location", "content", "enabled"]
                   }
                 }
               }
@@ -7442,6 +7750,73 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.app.skills({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/skill/{name}/enabled": {
+      "patch": {
+        "operationId": "app.skill.enabled",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Enable or disable skill",
+        "description": "Persist and apply the enabled state for one skill.",
+        "responses": {
+          "200": {
+            "description": "Skill enabled state updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Skill not found"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["enabled"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.app.skill.enabled({\n  ...\n})"
           }
         ]
       }
@@ -13264,6 +13639,9 @@
           "config": {
             "type": "string"
           },
+          "configFile": {
+            "type": "string"
+          },
           "worktree": {
             "type": "string"
           },
@@ -13271,7 +13649,7 @@
             "type": "string"
           }
         },
-        "required": ["home", "state", "config", "worktree", "directory"]
+        "required": ["home", "state", "config", "configFile", "worktree", "directory"]
       },
       "VcsInfo": {
         "type": "object",

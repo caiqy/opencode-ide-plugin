@@ -54,12 +54,18 @@ RepoWiki 只记录 WebGUI/IDE 如何消费这些能力，以及本 fork 为插�
 
 关键文件：
 
+- `packages/opencode/src/config/config.ts`
+- `packages/opencode/src/permission/index.ts`
+- `packages/opencode/src/server/routes/instance/index.ts`
+- `packages/opencode/src/server/routes/instance/httpapi/instance.ts`
+- `packages/opencode/src/session/prompt.ts`
+- `packages/opencode/src/session/system.ts`
 - `packages/opencode/src/skill/index.ts`
 - `packages/opencode/webgui/src/components/CompactHeader/useStatusPopoverData.ts`
 
-用途：WebGUI 可展示和切换 Skills。
+用途：WebGUI 可展示和切换 Skills。主 Hono 路由和 experimental HttpApi 都必须让 `GET /skill` 返回由后端权限系统计算的 effective `enabled`，前端只消费这个结果；`PATCH /skill/:name/enabled` 负责持久化 `permission.skill` 并设置同实例 runtime overlay。runtime overlay 还需要进入 `Skill.available()`、`SystemPrompt.skills()` 和 tool permission ask，确保禁用/启用在不触发 `Instance.dispose()` 的情况下立即影响下次 agent 行为。`Permission.ask()` 的顺序必须让当前 config deny 压过历史 persisted approval，并让 runtime overlay 压过二者，避免 UI 显示禁用但 skill tool 仍因旧 “always allow” 执行。修改此契约后必须同步 `packages/sdk/openapi.json` 和 v2 `packages/sdk/js/src/v2/gen/**`；legacy `packages/sdk/js/src/gen/**` 仍服务旧客户端形状，除非单独做 SDK 迁移，否则不要在功能修复中重生成以免破坏现有 WebGUI/插件调用方式。
 
-风险：上游 skill 发现或 permission 语义变化时，前端开关可能显示成功但实际不生效。
+风险：上游 skill 发现、config merge 或 permission 语义变化时，前端开关可能显示成功但实际不生效。同步时尤其要保留 shorthand `permission.skill: "deny"` 转 `{ "*": "deny" }` fallback、overlay 优先级高于 cached/live permission 的顺序，以及 WebGUI 不复刻 wildcard/平台大小写规则的边界。
 
 ### Provider / Anthropic SSE 兼容补丁
 

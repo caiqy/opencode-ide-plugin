@@ -24,7 +24,7 @@ OpenCode 的 Skills 系统允许 agent 按需加载专业化的指令和工作�
 
 **问题**：`agent.permission` 是 `Permission.Ruleset`（`Rule[]`），在 `Agent.layer` 的 `InstanceState.make` 初始化时由 `Config.get().permission` 经 `Permission.fromConfig()` 转换后缓存。后续对 Config 的修改不会传播到已缓存的 agent 对象。
 
-**方案**：不依赖 Config.get().permission 的合并来传播，而是在 `Skill.available()` 中直接读取独立的 skill permission overlay，作为额外的 ruleset 传入 `Permission.evaluate()`。
+**方案**：不依赖 Config.get().permission 的合并来传播，而是在 `Skill.available()` 中直接读取独立的 skill permission overlay，作为额外的 ruleset 传入 `Permission.evaluate()`。同时，WebGUI 展示用的 `enabled` 状态也由后端统一计算，前端不复刻 wildcard 或平台大小写规则。
 
 具体实现：
 
@@ -51,23 +51,29 @@ return list.filter(skill =>
 
 由于 `Permission.evaluate` 使用 `findLast` 匹配，`extra` 放在最后意味着 overlay 优先级最高，这正是我们期望的行为。
 
-同时调用 `Config.patchProjectField(["permission", "skill", name], action)` 落盘到 `opencode.json`，确保重启后（Instance 重建时 agent 重新从 config 构建 ruleset）持久化。
+同时调用 `Config.patchProjectField(["permission", "skill", name], action)` 落盘到 `opencode.json`，确保重启后（Instance 重建时 agent 重新从 config 构建 ruleset）持久化。若原始 `permission.skill` 是 shorthand（例如 `"deny"`），写入单个 skill 前必须保留为 `{ "*": "deny" }` fallback，避免打开某个 skill 时丢失默认关闭语义。
 
 不触发 `Instance.dispose()`，SSE 连接不会中断。
 
 ### 2. 后端：API 路由
 
-在 `instance.ts` 中（与现有 `GET /skill` 同处）新增路由：
+在 `packages/opencode/src/server/routes/instance/index.ts` 中（与现有 `GET /skill` 同处）调整/新增路由；experimental HttpApi 的 `packages/opencode/src/server/routes/instance/httpapi/instance.ts` 也必须提供同等契约：
+
+- `GET /skill`
+  - 返回所有已发现 skill，并附带 `enabled: boolean`。
+  - `enabled` 使用后端 `Permission.evaluate("skill", skill.name, ruleset)` 计算，ruleset 来自当前 effective config + runtime skill overlay。
+  - 这是 WebGUI Skills 开关状态的唯一权威来源；前端不得自行解释 `permission.skill`、wildcard、`?` 或平台大小写规则。
 
 - `PATCH /skill/:name/enabled`
   - param: `{ name: string }`
   - body: `{ enabled: boolean }`
   - 逻辑：
-    1. 调 `Skill.all()` 验证 skill name 存在
+    1. 调 `Skill.get(name)` 验证 skill name 存在
     2. `action = enabled ? "allow" : "deny"`
-    3. `Config.setSkillPermissionOverlay(Instance.directory, name, action)`
+    3. 如当前 effective `permission.skill` 是 shorthand，先将其转换为 `{ "*": existing }`
     4. `Config.patchProjectField(["permission", "skill", name], action)`
-    5. 返回 `true`
+    5. `Config.setSkillPermissionOverlay(directory, name, action)`
+    6. 返回 `true`
   - 错误：skill 不存在返回 404
 
 与 `PATCH /mcp/:name/enabled`（位于 `routes/mcp.ts`）模式对齐。
@@ -78,17 +84,17 @@ return list.filter(skill =>
 
 - `sdk.app.setSkillEnabled({ path: { name }, body: { enabled } })` — 调 `PATCH /skill/:name/enabled`
 
-已有的 `sdk.app.skills()` 保持不变。
+`sdk.app.skills()` 读取 `GET /skill`，返回项包含 `{ name, description, enabled }`。
 
 ### 4. 前端：数据层（useStatusPopoverData）
 
 在 `useStatusPopoverData` hook 中新增：
 
 - `skills: Box<Record<string, SkillState>>` 状态，其中 `SkillState = { enabled: boolean }`。
-- `loadSkills()` 函数：并发调 `sdk.app.skills()` 和 `sdk.config.get()`，从 config 的 `permission.skill` 中读取每个 skill 的权限状态，`deny` 对应 `enabled: false`，其余为 `true`。
+- `loadSkills()` 函数：只调 `sdk.app.skills()`，直接使用后端返回的 effective `enabled`。config 失败不应让 Skills 分区失败。
 - `toggleSkill(name)` 函数：调 `sdk.app.setSkillEnabled`，成功后 `refreshSkills()`。
 - `skillBusy: Record<string, boolean>` 锁，防止快速连点。
-- `refreshAll()` 中并发加入 skills 的加载。
+- `refreshAll()` 分段提交：Server/MCP/LSP 先提交；Plugins 依赖 `sdk.config.get()`；Skills 独立依赖 `sdk.app.skills()`。Skills 使用独立版本号防旧请求覆盖 toggle 后状态，不能取消并发 refreshAll 的非 Skills 分区提交。
 
 返回值新增 `skills`、`toggleSkill`、`skillBusy`。
 
@@ -141,10 +147,10 @@ StatusPopover 中新增 Skills Panel：
 用户点击 Switch
   → toggleSkill(name)
   → PATCH /skill/:name/enabled { enabled: false }
-  → 后端: setSkillPermissionOverlay(dir, name, "deny")
   → 后端: patchProjectField(["permission","skill",name], "deny")
+  → 后端: setSkillPermissionOverlay(dir, name, "deny")
   → 返回 200
-  → refreshSkills() 刷新列表
+  → refreshSkills() 调 GET /skill，读取后端 effective enabled
   → UI 更新
 
 下次发送消息
@@ -156,11 +162,15 @@ StatusPopover 中新增 Skills Panel：
   → 被 deny 的 skill 不会出现在 <available_skills> 中
 ```
 
+权限执行时同样必须保持一致：`Permission.ask()` 的有效顺序为 persisted approvals、当前 config/session ruleset、runtime override ruleset。因为 `Permission.evaluate()` 使用最后匹配生效，所以当前 config 中的 `permission.skill` deny 必须能压过历史 “always allow”，runtime overlay 又必须压过二者。这样即使实例重建导致 overlay 消失，已持久化的 `permission.skill` 仍能阻止旧 approval 绕过禁用状态。
+
 ## 影响范围
 
 - `packages/opencode/src/config/config.ts` — 新增 skillPermissionOverlay
 - `packages/opencode/src/skill/index.ts` — `available()` 中读取 overlay 作为额外 ruleset
-- `packages/opencode/src/server/instance.ts` — 新增 PATCH /skill/:name/enabled 路由
+- `packages/opencode/src/server/routes/instance/index.ts` — `GET /skill` 返回 effective enabled；新增 PATCH /skill/:name/enabled 路由
+- `packages/opencode/src/server/routes/instance/httpapi/instance.ts` — experimental HttpApi 下同步提供相同 skill enabled 契约
+- `packages/sdk/openapi.json`、`packages/sdk/js/src/v2/gen/**` — 同步生成的 v2 API 契约；legacy `packages/sdk/js/src/gen/**` 仍服务旧客户端形状，除非进行 SDK 迁移，否则不在本功能中重生成
 - `packages/opencode/webgui/src/lib/api/sdkClient.ts` — 新增 setSkillEnabled
 - `packages/opencode/webgui/src/components/CompactHeader/status.ts` — 新增 skills tab 和 buildSkillView
 - `packages/opencode/webgui/src/components/CompactHeader/useStatusPopoverData.ts` — 新增 skills 数据和 toggleSkill

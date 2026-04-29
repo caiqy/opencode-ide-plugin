@@ -8,7 +8,8 @@ export function buildToolPermissionAsk(input: {
   messageID: MessageID
   callID: string
   ruleset: AskInput["ruleset"]
-  req: Omit<AskInput, "sessionID" | "tool" | "ruleset">
+  overlayRuleset?: AskInput["overrideRuleset"]
+  req: Omit<AskInput, "sessionID" | "tool" | "ruleset" | "overrideRuleset">
 }): AskInput {
   return {
     ...input.req,
@@ -18,5 +19,6 @@ export function buildToolPermissionAsk(input: {
       callID: input.callID,
     },
     ruleset: input.ruleset,
+    overrideRuleset: input.overlayRuleset,
   }
 }

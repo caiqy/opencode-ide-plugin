@@ -510,8 +510,57 @@ describe("CompactHeader/StatusPopover", () => {
 
     const sw = screen.getByRole("switch", { name: "切换 brainstorming" })
     expect(sw).toBeDisabled()
+    expect(screen.getByRole("switch", { name: "切换 debugging" })).not.toBeDisabled()
 
     const spinner = sw.querySelector(".animate-spin")
     expect(spinner).toBeInTheDocument()
+  })
+
+  it("Skills tab empty 状态展示空态", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.skills = { state: "empty", error: null, updatedAt: null, data: {} }
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "Skills" }))
+
+    expect(screen.getByText("暂无可展示数据")).toBeInTheDocument()
+    expect(screen.queryByRole("switch", { name: /切换/ })).not.toBeInTheDocument()
+  })
+
+  it("Skills tab failed 状态展示错误并可重试", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.skills = { state: "failed", error: "skill failed", updatedAt: null, data: {} }
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "Skills" }))
+    await user.click(screen.getByRole("button", { name: "重试" }))
+
+    expect(screen.getByText("数据失败：skill failed")).toBeInTheDocument()
+    expect(view.refreshAll).toHaveBeenCalledTimes(1)
+  })
+
+  it("Skills tab stale 状态展示陈旧提示并保留旧列表", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.skills = {
+      state: "stale",
+      error: "reload failed",
+      updatedAt: new Date("2026-04-29T10:00:00Z").getTime(),
+      data: { brainstorming: { enabled: true } },
+    }
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "Skills" }))
+
+    expect(screen.getByText(/数据可能不是最新/)).toBeInTheDocument()
+    expect(screen.getByRole("switch", { name: "切换 brainstorming" })).toHaveAttribute("aria-checked", "true")
   })
 })

@@ -59,13 +59,30 @@ function toolPermissionOverlay(tools: Record<string, boolean>) {
   ) as Record<string, ConfigPermission.Action>
 }
 
+function normalizePermissionRule(rule: unknown) {
+  if (typeof rule === "string") return { "*": rule } as Record<string, ConfigPermission.Action>
+  if (isRecord(rule)) return rule as Record<string, ConfigPermission.Action>
+  return {}
+}
+
 function configWithOverlays(config: Info, directory: string): Info {
   const tools = toolsOverlayByDir.get(directory) ?? {}
   const skills = skillPermissionOverlayByDir.get(directory) ?? {}
   if (Object.keys(tools).length === 0 && Object.keys(skills).length === 0) return config
 
   const permission = mergeDeep(config.permission ?? {}, toolPermissionOverlay(tools))
-  const withSkills = Object.keys(skills).length === 0 ? permission : mergeDeep(permission, { skill: skills })
+  const withSkills =
+    Object.keys(skills).length === 0
+      ? permission
+      : mergeDeep(
+          {
+            ...permission,
+            // A shorthand skill rule means the same as a wildcard fallback; keep
+            // that fallback when runtime overlays add per-skill overrides.
+            skill: normalizePermissionRule(permission.skill),
+          },
+          { skill: skills },
+        )
   return {
     ...config,
     tools: {

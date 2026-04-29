@@ -55,6 +55,7 @@ interface ProvidersResponse {
 interface SkillsResponse {
   name: string
   description: string
+  enabled: boolean
 }
 
 interface PathResponse {

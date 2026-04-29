@@ -40,6 +40,7 @@ import { Permission } from "@/permission"
 import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { Shell } from "@/shell/shell"
+import { buildToolPermissionAsk } from "./tool-permission"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { Truncate } from "@/tool"
 import { decodeDataUrl } from "@/util/data-url"
@@ -438,14 +439,22 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             }
           }),
         ask: (req) =>
-          permission
-            .ask({
-              ...req,
-              sessionID: input.session.id,
-              tool: { messageID: input.processor.message.id, callID: options.toolCallId },
-              ruleset: Permission.merge(input.agent.permission, input.session.permission ?? []),
-            })
-            .pipe(Effect.orDie),
+          Effect.gen(function* () {
+            const directory = yield* InstanceState.directory
+            const skill = Config.getSkillPermissionOverlay(directory)
+            // Runtime skill toggles must override cached agent/session permissions, including live "always" approvals.
+            const overlayRuleset = Object.keys(skill).length > 0 ? Permission.fromConfig({ skill }) : undefined
+            yield* permission.ask(
+              buildToolPermissionAsk({
+                req,
+                sessionID: input.session.id,
+                messageID: input.processor.message.id,
+                callID: options.toolCallId,
+                ruleset: Permission.merge(input.agent.permission, input.session.permission ?? []),
+                overlayRuleset,
+              }),
+            )
+          }).pipe(Effect.orDie),
       })
 
       for (const item of yield* registry.tools({

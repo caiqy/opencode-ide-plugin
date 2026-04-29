@@ -220,24 +220,15 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
     }
   }, [])
 
-  const loadSkills = useCallback(async (cfg?: Record<string, unknown> | null) => {
+  const loadSkills = useCallback(async () => {
     try {
-      const [skillsRes, configRes] = await Promise.all([
-        sdk.app.skills(),
-        cfg !== undefined ? { data: cfg, error: null } : sdk.config.get(),
-      ])
+      const skillsRes = await sdk.app.skills()
       if (skillsRes.error || !skillsRes.data) {
         return { data: null, error: text(skillsRes.error, "Failed to load skills") }
       }
-      const perm =
-        configRes.data && typeof configRes.data === "object" && "permission" in configRes.data
-          ? ((configRes.data as Record<string, unknown>).permission as Record<string, unknown> | undefined)
-          : undefined
-      const skillPerm =
-        perm && typeof perm === "object" && "skill" in perm ? (perm.skill as Record<string, string>) : {}
       const result: Record<string, SkillState> = {}
       for (const item of skillsRes.data) {
-        result[item.name] = { enabled: skillPerm[item.name] !== "deny" }
+        result[item.name] = { enabled: item.enabled }
       }
       return { data: result, error: null }
     } catch (err) {
@@ -349,21 +340,14 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
   const refreshAll = useCallback(async () => {
     const id = ++seq.current
     const mid = ++mseq.current
+    const sid = sseq.current
     const state = conn.current
-    const [projectRes, pathRes, mcpRes, lspRes, pluginRes] = await Promise.allSettled([
+    const [projectRes, pathRes, mcpRes, lspRes] = await Promise.allSettled([
       sdk.project.current(),
       sdk.path.get(),
       loadMcp(),
       sdk.lsp.status(),
-      sdk.config.get(),
     ])
-    // Reuse config data for skills loading to avoid duplicate config.get() request
-    const cfg = pluginRes.status === "fulfilled" && pluginRes.value.data ? pluginRes.value.data : null
-    const skillsRes = await loadSkills(cfg).then(
-      (v) => ({ status: "fulfilled" as const, value: v }),
-      (e) => ({ status: "rejected" as const, reason: e }),
-    )
-
     setData((prev) => {
       if (id !== seq.current) return prev
       const stamp = now()
@@ -423,36 +407,56 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
         return box(next, next.length > 0 ? "ready" : "empty", null, stamp)
       })()
 
-      const plugins = (() => {
-        if (pluginRes.status === "rejected") {
-          const err = text(pluginRes.reason, "Failed to load plugin config")
-          return failed(prev.plugins, [], err)
-        }
-        if (pluginRes.value.error || !pluginRes.value.data) {
-          const err = text(pluginRes.value.error, "Failed to load plugin config")
-          return failed(prev.plugins, [], err)
-        }
-        const next = Array.isArray(pluginRes.value.data.plugin)
-          ? pluginRes.value.data.plugin.filter((item): item is string => typeof item === "string")
-          : []
-        return box(next, next.length > 0 ? "ready" : "empty", null, stamp)
-      })()
-
-      const skills = (() => {
-        if (skillsRes.status === "rejected") {
-          const err = text(skillsRes.reason, "Failed to load skills")
-          return failed(prev.skills, {}, err)
-        }
-        if (skillsRes.value.error || !skillsRes.value.data) {
-          const err = text(skillsRes.value.error, "Failed to load skills")
-          return failed(prev.skills, {}, err)
-        }
-        const next = skillsRes.value.data as Record<string, SkillState>
-        return box(next, Object.keys(next).length > 0 ? "ready" : "empty", null, stamp)
-      })()
-
-      return { servers, mcp, lsp, plugins, skills }
+      return { servers, mcp, lsp, plugins: prev.plugins, skills: prev.skills }
     })
+
+    const pluginPromise = sdk.config.get().then(
+      (v) => ({ status: "fulfilled" as const, value: v }),
+      (e) => ({ status: "rejected" as const, reason: e }),
+    )
+    const skillsPromise = loadSkills().then(
+      (v) => ({ status: "fulfilled" as const, value: v }),
+      (e) => ({ status: "rejected" as const, reason: e }),
+    )
+    await Promise.all([
+      pluginPromise.then((pluginRes) => {
+        setData((prev) => {
+          if (id !== seq.current) return prev
+          const stamp = now()
+          const plugins = (() => {
+            if (pluginRes.status === "rejected") {
+              const err = text(pluginRes.reason, "Failed to load plugin config")
+              return failed(prev.plugins, [], err)
+            }
+            if (pluginRes.value.error || !pluginRes.value.data) {
+              const err = text(pluginRes.value.error, "Failed to load plugin config")
+              return failed(prev.plugins, [], err)
+            }
+            const next = Array.isArray(pluginRes.value.data.plugin)
+              ? pluginRes.value.data.plugin.filter((item): item is string => typeof item === "string")
+              : []
+            return box(next, next.length > 0 ? "ready" : "empty", null, stamp)
+          })()
+          return { ...prev, plugins }
+        })
+      }),
+      skillsPromise.then((skillsRes) => {
+        setData((prev) => {
+          if (id !== seq.current || sid !== sseq.current) return prev
+          const stamp = now()
+          if (skillsRes.status === "rejected") {
+            const err = text(skillsRes.reason, "Failed to load skills")
+            return { ...prev, skills: failed(prev.skills, {}, err) }
+          }
+          if (skillsRes.value.error || !skillsRes.value.data) {
+            const err = text(skillsRes.value.error, "Failed to load skills")
+            return { ...prev, skills: failed(prev.skills, {}, err) }
+          }
+          const next = skillsRes.value.data as Record<string, SkillState>
+          return { ...prev, skills: box(next, Object.keys(next).length > 0 ? "ready" : "empty", null, stamp) }
+        })
+      }),
+    ])
   }, [loadMcp, loadSkills])
 
   useEffect(() => {

@@ -589,6 +589,72 @@ it.live("ask - throws DeniedError when action is deny", () =>
   ),
 )
 
+it.live("ask - override deny wins over live always approval", () =>
+  withDir({ git: true }, () =>
+    Effect.gen(function* () {
+      const first = yield* ask({
+        id: PermissionID.make("per_skill_allow"),
+        sessionID: SessionID.make("session_test"),
+        permission: "skill",
+        patterns: ["brainstorming"],
+        metadata: {},
+        always: ["brainstorming"],
+        ruleset: Permission.fromConfig({ skill: "ask" }),
+      }).pipe(Effect.forkScoped)
+      yield* waitForPending(1)
+      yield* reply({ requestID: PermissionID.make("per_skill_allow"), reply: "always" })
+      yield* Fiber.join(first)
+
+      const err = yield* fail(
+        ask({
+          sessionID: SessionID.make("session_test"),
+          permission: "skill",
+          patterns: ["brainstorming"],
+          metadata: {},
+          always: ["brainstorming"],
+          ruleset: Permission.fromConfig({ skill: "ask" }),
+          overrideRuleset: Permission.fromConfig({ skill: { brainstorming: "deny" } }),
+        }),
+      )
+      expect(err).toBeInstanceOf(Permission.DeniedError)
+      if (err instanceof Permission.DeniedError) {
+        expect(err.ruleset).toContainEqual({ permission: "skill", pattern: "brainstorming", action: "deny" })
+      }
+    }),
+  ),
+)
+
+it.live("ask - config deny wins over persisted always approval", () =>
+  withDir({ git: true }, () =>
+    Effect.gen(function* () {
+      const first = yield* ask({
+        id: PermissionID.make("per_skill_persisted_allow"),
+        sessionID: SessionID.make("session_test"),
+        permission: "skill",
+        patterns: ["brainstorming"],
+        metadata: {},
+        always: ["brainstorming"],
+        ruleset: Permission.fromConfig({ skill: "ask" }),
+      }).pipe(Effect.forkScoped)
+      yield* waitForPending(1)
+      yield* reply({ requestID: PermissionID.make("per_skill_persisted_allow"), reply: "always" })
+      yield* Fiber.join(first)
+
+      const err = yield* fail(
+        ask({
+          sessionID: SessionID.make("session_test"),
+          permission: "skill",
+          patterns: ["brainstorming"],
+          metadata: {},
+          always: ["brainstorming"],
+          ruleset: Permission.fromConfig({ skill: { brainstorming: "deny" } }),
+        }),
+      )
+      expect(err).toBeInstanceOf(Permission.DeniedError)
+    }),
+  ),
+)
+
 it.live("ask - stays pending when action is ask", () =>
   withDir({ git: true }, () =>
     Effect.gen(function* () {
