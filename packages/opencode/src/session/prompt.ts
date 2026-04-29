@@ -83,6 +83,21 @@ export interface Interface {
   readonly regenerateTitle: (input: { sessionID: SessionID }) => Effect.Effect<Session.Info>
 }
 
+export function mergeToolMetadataState(
+  state: MessageV2.ToolStatePending | MessageV2.ToolStateRunning,
+  val: { title?: string; metadata?: Record<string, unknown> },
+  args: Record<string, unknown>,
+  now = Date.now(),
+): MessageV2.ToolStateRunning {
+  return {
+    title: val.title,
+    metadata: val.metadata,
+    status: "running",
+    input: args,
+    time: { start: state.status === "running" ? state.time.start : now },
+  }
+}
+
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionPrompt") {}
 
 export const layer = Layer.effect(
@@ -416,16 +431,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         messages: input.messages,
         metadata: (val) =>
           input.processor.updateToolCall(options.toolCallId, (match) => {
-            if (!["running", "pending"].includes(match.state.status)) return match
+            if (match.state.status !== "running" && match.state.status !== "pending") return match
             return {
               ...match,
-              state: {
-                title: val.title,
-                metadata: val.metadata,
-                status: "running",
-                input: args,
-                time: { start: Date.now() },
-              },
+              state: mergeToolMetadataState(match.state, val, args),
             }
           }),
         ask: (req) =>
