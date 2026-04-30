@@ -12,6 +12,8 @@
 
 | Term | Meaning | Context |
 |------|---------|---------|
+| build-vsix | Windows 版 VSCode 插件 `.vsix` 快速打包流程 | 见 `memory/context/vscode-packaging.md` |
+| 打包下一个版本 | 直接执行 `.opencode/command/build-vsix.md` 的快速 VSIX 打包命令 | 不重新探索仓库流程 |
 |      |         |         |
 
 ## Nicknames / 别名

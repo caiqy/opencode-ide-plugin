@@ -1,11 +1,20 @@
 ## Memory
 
-`AGENTS.md` 是本仓库 agent 协作的主入口。长期记忆按轻量结构放在 `memory/` 目录中；当前仅建立模板结构，具体内容后续按需补充。
+`AGENTS.md` 是本仓库 agent 协作的主入口。长期记忆按轻量结构放在 `memory/` 目录中；常用术语需从 `memory/glossary.md` 同步到本节，便于 agent 启动时快速解码。
 
 - `memory/glossary.md`：术语、缩写、别名、项目代号的总索引
 - `memory/people/`：人员资料，文件名建议使用 lowercase kebab-case
 - `memory/projects/`：项目、功能线、长期任务资料
 - `memory/context/`：团队、流程、工具、协作背景等上下文资料
+
+### Terms
+
+| Term | Meaning | Context |
+|------|---------|---------|
+| build-vsix | Windows 版 VSCode 插件 `.vsix` 快速打包流程 | 见 `memory/context/vscode-packaging.md` |
+| 打包下一个版本 | 直接执行 `.opencode/command/build-vsix.md` 的快速 VSIX 打包命令 | 不重新探索仓库流程 |
+
+后续新增、修改或删除记忆时，必须持续维护 `memory/glossary.md`；其中高频或会影响日常解码的 Term 也要同步更新到 `AGENTS.md` 的 `Terms` 表。
 
 <!-- GSD:project-start source:PROJECT.md -->
 
