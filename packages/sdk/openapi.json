@@ -7795,7 +7795,14 @@
             }
           },
           "404": {
-            "description": "Skill not found"
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
           }
         },
         "requestBody": {

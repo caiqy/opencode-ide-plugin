@@ -43,6 +43,7 @@ import { SyncRoutes } from "./sync"
 import { InstanceMiddleware } from "./middleware"
 import { jsonRequest, runRequest } from "./trace"
 import { errors } from "../../error"
+import { NotFoundError } from "@/storage"
 
 export const InstanceRoutes = (upgrade: UpgradeWebSocket): Hono => {
   const app = new Hono()
@@ -421,7 +422,9 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket): Hono => {
             return true
           }),
         )
-        if (!found) return c.json({ error: `Skill not found: ${c.req.valid("param").name}` }, 404)
+        if (!found) {
+          return c.json(new NotFoundError({ message: `Skill not found: ${c.req.valid("param").name}` }).toObject(), 404)
+        }
         return c.json(true)
       },
     )

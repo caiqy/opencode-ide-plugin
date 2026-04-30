@@ -5640,10 +5640,12 @@ export type AppSkillEnabledData = {
 
 export type AppSkillEnabledErrors = {
   /**
-   * Skill not found
+   * Not found
    */
-  404: unknown
+  404: NotFoundError
 }
+
+export type AppSkillEnabledError = AppSkillEnabledErrors[keyof AppSkillEnabledErrors]
 
 export type AppSkillEnabledResponses = {
   /**

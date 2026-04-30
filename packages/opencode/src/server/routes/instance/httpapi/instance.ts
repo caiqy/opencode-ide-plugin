@@ -10,7 +10,7 @@ import { Vcs } from "@/project"
 import { Skill } from "@/skill"
 import * as InstanceState from "@/effect/instance-state"
 import { Effect, Layer, Schema } from "effect"
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "./auth"
 import { markInstanceForDisposal } from "./lifecycle"
 
@@ -34,6 +34,17 @@ const SkillInfo = Schema.Struct({
 const SkillEnabledPayload = Schema.Struct({
   enabled: Schema.Boolean,
 })
+
+// Keep this wire shape aligned with the Hono `errors(404)` schema; `HttpApiError.NotFound` encodes as
+// `{ _tag: "NotFound" }` and leaves the generated SDK error type as `unknown` for this endpoint.
+const NotFoundError = Schema.Struct({
+  name: Schema.Literal("NotFoundError"),
+  data: Schema.Struct({
+    message: Schema.String,
+  }),
+})
+  .pipe(HttpApiSchema.status(404))
+  .annotate({ identifier: "NotFoundError", description: "Not found" })
 
 const VcsDiffQuery = Schema.Struct({
   mode: Vcs.Mode,
@@ -126,7 +137,7 @@ export const InstanceApi = HttpApi.make("instance")
           params: { name: Schema.String },
           payload: SkillEnabledPayload,
           success: Schema.Boolean,
-          error: HttpApiError.NotFound,
+          error: NotFoundError,
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "app.skill.enabled",
@@ -225,7 +236,12 @@ export const instanceHandlers = Layer.unwrap(
       params: { name: string }
       payload: typeof SkillEnabledPayload.Type
     }) {
-      if (!(yield* skill.get(ctx.params.name))) return yield* new HttpApiError.NotFound({})
+      if (!(yield* skill.get(ctx.params.name))) {
+        return yield* Effect.fail({
+          name: "NotFoundError" as const,
+          data: { message: `Skill not found: ${ctx.params.name}` },
+        })
+      }
       const action = ctx.payload.enabled ? "allow" : "deny"
       const directory = yield* InstanceState.directory
       const current = yield* config.get()
