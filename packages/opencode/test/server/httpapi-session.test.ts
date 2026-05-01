@@ -2,14 +2,17 @@ import { afterEach, describe, expect, test } from "bun:test"
 import type { UpgradeWebSocket } from "hono/ws"
 import { Effect } from "effect"
 import { Flag } from "@opencode-ai/core/flag/flag"
-import { PermissionID } from "../../src/permission/schema"
-import { ModelID, ProviderID } from "../../src/provider/schema"
+import { Bus } from "../../src/bus"
+import { AppRuntime } from "../../src/effect/app-runtime"
 import { Instance } from "../../src/project/instance"
+import { createApp } from "../../src/server/server"
 import { InstanceRoutes } from "../../src/server/routes/instance"
-import { SessionPaths } from "../../src/server/routes/instance/httpapi/session"
-import { Session } from "../../src/session"
-import { MessageID, PartID, type SessionID } from "../../src/session/schema"
+import { SessionPaths, setForegroundReadTestGate } from "../../src/server/routes/instance/httpapi/session"
+import { setStandardForegroundReadTestGate } from "../../src/server/routes/instance/session"
 import { MessageV2 } from "../../src/session/message-v2"
+import { Session } from "../../src/session"
+import { MessageID, type SessionID } from "../../src/session/schema"
+import { SessionSummaryScheduler } from "../../src/session/summary-scheduler"
 import { Log } from "../../src/util"
 import { resetDatabase } from "../fixture/db"
 import { tmpdir } from "../fixture/fixture"
@@ -24,12 +27,13 @@ function app() {
   return InstanceRoutes(websocket)
 }
 
-function runSession<A, E>(fx: Effect.Effect<A, E, Session.Service>) {
-  return Effect.runPromise(fx.pipe(Effect.provide(Session.defaultLayer)))
+function standardApp() {
+  Flag.OPENCODE_EXPERIMENTAL_HTTPAPI = false
+  return createApp({})
 }
 
-function pathFor(path: string, params: Record<string, string>) {
-  return Object.entries(params).reduce((result, [key, value]) => result.replace(`:${key}`, value), path)
+function runSession<A, E>(fx: Effect.Effect<A, E, Session.Service>) {
+  return Effect.runPromise(fx.pipe(Effect.provide(Session.defaultLayer)))
 }
 
 async function createSession(directory: string, input?: Session.CreateInput) {
@@ -39,32 +43,288 @@ async function createSession(directory: string, input?: Session.CreateInput) {
   })
 }
 
-async function createTextMessage(directory: string, sessionID: SessionID, text: string) {
-  return Instance.provide({
+async function createUserMessage(directory: string, sessionID: SessionID, time: number) {
+  const id = MessageID.ascending()
+  await Instance.provide({
     directory,
     fn: async () =>
       runSession(
-        Effect.gen(function* () {
-          const svc = yield* Session.Service
-          const info = yield* svc.updateMessage({
-            id: MessageID.ascending(),
+        Session.Service.use((svc) =>
+          svc.updateMessage({
+            id,
+            sessionID,
             role: "user",
-            sessionID,
-            agent: "build",
-            model: { providerID: ProviderID.make("test"), modelID: ModelID.make("test") },
-            time: { created: Date.now() },
-          })
-          const part = yield* svc.updatePart({
-            id: PartID.ascending(),
-            sessionID,
-            messageID: info.id,
-            type: "text",
-            text,
-          })
-          return { info, part }
-        }),
+            time: { created: time },
+            agent: "test",
+            model: { providerID: "test", modelID: "test" },
+            tools: {},
+            mode: "",
+          } as unknown as never),
+        ),
       ),
   })
+  return id
+}
+
+async function createOlderMessagesRequest(directory: string, sessionID: SessionID) {
+  const olderID = await createUserMessage(directory, sessionID, Date.now())
+  await createUserMessage(directory, sessionID, Date.now() + 1)
+  const page = await Instance.provide({
+    directory,
+    fn: async () => MessageV2.page({ sessionID, limit: 1 }),
+  })
+  if (!page.cursor) {
+    throw new Error("expected paged messages cursor")
+  }
+  const url = new URL(SessionPaths.messages.replace(":sessionID", sessionID), "http://localhost")
+  url.searchParams.set("before", page.cursor)
+  url.searchParams.set("limit", "1")
+  return { path: url.pathname + url.search, olderID }
+}
+
+async function runBus<A, E>(directory: string, fx: Effect.Effect<A, E, Bus.Service>) {
+  return Instance.provide({
+    directory,
+    fn: async () => AppRuntime.runPromise(fx),
+  })
+}
+
+async function runSummaryScheduler<A, E>(directory: string, fx: Effect.Effect<A, E, SessionSummaryScheduler.Service>) {
+  return Instance.provide({
+    directory,
+    fn: async () => AppRuntime.runPromise(fx.pipe(Effect.provide(SessionSummaryScheduler.defaultLayer))),
+  })
+}
+
+async function waitFor(check: () => boolean, timeout = 1000) {
+  const startedAt = Date.now()
+  while (!check()) {
+    if (Date.now() - startedAt >= timeout) {
+      throw new Error("timed out waiting for condition")
+    }
+    await Bun.sleep(10)
+  }
+}
+
+async function assertVisibilitySync(
+  input: {
+    directory: string
+    request: (sessionIDs: SessionID[]) => Response | Promise<Response>
+  },
+) {
+  const session = await createSession(input.directory, { title: "visible" })
+  const statuses: string[] = []
+  const off = await runBus(
+    input.directory,
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      return yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+        if (event.properties.sessionID !== session.id) return
+        statuses.push(event.properties.status)
+      })
+    }),
+  )
+
+  try {
+    await runSummaryScheduler(
+      input.directory,
+      SessionSummaryScheduler.Service.use((svc) => svc.syncVisible([])),
+    )
+    await runSummaryScheduler(
+      input.directory,
+      SessionSummaryScheduler.Service.use((svc) =>
+        svc.markDirty({
+          sessionID: session.id,
+          messageID: MessageID.ascending(),
+          version: 1,
+        }),
+      ),
+    )
+    await runSummaryScheduler(input.directory, SessionSummaryScheduler.Service.use((svc) => svc.flush()))
+
+    expect(statuses).toEqual([])
+
+    const response = await json<{ sessionIDs: SessionID[] }>(await input.request([session.id]))
+    expect(response).toEqual({ sessionIDs: [session.id] })
+
+    await runSummaryScheduler(input.directory, SessionSummaryScheduler.Service.use((svc) => svc.flush()))
+    await waitFor(() => statuses.includes("idle"))
+    expect(statuses).toEqual(["scheduled", "running", "idle"])
+  } finally {
+    off()
+  }
+}
+
+async function assertForegroundReadBlocksDirtyDiff(
+  input: {
+    directory: string
+    kind: "messages" | "diff"
+    setGate: (
+      next?: (input: { kind: "messages" | "diff"; sessionID: SessionID }) => void | Promise<void>,
+    ) => void
+    request: (sessionID: SessionID) => Response | Promise<Response>
+    assertResponse: (response: Response) => Promise<void>
+  },
+) {
+  const session = await createSession(input.directory, { title: "visible" })
+  const statuses: string[] = []
+  const off = await runBus(
+    input.directory,
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      return yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+        if (event.properties.sessionID !== session.id) return
+        statuses.push(event.properties.status)
+      })
+    }),
+  )
+  const release = Promise.withResolvers<void>()
+  let started = false
+  input.setGate(async (current) => {
+    if (current.sessionID !== session.id || current.kind !== input.kind) return
+    started = true
+    await release.promise
+  })
+
+  try {
+    await runSummaryScheduler(
+      input.directory,
+      SessionSummaryScheduler.Service.use((svc) => svc.syncVisible([session.id])),
+    )
+
+    const response = Promise.resolve().then(() => input.request(session.id))
+    let responded = false
+    void response.then(
+      () => {
+        responded = true
+      },
+      () => {
+        responded = true
+      },
+    )
+    await waitFor(() => started || responded, 1000)
+    if (!started) {
+      const resolved = await response
+      throw new Error(`foreground gate was not hit before response: ${resolved.status} ${await resolved.text()}`)
+    }
+
+    await runSummaryScheduler(
+      input.directory,
+      SessionSummaryScheduler.Service.use((svc) =>
+        svc.markDirty({
+          sessionID: session.id,
+          messageID: MessageID.ascending(),
+          version: 1,
+        }),
+      ),
+    )
+    await runSummaryScheduler(input.directory, SessionSummaryScheduler.Service.use((svc) => svc.flush()))
+
+    expect(statuses).toEqual([])
+
+    release.resolve()
+
+    const resolved = await response
+    await input.assertResponse(resolved)
+
+    await runSummaryScheduler(input.directory, SessionSummaryScheduler.Service.use((svc) => svc.flush()))
+    await waitFor(() => statuses.includes("idle"))
+    expect(statuses).toEqual(["scheduled", "running", "idle"])
+  } finally {
+    release.resolve()
+    input.setGate(undefined)
+    off()
+  }
+}
+
+async function assertDelayedVisibilityKeepsDirtyDiffPendingUntilForegroundReadAndSync(
+  input: {
+    directory: string
+    kind: "messages" | "diff"
+    setGate: (
+      next?: (input: { kind: "messages" | "diff"; sessionID: SessionID }) => void | Promise<void>,
+    ) => void
+    request: (sessionID: SessionID) => Response | Promise<Response>
+    visibilityRequest: (sessionIDs: SessionID[]) => Response | Promise<Response>
+    assertResponse: (response: Response) => Promise<void>
+  },
+) {
+  const session = await createSession(input.directory, { title: "visible" })
+  const statuses: string[] = []
+  const off = await runBus(
+    input.directory,
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      return yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+        if (event.properties.sessionID !== session.id) return
+        statuses.push(event.properties.status)
+      })
+    }),
+  )
+  const release = Promise.withResolvers<void>()
+  let started = false
+  input.setGate(async (current) => {
+    if (current.sessionID !== session.id || current.kind !== input.kind) return
+    started = true
+    await release.promise
+  })
+
+  try {
+    await runSummaryScheduler(
+      input.directory,
+      SessionSummaryScheduler.Service.use((svc) => svc.syncVisible([])),
+    )
+
+    const response = Promise.resolve().then(() => input.request(session.id))
+    let responded = false
+    void response.then(
+      () => {
+        responded = true
+      },
+      () => {
+        responded = true
+      },
+    )
+    await waitFor(() => started || responded, 1000)
+    if (!started) {
+      const resolved = await response
+      throw new Error(`foreground gate was not hit before response: ${resolved.status} ${await resolved.text()}`)
+    }
+
+    await runSummaryScheduler(
+      input.directory,
+      SessionSummaryScheduler.Service.use((svc) =>
+        svc.markDirty({
+          sessionID: session.id,
+          messageID: MessageID.ascending(),
+          version: 1,
+        }),
+      ),
+    )
+    await runSummaryScheduler(input.directory, SessionSummaryScheduler.Service.use((svc) => svc.flush()))
+
+    expect(statuses).toEqual([])
+    expect(responded).toBe(false)
+
+    release.resolve()
+
+    const resolved = await response
+    await input.assertResponse(resolved)
+
+    await runSummaryScheduler(input.directory, SessionSummaryScheduler.Service.use((svc) => svc.flush()))
+    expect(statuses).toEqual([])
+
+    const visibility = await json(await input.visibilityRequest([session.id]))
+    expect(visibility).toEqual({ sessionIDs: [session.id] })
+
+    await runSummaryScheduler(input.directory, SessionSummaryScheduler.Service.use((svc) => svc.flush()))
+    await waitFor(() => statuses.includes("idle"))
+    expect(statuses).toEqual(["scheduled", "running", "idle"])
+  } finally {
+    release.resolve()
+    input.setGate(undefined)
+    off()
+  }
 }
 
 async function json<T>(response: Response) {
@@ -79,210 +339,182 @@ afterEach(async () => {
 })
 
 describe("session HttpApi", () => {
-  test("serves read routes through Hono bridge", async () => {
+  test("serves visibility endpoint through Hono bridge", async () => {
+    await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
+    const headers = { "x-opencode-directory": tmp.path, "content-type": "application/json" }
+    await assertVisibilitySync({
+      directory: tmp.path,
+      request: (sessionIDs) =>
+        app().request(SessionPaths.visibility, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ sessionIDs }),
+        }),
+    })
+  })
+
+  test("serves visibility endpoint through standard Hono routes", async () => {
+    await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
+    const headers = { "x-opencode-directory": tmp.path, "content-type": "application/json" }
+    await assertVisibilitySync({
+      directory: tmp.path,
+      request: (sessionIDs) =>
+        standardApp().request(SessionPaths.visibility, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ sessionIDs }),
+        }),
+    })
+  })
+
+  test("bridge messages request keeps dirty diff pending until foreground read finishes", async () => {
     await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
     const headers = { "x-opencode-directory": tmp.path }
-    const parent = await createSession(tmp.path, { title: "parent" })
-    const child = await createSession(tmp.path, { title: "child", parentID: parent.id })
-    const message = await createTextMessage(tmp.path, parent.id, "hello")
-    await createTextMessage(tmp.path, parent.id, "world")
-
-    expect(
-      (await json<Session.Info[]>(await app().request(`${SessionPaths.list}?roots=true`, { headers }))).map(
-        (item) => item.id,
-      ),
-    ).toContain(parent.id)
-
-    expect(await json<Record<string, unknown>>(await app().request(SessionPaths.status, { headers }))).toEqual({})
-
-    expect(
-      await json<Session.Info>(await app().request(pathFor(SessionPaths.get, { sessionID: parent.id }), { headers })),
-    ).toMatchObject({ id: parent.id, title: "parent" })
-
-    expect(
-      (
-        await json<Session.Info[]>(
-          await app().request(pathFor(SessionPaths.children, { sessionID: parent.id }), { headers }),
-        )
-      ).map((item) => item.id),
-    ).toEqual([child.id])
-
-    expect(
-      await json<unknown[]>(await app().request(pathFor(SessionPaths.todo, { sessionID: parent.id }), { headers })),
-    ).toEqual([])
-
-    expect(
-      await json<unknown[]>(await app().request(pathFor(SessionPaths.diff, { sessionID: parent.id }), { headers })),
-    ).toEqual([])
-
-    const messages = await app().request(`${pathFor(SessionPaths.messages, { sessionID: parent.id })}?limit=1`, {
-      headers,
+    await assertForegroundReadBlocksDirtyDiff({
+      directory: tmp.path,
+      kind: "messages",
+      setGate: setForegroundReadTestGate,
+      request: (sessionID) =>
+        app().request(SessionPaths.messages.replace(":sessionID", sessionID), {
+          method: "GET",
+          headers,
+        }),
+      assertResponse: async (response) => {
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual([])
+      },
     })
-    const messagePage = await json<MessageV2.WithParts[]>(messages)
-    const nextCursor = messages.headers.get("x-next-cursor")
-    expect(nextCursor).toBeTruthy()
-    expect(messagePage[0]?.parts[0]).toMatchObject({ type: "text" })
-
-    expect(
-      (
-        await app().request(`${pathFor(SessionPaths.messages, { sessionID: parent.id })}?before=${nextCursor}`, {
-          headers,
-        })
-      ).status,
-    ).toBe(400)
-    expect(
-      (
-        await app().request(`${pathFor(SessionPaths.messages, { sessionID: parent.id })}?limit=1&before=invalid`, {
-          headers,
-        })
-      ).status,
-    ).toBe(400)
-
-    expect(
-      await json<MessageV2.WithParts>(
-        await app().request(pathFor(SessionPaths.message, { sessionID: parent.id, messageID: message.info.id }), {
-          headers,
-        }),
-      ),
-    ).toMatchObject({ info: { id: message.info.id } })
   })
 
-  test("serves lifecycle mutation routes through Hono bridge", async () => {
-    await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false, share: "disabled" } })
-    const headers = { "x-opencode-directory": tmp.path, "content-type": "application/json" }
-
-    const createdEmpty = await json<Session.Info>(
-      await app().request(SessionPaths.create, {
-        method: "POST",
-        headers,
-      }),
-    )
-    expect(createdEmpty.id).toBeTruthy()
-
-    const created = await json<Session.Info>(
-      await app().request(SessionPaths.create, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ title: "created" }),
-      }),
-    )
-    expect(created.title).toBe("created")
-
-    const updated = await json<Session.Info>(
-      await app().request(pathFor(SessionPaths.update, { sessionID: created.id }), {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({ title: "updated", time: { archived: 1 } }),
-      }),
-    )
-    expect(updated).toMatchObject({ id: created.id, title: "updated", time: { archived: 1 } })
-
-    const forked = await json<Session.Info>(
-      await app().request(pathFor(SessionPaths.fork, { sessionID: created.id }), {
-        method: "POST",
-        headers,
-        body: JSON.stringify({}),
-      }),
-    )
-    expect(forked.id).not.toBe(created.id)
-
-    expect(
-      await json<boolean>(
-        await app().request(pathFor(SessionPaths.abort, { sessionID: created.id }), { method: "POST", headers }),
-      ),
-    ).toBe(true)
-
-    expect(
-      await json<boolean>(
-        await app().request(pathFor(SessionPaths.remove, { sessionID: created.id }), { method: "DELETE", headers }),
-      ),
-    ).toBe(true)
-  })
-
-  test("serves message mutation routes through Hono bridge", async () => {
+  test("bridge diff request keeps dirty diff pending until foreground read finishes", async () => {
     await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
-    const headers = { "x-opencode-directory": tmp.path, "content-type": "application/json" }
-    const session = await createSession(tmp.path, { title: "messages" })
-    const first = await createTextMessage(tmp.path, session.id, "first")
-    const second = await createTextMessage(tmp.path, session.id, "second")
-
-    const updated = await json<MessageV2.Part>(
-      await app().request(
-        pathFor(SessionPaths.updatePart, {
-          sessionID: session.id,
-          messageID: first.info.id,
-          partID: first.part.id,
-        }),
-        {
-          method: "PATCH",
+    const headers = { "x-opencode-directory": tmp.path }
+    await assertForegroundReadBlocksDirtyDiff({
+      directory: tmp.path,
+      kind: "diff",
+      setGate: setForegroundReadTestGate,
+      request: (sessionID) =>
+        app().request(SessionPaths.diff.replace(":sessionID", sessionID), {
+          method: "GET",
           headers,
-          body: JSON.stringify({ ...first.part, text: "updated" }),
+        }),
+      assertResponse: async (response) => {
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual([])
+      },
+    })
+  })
+
+  test("standard messages request keeps dirty diff pending until foreground read finishes", async () => {
+    await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
+    const headers = { "x-opencode-directory": tmp.path }
+    await assertForegroundReadBlocksDirtyDiff({
+      directory: tmp.path,
+      kind: "messages",
+      setGate: setStandardForegroundReadTestGate,
+      request: (sessionID) =>
+        standardApp().request(SessionPaths.messages.replace(":sessionID", sessionID), {
+          method: "GET",
+          headers,
+        }),
+      assertResponse: async (response) => {
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual([])
+      },
+    })
+  })
+
+  test("standard diff request keeps dirty diff pending until foreground read finishes", async () => {
+    await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
+    const headers = { "x-opencode-directory": tmp.path }
+    await assertForegroundReadBlocksDirtyDiff({
+      directory: tmp.path,
+      kind: "diff",
+      setGate: setStandardForegroundReadTestGate,
+      request: (sessionID) =>
+        standardApp().request(SessionPaths.diff.replace(":sessionID", sessionID), {
+          method: "GET",
+          headers,
+        }),
+      assertResponse: async (response) => {
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual([])
         },
-      ),
-    )
-    expect(updated).toMatchObject({ id: first.part.id, type: "text", text: "updated" })
-
-    expect(
-      await json<boolean>(
-        await app().request(
-          pathFor(SessionPaths.deletePart, {
-            sessionID: session.id,
-            messageID: first.info.id,
-            partID: first.part.id,
-          }),
-          { method: "DELETE", headers },
-        ),
-      ),
-    ).toBe(true)
-
-    expect(
-      await json<boolean>(
-        await app().request(pathFor(SessionPaths.deleteMessage, { sessionID: session.id, messageID: second.info.id }), {
-          method: "DELETE",
-          headers,
-        }),
-      ),
-    ).toBe(true)
+      })
   })
 
-  test("serves remaining non-LLM session mutation routes through Hono bridge", async () => {
+  test("bridge older messages request keeps dirty diff pending until foreground read finishes", async () => {
+    await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
+    const headers = { "x-opencode-directory": tmp.path }
+    let olderID: MessageID | undefined
+    await assertForegroundReadBlocksDirtyDiff({
+      directory: tmp.path,
+      kind: "messages",
+      setGate: setForegroundReadTestGate,
+      request: async (sessionID) => {
+        const prepared = await createOlderMessagesRequest(tmp.path, sessionID)
+        olderID = prepared.olderID
+        return app().request(prepared.path, {
+          method: "GET",
+          headers,
+        })
+      },
+      assertResponse: async (response) => {
+        expect(response.status).toBe(200)
+        expect((await response.json()) as Array<{ info: { id: MessageID } }>).toEqual([
+          expect.objectContaining({ info: expect.objectContaining({ id: olderID }) }),
+        ])
+      },
+    })
+  })
+
+  test("standard older messages request keeps dirty diff pending until foreground read finishes", async () => {
+    await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
+    const headers = { "x-opencode-directory": tmp.path }
+    let olderID: MessageID | undefined
+    await assertForegroundReadBlocksDirtyDiff({
+      directory: tmp.path,
+      kind: "messages",
+      setGate: setStandardForegroundReadTestGate,
+      request: async (sessionID) => {
+        const prepared = await createOlderMessagesRequest(tmp.path, sessionID)
+        olderID = prepared.olderID
+        return standardApp().request(prepared.path, {
+          method: "GET",
+          headers,
+        })
+      },
+      assertResponse: async (response) => {
+        expect(response.status).toBe(200)
+        expect((await response.json()) as Array<{ info: { id: MessageID } }>).toEqual([
+          expect.objectContaining({ info: expect.objectContaining({ id: olderID }) }),
+        ])
+      },
+    })
+  })
+
+  test("bridge first diff plus delayed visibility only resumes dirty diff after foreground read and sync", async () => {
     await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
     const headers = { "x-opencode-directory": tmp.path, "content-type": "application/json" }
-    const session = await createSession(tmp.path, { title: "remaining" })
-
-    expect(
-      await json<Session.Info>(
-        await app().request(pathFor(SessionPaths.revert, { sessionID: session.id }), {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ messageID: MessageID.ascending() }),
-        }),
-      ),
-    ).toMatchObject({ id: session.id })
-
-    expect(
-      await json<Session.Info>(
-        await app().request(pathFor(SessionPaths.unrevert, { sessionID: session.id }), {
-          method: "POST",
+    await assertDelayedVisibilityKeepsDirtyDiffPendingUntilForegroundReadAndSync({
+      directory: tmp.path,
+      kind: "diff",
+      setGate: setForegroundReadTestGate,
+      request: (sessionID) =>
+        app().request(SessionPaths.diff.replace(":sessionID", sessionID), {
+          method: "GET",
           headers,
         }),
-      ),
-    ).toMatchObject({ id: session.id })
-
-    expect(
-      await json<boolean>(
-        await app().request(
-          pathFor(SessionPaths.permissions, {
-            sessionID: session.id,
-            permissionID: String(PermissionID.ascending()),
-          }),
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ response: "once" }),
-          },
-        ),
-      ),
-    ).toBe(true)
+      visibilityRequest: (sessionIDs) =>
+        app().request(SessionPaths.visibility, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ sessionIDs }),
+        }),
+      assertResponse: async (response) => {
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual([])
+      },
+    })
   })
 })

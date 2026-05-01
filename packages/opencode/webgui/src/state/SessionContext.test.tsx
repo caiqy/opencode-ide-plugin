@@ -80,6 +80,7 @@ vi.mock("../lib/api/events", () => {
 })
 
 import { sdk } from "../lib/api/sdkClient"
+import type { ServerEvent } from "../lib/api/events"
 import { ideBridge } from "../lib/ideBridge"
 import { resetDraftRepoForTest } from "./repo/draftRepo"
 import { resetScopedStateForTest, scopedStateGetJSON, scopedStateSetJSON } from "./scopedStorage"
@@ -114,6 +115,17 @@ function deferred<T>() {
     reject = rej
   })
   return { promise, resolve, reject }
+}
+
+function sessionDeletedEvent(id: string): Extract<ServerEvent, { type: "session.deleted" }> {
+  return {
+    type: "session.deleted",
+    properties: {
+      info: {
+        id,
+      },
+    },
+  }
 }
 
 describe("SessionContext migration", () => {
@@ -206,6 +218,45 @@ describe("SessionContext migration", () => {
     expect(sdk.session.retry).toHaveBeenCalledWith({
       path: { sessionID: "s1" },
     })
+  })
+
+  it("balances foreground session protection by session id", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    const emptySet = result.current.foregroundSessions
+
+    act(() => {
+      result.current.beginForegroundSession("s2")
+    })
+
+    const singleMemberSet = result.current.foregroundSessions
+    expect(Array.from(result.current.foregroundSessions)).toEqual(["s2"])
+    expect(singleMemberSet).not.toBe(emptySet)
+
+    act(() => {
+      result.current.beginForegroundSession("s2")
+    })
+
+    expect(result.current.foregroundSessions).toBe(singleMemberSet)
+    expect(Array.from(result.current.foregroundSessions)).toEqual(["s2"])
+
+    act(() => {
+      result.current.endForegroundSession("s2")
+    })
+
+    expect(result.current.foregroundSessions).toBe(singleMemberSet)
+    expect(Array.from(result.current.foregroundSessions)).toEqual(["s2"])
+
+    act(() => {
+      result.current.endForegroundSession("s2")
+    })
+
+    expect(result.current.foregroundSessions).not.toBe(singleMemberSet)
+    expect(Array.from(result.current.foregroundSessions)).toEqual([])
   })
 
   it("retrySession 遇到结构化 error 时应恢复 idle 并暴露错误", async () => {
@@ -1116,6 +1167,202 @@ describe("SessionContext session paging", () => {
       expect(result.current.currentSession?.title).toBe("新标题")
     })
   })
+
+  it("当前会话首次 diff 读取完成前保持 foreground session，完成后释放", async () => {
+    const diff = deferred<any>()
+    ;(sdk.session.list as any).mockResolvedValueOnce({ data: [session("s1", 1)], error: null })
+    ;(sdk.session.diff as any).mockReturnValueOnce(diff.promise)
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(1)
+    })
+
+    await act(async () => {
+      await result.current.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(result.current.currentSession?.id).toBe("s1")
+      expect(result.current.foregroundSessions.has("s1")).toBe(true)
+    })
+
+    await act(async () => {
+      diff.resolve({ data: [], error: null })
+    })
+
+    await waitFor(() => {
+      expect(result.current.foregroundSessions.has("s1")).toBe(false)
+    })
+  })
+
+  it("当前会话首次 diff 读取失败后也会释放 foreground session", async () => {
+    const diff = deferred<any>()
+    ;(sdk.session.list as any).mockResolvedValueOnce({ data: [session("s1", 1)], error: null })
+    ;(sdk.session.diff as any).mockReturnValueOnce(diff.promise)
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(1)
+    })
+
+    await act(async () => {
+      await result.current.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(result.current.currentSession?.id).toBe("s1")
+      expect(result.current.foregroundSessions.has("s1")).toBe(true)
+    })
+
+    await act(async () => {
+      diff.reject(new Error("diff failed"))
+    })
+
+    await waitFor(() => {
+      expect(result.current.foregroundSessions.has("s1")).toBe(false)
+    })
+  })
+
+  it("当前会话首次 diff 读取 cleanup 时会释放 foreground session", async () => {
+    const diff = deferred<any>()
+    let signal: AbortSignal | undefined
+    ;(sdk.session.list as any).mockResolvedValueOnce({ data: [session("s1", 1)], error: null })
+    ;(sdk.session.diff as any).mockImplementationOnce(({ signal: next }: { signal?: AbortSignal }) => {
+      signal = next
+      return diff.promise
+    })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(1)
+    })
+
+    await act(async () => {
+      await result.current.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(result.current.currentSession?.id).toBe("s1")
+      expect(result.current.foregroundSessions.has("s1")).toBe(true)
+      expect(signal).toBeInstanceOf(AbortSignal)
+      expect(signal?.aborted).toBe(false)
+    })
+
+    act(() => {
+      result.current.setCurrentSession(null)
+    })
+
+    await waitFor(() => {
+      expect(result.current.currentSession).toBeNull()
+      expect(result.current.foregroundSessions.has("s1")).toBe(false)
+      expect(signal?.aborted).toBe(true)
+    })
+  })
+
+  it("切到已是 current 的同一 session 时不会留下悬挂 foreground session", async () => {
+    ;(sdk.session.list as any).mockResolvedValueOnce({ data: [session("s1", 1)], error: null })
+    ;(sdk.session.diff as any).mockResolvedValueOnce({ data: [], error: null })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(1)
+    })
+
+    await act(async () => {
+      await result.current.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(result.current.currentSession?.id).toBe("s1")
+      expect(result.current.foregroundSessions.has("s1")).toBe(false)
+    })
+
+    await act(async () => {
+      await result.current.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(result.current.currentSession?.id).toBe("s1")
+      expect(result.current.foregroundSessions.has("s1")).toBe(false)
+    })
+
+    expect(sdk.session.diff).toHaveBeenCalledTimes(1)
+  })
+
+  it("连续切换两个需回源 session 时，旧响应晚到不会覆盖 currentSession 或释放新 foreground", async () => {
+    const firstGet = deferred<any>()
+    const secondGet = deferred<any>()
+    const secondDiff = deferred<any>()
+
+    ;(sdk.session.list as any).mockResolvedValueOnce({ data: [], error: null })
+    ;(sdk.session.get as any)
+      .mockReturnValueOnce(firstGet.promise)
+      .mockReturnValueOnce(secondGet.promise)
+    ;(sdk.session.diff as any).mockImplementation(({ path }: { path: { id: string } }) => {
+      if (path.id === "s2") {
+        return secondDiff.promise
+      }
+      return Promise.resolve({ data: [], error: null })
+    })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    let firstSwitch!: Promise<void>
+    let secondSwitch!: Promise<void>
+    act(() => {
+      firstSwitch = result.current.switchSession("s1")
+      secondSwitch = result.current.switchSession("s2")
+    })
+
+    await waitFor(() => {
+      expect(result.current.foregroundSessions.has("s1")).toBe(false)
+      expect(result.current.foregroundSessions.has("s2")).toBe(true)
+    })
+
+    await act(async () => {
+      secondGet.resolve({ data: session("s2", 2), error: null })
+      await secondSwitch
+    })
+
+    await waitFor(() => {
+      expect(result.current.currentSession?.id).toBe("s2")
+      expect(result.current.foregroundSessions.has("s2")).toBe(true)
+    })
+
+    await act(async () => {
+      firstGet.resolve({ data: session("s1", 1), error: null })
+      await firstSwitch
+    })
+
+    await waitFor(() => {
+      expect(result.current.currentSession?.id).toBe("s2")
+      expect(result.current.foregroundSessions.has("s1")).toBe(false)
+      expect(result.current.foregroundSessions.has("s2")).toBe(true)
+    })
+
+    expect(sdk.session.diff).toHaveBeenCalledTimes(1)
+    expect(sdk.session.diff).toHaveBeenCalledWith({
+      path: { id: "s2" },
+      signal: expect.any(AbortSignal),
+    })
+
+    await act(async () => {
+      secondDiff.resolve({ data: [], error: null })
+    })
+
+    await waitFor(() => {
+      expect(result.current.foregroundSessions.has("s2")).toBe(false)
+    })
+  })
 })
 
 describe("SessionContext session.deleted scoped draft cleanup", () => {
@@ -1147,14 +1394,7 @@ describe("SessionContext session.deleted scoped draft cleanup", () => {
     })
 
     act(() => {
-      events.emit("session.deleted", {
-        type: "session.deleted",
-        properties: {
-          info: {
-            id: "s-drop",
-          },
-        },
-      })
+      events.emit("session.deleted", sessionDeletedEvent("s-drop"))
     })
 
     await waitFor(async () => {
@@ -1181,22 +1421,8 @@ describe("SessionContext session.deleted scoped draft cleanup", () => {
     })
 
     act(() => {
-      events.emit("session.deleted", {
-        type: "session.deleted",
-        properties: {
-          info: {
-            id: "s-a",
-          },
-        },
-      })
-      events.emit("session.deleted", {
-        type: "session.deleted",
-        properties: {
-          info: {
-            id: "s-b",
-          },
-        },
-      })
+      events.emit("session.deleted", sessionDeletedEvent("s-a"))
+      events.emit("session.deleted", sessionDeletedEvent("s-b"))
     })
 
     await waitFor(async () => {
@@ -1222,14 +1448,7 @@ describe("SessionContext session.deleted scoped draft cleanup", () => {
     })
 
     act(() => {
-      events.emit("session.deleted", {
-        type: "session.deleted",
-        properties: {
-          info: {
-            id: "s-drop",
-          },
-        },
-      })
+      events.emit("session.deleted", sessionDeletedEvent("s-drop"))
     })
 
     await waitFor(async () => {
@@ -1238,6 +1457,195 @@ describe("SessionContext session.deleted scoped draft cleanup", () => {
 
       expect(drafts).toEqual({ "s-active": "active" })
       expect(draftSession).toBe("s-active")
+    })
+  })
+
+  it("ignores legacy session.deleted payload with properties.sessionID", async () => {
+    await scopedStateSetJSON("workspace", draftsKey, {
+      "s-keep": "keep me",
+      "s-drop": "drop me",
+    })
+    await scopedStateSetJSON("workspace", draftSessionKey, "s-drop")
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    act(() => {
+      events.emit("session.deleted", {
+        type: "session.deleted",
+        properties: {
+          sessionID: "s-drop",
+        },
+      })
+    })
+
+    await waitFor(async () => {
+      const drafts = await scopedStateGetJSON<Record<string, string>>("workspace", draftsKey, {})
+      const draftSession = await scopedStateGetJSON<string | null>("workspace", draftSessionKey, null)
+
+      expect(drafts).toEqual({
+        "s-keep": "keep me",
+        "s-drop": "drop me",
+      })
+      expect(draftSession).toBe("s-drop")
+    })
+  })
+
+  it("consumes session.diff.status and marks diff latest after session.diff", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    act(() => {
+      events.emit("session.diff.status", {
+        type: "session.diff.status",
+        properties: {
+          sessionID: "s-1",
+          status: "running",
+          message: "Summary refresh in progress",
+        },
+      })
+    })
+
+    await waitFor(() => {
+      expect("sessionDiffStatus" in result.current).toBe(true)
+      expect((result.current as any).sessionDiffStatus).toEqual({
+        "s-1": {
+          type: "updating",
+          message: "Summary refresh in progress",
+        },
+      })
+    })
+
+    act(() => {
+      events.emit("session.diff", {
+        type: "session.diff",
+        properties: {
+          sessionID: "s-1",
+          diff: [],
+        },
+      })
+    })
+
+    await waitFor(() => {
+      expect((result.current as any).sessionDiffStatus).toEqual({
+        "s-1": {
+          type: "latest",
+          message: "已是最新结果",
+        },
+      })
+    })
+  })
+
+  it("maps session.diff.status idle to latest", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    act(() => {
+      events.emit("session.diff.status", {
+        type: "session.diff.status",
+        properties: {
+          sessionID: "s-idle",
+          status: "idle",
+          message: "Summary refresh complete",
+        },
+      })
+    })
+
+    await waitFor(() => {
+      expect((result.current as any).sessionDiffStatus).toEqual({
+        "s-idle": {
+          type: "latest",
+          message: "已是最新结果",
+        },
+      })
+    })
+  })
+
+  it("clears diff status on session.diff.status deleted", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    act(() => {
+      events.emit("session.diff.status", {
+        type: "session.diff.status",
+        properties: {
+          sessionID: "s-drop",
+          status: "failed",
+          message: "Summary refresh failed",
+        },
+      })
+    })
+
+    await waitFor(() => {
+      expect((result.current as any).sessionDiffStatus).toEqual({
+        "s-drop": {
+          type: "failed",
+          message: "Summary refresh failed",
+        },
+      })
+    })
+
+    act(() => {
+      events.emit("session.diff.status", {
+        type: "session.diff.status",
+        properties: {
+          sessionID: "s-drop",
+          status: "deleted",
+          message: "Summary refresh discarded",
+        },
+      })
+    })
+
+    await waitFor(() => {
+      expect((result.current as any).sessionDiffStatus).toEqual({})
+    })
+  })
+
+  it("clears diff status when session.deleted arrives", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    act(() => {
+      events.emit("session.diff.status", {
+        type: "session.diff.status",
+        properties: {
+          sessionID: "s-drop",
+          status: "failed",
+          message: "Summary refresh failed",
+        },
+      })
+    })
+
+    await waitFor(() => {
+      expect((result.current as any).sessionDiffStatus).toEqual({
+        "s-drop": {
+          type: "failed",
+          message: "Summary refresh failed",
+        },
+      })
+    })
+
+    act(() => {
+      events.emit("session.deleted", sessionDeletedEvent("s-drop"))
+    })
+
+    await waitFor(() => {
+      expect((result.current as any).sessionDiffStatus).toEqual({})
     })
   })
 })

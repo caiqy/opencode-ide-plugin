@@ -1,7 +1,9 @@
 import { NodeFileSystem } from "@effect/platform-node"
 import { FetchHttpClient } from "effect/unstable/http"
+import { ChildProcessSpawner } from "effect/unstable/process"
 import { expect } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Layer } from "effect"
+import * as Stream from "effect/Stream"
 import path from "path"
 import { fileURLToPath, pathToFileURL } from "url"
 import { NamedError } from "@opencode-ai/core/util/error"
@@ -23,13 +25,14 @@ import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { SessionCompaction } from "../../src/session/compaction"
-import { SessionSummary } from "../../src/session/summary"
 import { Instruction } from "../../src/session/instruction"
 import { SessionProcessor } from "../../src/session/processor"
 import { SessionPrompt } from "../../src/session/prompt"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
+import { SessionSummary } from "../../src/session/summary"
+import { SessionSummaryScheduler } from "../../src/session/summary-scheduler"
 import { SessionStatus } from "../../src/session/status"
 import { Skill } from "../../src/skill"
 import { SystemPrompt } from "../../src/session/system"
@@ -47,14 +50,62 @@ import { reply, TestLLMServer } from "../lib/llm-server"
 
 void Log.init({ print: false })
 
+const summarySchedulerStub = {
+  markDirty: (_input: { sessionID: SessionID; messageID: MessageID; version: number }) => Effect.void,
+  foregroundStart: (_sessionID: SessionID) => Effect.void,
+  foregroundFinish: (_sessionID: SessionID) => Effect.void,
+  syncVisible: (_sessionIDs: readonly SessionID[]) => Effect.void,
+  deleteSession: (_sessionID: SessionID) => Effect.void,
+  flush: () => Effect.void,
+}
+
+const summaryScheduler = Layer.succeed(
+  SessionSummaryScheduler.Service,
+  SessionSummaryScheduler.Service.of({
+    markDirty: (input) => summarySchedulerStub.markDirty(input),
+    foregroundStart: (sessionID) => summarySchedulerStub.foregroundStart(sessionID),
+    foregroundFinish: (sessionID) => summarySchedulerStub.foregroundFinish(sessionID),
+    syncVisible: (sessionIDs) => summarySchedulerStub.syncVisible(sessionIDs),
+    deleteSession: (sessionID) => summarySchedulerStub.deleteSession(sessionID),
+    flush: () => summarySchedulerStub.flush(),
+  }),
+)
+
+const summaryStub = {
+  summarize: (_input: { sessionID: SessionID; messageID: MessageID }) => Effect.void,
+  diff: () => Effect.succeed([]),
+  computeDiff: () => Effect.succeed([]),
+}
+
 const summary = Layer.succeed(
   SessionSummary.Service,
   SessionSummary.Service.of({
-    summarize: () => Effect.void,
-    diff: () => Effect.succeed([]),
-    computeDiff: () => Effect.succeed([]),
+    summarize: (input) => summaryStub.summarize(input),
+    diff: () => summaryStub.diff(),
+    computeDiff: () => summaryStub.computeDiff(),
   }),
 )
+
+function mockSpawner() {
+  const spawner = ChildProcessSpawner.make(() =>
+    Effect.succeed(
+      ChildProcessSpawner.makeHandle({
+        pid: ChildProcessSpawner.ProcessId(0),
+        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+        isRunning: Effect.succeed(false),
+        kill: () => Effect.void,
+        stdin: { [Symbol.for("effect/Sink/TypeId")]: Symbol.for("effect/Sink/TypeId") } as any,
+        stdout: Stream.empty,
+        stderr: Stream.empty,
+        all: Stream.empty,
+        getInputFd: () => ({ [Symbol.for("effect/Sink/TypeId")]: Symbol.for("effect/Sink/TypeId") }) as any,
+        getOutputFd: () => Stream.empty,
+        unref: Effect.succeed(Effect.void),
+      }),
+    ),
+  )
+  return Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)
+}
 
 const ref = {
   providerID: ProviderID.make("test"),
@@ -67,6 +118,50 @@ function defer<T>() {
     resolve = done
   })
   return { promise, resolve }
+}
+
+function withSummaryScheduler<A, E, R>(
+  overrides: Partial<typeof summarySchedulerStub>,
+  fx: Effect.Effect<A, E, R>,
+) {
+  return Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const prev = { ...summarySchedulerStub }
+      Object.assign(summarySchedulerStub, overrides)
+      return prev
+    }),
+    () => fx,
+    (prev) =>
+      Effect.sync(() => {
+        Object.assign(summarySchedulerStub, prev)
+      }),
+  )
+}
+
+function withSummary<A, E, R>(overrides: Partial<typeof summaryStub>, fx: Effect.Effect<A, E, R>) {
+  return Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const prev = { ...summaryStub }
+      Object.assign(summaryStub, overrides)
+      return prev
+    }),
+    () => fx,
+    (prev) =>
+      Effect.sync(() => {
+        Object.assign(summaryStub, prev)
+      }),
+  )
+}
+
+async function waitForMarkDirtyCallCount(
+  calls: Array<{ sessionID: SessionID; messageID: MessageID; version: number }>,
+  count: number,
+) {
+  for (let i = 0; i < 100; i++) {
+    if (calls.length >= count) return
+    await Bun.sleep(25)
+  }
+  throw new Error(`Timed out waiting for ${count} dirty marks`)
 }
 
 function withSh<A, E, R>(fx: () => Effect.Effect<A, E, R>) {
@@ -155,7 +250,7 @@ const lsp = Layer.succeed(
 const status = SessionStatus.layer.pipe(Layer.provideMerge(Bus.layer))
 const run = SessionRunState.layer.pipe(Layer.provide(status))
 const infra = Layer.mergeAll(NodeFileSystem.layer, CrossSpawnSpawner.defaultLayer)
-function makeHttp() {
+function makeHttp(input?: { processorTransform?: (base: Layer.Layer<SessionProcessor.Service>) => Layer.Layer<SessionProcessor.Service> }) {
   const deps = Layer.mergeAll(
     Session.defaultLayer,
     Snapshot.defaultLayer,
@@ -185,12 +280,14 @@ function makeHttp() {
     Layer.provideMerge(deps),
   )
   const trunc = Truncate.layer.pipe(Layer.provideMerge(deps))
-  const proc = SessionProcessor.layer.pipe(Layer.provide(summary), Layer.provideMerge(deps))
+  const procBase = SessionProcessor.layer.pipe(Layer.provide(summaryScheduler), Layer.provide(summary), Layer.provideMerge(deps))
+  const proc = input?.processorTransform ? input.processorTransform(procBase) : procBase
   const compact = SessionCompaction.layer.pipe(Layer.provideMerge(proc), Layer.provideMerge(deps))
   return Layer.mergeAll(
     TestLLMServer.layer,
     SessionPrompt.layer.pipe(
       Layer.provide(SessionRevert.defaultLayer),
+      Layer.provide(summaryScheduler),
       Layer.provide(summary),
       Layer.provideMerge(run),
       Layer.provideMerge(compact),
@@ -201,10 +298,47 @@ function makeHttp() {
       Layer.provide(SystemPrompt.defaultLayer),
       Layer.provideMerge(deps),
     ),
-  ).pipe(Layer.provide(summary))
+  ).pipe(Layer.provide(summaryScheduler), Layer.provide(summary))
 }
 
 const it = testEffect(makeHttp())
+const processPhase = { current: "outside" as "outside" | "inside-process" }
+const promptPhaseIt = testEffect(
+  makeHttp({
+    processorTransform: (base) =>
+      Layer.effect(
+        SessionProcessor.Service,
+        Effect.gen(function* () {
+          const real = yield* SessionProcessor.Service
+          return SessionProcessor.Service.of({
+            create: (input) =>
+              Effect.gen(function* () {
+                const handle = yield* real.create(input)
+                return {
+                  get message() {
+                    return handle.message
+                  },
+                  updateToolCall: handle.updateToolCall,
+                  completeToolCall: handle.completeToolCall,
+                  process: (streamInput) =>
+                    Effect.acquireUseRelease(
+                      Effect.sync(() => {
+                        processPhase.current = "inside-process"
+                      }),
+                      () => handle.process(streamInput),
+                      () =>
+                        Effect.sync(() => {
+                          processPhase.current = "outside"
+                        }),
+                    ),
+                }
+              }),
+          })
+        }),
+      ).pipe(Layer.provide(base)),
+  }),
+)
+const promptDefaultIt = testEffect(Layer.mergeAll(SessionPrompt.defaultLayer, mockSpawner()))
 const unix = process.platform !== "win32" ? it.live : it.live.skip
 
 // Config that registers a custom "test" provider with a "test-model" model
@@ -370,6 +504,147 @@ it.live("loop calls LLM and returns assistant message", () =>
       expect(parts.some((p) => p.type === "text" && p.text === "world")).toBe(true)
       expect(yield* llm.hits).toHaveLength(1)
     }),
+    { git: true, config: providerCfg },
+  ),
+)
+
+promptPhaseIt.live("marking dirty stays separate for prompt and processor without direct summarize", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        processPhase.current = "outside"
+        const summarizeCalls: Array<{ sessionID: SessionID; messageID: MessageID }> = []
+        const calls: Array<{
+          source: "prompt" | "processor"
+          sessionID: SessionID
+          messageID: MessageID
+          version: number
+        }> = []
+        const chat = yield* sessions.create({
+          title: "Summary always enabled",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+
+        yield* llm.text("world")
+
+        yield* withSummary(
+          {
+            summarize: (input) =>
+              Effect.sync(() => {
+                summarizeCalls.push(input)
+              }),
+          },
+          withSummaryScheduler(
+            {
+              markDirty: (input) =>
+                Effect.sync(() => {
+                  calls.push({
+                    source: processPhase.current === "inside-process" ? "processor" : "prompt",
+                    ...input,
+                  })
+                }),
+            },
+            Effect.gen(function* () {
+              const userMessage = yield* prompt.prompt({
+                sessionID: chat.id,
+                agent: "build",
+                noReply: true,
+                parts: [{ type: "text", text: "hello" }],
+              })
+
+              const result = yield* prompt.loop({ sessionID: chat.id })
+              expect(result.info.role).toBe("assistant")
+              yield* Effect.promise(() => waitForMarkDirtyCallCount(calls, 2))
+              expect(calls).toEqual([
+                expect.objectContaining({
+                  source: "prompt",
+                  sessionID: chat.id,
+                  messageID: userMessage.info.id,
+                  version: expect.any(Number),
+                }),
+                expect.objectContaining({
+                  source: "processor",
+                  sessionID: chat.id,
+                  messageID: userMessage.info.id,
+                  version: expect.any(Number),
+                }),
+              ])
+              expect(summarizeCalls).toEqual([])
+            }),
+          ),
+        )
+      }),
+    { git: true, config: providerCfg },
+  ),
+)
+
+promptDefaultIt.live("defaultLayer provides summary scheduler", () =>
+  provideTmpdirInstance(() =>
+    Effect.gen(function* () {
+      const prompt = yield* SessionPrompt.Service
+      expect(prompt).toBeDefined()
+    }),
+  ),
+)
+
+it.live("foreground finish runs when prompt is cancelled mid-stream", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const started: SessionID[] = []
+        const finished: SessionID[] = []
+        const summarizeCalls: Array<{ sessionID: SessionID; messageID: MessageID }> = []
+        const session = yield* sessions.create({ title: "Prompt cancel foreground" })
+
+        yield* llm.hang
+
+        yield* withSummary(
+          {
+            summarize: (input) =>
+              Effect.sync(() => {
+                summarizeCalls.push(input)
+              }),
+          },
+          withSummaryScheduler(
+            {
+              foregroundStart: (sessionID) =>
+                Effect.sync(() => {
+                  started.push(sessionID)
+                }),
+              foregroundFinish: (sessionID) =>
+                Effect.sync(() => {
+                  finished.push(sessionID)
+                }),
+            },
+            Effect.gen(function* () {
+              const fiber = yield* prompt
+                .prompt({
+                  sessionID: session.id,
+                  agent: "build",
+                  parts: [{ type: "text", text: "Cancel me" }],
+                })
+                .pipe(Effect.forkChild)
+
+              yield* llm.wait(1)
+              yield* prompt.cancel(session.id)
+
+              const exit = yield* Fiber.await(fiber)
+              expect(Exit.isSuccess(exit)).toBe(true)
+              if (Exit.isSuccess(exit) && exit.value.info.role === "assistant") {
+                expect(exit.value.info.error?.name).toBe("MessageAbortedError")
+              }
+            }),
+          ),
+        )
+
+        expect(started).toEqual([session.id])
+        expect(finished).toEqual([session.id])
+        expect(summarizeCalls).toEqual([])
+      }),
     { git: true, config: providerCfg },
   ),
 )

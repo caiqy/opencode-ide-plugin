@@ -14,6 +14,8 @@
 import { expect } from "bun:test"
 import { Effect, Layer } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
+import type * as PlatformError from "effect/PlatformError"
+import type * as Scope from "effect/Scope"
 import fs from "fs/promises"
 import path from "path"
 import { Session } from "../../src/session"
@@ -21,6 +23,7 @@ import { LLM } from "../../src/session/llm"
 import { SessionPrompt } from "../../src/session/prompt"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionSummary } from "../../src/session/summary"
+import { SessionSummaryScheduler } from "../../src/session/summary-scheduler"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Log } from "../../src/util"
 import { provideTmpdirServer } from "../fixture/fixture"
@@ -138,14 +141,16 @@ function makeHttp() {
     Layer.provideMerge(deps),
   )
   const trunc = Truncate.layer.pipe(Layer.provideMerge(deps))
-  const proc = SessionProcessor.layer.pipe(Layer.provide(SessionSummary.defaultLayer), Layer.provideMerge(deps))
+  const summary = SessionSummary.defaultLayer
+  const summaryScheduler = SessionSummaryScheduler.defaultLayer
+  const proc = SessionProcessor.layer.pipe(Layer.provide(summaryScheduler), Layer.provide(summary), Layer.provideMerge(deps))
   const compact = SessionCompaction.layer.pipe(Layer.provideMerge(proc), Layer.provideMerge(deps))
   return Layer.mergeAll(
     TestLLMServer.layer,
-    SessionSummary.defaultLayer,
     SessionPrompt.layer.pipe(
       Layer.provide(SessionRevert.defaultLayer),
-      Layer.provide(SessionSummary.defaultLayer),
+      Layer.provide(summaryScheduler),
+      Layer.provide(summary),
       Layer.provideMerge(run),
       Layer.provideMerge(compact),
       Layer.provideMerge(proc),
@@ -155,8 +160,10 @@ function makeHttp() {
       Layer.provide(SystemPrompt.defaultLayer),
       Layer.provideMerge(deps),
     ),
-  )
+  ).pipe(Layer.provide(summaryScheduler), Layer.provide(summary))
 }
+
+type HttpEnv = ReturnType<typeof makeHttp> extends Layer.Layer<infer R, infer _E, infer _RIn> ? R : never
 
 const it = testEffect(makeHttp())
 
@@ -189,9 +196,10 @@ const providerCfg = (url: string) => ({
   },
 })
 
-it.live("tool execution produces non-empty session diff (snapshot race)", () =>
+const runSnapshotRace = (): Effect.Effect<void, PlatformError.PlatformError, HttpEnv | Scope.Scope> =>
   provideTmpdirServer(
-    Effect.fnUntraced(function* ({ dir, llm }) {
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
       const prompt = yield* SessionPrompt.Service
       const sessions = yield* Session.Service
       const summary = yield* SessionSummary.Service
@@ -246,7 +254,8 @@ it.live("tool execution produces non-empty session diff (snapshot race)", () =>
         yield* Effect.sleep("100 millis")
       }
       expect(diff.length).toBeGreaterThan(0)
-    }),
+      }),
     { git: true, config: providerCfg },
-  ),
-)
+  ) as Effect.Effect<void, PlatformError.PlatformError, HttpEnv | Scope.Scope>
+
+it.live("tool execution produces non-empty session diff (snapshot race)", runSnapshotRace)

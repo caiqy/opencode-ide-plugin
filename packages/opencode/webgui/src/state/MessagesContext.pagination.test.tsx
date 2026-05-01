@@ -91,6 +91,16 @@ function page(data: unknown[], cursor?: string | null) {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe("MessagesContext pagination", () => {
   beforeEach(() => {
     ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mockReset()
@@ -465,6 +475,182 @@ describe("MessagesContext pagination", () => {
     expect(rows[0]?.parts[0]).toMatchObject({ id: "p-live", type: "reasoning", text: "live" })
     expect(mocks.setReasoning).toHaveBeenCalledWith("s3z", true)
     expect(mocks.setSessionIdle).toHaveBeenCalledWith("s3z", false)
+  })
+
+  it("loadLatest abort 后不会误标为已加载或错误状态", async () => {
+    const req = deferred<ReturnType<typeof page>>()
+    let signal: AbortSignal | undefined
+    ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      ({ signal: next }: { signal?: AbortSignal }) => {
+        signal = next
+        return req.promise
+      },
+    )
+
+    render(
+      <MessagesProvider>
+        <Capture />
+      </MessagesProvider>,
+    )
+
+    const controller = new AbortController()
+    let run: Promise<unknown> = Promise.resolve()
+    await act(async () => {
+      run = (api as any).loadLatest("s-abort-latest", controller.signal)
+    })
+
+    expect(signal).toBe(controller.signal)
+    expect((api as any).getSessionPagination("s-abort-latest")).toMatchObject({
+      ready: false,
+      latestLoading: true,
+      olderLoading: false,
+      olderError: false,
+      complete: false,
+    })
+
+    await act(async () => {
+      controller.abort()
+      req.reject(new Error("aborted"))
+      await run
+    })
+
+    expect(controller.signal.aborted).toBe(true)
+    expect(api?.getMessagesBySession("s-abort-latest")).toEqual([])
+    expect((api as any).getSessionPagination("s-abort-latest")).toMatchObject({
+      ready: false,
+      latestLoading: false,
+      olderLoading: false,
+      olderError: false,
+      complete: false,
+    })
+    expect(api?.isSessionLoaded("s-abort-latest")).toBe(false)
+    expect(api?.isSessionLoadError("s-abort-latest")).toBe(false)
+  })
+
+  it("loadLatest abort 后即使 SDK resolve 为 error 也不会误标真实错误", async () => {
+    const req = deferred<{ error: Error; data: null; response: { headers: Headers } }>()
+    let signal: AbortSignal | undefined
+    ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      ({ signal: next }: { signal?: AbortSignal }) => {
+        signal = next
+        return req.promise
+      },
+    )
+
+    render(
+      <MessagesProvider>
+        <Capture />
+      </MessagesProvider>,
+    )
+
+    const controller = new AbortController()
+    let run: Promise<unknown> = Promise.resolve()
+    await act(async () => {
+      run = (api as any).loadLatest("s-abort-latest-error", controller.signal)
+    })
+
+    expect(signal).toBe(controller.signal)
+
+    await act(async () => {
+      controller.abort()
+      req.resolve({ error: new Error("aborted"), data: null, response: { headers: new Headers() } })
+      await run
+    })
+
+    expect(controller.signal.aborted).toBe(true)
+    expect(api?.getMessagesBySession("s-abort-latest-error")).toEqual([])
+    expect((api as any).getSessionPagination("s-abort-latest-error")).toMatchObject({
+      ready: false,
+      latestLoading: false,
+      olderLoading: false,
+      olderError: false,
+      complete: false,
+    })
+    expect(api?.isSessionLoaded("s-abort-latest-error")).toBe(false)
+    expect(api?.isSessionLoadError("s-abort-latest-error")).toBe(false)
+  })
+
+  it("loadOlder abort 后保留现有消息且不误标错误", async () => {
+    const req = deferred<ReturnType<typeof page>>()
+    let signal: AbortSignal | undefined
+    ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(page([msg("m3", "s-abort-older", 3), msg("m4", "s-abort-older", 4)], "c-old"))
+      .mockImplementationOnce(({ signal: next }: { signal?: AbortSignal }) => {
+        signal = next
+        return req.promise
+      })
+
+    render(
+      <MessagesProvider>
+        <Capture />
+      </MessagesProvider>,
+    )
+
+    await act(async () => {
+      await (api as any).loadLatest("s-abort-older")
+    })
+
+    const controller = new AbortController()
+    let run: Promise<unknown> = Promise.resolve()
+    await act(async () => {
+      run = (api as any).loadOlder("s-abort-older", controller.signal)
+    })
+
+    expect(signal).toBe(controller.signal)
+    expect((api as any).getSessionPagination("s-abort-older")).toMatchObject({
+      ready: true,
+      olderLoading: true,
+      olderError: false,
+      complete: false,
+    })
+
+    await act(async () => {
+      controller.abort()
+      req.reject(new Error("aborted"))
+      await run
+    })
+
+    expect(controller.signal.aborted).toBe(true)
+    expect(api?.getMessagesBySession("s-abort-older").map((row) => row.info.id)).toEqual(["m3", "m4"])
+    expect((api as any).getSessionPagination("s-abort-older")).toMatchObject({
+      ready: true,
+      olderLoading: false,
+      olderError: false,
+      complete: false,
+    })
+  })
+
+  it("scanOlder abort 时直接返回 null", async () => {
+    const req = deferred<ReturnType<typeof page>>()
+    let signal: AbortSignal | undefined
+    ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      ({ signal: next }: { signal?: AbortSignal }) => {
+        signal = next
+        return req.promise
+      },
+    )
+
+    render(
+      <MessagesProvider>
+        <Capture />
+      </MessagesProvider>,
+    )
+
+    const controller = new AbortController()
+    let result: unknown
+    const run = (async () => {
+      result = await (api as any).scanOlder("s-scan", "c1", controller.signal)
+    })()
+
+    await act(async () => {
+      controller.abort()
+      req.reject(new Error("aborted"))
+      await run
+    })
+
+    expect(signal).toBe(controller.signal)
+    expect(controller.signal.aborted).toBe(true)
+    expect(result).toBeNull()
   })
 
   it("公开分页 getter 在状态切换时保持同一口径", async () => {

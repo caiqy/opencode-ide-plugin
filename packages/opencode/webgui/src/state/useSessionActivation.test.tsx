@@ -15,6 +15,7 @@ vi.mock("../lib/api/sdkClient", () => {
         diff: vi.fn(),
         messages: vi.fn(),
         retry: vi.fn(),
+        syncVisible: vi.fn(),
       },
       permissions: {
         respond: vi.fn(),
@@ -26,6 +27,18 @@ vi.mock("../lib/api/sdkClient", () => {
     },
   }
 })
+
+const tabStore = vi.hoisted(() => ({
+  state: {
+    openTabs: [] as string[],
+  },
+}))
+
+vi.mock("./tabStore", () => ({
+  useTabStore: () => ({
+    openTabs: tabStore.state.openTabs,
+  }),
+}))
 
 vi.mock("../lib/ideBridge", () => {
   return {
@@ -42,6 +55,7 @@ import { MessagesProvider } from "./MessagesContext"
 import { useMessages } from "./MessagesContext"
 import { SessionProvider, useSession } from "./SessionContext"
 import { useSessionActivation } from "./useSessionActivation"
+import { useSessionVisibilitySync } from "../hooks/useSessionVisibilitySync"
 
 let sessionApi: ReturnType<typeof useSession> | null = null
 let messagesApi: ReturnType<typeof useMessages> | null = null
@@ -55,6 +69,15 @@ function Capture() {
 
 function ActivationHarness() {
   activate = useSessionActivation()
+  return null
+}
+
+function ActivationToggle(props: { enabled: boolean }) {
+  return props.enabled ? <ActivationHarness /> : null
+}
+
+function VisibilityHarness() {
+  useSessionVisibilitySync()
   return null
 }
 
@@ -81,6 +104,7 @@ describe("useSessionActivation", () => {
     messagesApi = null
     localStorage.clear()
     vi.resetAllMocks()
+    tabStore.state.openTabs = []
     ;(ideBridge.isInstalled as any).mockReturnValue(false)
     ;(ideBridge.request as any).mockResolvedValue({ ok: true, result: {} })
     ;(sdk.session.list as any).mockResolvedValue({
@@ -139,6 +163,7 @@ describe("useSessionActivation", () => {
         },
       ],
     })
+    ;(sdk.session.syncVisible as any).mockResolvedValue({ data: { sessionIDs: [] }, error: null })
   })
 
   it("switchSession 后恢复最后一条 user 选择，手动切换 model 不会重复触发加载", async () => {
@@ -280,10 +305,15 @@ describe("useSessionActivation", () => {
     })
 
     await waitFor(() => {
-      expect(sdk.session.messages).toHaveBeenNthCalledWith(1, { path: { id: "s1" }, query: { limit: 50 } })
+      expect(sdk.session.messages).toHaveBeenNthCalledWith(1, {
+        path: { id: "s1" },
+        query: { limit: 50 },
+        signal: expect.any(AbortSignal),
+      })
       expect(sdk.session.messages).toHaveBeenNthCalledWith(2, {
         path: { id: "s1" },
         query: { before: "c1", limit: 50 },
+        signal: expect.any(AbortSignal),
       })
     })
 
@@ -396,9 +426,21 @@ describe("useSessionActivation", () => {
       await activate!("s1")
     })
 
-    expect(sdk.session.messages).toHaveBeenNthCalledWith(1, { path: { id: "s1" }, query: { limit: 50 } })
-    expect(sdk.session.messages).toHaveBeenNthCalledWith(2, { path: { id: "s1" }, query: { before: "c1", limit: 50 } })
-    expect(sdk.session.messages).toHaveBeenNthCalledWith(3, { path: { id: "s1" }, query: { before: "c2", limit: 50 } })
+    expect(sdk.session.messages).toHaveBeenNthCalledWith(1, {
+      path: { id: "s1" },
+      query: { limit: 50 },
+      signal: expect.any(AbortSignal),
+    })
+    expect(sdk.session.messages).toHaveBeenNthCalledWith(2, {
+      path: { id: "s1" },
+      query: { before: "c1", limit: 50 },
+      signal: expect.any(AbortSignal),
+    })
+    expect(sdk.session.messages).toHaveBeenNthCalledWith(3, {
+      path: { id: "s1" },
+      query: { before: "c2", limit: 50 },
+      signal: expect.any(AbortSignal),
+    })
 
     expect(sessionApi!.selectedAgent).toBe("plan")
     expect(sessionApi!.selectedProviderId).toBe("anthropic")
@@ -484,10 +526,15 @@ describe("useSessionActivation", () => {
     })
 
     await waitFor(() => {
-      expect(sdk.session.messages).toHaveBeenNthCalledWith(1, { path: { id: "s1" }, query: { limit: 50 } })
+      expect(sdk.session.messages).toHaveBeenNthCalledWith(1, {
+        path: { id: "s1" },
+        query: { limit: 50 },
+        signal: expect.any(AbortSignal),
+      })
       expect(sdk.session.messages).toHaveBeenNthCalledWith(2, {
         path: { id: "s1" },
         query: { before: "c1", limit: 50 },
+        signal: expect.any(AbortSignal),
       })
       expect(sessionApi!.selectedAgent).toBe("plan")
       expect(sessionApi!.selectedProviderId).toBe("openai")
@@ -660,7 +707,11 @@ describe("useSessionActivation", () => {
     })
 
     await waitFor(() => {
-      expect(sdk.session.messages).toHaveBeenCalledWith({ path: { id: "s1" }, query: { limit: 50 } })
+      expect(sdk.session.messages).toHaveBeenCalledWith({
+        path: { id: "s1" },
+        query: { limit: 50 },
+        signal: expect.any(AbortSignal),
+      })
     })
 
     await act(async () => {
@@ -668,7 +719,11 @@ describe("useSessionActivation", () => {
     })
 
     await waitFor(() => {
-      expect(sdk.session.messages).toHaveBeenCalledWith({ path: { id: "s2" }, query: { limit: 50 } })
+      expect(sdk.session.messages).toHaveBeenCalledWith({
+        path: { id: "s2" },
+        query: { limit: 50 },
+        signal: expect.any(AbortSignal),
+      })
     })
 
     await act(async () => {
@@ -922,6 +977,274 @@ describe("useSessionActivation", () => {
       expect(sessionApi!.currentSession?.id).toBe("s1")
       expect(sessionApi!.selectionSessionId).toBe("s1")
       expect(sessionApi!.selectionRestoreNotice).toContain("未能恢复")
+    })
+  })
+
+  it("selection 恢复失败后也会结束 foreground session", async () => {
+    const load = deferred<any>()
+    ;(sdk.session.messages as any).mockReturnValue(load.promise)
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.foregroundSessions.has("s1")).toBe(true)
+    })
+
+    await act(async () => {
+      load.resolve({ error: { message: "load failed" }, data: null })
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.foregroundSessions.has("s1")).toBe(false)
+      expect(sessionApi!.selectionRestoreNotice).toContain("未能恢复")
+    })
+  })
+
+  it("switchSession 后在 activation 完成前不会把当前 session 立即上报为 visible", async () => {
+    const load = deferred<any>()
+    ;(sdk.session.messages as any).mockReturnValue(load.promise)
+    ;(sdk.session.syncVisible as any)
+      .mockResolvedValueOnce({ data: { sessionIDs: [] }, error: null })
+      .mockResolvedValueOnce({ data: { sessionIDs: ["s1"] }, error: null })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <VisibilityHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+      expect(sdk.session.syncVisible).toHaveBeenCalledWith({ body: { sessionIDs: [] } })
+    })
+
+    ;(sdk.session.syncVisible as any).mockClear()
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.currentSession?.id).toBe("s1")
+      expect(sessionApi!.foregroundSessions.has("s1")).toBe(true)
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(sdk.session.syncVisible).not.toHaveBeenCalled()
+
+    await act(async () => {
+      load.resolve({
+        error: null,
+        data: [
+          {
+            info: {
+              id: "u1",
+              sessionID: "s1",
+              role: "user",
+              time: { created: 1 },
+              agent: "plan",
+              model: { providerID: "anthropic", modelID: "claude-4-sonnet" },
+              variant: "high",
+            },
+            parts: [],
+          },
+        ],
+      })
+    })
+
+    await waitFor(() => {
+      expect(sdk.session.syncVisible).toHaveBeenCalledWith({ body: { sessionIDs: ["s1"] } })
+    })
+  })
+
+  it("切到其他会话时会立即释放 pending latest 的 foreground session", async () => {
+    ;(sdk.session.list as any).mockResolvedValue({
+      data: [
+        { id: "s1", title: "", time: { created: 1, updated: 1 } },
+        { id: "s2", title: "", time: { created: 2, updated: 2 } },
+      ],
+      error: null,
+    })
+
+    const s1Messages = deferred<any>()
+    const s2Messages = deferred<any>()
+    let s1Signal: AbortSignal | undefined
+    let s2Signal: AbortSignal | undefined
+    ;(sdk.session.messages as any).mockImplementation(({ path, signal }: { path: { id: string }; signal?: AbortSignal }) => {
+      if (path.id === "s1") {
+        s1Signal = signal
+        return s1Messages.promise
+      }
+      s2Signal = signal
+      return s2Messages.promise
+    })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(2)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.foregroundSessions.has("s1")).toBe(true)
+      expect(s1Signal).toBeInstanceOf(AbortSignal)
+      expect(s1Signal?.aborted).toBe(false)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s2")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.currentSession?.id).toBe("s2")
+      expect(sessionApi!.foregroundSessions.has("s1")).toBe(false)
+      expect(sessionApi!.foregroundSessions.has("s2")).toBe(true)
+      expect(s1Signal?.aborted).toBe(true)
+      expect(s2Signal).toBeInstanceOf(AbortSignal)
+    })
+  })
+
+  it("卸载 activation hook 时会立即释放 pending older scan 的 foreground session", async () => {
+    const older = deferred<any>()
+    let olderSignal: AbortSignal | undefined
+    ;(sdk.session.messages as any)
+      .mockResolvedValueOnce({
+        error: null,
+        data: Array.from({ length: 50 }, (_, i) => ({
+          info: {
+            id: `a${i + 1}`,
+            sessionID: "s1",
+            role: "assistant",
+            time: { created: i + 1 },
+          },
+          parts: [],
+        })),
+        response: {
+          headers: new Headers({ "X-Next-Cursor": "c1" }),
+        },
+      })
+      .mockImplementationOnce(({ signal }: { signal?: AbortSignal }) => {
+        olderSignal = signal
+        return older.promise
+      })
+
+    const view = render(
+      <Providers>
+        <ActivationToggle enabled={true} />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sdk.session.messages).toHaveBeenNthCalledWith(2, {
+        path: { id: "s1" },
+        query: { before: "c1", limit: 50 },
+        signal: expect.any(AbortSignal),
+      })
+      expect(sessionApi!.foregroundSessions.has("s1")).toBe(true)
+      expect(olderSignal).toBeInstanceOf(AbortSignal)
+      expect(olderSignal?.aborted).toBe(false)
+    })
+
+    view.rerender(
+      <Providers>
+        <ActivationToggle enabled={false} />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi!.foregroundSessions.has("s1")).toBe(false)
+      expect(olderSignal?.aborted).toBe(true)
+    })
+  })
+
+  it("手动 activate pending 时卸载 hook 也会立即释放 foreground session", async () => {
+    const retryLoad = deferred<any>()
+    ;(sdk.session.messages as any)
+      .mockResolvedValueOnce({ error: { message: "boom" } })
+      .mockReturnValueOnce(retryLoad.promise)
+
+    const view = render(
+      <Providers>
+        <ActivationToggle enabled={true} />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(activate).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.currentSession?.id).toBe("s1")
+      expect(sessionApi!.selectionRestoreNotice).toContain("未能恢复")
+      expect(sessionApi!.foregroundSessions.has("s1")).toBe(false)
+    })
+
+    act(() => {
+      void activate!("s1")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.foregroundSessions.has("s1")).toBe(true)
+    })
+
+    view.rerender(
+      <Providers>
+        <ActivationToggle enabled={false} />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi!.foregroundSessions.has("s1")).toBe(false)
     })
   })
 })

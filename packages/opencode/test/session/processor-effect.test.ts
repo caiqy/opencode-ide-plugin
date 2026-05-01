@@ -1,6 +1,8 @@
 import { NodeFileSystem } from "@effect/platform-node"
+import { ChildProcessSpawner } from "effect/unstable/process"
 import { expect } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Layer } from "effect"
+import * as Stream from "effect/Stream"
 import path from "path"
 import type { Agent } from "../../src/agent/agent"
 import { Agent as AgentSvc } from "../../src/agent/agent"
@@ -15,25 +17,74 @@ import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionProcessor } from "../../src/session/processor"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
-import { SessionStatus } from "../../src/session/status"
 import { SessionSummary } from "../../src/session/summary"
+import { SessionSummaryScheduler } from "../../src/session/summary-scheduler"
+import { SessionStatus } from "../../src/session/status"
 import { Snapshot } from "../../src/snapshot"
 import { Log } from "../../src/util"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
-import { provideTmpdirServer } from "../fixture/fixture"
+import { provideTmpdirInstance, provideTmpdirServer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { raw, reply, TestLLMServer } from "../lib/llm-server"
 
 void Log.init({ print: false })
 
+const summarySchedulerStub = {
+  markDirty: (_input: { sessionID: SessionID; messageID: MessageID; version: number }) => Effect.void,
+  foregroundStart: (_sessionID: SessionID) => Effect.void,
+  foregroundFinish: (_sessionID: SessionID) => Effect.void,
+  syncVisible: (_sessionIDs: readonly SessionID[]) => Effect.void,
+  deleteSession: (_sessionID: SessionID) => Effect.void,
+  flush: () => Effect.void,
+}
+
+const summaryScheduler = Layer.succeed(
+  SessionSummaryScheduler.Service,
+  SessionSummaryScheduler.Service.of({
+    markDirty: (input) => summarySchedulerStub.markDirty(input),
+    foregroundStart: (sessionID) => summarySchedulerStub.foregroundStart(sessionID),
+    foregroundFinish: (sessionID) => summarySchedulerStub.foregroundFinish(sessionID),
+    syncVisible: (sessionIDs) => summarySchedulerStub.syncVisible(sessionIDs),
+    deleteSession: (sessionID) => summarySchedulerStub.deleteSession(sessionID),
+    flush: () => summarySchedulerStub.flush(),
+  }),
+)
+
+const summaryStub = {
+  summarize: (_input: { sessionID: SessionID; messageID: MessageID }) => Effect.void,
+  diff: () => Effect.succeed([]),
+  computeDiff: () => Effect.succeed([]),
+}
+
 const summary = Layer.succeed(
   SessionSummary.Service,
   SessionSummary.Service.of({
-    summarize: () => Effect.void,
-    diff: () => Effect.succeed([]),
-    computeDiff: () => Effect.succeed([]),
+    summarize: (input) => summaryStub.summarize(input),
+    diff: () => summaryStub.diff(),
+    computeDiff: () => summaryStub.computeDiff(),
   }),
 )
+
+function mockSpawner() {
+  const spawner = ChildProcessSpawner.make(() =>
+    Effect.succeed(
+      ChildProcessSpawner.makeHandle({
+        pid: ChildProcessSpawner.ProcessId(0),
+        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+        isRunning: Effect.succeed(false),
+        kill: () => Effect.void,
+        stdin: { [Symbol.for("effect/Sink/TypeId")]: Symbol.for("effect/Sink/TypeId") } as any,
+        stdout: Stream.empty,
+        stderr: Stream.empty,
+        all: Stream.empty,
+        getInputFd: () => ({ [Symbol.for("effect/Sink/TypeId")]: Symbol.for("effect/Sink/TypeId") }) as any,
+        getOutputFd: () => Stream.empty,
+        unref: Effect.succeed(Effect.void),
+      }),
+    ),
+  )
+  return Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)
+}
 
 const ref = {
   providerID: ProviderID.make("test"),
@@ -102,6 +153,50 @@ function defer<T>() {
   return { promise, resolve }
 }
 
+function withSummaryScheduler<A, E, R>(
+  overrides: Partial<typeof summarySchedulerStub>,
+  fx: Effect.Effect<A, E, R>,
+) {
+  return Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const prev = { ...summarySchedulerStub }
+      Object.assign(summarySchedulerStub, overrides)
+      return prev
+    }),
+    () => fx,
+    (prev) =>
+      Effect.sync(() => {
+        Object.assign(summarySchedulerStub, prev)
+      }),
+  )
+}
+
+function withSummary<A, E, R>(overrides: Partial<typeof summaryStub>, fx: Effect.Effect<A, E, R>) {
+  return Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const prev = { ...summaryStub }
+      Object.assign(summaryStub, overrides)
+      return prev
+    }),
+    () => fx,
+    (prev) =>
+      Effect.sync(() => {
+        Object.assign(summaryStub, prev)
+      }),
+  )
+}
+
+async function waitForMarkDirtyCallCount(
+  calls: Array<{ sessionID: SessionID; messageID: MessageID; version: number }>,
+  count: number,
+) {
+  for (let i = 0; i < 100; i++) {
+    if (calls.length >= count) return
+    await Bun.sleep(25)
+  }
+  throw new Error(`Timed out waiting for ${count} dirty marks`)
+}
+
 const user = Effect.fn("TestSession.user")(function* (sessionID: SessionID, text: string) {
   const session = yield* Session.Service
   const msg = yield* session.updateMessage({
@@ -168,10 +263,11 @@ const deps = Layer.mergeAll(
 ).pipe(Layer.provideMerge(infra))
 const env = Layer.mergeAll(
   TestLLMServer.layer,
-  SessionProcessor.layer.pipe(Layer.provide(summary), Layer.provideMerge(deps)),
+  SessionProcessor.layer.pipe(Layer.provide(summaryScheduler), Layer.provide(summary), Layer.provideMerge(deps)),
 )
 
 const it = testEffect(env)
+const processorDefaultIt = testEffect(Layer.mergeAll(SessionProcessor.defaultLayer, mockSpawner()))
 
 const boot = Effect.fn("test.boot")(function* () {
   const processors = yield* SessionProcessor.Service
@@ -184,7 +280,7 @@ const boot = Effect.fn("test.boot")(function* () {
 // Tests
 // ---------------------------------------------------------------------------
 
-it.live("session.processor effect tests capture llm input cleanly", () =>
+it.live("stores assistant text from a single llm response", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -231,7 +327,87 @@ it.live("session.processor effect tests capture llm input cleanly", () =>
   ),
 )
 
-it.live("session.processor effect tests preserve text start time", () =>
+it.live("marking dirty records processor summary without direct summarize", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+        const calls: Array<{ sessionID: SessionID; messageID: MessageID; version: number }> = []
+        const summarizeCalls: Array<{ sessionID: SessionID; messageID: MessageID }> = []
+
+        yield* llm.text("hello")
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "hi")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+
+        yield* withSummary(
+          {
+            summarize: (input) =>
+              Effect.sync(() => {
+                summarizeCalls.push(input)
+              }),
+          },
+          withSummaryScheduler(
+            {
+              markDirty: (input) =>
+                Effect.sync(() => {
+                  calls.push(input)
+                }),
+            },
+            Effect.gen(function* () {
+              const handle = yield* processors.create({
+                assistantMessage: msg,
+                sessionID: chat.id,
+                model: mdl,
+              })
+
+              yield* handle.process({
+                user: {
+                  id: parent.id,
+                  sessionID: chat.id,
+                  role: "user",
+                  time: parent.time,
+                  agent: parent.agent,
+                  model: { providerID: ref.providerID, modelID: ref.modelID },
+                } satisfies MessageV2.User,
+                sessionID: chat.id,
+                model: mdl,
+                agent: agent(),
+                system: [],
+                messages: [{ role: "user", content: "hi" }],
+                tools: {},
+              } satisfies LLM.StreamInput)
+
+              yield* Effect.promise(() => waitForMarkDirtyCallCount(calls, 1))
+            }),
+          ),
+        )
+
+        expect(calls).toEqual([
+          expect.objectContaining({
+            sessionID: chat.id,
+            messageID: parent.id,
+            version: expect.any(Number),
+          }),
+        ])
+        expect(summarizeCalls).toEqual([])
+      }),
+    { git: true, config: (url) => providerCfg(url) },
+  ),
+)
+
+processorDefaultIt.live("defaultLayer provides summary scheduler", () =>
+  provideTmpdirInstance(() =>
+    Effect.gen(function* () {
+      const processors = yield* SessionProcessor.Service
+      expect(processors).toBeDefined()
+    }),
+  ),
+)
+
+it.live("records text part start and end times", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -318,7 +494,7 @@ it.live("session.processor effect tests preserve text start time", () =>
   ),
 )
 
-it.live("session.processor effect tests stop after token overflow requests compaction", () =>
+it.live("requests compaction after token overflow", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -364,7 +540,7 @@ it.live("session.processor effect tests stop after token overflow requests compa
   ),
 )
 
-it.live("session.processor effect tests capture reasoning from http mock", () =>
+it.live("captures reasoning parts from llm responses", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -412,7 +588,7 @@ it.live("session.processor effect tests capture reasoning from http mock", () =>
   ),
 )
 
-it.live("session.processor effect tests reset reasoning state across retries", () =>
+it.live("resets reasoning parts across retries", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -459,7 +635,7 @@ it.live("session.processor effect tests reset reasoning state across retries", (
   ),
 )
 
-it.live("session.processor effect tests do not retry unknown json errors", () =>
+it.live("does not retry unrecognized json errors", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -502,7 +678,7 @@ it.live("session.processor effect tests do not retry unknown json errors", () =>
   ),
 )
 
-it.live("session.processor effect tests retry recognized structured json errors", () =>
+it.live("retries recognized structured json errors", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -549,7 +725,7 @@ it.live("session.processor effect tests retry recognized structured json errors"
   ),
 )
 
-it.live("session.processor effect tests publish retry status updates", () =>
+it.live("publishes retry status attempts", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -601,7 +777,7 @@ it.live("session.processor effect tests publish retry status updates", () =>
   ),
 )
 
-it.live("session.processor effect tests compact on structured context overflow", () =>
+it.live("requests compaction on structured context overflow", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -644,7 +820,7 @@ it.live("session.processor effect tests compact on structured context overflow",
   ),
 )
 
-it.live("session.processor effect tests mark pending tools as aborted on cleanup", () =>
+it.live("marks pending tool calls aborted on cleanup", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -712,7 +888,7 @@ it.live("session.processor effect tests mark pending tools as aborted on cleanup
   ),
 )
 
-it.live("session.processor effect tests record aborted errors and idle state", () =>
+it.live("stores aborted message errors and returns session to idle", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -784,7 +960,7 @@ it.live("session.processor effect tests record aborted errors and idle state", (
   ),
 )
 
-it.live("session.processor effect tests mark interruptions aborted without manual abort", () =>
+it.live("stores interrupted runs as aborted without manual abort", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {

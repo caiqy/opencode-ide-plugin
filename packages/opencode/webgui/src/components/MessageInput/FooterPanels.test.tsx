@@ -5,6 +5,11 @@ import { FooterPanels } from "./FooterPanels"
 const mocks = vi.hoisted(() => ({
   getMessagesBySession: vi.fn(),
   useMergedFileDiffs: vi.fn(),
+  fileChangesPanel: vi.fn(),
+  sessionState: {
+    sessionDiff: {},
+    sessionDiffStatus: {},
+  },
 }))
 
 vi.mock("../../state/MessagesContext", () => ({
@@ -15,7 +20,8 @@ vi.mock("../../state/MessagesContext", () => ({
 
 vi.mock("../../state/SessionContext", () => ({
   useSession: () => ({
-    sessionDiff: {},
+    sessionDiff: mocks.sessionState.sessionDiff,
+    sessionDiffStatus: mocks.sessionState.sessionDiffStatus,
   }),
 }))
 
@@ -28,13 +34,19 @@ vi.mock("./TodosPanel", () => ({
 }))
 
 vi.mock("../FileChangesPanel", () => ({
-  FileChangesPanel: () => <div data-testid="files-panel">files panel</div>,
+  FileChangesPanel: (props: unknown) => {
+    mocks.fileChangesPanel(props)
+    return <div data-testid="files-panel">files panel</div>
+  },
 }))
 
 describe("FooterPanels", () => {
   beforeEach(() => {
     mocks.getMessagesBySession.mockReset()
     mocks.useMergedFileDiffs.mockReset()
+    mocks.fileChangesPanel.mockReset()
+    mocks.sessionState.sessionDiff = {}
+    mocks.sessionState.sessionDiffStatus = {}
 
     mocks.getMessagesBySession.mockReturnValue([
       {
@@ -90,5 +102,32 @@ describe("FooterPanels", () => {
     fireEvent.click(filesToggle)
     expect(screen.getByTestId("files-panel")).toBeInTheDocument()
     expect(screen.queryByTestId("todos-panel")).not.toBeInTheDocument()
+  })
+
+  it("passes current session diff status to FileChangesPanel", () => {
+    mocks.sessionState.sessionDiff = {
+      s1: [],
+    }
+    mocks.sessionState.sessionDiffStatus = {
+      s1: {
+        type: "failed",
+        message: "刷新失败，将在空闲后重试",
+      },
+    }
+
+    render(<FooterPanels sessionID="s1" />)
+
+    fireEvent.click(screen.getByRole("button", { name: /1\s*个文件变更/ }))
+
+    expect(mocks.fileChangesPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        diffs: [],
+        fallbackFiles: ["src/a.ts"],
+        status: {
+          type: "failed",
+          message: "刷新失败，将在空闲后重试",
+        },
+      }),
+    )
   })
 })
