@@ -41,7 +41,8 @@ export function requestAttributes(c: RequestLike): Record<string, string> {
 }
 
 export function runRequest<A, E>(name: string, c: Context, effect: Effect.Effect<A, E, AppEnv>) {
-  return AppRuntime.runPromise(effect.pipe(Effect.withSpan(name, { attributes: requestAttributes(c) })))
+  const attrs = requestAttributes(c)
+  return AppRuntime.runPromise(effect.pipe(Effect.withSpan(name, { attributes: attrs })))
 }
 
 export async function jsonRequest<C extends Context, A, E>(

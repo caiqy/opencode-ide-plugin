@@ -469,7 +469,6 @@ export class Agent implements ACPAgent {
         const session = this.sessionManager.tryGet(props.sessionID)
         if (!session) return
         const sessionId = session.id
-
         const message = await this.sdk.session
           .message(
             {
