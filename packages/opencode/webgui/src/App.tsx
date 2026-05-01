@@ -26,6 +26,7 @@ import { sdk } from "./lib/api/sdkClient"
 import { setScopedStateWriteErrorReporter } from "./state/scopedStorage"
 import { loadDraftSession, saveDraftSession } from "./state/repo/draftRepo"
 import { switchSessionWithTabRollback } from "./state/switchSession"
+import { useSessionVisibilitySync } from "./hooks/useSessionVisibilitySync"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 
@@ -151,6 +152,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   const creating = useRef(false)
 
   const activateSession = useSessionActivation()
+  useSessionVisibilitySync()
 
   const gate = currentSession?.id
     ? chatState({
@@ -471,7 +473,7 @@ function AppContent() {
       console.log("[App] Session updated:", event.properties.sessionID)
     },
     onSessionDeleted: (event) => {
-      console.log("[App] Session deleted:", event.properties.sessionID)
+      console.log("[App] Session deleted:", event.properties.info.id)
     },
   })
 

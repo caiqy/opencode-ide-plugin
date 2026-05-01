@@ -16,12 +16,13 @@ import { SessionRevert } from "@/session/revert"
 import { SessionRunState } from "@/session/run-state"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
+import { SessionSummaryScheduler } from "@/session/summary-scheduler"
 import { Todo } from "@/session/todo"
 import { MessageID, PartID, SessionID } from "@/session/schema"
 import { Snapshot } from "@/snapshot"
 import { Log } from "@/util"
 import { NamedError } from "@opencode-ai/core/util/error"
-import { Effect, Layer, Schema, Struct } from "effect"
+import { Effect, Exit, Layer, Schema, Struct } from "effect"
 import * as Stream from "effect/Stream"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import {
@@ -49,6 +50,9 @@ const MessagesQuery = Schema.Struct({
   limit: Schema.optional(Schema.NumberFromString.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))),
   before: Schema.optional(Schema.String),
 })
+const VisibilityPayload = Schema.Struct({
+  sessionIDs: Schema.Array(SessionID),
+}).annotate({ identifier: "SessionVisibilityInput" })
 const StatusMap = Schema.Record(Schema.String, SessionStatus.Info)
 const UpdatePayload = Schema.Struct({
   title: Schema.optional(Schema.String),
@@ -91,6 +95,7 @@ const PermissionResponsePayload = Schema.Struct({
 export const SessionPaths = {
   list: root,
   status: `${root}/status`,
+  visibility: `${root}/visibility`,
   get: `${root}/:sessionID`,
   children: `${root}/:sessionID/children`,
   todo: `${root}/:sessionID/todo`,
@@ -117,6 +122,36 @@ export const SessionPaths = {
   updatePart: `${root}/:sessionID/message/:messageID/part/:partID`,
 } as const
 
+type ForegroundReadKind = "messages" | "diff"
+
+let foregroundReadTestGate:
+  | undefined
+  | ((input: { kind: ForegroundReadKind; sessionID: SessionID }) => void | Promise<void>)
+
+export function setForegroundReadTestGate(
+  next?: (input: { kind: ForegroundReadKind; sessionID: SessionID }) => void | Promise<void>,
+) {
+  foregroundReadTestGate = next
+}
+
+export function withForegroundRead<A, E, R>(
+  kind: ForegroundReadKind,
+  sessionID: SessionID,
+  fx: Effect.Effect<A, E, R | SessionSummaryScheduler.Service>,
+) {
+  return Effect.gen(function* () {
+    const scheduler = yield* SessionSummaryScheduler.Service
+    const gate = foregroundReadTestGate
+      ? Effect.promise(() => Promise.resolve(foregroundReadTestGate?.({ kind, sessionID })))
+      : Effect.void
+    return yield* Effect.acquireUseRelease(
+      scheduler.foregroundStart(sessionID),
+      () => gate.pipe(Effect.andThen(fx)),
+      () => scheduler.foregroundFinish(sessionID),
+    )
+  })
+}
+
 export const SessionApi = HttpApi.make("session")
   .add(
     HttpApiGroup.make("session")
@@ -138,6 +173,16 @@ export const SessionApi = HttpApi.make("session")
             identifier: "session.status",
             summary: "Get session status",
             description: "Retrieve the current status of all sessions, including active, idle, and completed states.",
+          }),
+        ),
+        HttpApiEndpoint.put("visibility", SessionPaths.visibility, {
+          payload: VisibilityPayload,
+          success: VisibilityPayload,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.visibility",
+            summary: "Sync visible sessions",
+            description: "Sync the currently visible sessions so the backend can prioritize summary refreshes.",
           }),
         ),
         HttpApiEndpoint.get("get", SessionPaths.get, {
@@ -465,52 +510,91 @@ export const sessionHandlers = Layer.unwrap(
       params: { sessionID: SessionID }
       query: typeof DiffQuery.Type
     }) {
-      return yield* summary.diff({ sessionID: ctx.params.sessionID, messageID: ctx.query.messageID })
+      return yield* withForegroundRead(
+        "diff",
+        ctx.params.sessionID,
+        summary.diff({ sessionID: ctx.params.sessionID, messageID: ctx.query.messageID }),
+      )
     })
 
     const messages = Effect.fn("SessionHttpApi.messages")(function* (ctx: {
       params: { sessionID: SessionID }
       query: typeof MessagesQuery.Type
     }) {
-      if (ctx.query.before !== undefined && ctx.query.limit === undefined) return yield* new HttpApiError.BadRequest({})
+      const request = yield* HttpServerRequest.HttpServerRequest
+      if (ctx.query.before !== undefined && ctx.query.limit === undefined) {
+        return yield* new HttpApiError.BadRequest({})
+      }
       if (ctx.query.before !== undefined) {
         const before = ctx.query.before
-        yield* Effect.try({
-          try: () => MessageV2.cursor.decode(before),
-          catch: () => new HttpApiError.BadRequest({}),
-        })
+        const decoded = yield* Effect.exit(
+          Effect.try({
+            try: () => MessageV2.cursor.decode(before),
+            catch: () => new HttpApiError.BadRequest({}),
+          }),
+        )
+        if (Exit.isFailure(decoded)) return yield* Effect.failCause(decoded.cause)
       }
       if (ctx.query.limit === undefined || ctx.query.limit === 0) {
-        yield* session.get(ctx.params.sessionID)
-        return yield* session.messages({ sessionID: ctx.params.sessionID })
+        const result = yield* Effect.exit(
+          withForegroundRead(
+            "messages",
+            ctx.params.sessionID,
+            Effect.gen(function* () {
+              yield* session.get(ctx.params.sessionID)
+              return yield* session.messages({ sessionID: ctx.params.sessionID })
+            }),
+          ),
+        )
+        if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause)
+        return result.value
       }
 
-      const page = MessageV2.page({
-        sessionID: ctx.params.sessionID,
-        limit: ctx.query.limit,
-        before: ctx.query.before,
-      })
-      if (!page.cursor) return page.items
-
-      const request = yield* HttpServerRequest.HttpServerRequest
-      const url = new URL(request.url, "http://localhost")
-      url.searchParams.set("limit", ctx.query.limit.toString())
-      url.searchParams.set("before", page.cursor)
-      return HttpServerResponse.jsonUnsafe(page.items, {
-        headers: {
-          "Access-Control-Expose-Headers": "Link, X-Next-Cursor",
-          Link: `<${url.toString()}>; rel="next"`,
-          "X-Next-Cursor": page.cursor,
-        },
-      })
+      const limit = ctx.query.limit
+      const result = yield* Effect.exit(
+        withForegroundRead(
+          "messages",
+          ctx.params.sessionID,
+          Effect.gen(function* () {
+            const page = MessageV2.page({
+              sessionID: ctx.params.sessionID,
+              limit,
+              before: ctx.query.before,
+            })
+            if (!page.cursor) {
+              return {
+                body: page.items,
+                meta: { requestedPaged: true, hasNextCursor: false },
+              }
+            }
+            const url = new URL(request.url, "http://localhost")
+            url.searchParams.set("limit", limit.toString())
+            url.searchParams.set("before", page.cursor)
+            return {
+              body: HttpServerResponse.jsonUnsafe(page.items, {
+                headers: {
+                  "Access-Control-Expose-Headers": "Link, X-Next-Cursor",
+                  Link: `<${url.toString()}>; rel="next"`,
+                  "X-Next-Cursor": page.cursor,
+                },
+              }),
+              meta: { requestedPaged: true, hasNextCursor: true },
+            }
+          }),
+        ),
+      )
+      if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause)
+      return result.value.body
     })
 
     const message = Effect.fn("SessionHttpApi.message")(function* (ctx: {
       params: { sessionID: SessionID; messageID: MessageID }
     }) {
-      return yield* Effect.sync(() =>
-        MessageV2.get({ sessionID: ctx.params.sessionID, messageID: ctx.params.messageID }),
+      const result = yield* Effect.exit(
+        Effect.sync(() => MessageV2.get({ sessionID: ctx.params.sessionID, messageID: ctx.params.messageID })),
       )
+      if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause)
+      return result.value
     })
 
     const create = Effect.fn("SessionHttpApi.create")(function* (ctx: { payload?: Session.CreateInput }) {
@@ -583,6 +667,22 @@ export const sessionHandlers = Layer.unwrap(
       )
     })
 
+    const visibility = Effect.fn("SessionHttpApi.visibility")(function* (ctx: {
+      payload: typeof VisibilityPayload.Type
+    }) {
+      const instance = yield* InstanceState.context
+      yield* Effect.promise(() =>
+        Instance.restore(instance, () =>
+          AppRuntime.runPromise(
+            SessionSummaryScheduler.Service.use((svc) => svc.syncVisible(ctx.payload.sessionIDs)).pipe(
+              Effect.provide(SessionSummaryScheduler.defaultLayer),
+            ),
+          ),
+        ),
+      )
+      return ctx.payload
+    })
+
     const fork = Effect.fn("SessionHttpApi.fork")(function* (ctx: {
       params: { sessionID: SessionID }
       payload: typeof ForkPayload.Type
@@ -601,15 +701,18 @@ export const sessionHandlers = Layer.unwrap(
 
     const abort = Effect.fn("SessionHttpApi.abort")(function* (ctx: { params: { sessionID: SessionID } }) {
       const instance = yield* InstanceState.context
-      yield* Effect.promise(() =>
-        Instance.restore(instance, () =>
-          AppRuntime.runPromise(
-            SessionPrompt.Service.use((svc) => svc.cancel(ctx.params.sessionID)).pipe(
-              Effect.provide(SessionPrompt.defaultLayer),
+      const result = yield* Effect.exit(
+        Effect.promise(() =>
+          Instance.restore(instance, () =>
+            AppRuntime.runPromise(
+              SessionPrompt.Service.use((svc) => svc.cancel(ctx.params.sessionID)).pipe(
+                Effect.provide(SessionPrompt.defaultLayer),
+              ),
             ),
           ),
         ),
       )
+      if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause)
       return true
     })
 
@@ -719,18 +822,24 @@ export const sessionHandlers = Layer.unwrap(
       const instance = yield* InstanceState.context
       return HttpServerResponse.stream(
         Stream.fromEffect(
-          Effect.promise(() =>
-            Instance.restore(instance, () =>
-              AppRuntime.runPromise(
-                SessionPrompt.Service.use((svc) =>
-                  svc.prompt({
-                    ...ctx.payload,
-                    sessionID: ctx.params.sessionID,
-                  } as unknown as SessionPrompt.PromptInput),
-                ).pipe(Effect.provide(SessionPrompt.defaultLayer)),
+          Effect.gen(function* () {
+            const result = yield* Effect.exit(
+              Effect.promise(() =>
+                Instance.restore(instance, () =>
+                  AppRuntime.runPromise(
+                    SessionPrompt.Service.use((svc) =>
+                      svc.prompt({
+                        ...ctx.payload,
+                        sessionID: ctx.params.sessionID,
+                      } as unknown as SessionPrompt.PromptInput),
+                    ).pipe(Effect.provide(SessionPrompt.defaultLayer)),
+                  ),
+                ),
               ),
-            ),
-          ),
+            )
+            if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause)
+            return result.value
+          }),
         ).pipe(
           Stream.map((message) => JSON.stringify(message)),
           Stream.encodeText,
@@ -904,6 +1013,7 @@ export const sessionHandlers = Layer.unwrap(
       handlers
         .handle("list", list)
         .handle("status", status)
+        .handle("visibility", visibility)
         .handle("get", get)
         .handle("children", children)
         .handle("todo", todo)
@@ -937,4 +1047,5 @@ export const sessionHandlers = Layer.unwrap(
   Layer.provide(SessionStatus.defaultLayer),
   Layer.provide(Todo.defaultLayer),
   Layer.provide(SessionSummary.defaultLayer),
+  Layer.provide(SessionSummaryScheduler.defaultLayer),
 )

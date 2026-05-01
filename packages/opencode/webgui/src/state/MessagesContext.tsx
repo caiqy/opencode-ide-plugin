@@ -64,11 +64,11 @@ interface MessagesContextValue {
   removePart: (messageID: string, partID: string) => void
   clearMessages: () => void
   getMessagesBySession: (sessionID: string) => Message[]
-  loadLatest: (sessionID: string) => Promise<Message[] | null>
-  ensureSession: (sessionID: string) => Promise<Message[] | null>
-  loadOlder: (sessionID: string) => Promise<Message[] | null>
+  loadLatest: (sessionID: string, signal?: AbortSignal) => Promise<Message[] | null>
+  ensureSession: (sessionID: string, signal?: AbortSignal) => Promise<Message[] | null>
+  loadOlder: (sessionID: string, signal?: AbortSignal) => Promise<Message[] | null>
   /** 后台扫描更早消息：不污染分页状态，也不落地到可见消息列表 */
-  scanOlder: (sessionID: string, before: string) => Promise<{ rows: Message[]; cursor?: string } | null>
+  scanOlder: (sessionID: string, before: string, signal?: AbortSignal) => Promise<{ rows: Message[]; cursor?: string } | null>
   /** 兼容接口：仅保证最近一页可用，等价于 ensureSession，不会加载整段会话历史 */
   loadSessionMessages: (sessionID: string) => Promise<Message[] | null>
   /** 仅读取当前会话分页 cursor（用于后台扫描），不触发加载 */
@@ -641,7 +641,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   )
 
   const loadLatest = useCallback(
-    async (sessionID: string) => {
+    async (sessionID: string, signal?: AbortSignal) => {
       const pending = latestLoadRef.current[sessionID]
       if (pending) return pending
 
@@ -664,9 +664,20 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
           const response = await sdk.session.messages({
             path: { id: sessionID },
             query: { limit: PAGE },
+            signal,
           } as any)
 
           if (response.error) {
+            if (signal?.aborted) {
+              if (active()) {
+                setPage(sessionID, (prev) => ({
+                  ...prev,
+                  latest_loading: false,
+                  older_loading: false,
+                }))
+              }
+              return null
+            }
             console.error("[MessagesContext] Failed to load messages:", response.error)
             if (active()) {
               setPage(sessionID, (prev) => ({
@@ -763,6 +774,16 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
 
           return loadedMessages
         } catch (err) {
+          if (signal?.aborted) {
+            if (active()) {
+              setPage(sessionID, (prev) => ({
+                ...prev,
+                latest_loading: false,
+                older_loading: false,
+              }))
+            }
+            return null
+          }
           console.error("[MessagesContext] Failed to load messages:", err)
           if (active()) {
             setPage(sessionID, (prev) => ({
@@ -788,23 +809,23 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   )
 
   const ensureSession = useCallback(
-    async (sessionID: string) => {
+    async (sessionID: string, signal?: AbortSignal) => {
       if (!sessionID) return null
       if (sessionPageRef.current[sessionID]?.loaded) {
         return getMessagesBySession(sessionID)
       }
       const run = latestLoadRef.current[sessionID]
       if (run) return run
-      return loadLatest(sessionID)
+      return loadLatest(sessionID, signal)
     },
     [getMessagesBySession, loadLatest],
   )
 
   const loadOlder = useCallback(
-    (sessionID: string) => {
+    (sessionID: string, signal?: AbortSignal) => {
       if (!sessionID) return Promise.resolve(null)
       if (!sessionPageRef.current[sessionID]?.loaded) {
-        return ensureSession(sessionID)
+        return ensureSession(sessionID, signal)
       }
 
       const page = sessionPageRef.current[sessionID] ?? emptyPage
@@ -827,9 +848,20 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
           const response = await sdk.session.messages({
             path: { id: sessionID },
             query: { before, limit: PAGE },
+            signal,
           } as any)
 
           if (response.error) {
+            if (signal?.aborted) {
+              const current = sessionPageRef.current[sessionID] ?? emptyPage
+              if ((sessionLoadToken.current[sessionID] ?? 0) === token && current.cursor === before) {
+                setPage(sessionID, {
+                  ...current,
+                  older_loading: false,
+                })
+              }
+              return null
+            }
             const current = sessionPageRef.current[sessionID] ?? emptyPage
             if ((sessionLoadToken.current[sessionID] ?? 0) === token && current.cursor === before) {
               setPage(sessionID, {
@@ -857,6 +889,16 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
           })
           return loadedMessages
         } catch {
+          if (signal?.aborted) {
+            const current = sessionPageRef.current[sessionID] ?? emptyPage
+            if ((sessionLoadToken.current[sessionID] ?? 0) === token && current.cursor === before) {
+              setPage(sessionID, {
+                ...current,
+                older_loading: false,
+              })
+            }
+            return null
+          }
           const current = sessionPageRef.current[sessionID] ?? emptyPage
           if ((sessionLoadToken.current[sessionID] ?? 0) === token && current.cursor === before) {
             setPage(sessionID, {
@@ -881,12 +923,13 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   )
 
   const scanOlder = useCallback(
-    async (sessionID: string, before: string) => {
+    async (sessionID: string, before: string, signal?: AbortSignal) => {
       if (!sessionID || !before) return null
       try {
         const response = await sdk.session.messages({
           path: { id: sessionID },
           query: { before, limit: PAGE },
+          signal,
         } as any)
 
         if (response.error) return null

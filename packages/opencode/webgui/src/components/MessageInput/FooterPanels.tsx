@@ -12,7 +12,7 @@ interface FooterPanelsProps {
 export function FooterPanels({ sessionID }: FooterPanelsProps) {
   const [expanded, setExpanded] = useState<Record<string, { todos: boolean; files: boolean }>>({})
   const { getMessagesBySession } = useMessages()
-  const { sessionDiff } = useSession()
+  const { sessionDiff, sessionDiffStatus } = useSession()
 
   const state = sessionID ? (expanded[sessionID] ?? { todos: false, files: false }) : { todos: false, files: false }
   const todosExpanded = state.todos
@@ -107,6 +107,7 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
   }, [sessionID, getMessagesBySession])
 
   const diffs = sessionID ? sessionDiff[sessionID] : undefined
+  const diffStatus = sessionID ? sessionDiffStatus[sessionID] : undefined
   const mergedDiffs = useMergedFileDiffs(diffs, modifiedFiles)
   const hasTodos = todos && todos.length > 0
   const hasFiles = mergedDiffs.length > 0
@@ -119,7 +120,7 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
   return (
     <div className="px-2 py-1 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex flex-col gap-1">
       {/* Expanded content - Files */}
-      {filesExpanded && hasFiles && <FileChangesPanel diffs={diffs} fallbackFiles={modifiedFiles} />}
+      {filesExpanded && hasFiles && <FileChangesPanel diffs={diffs} fallbackFiles={modifiedFiles} status={diffStatus} />}
 
       {/* Expanded content - TODOs */}
       {todosExpanded && hasTodos && <TodosList todos={todos} />}

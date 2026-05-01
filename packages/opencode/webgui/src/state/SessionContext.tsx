@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react"
 import { sdk } from "../lib/api/sdkClient"
 import type { Session, FileDiff, Provider } from "@opencode-ai/sdk/client"
 import { eventEmitter } from "../lib/api/events"
@@ -15,6 +15,11 @@ type SessionStatusInfo = {
   attempt: number
   message: string
   next: number
+}
+
+type SessionDiffStatusInfo = {
+  type: "updating" | "latest" | "failed"
+  message: string
 }
 
 interface SessionContextState {
@@ -48,8 +53,14 @@ interface SessionContextState {
   // Reasoning state for arbitrary session (e.g. subagent session)
   isSessionReasoning: (sessionId: string) => boolean
 
+  // Foreground activation coordination for the current session
+  foregroundSessions: Set<string>
+  beginForegroundSession: (sessionId: string) => void
+  endForegroundSession: (sessionId: string) => void
+
   // Session diff data (per session)
   sessionDiff: Record<string, FileDiff[]>
+  sessionDiffStatus: Record<string, SessionDiffStatusInfo>
 
   // Session status for current session
   currentStatus: SessionStatusInfo
@@ -170,7 +181,7 @@ function isSubagentSession(session: Session): boolean {
  * Manages the current active session state and provides session-related actions.
  */
 export function SessionProvider({ children }: SessionProviderProps) {
-  const [currentSession, setCurrentSession] = useState<Session | null>(null)
+  const [currentSession, setCurrentSessionState] = useState<Session | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [hasMore, setHasMore] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
@@ -179,8 +190,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [error, setError] = useState<Error | null>(null)
   const [busyMap, setBusyMap] = useState<Record<string, boolean>>({})
   const [reasoningMap, setReasoningMap] = useState<Record<string, boolean>>({})
+  const [foregroundCounts, setForegroundCounts] = useState<Record<string, number>>({})
   const [statusMap, setStatusMap] = useState<Record<string, SessionStatusInfo>>({})
   const [sessionDiffMap, setSessionDiffMap] = useState<Record<string, FileDiff[]>>({})
+  const [sessionDiffStatusMap, setSessionDiffStatusMap] = useState<Record<string, SessionDiffStatusInfo>>({})
 
   const setSessionIdle = useCallback((sessionId: string, idle: boolean) => {
     if (!sessionId) return
@@ -214,6 +227,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const sessionLimitRef = useRef(SESSION_LIST_LIMIT)
   const sessionWantRef = useRef(SESSION_LIST_LIMIT)
   const sessionMoreRef = useRef<Promise<void> | null>(null)
+  const pendingSwitchForegroundRef = useRef<string | null>(null)
+  const switchTokenRef = useRef(0)
 
   const clearSelectionRestoreNotice = useCallback(() => {
     setSelectionRestoreNotice(null)
@@ -255,6 +270,69 @@ export function SessionProvider({ children }: SessionProviderProps) {
       return next
     })
   }, [])
+
+  const beginForegroundSession = useCallback((sessionId: string) => {
+    if (!sessionId) return
+    setForegroundCounts((prev) => ({ ...prev, [sessionId]: (prev[sessionId] ?? 0) + 1 }))
+  }, [])
+
+  const endForegroundSession = useCallback((sessionId: string) => {
+    if (!sessionId) return
+    setForegroundCounts((prev) => {
+      const count = prev[sessionId] ?? 0
+      if (count <= 1) {
+        if (!prev[sessionId]) return prev
+        const next = { ...prev }
+        delete next[sessionId]
+        return next
+      }
+      return { ...prev, [sessionId]: count - 1 }
+    })
+  }, [])
+
+  const replacePendingSwitchForeground = useCallback(
+    (sessionId: string | null) => {
+      const current = pendingSwitchForegroundRef.current
+      if (current === sessionId) return
+      if (current) {
+        endForegroundSession(current)
+      }
+      pendingSwitchForegroundRef.current = sessionId
+      if (sessionId) {
+        beginForegroundSession(sessionId)
+      }
+    },
+    [beginForegroundSession, endForegroundSession],
+  )
+
+  const consumePendingSwitchForeground = useCallback(
+    (sessionId: string) => {
+      if (pendingSwitchForegroundRef.current !== sessionId) return
+      pendingSwitchForegroundRef.current = null
+      endForegroundSession(sessionId)
+    },
+    [endForegroundSession],
+  )
+
+  const setCurrentSession = useCallback(
+    (session: Session | null) => {
+      if (!session || (pendingSwitchForegroundRef.current && pendingSwitchForegroundRef.current !== session.id)) {
+        replacePendingSwitchForeground(null)
+      }
+      setCurrentSessionState(session)
+    },
+    [replacePendingSwitchForeground],
+  )
+
+  const foregroundSessionKey = useMemo(
+    () => Object.keys(foregroundCounts).filter((sessionId) => foregroundCounts[sessionId] > 0).sort().join("\0"),
+    [foregroundCounts],
+  )
+
+  const foregroundSessions = useMemo(
+    () => new Set(foregroundSessionKey ? foregroundSessionKey.split("\0") : []),
+    [foregroundSessionKey],
+  )
 
   const clearDeletedSessionDraft = useCallback(async (sessionId: string) => {
     if (!sessionId) return
@@ -713,21 +791,44 @@ export function SessionProvider({ children }: SessionProviderProps) {
     async (sessionId: string) => {
       console.log("[SessionContext] Switching to session:", sessionId)
 
-      const session = sessions.find((s) => s.id === sessionId)
-      if (session) {
-        setCurrentSession(session)
+      if (currentSession?.id === sessionId) {
         return
       }
-      console.warn("[SessionContext] Session not found in local list, fetching...")
-      // If not in local list, fetch it
-      const response = await sdk.session.get({ path: { id: sessionId } })
-      if (response.data) {
-        setCurrentSession(response.data)
+
+      const token = ++switchTokenRef.current
+      replacePendingSwitchForeground(sessionId)
+
+      try {
+        const session = sessions.find((s) => s.id === sessionId)
+        if (session) {
+          setCurrentSession(session)
+          return
+        }
+        console.warn("[SessionContext] Session not found in local list, fetching...")
+        // If not in local list, fetch it
+        const response = await sdk.session.get({ path: { id: sessionId } })
+        if (token !== switchTokenRef.current) {
+          return
+        }
+        if (response.data) {
+          setCurrentSession(response.data)
+          return
+        }
+      } catch (error) {
+        if (token !== switchTokenRef.current) {
+          return
+        }
+        replacePendingSwitchForeground(null)
+        throw error
+      }
+
+      if (token !== switchTokenRef.current) {
         return
       }
+      replacePendingSwitchForeground(null)
       throw new Error(`Session ${sessionId} not found`)
     },
-    [sessions],
+    [currentSession?.id, replacePendingSwitchForeground, sessions, setCurrentSession],
   )
 
   /**
@@ -1073,9 +1174,19 @@ export function SessionProvider({ children }: SessionProviderProps) {
     if (!sessionId) return
 
     const controller = new AbortController()
+    let released = false
+    const release = () => {
+      if (released) return
+      released = true
+      endForegroundSession(sessionId)
+    }
+
+    beginForegroundSession(sessionId)
+    consumePendingSwitchForeground(sessionId)
+
     const fetchDiff = async () => {
       try {
-        const response = await sdk.session.diff({ path: { id: sessionId } })
+        const response = await sdk.session.diff({ path: { id: sessionId }, signal: controller.signal })
         if (controller.signal.aborted) return
         if (response.data) {
           setSessionDiffMap((prev) => ({ ...prev, [sessionId]: response.data }))
@@ -1084,12 +1195,17 @@ export function SessionProvider({ children }: SessionProviderProps) {
         if (!controller.signal.aborted) {
           console.error("[SessionContext] Failed to load session diff:", err)
         }
+      } finally {
+        release()
       }
     }
 
     fetchDiff()
-    return () => controller.abort()
-  }, [currentSession?.id])
+    return () => {
+      controller.abort()
+      release()
+    }
+  }, [beginForegroundSession, consumePendingSwitchForeground, currentSession?.id, endForegroundSession])
 
   // Listen for session events from SSE
   useEffect(() => {
@@ -1152,6 +1268,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
           delete next[deletedId]
           return next
         })
+        setSessionDiffStatusMap((prev) => {
+          if (!prev[deletedId]) return prev
+          const next = { ...prev }
+          delete next[deletedId]
+          return next
+        })
         const isCurrent = currentSession?.id === deletedId
         if (isCurrent) {
           setCurrentSession(null)
@@ -1187,6 +1309,65 @@ export function SessionProvider({ children }: SessionProviderProps) {
       const { sessionID, diff } = event.properties as { sessionID: string; diff: FileDiff[] }
       if (!sessionID) return
       setSessionDiffMap((prev) => ({ ...prev, [sessionID]: Array.isArray(diff) ? diff : [] }))
+      setSessionDiffStatusMap((prev) => ({
+        ...prev,
+        [sessionID]: {
+          type: "latest",
+          message: "已是最新结果",
+        },
+      }))
+    }
+
+    const handleSessionDiffStatus = (event: any) => {
+      if (event.type !== "session.diff.status" || !event.properties) return
+      const { sessionID, status, message } = event.properties as {
+        sessionID: string
+        status: "scheduled" | "running" | "idle" | "deleted" | "failed"
+        message: string
+      }
+      if (!sessionID) return
+
+      if (status === "failed") {
+        setSessionDiffStatusMap((prev) => ({
+          ...prev,
+          [sessionID]: {
+            type: "failed",
+            message,
+          },
+        }))
+        return
+      }
+
+      if (status === "scheduled" || status === "running") {
+        setSessionDiffStatusMap((prev) => ({
+          ...prev,
+          [sessionID]: {
+            type: "updating",
+            message,
+          },
+        }))
+        return
+      }
+
+      if (status === "idle") {
+        setSessionDiffStatusMap((prev) => ({
+          ...prev,
+          [sessionID]: {
+            type: "latest",
+            message: "已是最新结果",
+          },
+        }))
+        return
+      }
+
+      if (status === "deleted") {
+        setSessionDiffStatusMap((prev) => {
+          if (!prev[sessionID]) return prev
+          const next = { ...prev }
+          delete next[sessionID]
+          return next
+        })
+      }
     }
 
     const unsubscribeCreated = eventEmitter.on("session.created", handleSessionCreated)
@@ -1194,6 +1375,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     const unsubscribeDeleted = eventEmitter.on("session.deleted", handleSessionDeleted)
     const unsubscribeStatus = eventEmitter.on("session.status", handleSessionStatus)
     const unsubscribeDiff = eventEmitter.on("session.diff", handleSessionDiff)
+    const unsubscribeDiffStatus = eventEmitter.on("session.diff.status", handleSessionDiffStatus)
 
     return () => {
       unsubscribeCreated()
@@ -1201,6 +1383,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       unsubscribeDeleted()
       unsubscribeStatus()
       unsubscribeDiff()
+      unsubscribeDiffStatus()
     }
   }, [currentSession?.id, queueDeletedSessionDraftCleanup, setReasoning, setSessionIdle])
 
@@ -1220,7 +1403,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
     isReasoning,
     setReasoning,
     isSessionReasoning,
+    foregroundSessions,
+    beginForegroundSession,
+    endForegroundSession,
     sessionDiff: sessionDiffMap,
+    sessionDiffStatus: sessionDiffStatusMap,
     currentStatus,
     selectedProviderId,
     selectedModelId,

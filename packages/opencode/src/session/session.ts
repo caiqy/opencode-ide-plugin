@@ -252,6 +252,9 @@ const UpdatedEventSchema = Schema.Struct({
   info: UpdatedInfo,
 })
 
+export const DiffStatus = Schema.Literals(["scheduled", "running", "idle", "deleted", "failed"])
+export type DiffStatus = Schema.Schema.Type<typeof DiffStatus>
+
 export const Event = {
   Created: SyncEvent.define({
     type: "session.created",
@@ -277,6 +280,14 @@ export const Event = {
     Schema.Struct({
       sessionID: SessionID,
       diff: Schema.Array(Snapshot.FileDiff),
+    }),
+  ),
+  DiffStatus: BusEvent.define(
+    "session.diff.status",
+    Schema.Struct({
+      sessionID: SessionID,
+      status: DiffStatus,
+      message: Schema.String,
     }),
   ),
   Error: BusEvent.define(

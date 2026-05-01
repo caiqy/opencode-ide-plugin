@@ -6,7 +6,7 @@ export type ServerEvent =
   | { type: "server.connected"; properties: {} }
   | { type: "session.created"; properties: { sessionID: string; session: any } }
   | { type: "session.updated"; properties: { sessionID: string; session: any } }
-  | { type: "session.deleted"; properties: { sessionID: string } }
+  | { type: "session.deleted"; properties: { info: { id: string } } }
   | { type: "session.error"; properties: { sessionID: string; error: any } }
   | {
       type: "session.status"
@@ -23,6 +23,14 @@ export type ServerEvent =
   | { type: "session.idle"; properties: { sessionID: string } }
   | { type: "session.compacted"; properties: { sessionID: string } }
   | { type: "session.diff"; properties: { sessionID: string; diff: FileDiff[] } }
+  | {
+      type: "session.diff.status"
+      properties: {
+        sessionID: string
+        status: "scheduled" | "running" | "idle" | "deleted" | "failed"
+        message: string
+      }
+    }
   | { type: "message.updated"; properties: { info: any } }
   | { type: "message.removed"; properties: { sessionID: string; messageID: string } }
   | { type: "message.part.updated"; properties: { part: any; delta?: string } }

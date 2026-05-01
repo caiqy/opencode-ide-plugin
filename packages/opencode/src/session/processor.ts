@@ -1,4 +1,4 @@
-import { Cause, Deferred, Effect, Layer, Context, Scope } from "effect"
+import { Cause, Deferred, Effect, Layer, Context } from "effect"
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
 import { Bus } from "@/bus"
@@ -14,7 +14,7 @@ import { PartID } from "./schema"
 import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
-import { SessionSummary } from "./summary"
+import { SessionSummaryScheduler } from "./summary-scheduler"
 import type { Provider } from "@/provider"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
@@ -88,7 +88,7 @@ export const layer: Layer.Layer<
   | LLM.Service
   | Permission.Service
   | Plugin.Service
-  | SessionSummary.Service
+  | SessionSummaryScheduler.Service
   | SessionStatus.Service
 > = Layer.effect(
   Service,
@@ -101,8 +101,7 @@ export const layer: Layer.Layer<
     const llm = yield* LLM.Service
     const permission = yield* Permission.Service
     const plugin = yield* Plugin.Service
-    const summary = yield* SessionSummary.Service
-    const scope = yield* Scope.Scope
+    const summaryScheduler = yield* SessionSummaryScheduler.Service
     const status = yield* SessionStatus.Service
 
     const create = Effect.fn("SessionProcessor.create")(function* (input: Input) {
@@ -388,12 +387,11 @@ export const layer: Layer.Layer<
               }
               ctx.snapshot = undefined
             }
-            yield* summary
-              .summarize({
-                sessionID: ctx.sessionID,
-                messageID: ctx.assistantMessage.parentID,
-              })
-              .pipe(Effect.ignore, Effect.forkIn(scope))
+            yield* summaryScheduler.markDirty({
+              sessionID: ctx.sessionID,
+              messageID: ctx.assistantMessage.parentID,
+              version: Date.now(),
+            })
             if (
               !ctx.assistantMessage.summary &&
               isOverflow({ cfg: yield* config.get(), tokens: usage.tokens, model: ctx.model })
@@ -609,7 +607,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(LLM.defaultLayer),
     Layer.provide(Permission.defaultLayer),
     Layer.provide(Plugin.defaultLayer),
-    Layer.provide(SessionSummary.defaultLayer),
+    Layer.provide(SessionSummaryScheduler.defaultLayer),
     Layer.provide(SessionStatus.defaultLayer),
     Layer.provide(Bus.layer),
     Layer.provide(Config.defaultLayer),

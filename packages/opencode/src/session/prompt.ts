@@ -32,7 +32,6 @@ import * as Stream from "effect/Stream"
 import { Command } from "../command"
 import { pathToFileURL, fileURLToPath } from "url"
 import { Config, ConfigMarkdown } from "../config"
-import { SessionSummary } from "./summary"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { SessionProcessor } from "./processor"
 import { Tool } from "@/tool"
@@ -55,6 +54,7 @@ import { TaskTool, type TaskPromptOps } from "@/tool/task"
 import { SessionRunState } from "./run-state"
 import { EffectBridge } from "@/effect"
 import { makeRuntime } from "@/effect/run-service"
+import { SessionSummaryScheduler } from "./summary-scheduler"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -125,7 +125,7 @@ export const layer = Layer.effect(
     const instruction = yield* Instruction.Service
     const state = yield* SessionRunState.Service
     const revert = yield* SessionRevert.Service
-    const summary = yield* SessionSummary.Service
+    const summaryScheduler = yield* SessionSummaryScheduler.Service
     const sys = yield* SystemPrompt.Service
     const llm = yield* LLM.Service
     const readAttachmentSample = Effect.fn("SessionPrompt.readAttachmentSample")(function* (filepath: string) {
@@ -1491,8 +1491,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               })
             }
 
-            if (step === 1)
-              yield* summary.summarize({ sessionID, messageID: lastUser.id }).pipe(Effect.ignore, Effect.forkIn(scope))
+            if (step === 1) {
+              yield* summaryScheduler.markDirty({ sessionID, messageID: lastUser.id, version: Date.now() })
+            }
 
             if (step > 1 && lastFinished) {
               for (const m of msgs) {
@@ -1579,7 +1580,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     const loop: (input: LoopInput) => Effect.Effect<MessageV2.WithParts> = Effect.fn("SessionPrompt.loop")(function* (
       input: LoopInput,
     ) {
-      return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+      yield* summaryScheduler.foregroundStart(input.sessionID)
+      return yield* state
+        .ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+        .pipe(Effect.ensuring(summaryScheduler.foregroundFinish(input.sessionID)))
     })
 
     const shell: (input: ShellInput) => Effect.Effect<MessageV2.WithParts> = Effect.fn("SessionPrompt.shell")(
@@ -1736,7 +1740,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(Plugin.defaultLayer),
     Layer.provide(Session.defaultLayer),
     Layer.provide(SessionRevert.defaultLayer),
-    Layer.provide(SessionSummary.defaultLayer),
+    Layer.provide(SessionSummaryScheduler.defaultLayer),
     Layer.provide(
       Layer.mergeAll(
         Agent.defaultLayer,

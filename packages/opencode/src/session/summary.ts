@@ -65,7 +65,11 @@ function unquoteGitPath(input: string) {
 }
 
 export interface Interface {
-  readonly summarize: (input: { sessionID: SessionID; messageID: MessageID }) => Effect.Effect<void>
+  readonly summarize: (input: {
+    sessionID: SessionID
+    messageID: MessageID
+    canWrite?: () => Effect.Effect<boolean>
+  }) => Effect.Effect<void>
   readonly diff: (input: { sessionID: SessionID; messageID?: MessageID }) => Effect.Effect<Snapshot.FileDiff[]>
   readonly computeDiff: (input: { messages: MessageV2.WithParts[] }) => Effect.Effect<Snapshot.FileDiff[]>
 }
@@ -103,11 +107,14 @@ export const layer = Layer.effect(
     const summarize = Effect.fn("SessionSummary.summarize")(function* (input: {
       sessionID: SessionID
       messageID: MessageID
+      canWrite?: () => Effect.Effect<boolean>
     }) {
+      const canWrite = () => (input.canWrite ? input.canWrite() : Effect.succeed(true))
       const all = yield* sessions.messages({ sessionID: input.sessionID })
       if (!all.length) return
 
       const diffs = yield* computeDiff({ messages: all })
+      if (!(yield* canWrite())) return
       yield* sessions.setSummary({
         sessionID: input.sessionID,
         summary: {
@@ -116,7 +123,9 @@ export const layer = Layer.effect(
           files: diffs.length,
         },
       })
+      if (!(yield* canWrite())) return
       yield* storage.write(["session_diff", input.sessionID], diffs).pipe(Effect.ignore)
+      if (!(yield* canWrite())) return
       yield* bus.publish(Session.Event.Diff, { sessionID: input.sessionID, diff: diffs })
 
       const messages = all.filter(
@@ -125,6 +134,7 @@ export const layer = Layer.effect(
       const target = messages.find((m) => m.info.id === input.messageID)
       if (!target || target.info.role !== "user") return
       const msgDiffs = yield* computeDiff({ messages })
+      if (!(yield* canWrite())) return
       target.info.summary = { ...target.info.summary, diffs: msgDiffs }
       yield* sessions.updateMessage(target.info)
     })

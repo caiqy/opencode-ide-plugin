@@ -12,6 +12,7 @@ import { SessionRevert } from "@/session/revert"
 import { SessionShare } from "@/share"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
+import { SessionSummaryScheduler } from "@/session/summary-scheduler"
 import { Todo } from "@/session/todo"
 import { Effect } from "effect"
 import { Agent } from "@/agent/agent"
@@ -29,6 +30,34 @@ import { NamedError } from "@opencode-ai/core/util/error"
 import { jsonRequest, runRequest } from "./trace"
 
 const log = Log.create({ service: "server" })
+const SessionVisibility = z.object({
+  sessionIDs: SessionID.zod.array(),
+})
+
+type ForegroundReadKind = "messages" | "diff"
+
+let foregroundReadTestGate:
+  | undefined
+  | ((input: { kind: ForegroundReadKind; sessionID: SessionID }) => void | Promise<void>)
+
+export function setStandardForegroundReadTestGate(
+  next?: (input: { kind: ForegroundReadKind; sessionID: SessionID }) => void | Promise<void>,
+) {
+  foregroundReadTestGate = next
+}
+
+const withForegroundRead = <A, E, R>(kind: ForegroundReadKind, sessionID: SessionID, effect: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    const scheduler = yield* SessionSummaryScheduler.Service
+    const gate = foregroundReadTestGate
+      ? Effect.promise(() => Promise.resolve(foregroundReadTestGate?.({ kind, sessionID })))
+      : Effect.void
+    return yield* Effect.acquireUseRelease(
+      scheduler.foregroundStart(sessionID),
+      () => gate.pipe(Effect.andThen(effect)),
+      () => scheduler.foregroundFinish(sessionID),
+    )
+  }).pipe(Effect.provide(SessionSummaryScheduler.defaultLayer))
 
 export const SessionRoutes = lazy(() =>
   new Hono()
@@ -99,6 +128,34 @@ export const SessionRoutes = lazy(() =>
         jsonRequest("SessionRoutes.status", c, function* () {
           const svc = yield* SessionStatus.Service
           return Object.fromEntries(yield* svc.list())
+        }),
+    )
+    .put(
+      "/visibility",
+      describeRoute({
+        summary: "Sync visible sessions",
+        description: "Sync the currently visible sessions so the backend can prioritize summary refreshes.",
+        operationId: "session.visibility",
+        responses: {
+          200: {
+            description: "Visible sessions synced",
+            content: {
+              "application/json": {
+                schema: resolver(SessionVisibility),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("json", SessionVisibility),
+      async (c) =>
+        jsonRequest("SessionRoutes.visibility", c, function* () {
+          const body = c.req.valid("json")
+          yield* SessionSummaryScheduler.Service.use((svc) => svc.syncVisible(body.sessionIDs)).pipe(
+            Effect.provide(SessionSummaryScheduler.defaultLayer),
+          )
+          return body
         }),
     )
     .get(
@@ -521,10 +578,14 @@ export const SessionRoutes = lazy(() =>
           const query = c.req.valid("query") as Omit<SessionSummary.DiffInput, "sessionID">
           const params = c.req.valid("param")
           const summary = yield* SessionSummary.Service
-          return yield* summary.diff({
-            sessionID: params.sessionID,
-            messageID: query.messageID,
-          })
+          return yield* withForegroundRead(
+            "diff",
+            params.sessionID,
+            summary.diff({
+              sessionID: params.sessionID,
+              messageID: query.messageID,
+            }),
+          )
         }),
     )
     .delete(
@@ -690,23 +751,38 @@ export const SessionRoutes = lazy(() =>
           const messages = await runRequest(
             "SessionRoutes.messages",
             c,
-            Effect.gen(function* () {
-              const session = yield* Session.Service
-              yield* session.get(sessionID)
-              return yield* session.messages({ sessionID })
-            }),
+            withForegroundRead(
+              "messages",
+              sessionID,
+              Effect.gen(function* () {
+                const session = yield* Session.Service
+                yield* session.get(sessionID)
+                return yield* session.messages({ sessionID })
+              }),
+            ),
           )
           return c.json(messages)
         }
 
-        const page = await MessageV2.page({
-          sessionID,
-          limit: query.limit,
-          before: query.before,
-        })
+        const limit = query.limit
+        const page = await runRequest(
+          "SessionRoutes.messages.page",
+          c,
+          withForegroundRead(
+            "messages",
+            sessionID,
+            Effect.sync(() =>
+              MessageV2.page({
+                sessionID,
+                limit,
+                before: query.before,
+              }),
+            ),
+          ),
+        )
         if (page.cursor) {
           const url = new URL(c.req.url)
-          url.searchParams.set("limit", query.limit.toString())
+          url.searchParams.set("limit", limit.toString())
           url.searchParams.set("before", page.cursor)
           c.header("Access-Control-Expose-Headers", "Link, X-Next-Cursor")
           c.header("Link", `<${url.toString()}>; rel="next"`)
@@ -747,10 +823,16 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const params = c.req.valid("param")
-        const message = await MessageV2.get({
-          sessionID: params.sessionID,
-          messageID: params.messageID,
-        })
+        const message = await runRequest(
+          "SessionRoutes.message",
+          c,
+          Effect.sync(() =>
+            MessageV2.get({
+              sessionID: params.sessionID,
+              messageID: params.messageID,
+            }),
+          ),
+        )
         return c.json(message)
       },
     )

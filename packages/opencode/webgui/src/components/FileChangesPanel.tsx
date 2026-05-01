@@ -8,12 +8,25 @@ import { useMergedFileDiffs } from "../hooks/useMergedFileDiffs"
 interface FileChangesPanelProps {
   diffs?: FileDiff[]
   fallbackFiles?: string[]
+  status?: {
+    type: "updating" | "latest" | "failed"
+    message: string
+  }
 }
 
-export function FileChangesPanel({ diffs = [], fallbackFiles = [] }: FileChangesPanelProps) {
+export function FileChangesPanel({ diffs = [], fallbackFiles = [], status }: FileChangesPanelProps) {
   const openFile = useOpenFile()
   const { worktree } = useProject()
   const mergedDiffs = useMergedFileDiffs(diffs, fallbackFiles)
+
+  const hint =
+    status?.type === "updating"
+      ? "差异仍在后台刷新，当前显示的是上一版结果"
+      : status?.type === "latest"
+        ? "已是最新结果"
+        : status?.type === "failed"
+          ? status.message || "刷新失败，将在空闲后重试"
+          : null
 
   const { modified, deleted, totalAdditions, totalDeletions, netChange } = useMemo(() => {
     const sortByBasename = (a: FileDiff, b: FileDiff) => {
@@ -53,6 +66,7 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [] }: FileChanges
     <div className="bg-gray-50 dark:bg-gray-900">
       {/* File list */}
       <div className="max-h-40 overflow-y-auto">
+        {hint && <div className="px-3 pt-2 text-xs text-gray-500 dark:text-gray-400">{hint}</div>}
         <div className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>
             {mergedDiffs.length} file{mergedDiffs.length !== 1 ? "s" : ""}
