@@ -78,12 +78,12 @@ intellijPlatform {
         description = providers.provider {
             val f = file("description.html")
             if (!f.isFile) {
-                return@provider "在 JetBrains IDE 内运行本地 OpenCode 后端，并提供聊天式 AI 编码界面。"
+                return@provider "OpenCode UI (unofficial) brings local OpenCode AI workflows into JetBrains IDEs with chat, context management, and bundled backend binaries."
             }
 
             val text = f.readText().trim()
             if (text.isEmpty()) {
-                "在 JetBrains IDE 内运行本地 OpenCode 后端，并提供聊天式 AI 编码界面。"
+                "OpenCode UI (unofficial) brings local OpenCode AI workflows into JetBrains IDEs with chat, context management, and bundled backend binaries."
             } else {
                 text
             }
