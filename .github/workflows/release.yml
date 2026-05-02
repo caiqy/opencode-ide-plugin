@@ -478,6 +478,54 @@ jobs:
             -x test \
             -x unitTest
 
+      - name: Verify Marketplace plugin metadata
+        run: |
+          python <<'PY'
+          import io
+          import re
+          import zipfile
+          from pathlib import Path
+
+          archives = sorted(Path("hosts/jetbrains-plugin/build/distributions").glob("*.zip"))
+          if len(archives) != 1:
+              raise SystemExit(f"Expected exactly one Marketplace zip, found {len(archives)}")
+
+          plugin_xml = None
+          with zipfile.ZipFile(archives[0]) as plugin_zip:
+              for member in plugin_zip.namelist():
+                  if not member.endswith(".jar"):
+                      continue
+                  payload = plugin_zip.read(member)
+                  with zipfile.ZipFile(io.BytesIO(payload)) as jar_zip:
+                      try:
+                          plugin_xml = jar_zip.read("META-INF/plugin.xml").decode("utf-8")
+                          break
+                      except KeyError:
+                          continue
+
+          if plugin_xml is None:
+              raise SystemExit("Could not find META-INF/plugin.xml inside Marketplace package")
+
+          match = re.search(r"<description><!\[CDATA\[(.*?)\]\]></description>", plugin_xml, re.S)
+          if not match:
+              raise SystemExit("Marketplace package missing plugin description")
+
+          description = match.group(1).strip()
+          visible = re.sub(r"<[^>]+>", " ", description)
+          visible = re.sub(r"\s+", " ", visible).strip()
+
+          if not description.startswith("OpenCode UI"):
+              raise SystemExit("Marketplace description must start with Latin characters")
+          if len(visible) < 40:
+              raise SystemExit("Marketplace description visible text is shorter than 40 characters")
+          if "GUI only" in description:
+              raise SystemExit("Marketplace description still mentions stale GUI-only variant")
+          if "src/main/resources/bin" in description:
+              raise SystemExit("Marketplace description exposes source path instead of runtime behavior")
+
+          print("marketplace metadata ok")
+          PY
+
       - name: Verify Marketplace package contains only 3 binaries
         run: |
           python <<'PY'
