@@ -13,6 +13,7 @@
 |------|---------|---------|
 | build-vsix | Windows 版 VSCode 插件 `.vsix` 快速打包流程 | 见 `memory/context/vscode-packaging.md` |
 | 打包下一个版本 | 直接执行 `.opencode/command/build-vsix.md` 的快速 VSIX 打包命令 | 不重新探索仓库流程 |
+| 版本规则 | `YY.M.DDNN`：`YY`=年份后两位，`M`=月份不补零，`DDNN`=日期×100 + 当天序号；跨天后日期部分必须更新，当天序号重置为 `00` | 仓库通用版本规则，见 `memory/context/versioning.md` |
 
 后续新增、修改或删除记忆时，必须持续维护 `memory/glossary.md`；其中高频或会影响日常解码的 Term 也要同步更新到 `AGENTS.md` 的 `Terms` 表。
 
