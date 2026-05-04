@@ -4,7 +4,7 @@
 
 ## 快速规则
 
-- 版本格式：`YY.M.DDNN`，只递增当天序号。
+- 使用仓库通用版本规则：见 `memory/context/versioning.md`
 - 只改两个版本号：
   - `packages/opencode/webgui/package.json`
   - `hosts/vscode-plugin/package.json`
