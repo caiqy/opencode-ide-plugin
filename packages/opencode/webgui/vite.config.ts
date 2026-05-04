@@ -1,12 +1,58 @@
-import { defineConfig } from "vite"
+import { defineConfig, type UserConfig } from "vite"
 import react from "@vitejs/plugin-react"
 import { readFileSync } from "fs"
 import { resolve } from "path"
+import { BackendDiscoveryError, discoverBackend } from "./dev/discoverBackend"
 
 const pkg = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8"))
 
+const proxyRoots = [
+  "/global",
+  "/session",
+  "/config",
+  "/project",
+  "/provider",
+  "/sync",
+  "/mcp",
+  "/permission",
+  "/question",
+  "/tui",
+  "/command",
+  "/agent",
+  "/skill",
+  "/path",
+  "/event",
+  "/pty",
+  "/experimental",
+  "/auth",
+  "/vcs",
+]
+
+function formatDiscoveryError(error: BackendDiscoveryError) {
+  return [
+    "[webgui] No running opencode backend found on localhost.",
+    ...error.attempts.map((item) => `- ${item.url}: ${item.reason} (${item.detail})`),
+    "[webgui] Start opencode backend first, then retry Vite dev.",
+  ].join("\n")
+}
+
+function viteCommand() {
+  return process.argv.includes("build") ? "build" : "serve"
+}
+
+function viteMode() {
+  const index = process.argv.indexOf("--mode")
+  if (index >= 0) {
+    return process.argv[index + 1] ?? "development"
+  }
+  return viteCommand() === "serve" ? "development" : "production"
+}
+
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => ({
+const command = viteCommand()
+const mode = viteMode()
+
+const shared: UserConfig = {
   plugins: [react()],
   base: "/app",
   build: {
@@ -22,4 +68,36 @@ export default defineConfig(({ mode }) => ({
     "process.env.NODE_ENV": JSON.stringify(mode === "development" ? "development" : "production"),
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
-}))
+}
+
+let config: UserConfig = shared
+
+if (command === "serve") {
+  try {
+    const backend = await discoverBackend()
+    console.log(`[webgui] Using opencode backend ${backend.url}`)
+
+    config = {
+      ...shared,
+      server: {
+        proxy: Object.fromEntries(
+          proxyRoots.map((root) => [
+            root,
+            {
+              target: backend.url,
+              changeOrigin: true,
+              ws: root === "/event" || root === "/pty",
+            },
+          ]),
+        ),
+      },
+    }
+  } catch (error) {
+    if (error instanceof BackendDiscoveryError) {
+      throw new Error(formatDiscoveryError(error))
+    }
+    throw error
+  }
+}
+
+export default defineConfig(config)

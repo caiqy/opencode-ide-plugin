@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "WebGUI: dev",
+      "command": "bun run --cwd packages/opencode/webgui dev"
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Backend: source web 4300",
+      "command": "bun run --cwd packages/opencode --conditions=browser src/index.ts web --hostname 127.0.0.1 --port 4300 --print-logs"
+    }
+  ]
+}
