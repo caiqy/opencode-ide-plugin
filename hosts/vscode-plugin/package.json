@@ -1,7 +1,7 @@
 {
   "name": "opencode-ui",
   "displayName": "OpenCode UI (unofficial)",
-  "description": "OpenCode UI VSCode extension",
+  "description": "OpenCode UI (unofficial) brings local OpenCode AI workflows into IDEs with chat, context management, and bundled backend binaries.",
   "version": "26.5.100",
   "publisher": "caiqy",
   "author": {

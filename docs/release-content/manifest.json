@@ -1,0 +1,6 @@
+{
+  "title": "OpenCode UI (unofficial)",
+  "shortDescription": "OpenCode UI (unofficial) brings local OpenCode AI workflows into IDEs with chat, context management, and bundled backend binaries.",
+  "vscodeReadmeNote": "This package is published as a VSCode extension and integrates OpenCode into the activity bar, Explorer context menu, and editor context menu.",
+  "jetbrainsReadmeNote": "This package is published as a JetBrains plugin and integrates OpenCode into the tool window, Project View, and editor popup actions."
+}
