@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 
+const assistantMetaSpy = vi.fn(() => <div data-testid="assistant-meta" />)
+
 vi.mock("./MessagePart", () => ({
   MessagePart: ({ part }: { part: { id: string } }) => <div data-testid={`part-${part.id}`} />,
 }))
@@ -14,7 +16,7 @@ vi.mock("./ActionButtons", () => ({
 }))
 
 vi.mock("./AssistantMeta", () => ({
-  AssistantMeta: () => <div data-testid="assistant-meta" />,
+  AssistantMeta: (props: Record<string, unknown>) => assistantMetaSpy(props),
 }))
 
 vi.mock("../../hooks/useProviderStore", () => ({
@@ -52,5 +54,44 @@ describe("MessageRow", () => {
     const partStack = screen.getByText("你").parentElement
     expect(partStack).toHaveClass("flex", "flex-col", "gap-3")
     expect(partStack).not.toHaveClass("space-y-1")
+  })
+
+  it("把 assistant 完成时间与中断状态透传给 AssistantMeta", () => {
+    const completedAt = new Date(2026, 4, 5, 14, 23, 18).getTime()
+
+    const message = {
+      info: {
+        id: "a1",
+        sessionID: "s1",
+        role: "assistant",
+        agent: "build",
+        providerID: "anthropic",
+        modelID: "claude-sonnet-4",
+        variant: "high",
+        time: { created: 1, completed: completedAt },
+        error: { name: "MessageAbortedError", message: "stopped" },
+      },
+      parts: [
+        {
+          id: "p1",
+          type: "text",
+          text: "done",
+        },
+      ],
+    }
+
+    render(<MessageRow message={message as never} isLast showMeta turnDurationMs={71000} />)
+
+    expect(screen.getByTestId("assistant-meta")).toBeInTheDocument()
+    expect(assistantMetaSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "build",
+        modelName: "Claude Sonnet 4",
+        variant: "high",
+        durationMs: 71000,
+        completedAt,
+        interrupted: true,
+      }),
+    )
   })
 })

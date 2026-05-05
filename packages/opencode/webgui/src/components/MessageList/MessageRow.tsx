@@ -144,6 +144,7 @@ export function MessageRow({
             modelName={resolveModelName(assistantInfo?.providerID ?? "", assistantInfo?.modelID ?? "")}
             variant={assistantInfo?.variant || undefined}
             durationMs={turnDurationMs}
+            completedAt={assistantInfo?.time?.completed}
             interrupted={error?.name === "MessageAbortedError"}
           />
         )}

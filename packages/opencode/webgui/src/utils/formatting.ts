@@ -48,6 +48,34 @@ export function formatTimestamp(timestamp: number): string {
   return `${year}-${month}-${day} ${hours}:${minutes}`
 }
 
+function pad(value: number): string {
+  return String(value).padStart(2, "0")
+}
+
+function formatTimeWithSeconds(date: Date): string {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+function getLocalDayStart(timestamp: number): number {
+  const date = new Date(timestamp)
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+}
+
+export function formatRelativeDateTimeLabel(timestamp: number, now: number = Date.now()): string {
+  const date = new Date(timestamp)
+
+  if (!Number.isFinite(date.getTime()) || !Number.isFinite(now)) return ""
+
+  const diff = Math.round((getLocalDayStart(now) - getLocalDayStart(timestamp)) / 86400000)
+  const time = formatTimeWithSeconds(date)
+
+  if (diff === 0) return `今天 ${time}`
+  if (diff === 1) return `昨天 ${time}`
+  if (diff === 2) return `前天 ${time}`
+
+  return `${date.getFullYear()}年${pad(date.getMonth() + 1)}月${pad(date.getDate())}日 ${time}`
+}
+
 /**
  * Format file size in bytes to human-readable string
  * @example formatFileSize(1024) // => "1.0KB"

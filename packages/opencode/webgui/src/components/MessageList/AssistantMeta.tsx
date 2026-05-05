@@ -1,3 +1,4 @@
+import { formatRelativeDateTimeLabel } from "../../utils/formatting"
 import { formatDuration } from "./turnMeta"
 
 interface AssistantMetaProps {
@@ -5,14 +6,16 @@ interface AssistantMetaProps {
   modelName: string
   variant?: string
   durationMs?: number
+  completedAt?: number
   interrupted?: boolean
 }
 
-export function AssistantMeta({ agent, modelName, variant, durationMs, interrupted }: AssistantMetaProps) {
+export function AssistantMeta({ agent, modelName, variant, durationMs, completedAt, interrupted }: AssistantMetaProps) {
   const agentLabel = agent ? agent[0].toUpperCase() + agent.slice(1) : ""
   const durationLabel = typeof durationMs === "number" && durationMs >= 0 ? formatDuration(durationMs) : ""
+  const completedLabel = typeof completedAt === "number" ? formatRelativeDateTimeLabel(completedAt) : ""
 
-  const items = [agentLabel, modelName, variant || "", durationLabel, interrupted ? "interrupted" : ""].filter(Boolean)
+  const items = [agentLabel, modelName, variant || "", durationLabel, completedLabel, interrupted ? "interrupted" : ""].filter(Boolean)
 
   if (items.length === 0) return null
 

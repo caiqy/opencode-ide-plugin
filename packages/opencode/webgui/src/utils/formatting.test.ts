@@ -7,6 +7,7 @@ import {
   formatFileSize,
   formatDate,
   formatDateTime,
+  formatRelativeDateTimeLabel,
   formatRelativeTime,
   formatDuration,
   truncate,
@@ -62,6 +63,42 @@ describe("formatTimestamp", () => {
     const timestamp = new Date("2023-12-31T23:59:00").getTime()
     const result = formatTimestamp(timestamp)
     expect(result).toMatch(/2023-12-31 23:59/)
+  })
+})
+
+describe("formatRelativeDateTimeLabel", () => {
+  const now = new Date(2026, 4, 5, 14, 23, 18).getTime()
+
+  it("formats today as 今天 HH:mm:ss", () => {
+    const timestamp = new Date(2026, 4, 5, 9, 8, 7).getTime()
+    expect(formatRelativeDateTimeLabel(timestamp, now)).toBe("今天 09:08:07")
+  })
+
+  it("formats yesterday as 昨天 HH:mm:ss", () => {
+    const timestamp = new Date(2026, 4, 4, 9, 8, 7).getTime()
+    expect(formatRelativeDateTimeLabel(timestamp, now)).toBe("昨天 09:08:07")
+  })
+
+  it("formats day before yesterday as 前天 HH:mm:ss", () => {
+    const timestamp = new Date(2026, 4, 3, 9, 8, 7).getTime()
+    expect(formatRelativeDateTimeLabel(timestamp, now)).toBe("前天 09:08:07")
+  })
+
+  it("formats yesterday across month boundary as 昨天 HH:mm:ss", () => {
+    const monthBoundaryNow = new Date(2026, 4, 1, 9, 8, 7).getTime()
+    const timestamp = new Date(2026, 3, 30, 9, 8, 7).getTime()
+    expect(formatRelativeDateTimeLabel(timestamp, monthBoundaryNow)).toBe("昨天 09:08:07")
+  })
+
+  it("formats day before yesterday across year boundary as 前天 HH:mm:ss", () => {
+    const yearBoundaryNow = new Date(2026, 0, 1, 9, 8, 7).getTime()
+    const timestamp = new Date(2025, 11, 30, 9, 8, 7).getTime()
+    expect(formatRelativeDateTimeLabel(timestamp, yearBoundaryNow)).toBe("前天 09:08:07")
+  })
+
+  it("formats older dates as YYYY年MM月DD日 HH:mm:ss", () => {
+    const timestamp = new Date(2026, 4, 1, 9, 8, 7).getTime()
+    expect(formatRelativeDateTimeLabel(timestamp, now)).toBe("2026年05月01日 09:08:07")
   })
 })
 
