@@ -24,6 +24,7 @@ type LspState = {
 
 type ServerData = {
   connectionState: ConnectionState
+  backendUrl: string | null
   project: string | null
   worktree: string | null
   directory: string | null
@@ -122,6 +123,12 @@ function server(
 ): ServerData {
   return {
     connectionState,
+    backendUrl:
+      typeof __OPENCODE_BACKEND_URL__ === "string" && __OPENCODE_BACKEND_URL__.length > 0
+        ? __OPENCODE_BACKEND_URL__
+        : typeof window === "undefined"
+          ? "http://localhost:4096"
+          : window.location.origin,
     project,
     worktree,
     directory,

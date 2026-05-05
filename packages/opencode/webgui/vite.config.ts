@@ -67,6 +67,7 @@ const shared: UserConfig = {
   define: {
     "process.env.NODE_ENV": JSON.stringify(mode === "development" ? "development" : "production"),
     __APP_VERSION__: JSON.stringify(pkg.version),
+    __OPENCODE_BACKEND_URL__: JSON.stringify(undefined),
   },
 }
 
@@ -79,6 +80,10 @@ if (command === "serve") {
 
     config = {
       ...shared,
+      define: {
+        ...shared.define,
+        __OPENCODE_BACKEND_URL__: JSON.stringify(backend.url),
+      },
       server: {
         proxy: Object.fromEntries(
           proxyRoots.map((root) => [

@@ -23,13 +23,14 @@ describe("CompactHeader/status", () => {
     ])
   })
 
-  it("buildServerView 只映射连接状态、bridge 和项目路径摘要", () => {
+  it("buildServerView 只映射连接状态、后端地址、bridge 和项目路径摘要", () => {
     const view = buildServerView({
       state: "ready",
       error: null,
       updatedAt: 1,
       data: {
         connectionState: "connected",
+        backendUrl: "http://127.0.0.1:4096",
         project: "p1",
         worktree: "D:/repo",
         directory: "D:/repo",
@@ -46,6 +47,7 @@ describe("CompactHeader/status", () => {
     expect(view.summary.project).toBe("p1")
     expect(view.summary.directory).toBe("D:/repo")
     expect(view.summary.connection).toBe("connected")
+    expect(view.summary.backendUrl).toBe("http://127.0.0.1:4096")
     expect(view.summary.bridge.ready).toBe(true)
     expect(view.summary).not.toHaveProperty("health")
     expect(view.note).toContain("不提供多 server 管理")

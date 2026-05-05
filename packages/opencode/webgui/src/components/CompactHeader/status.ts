@@ -11,6 +11,7 @@ type Box<T> = {
 
 type ServerData = {
   connectionState: "connecting" | "connected" | "disconnected" | "error"
+  backendUrl: string | null
   project: string | null
   worktree: string | null
   directory: string | null
@@ -56,6 +57,7 @@ export function buildServerView(input: Box<ServerData>) {
     updatedAt: input.updatedAt,
     summary: {
       connection: input.data.connectionState,
+      backendUrl: input.data.backendUrl,
       project: input.data.project,
       worktree: input.data.worktree,
       directory: input.data.directory,

@@ -2,9 +2,9 @@
 description: 打包 Windows 平台 VSCode 插件 (.vsix)，自动更新日期版本号
 ---
 
-快速执行：不要重新探索仓库；直接运行下面这条 PowerShell 命令。timeout 设为 600000（10 分钟）。
+快速执行：不要重新探索仓库；但在 OpenCode 的 `bash`/PowerShell 工具环境里，优先拆成“两步”：先更新版本号，再执行构建与打包。timeout 设为 600000（10 分钟）。
 
-注意：命令里的 `node -e` 外层使用 PowerShell 单引号，避免在 OpenCode/Bash 工具调用中因为 JSON → PowerShell → Node 多层双引号嵌套导致 `ParserError`。
+注意：这条文档中的 `node -e` one-liner 在某些 OpenCode/PowerShell 工具调用里会发生引号被剥离的问题，导致 Node 实际收到的脚本缺少字符串引号。若出现这种情况，不要继续重试原 one-liner，而是：先手工/脚本更新两个 `package.json` 里的版本号，再执行后半段构建与打包步骤。
 
 版本号格式：`YY.M.DDNN` — `YY` 年份后两位，`M` 月份（不补零），`DDNN` = 日期×100 + 两位构建序号（00-99）。
 

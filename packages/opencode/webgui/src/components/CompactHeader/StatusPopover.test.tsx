@@ -21,6 +21,7 @@ type View = {
     updatedAt: number | null
     data: {
       connectionState: ConnectionState
+      backendUrl: string | null
       project: string | null
       worktree: string | null
       directory: string | null
@@ -78,6 +79,7 @@ function data(): View {
       updatedAt: 1,
       data: {
         connectionState: "connected" as ConnectionState,
+        backendUrl: "http://127.0.0.1:4096",
         project: "p1",
         worktree: "D:/repo",
         directory: "D:/repo",
@@ -151,6 +153,7 @@ describe("CompactHeader/StatusPopover", () => {
     ])
     expect(screen.getByRole("tab", { name: "Server" })).toHaveAttribute("aria-selected", "true")
     expect(screen.getByText("SSE 连接：connected")).toBeInTheDocument()
+    expect(screen.getByText("后端地址：http://127.0.0.1:4096")).toBeInTheDocument()
     expect(screen.getByText("IDE bridge：ready")).toBeInTheDocument()
     expect(screen.queryByText(/项目：/)).not.toBeInTheDocument()
     expect(screen.queryByText(/健康检查/)).not.toBeInTheDocument()

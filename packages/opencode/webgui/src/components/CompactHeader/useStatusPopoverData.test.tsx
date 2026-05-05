@@ -97,6 +97,7 @@ function hook(open: boolean, connectionState: ConnectionState = "connected") {
 
 describe("CompactHeader/useStatusPopoverData", () => {
   beforeEach(() => {
+    Reflect.set(globalThis, "__OPENCODE_BACKEND_URL__", "http://127.0.0.1:4096")
     mocks.mcpStatus.mockReset()
     mocks.mcpTools.mockReset()
     mocks.mcpConnect.mockReset()
@@ -166,6 +167,7 @@ describe("CompactHeader/useStatusPopoverData", () => {
 
     expect(view.result.current.connectionState).toBe("connected")
     expect(view.result.current.servers.state).toBe("ready")
+    expect(view.result.current.servers.data.backendUrl).toBe("http://127.0.0.1:4096")
     expect(view.result.current.servers.data.project).toBe("p1")
     expect(view.result.current.servers.data.directory).toBe("D:/repo")
     expect(view.result.current.servers.data.bridge.ready).toBe(true)
@@ -288,6 +290,18 @@ describe("CompactHeader/useStatusPopoverData", () => {
     expect(view.result.current.servers.state).toBe("stale")
     expect(view.result.current.servers.data.project).toBe("p1")
     expect(view.result.current.servers.error).toContain("project boom")
+  })
+
+  it("未注入 opencode backend 地址时回退到当前 origin", async () => {
+    Reflect.deleteProperty(globalThis, "__OPENCODE_BACKEND_URL__")
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.servers.state).toBe("ready")
+    })
+
+    expect(view.result.current.servers.data.backendUrl).toBe(window.location.origin)
   })
 
   it("refreshMcp 只刷新 MCP 分区", async () => {

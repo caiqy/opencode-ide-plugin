@@ -130,6 +130,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
               onRetry={data.refreshAll}
             />
             <div>SSE 连接：{servers.summary.connection}</div>
+            <div>后端地址：{servers.summary.backendUrl ?? "未知"}</div>
             <div>IDE bridge：{servers.summary.bridge.ready ? "ready" : "not ready"}</div>
             <div>路径：{servers.summary.directory ?? servers.summary.worktree ?? "未知"}</div>
           </div>
