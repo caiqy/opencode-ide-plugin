@@ -6,6 +6,18 @@ describe("getToolDisplayName", () => {
     expect(getToolDisplayName("bash", undefined, "Run something", undefined)).toBe("执行命令：Run something")
   })
 
+  it("bash 在无 title 时使用 description 作为运行中标题", () => {
+    expect(
+      getToolDisplayName("bash", { command: "git status", description: "查看工作区变更" }, undefined, undefined),
+    ).toBe("执行命令：查看工作区变更")
+  })
+
+  it("非 bash 工具在无 title 时不应把 description 当作标题", () => {
+    expect(
+      getToolDisplayName("read", { filePath: "/tmp/demo.ts", description: "查看工作区变更" }, undefined, undefined),
+    ).toBe("查看：/tmp/demo.ts")
+  })
+
   it("在无 title/无 input 时回退为中文工具名", () => {
     expect(getToolDisplayName("read", undefined, undefined, undefined)).toBe("查看")
   })

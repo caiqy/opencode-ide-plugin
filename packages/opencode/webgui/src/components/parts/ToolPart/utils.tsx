@@ -180,6 +180,10 @@ export function getToolDisplayName(
   if (!input) return toolLabel
 
   switch (tool) {
+    case "bash": {
+      const desc = input.description
+      return typeof desc === "string" && desc.length > 0 ? `${toolLabel}：${desc}` : toolLabel
+    }
     case "list":
       return input.path ? `${toolLabel}：${input.path}` : toolLabel
     case "glob":
