@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 
-const assistantMetaSpy = vi.fn(() => <div data-testid="assistant-meta" />)
+const assistantMetaSpy = vi.fn((_props: Record<string, unknown>) => <div data-testid="assistant-meta" />)
 
 vi.mock("./MessagePart", () => ({
   MessagePart: ({ part }: { part: { id: string } }) => <div data-testid={`part-${part.id}`} />,
