@@ -26,7 +26,7 @@ export function TodoTool({ output }: TodoToolProps) {
                 key={todo.id || index}
                 className="flex items-center gap-2 px-2 py-1.5 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
               >
-                <div className="flex-shrink-0">{getStatusIcon(todo.status)}</div>
+                <div className="flex h-4 w-4 shrink-0 items-center justify-center">{getStatusIcon(todo.status)}</div>
                 <div className="flex-1 min-w-0 flex items-center gap-2">
                   <p
                     className={`text-xs flex-1 truncate ${todo.status === "completed" ? "line-through text-gray-500 dark:text-gray-500" : "text-gray-700 dark:text-gray-300"}`}
@@ -62,7 +62,7 @@ function getStatusIcon(status: string) {
     case "completed":
       return (
         <svg
-          className="w-4 h-4 text-green-600 dark:text-green-400"
+          className="block w-4 h-4 text-green-600 dark:text-green-400"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -77,7 +77,7 @@ function getStatusIcon(status: string) {
       )
     case "in_progress":
       return (
-        <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="block w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -88,7 +88,7 @@ function getStatusIcon(status: string) {
       )
     case "cancelled":
       return (
-        <svg className="w-4 h-4 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="block w-4 h-4 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -98,11 +98,7 @@ function getStatusIcon(status: string) {
         </svg>
       )
     default: // pending
-      return (
-        <svg className="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12a9 9 0 1118 0 9 9 0 01-18 0z" />
-        </svg>
-      )
+      return <span className="block h-3.5 w-3.5 rounded-full border-[1.5px] border-current text-gray-400 opacity-80 dark:text-gray-500" />
   }
 }
 
