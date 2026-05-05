@@ -30,14 +30,34 @@ VSCode 稳定性补丁：
 - 动态 CSP origin 拼接。
 - panel 与 activity bar 共用 `WebviewController`，减少协议分叉。
 
+### VSCode 本地开发入口约定
+
+关键文件：
+
+- `.vscode/launch.json`
+- `.vscode/launch.example.json`
+
+本仓库在 VSCode 中长期区分两类本地开发入口：
+
+- `WebGUI: dev`：只启动 WebGUI 的 Vite dev server。
+- `Backend: source web 4300`：只以源码方式启动 opencode backend。
+
+维护约束：
+
+- 两个入口职责分离，不自动互相带起。
+- backend 调试入口固定使用开发端口 `4300`，避免与维护者常用的默认 `4096` 冲突。
+- 本地开发应优先运行当前工作区源码，而不是历史构建产物或全局安装二进制。
+
 ## JetBrains 插件
 
 关键文件：
 
 - `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt`
+- `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/BackendLauncher.kt`
 - `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt`
 - `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridgeStorageBackend.kt`
 - `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeOpenFilesUpdater.kt`
+- `hosts/jetbrains-plugin/src/main/resources/META-INF/plugin.xml`
 
 职责：
 
@@ -47,6 +67,67 @@ VSCode 稳定性补丁：
 - 通过 `PropertiesComponent` 实现 global/workspace 存储。
 - 监听打开文件变化并推送 `updateOpenedFiles`。
 - 处理 JetBrains 原生拖拽，向 WebGUI 推送 `insertPaths` / `pastePath`。
+- 后端通过 JetBrains Terminal 插件启动，而不是直接起独立控制台进程。
+- backend binary 选择优先级为：`OPENCODE_BIN` 环境变量 > 插件内嵌 binary > 系统 PATH 中的 `opencode`。
+
+### JetBrains backend 连接建立依赖
+
+- 连接建立当前依赖后端输出中包含 `opencode server listening on <url>` 文本。
+- 日志链路除了诊断，还承担连接地址发现职责；如果上游修改启动日志文案或输出格式，JetBrains 可能无法连上 `/app`。
+
+### JetBrains backend 日志懒显示
+
+关键文件：
+
+- `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt`
+- `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/BackendLauncher.kt`
+- `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/TerminalOutputCapture.kt`
+
+JetBrains 工具窗口中的 backend logs 面板采用“懒显示”规则：
+
+- 正常启动和正常运行时，日志区应完全不可见。
+- 启动失败、连接超时、browser 创建失败或后端通信异常时，才 reveal 日志面板。
+- 一旦 reveal，在当前工具窗口生命周期内保留，不自动隐藏。
+
+这里只改 **UI 暴露时机**，不改日志采集机制；当前仍依赖后端输出中的监听地址建立 JCEF 连接。
+
+## 发布内容与 Marketplace
+
+关键文件：
+
+- `docs/release-content/manifest.json`
+- `docs/release-content/description.shared.md`
+- `docs/release-content/README.shared.md`
+- `docs/release-content/CHANGELOG.md`
+- `script/release-content.ts`
+- `script/release-content-sync.ts`
+- `.github/workflows/release.yml`
+- `hosts/vscode-plugin/package.json`
+- `hosts/jetbrains-plugin/build.gradle.kts`
+
+双宿主插件的发布内容共享单一内容源，避免 VSCode / JetBrains 的 README、描述和 changelog 漂移。
+
+长期约定：
+
+- 共享真源位于 `docs/release-content/`。
+- 平台目录中的 README / description / changelog 更接近生成产物，不应作为长期手工维护真源。
+- 共享 release-content 真源统一使用 `OpenCode UI (unofficial)` 及其“非官方”语义；JetBrains `plugin.xml` 中的插件显示名当前仍为中文 `OpenCode UI（非官方）`。
+
+`release.yml` 的职责边界：
+
+- `push` 到 `v*` tag 是唯一自动发版入口；手动触发继续保留。
+- tag 名带 `-` 视为 prerelease。
+- `build-vscode` 只负责构建 5 个平台定向 `.vsix`。
+- `build-jetbrains` 只负责构建 JetBrains 插件产物。
+- GitHub Release 与 VSCode Marketplace 只消费已有 artifact；JetBrains Marketplace 会从既有平台产物中提取 backend binary，再重新构建并签名一个 Marketplace 专用组合包。
+
+Marketplace 规则：
+
+- VSCode 只发 Visual Studio Marketplace，不发 Open VSX。
+- VSCode 继续发布 5 个平台定向包，不引入通用 fallback 包。
+- JetBrains Marketplace 额外发布一个组合包：先从既有平台插件产物中提取 backend binary，再重新构建并签名一个 Marketplace 专用插件包。
+- 当前 JetBrains Marketplace 组合包只包含 3 个 binary：Windows x64、macOS ARM64、Linux x64。
+- 任一 Marketplace job 失败时，整个 Release workflow 应失败；但 GitHub Release 可能已先创建，这是允许的流程结果，不做自动回滚。
 
 ## 双端差异
 
@@ -77,8 +158,12 @@ JetBrains 可能附加：
 
 - `jcefScrollMultiplier`
 
+JetBrains 还会在 IDE bridge 的 `connected` 事件里下发 `minVersion`；该值来自 `build.gradle.kts -> processResources -> opencode-build.properties -> IdeBridge.kt` 这条链路。
+
 ## 维护注意点
 
 - WebGUI 新增宿主能力时，必须明确 VSCode 和 JetBrains 是否都支持。
 - 更新能力目前主要是 VSCode 独有，WebGUI 需要优雅处理 JetBrains 缺失。
 - 不要删除 VSCode 的 SW/CSP/Remote 兼容代码；这些看似“包装细节”，实际是插件可用性的关键。
+- 调整 JetBrains backend 启动 UI 时，不要把“日志面板懒显示”改回默认常驻，也不要移除监听地址解析所需的日志采集链路。
+- 修改发布流程时，要同时检查共享内容真源、release workflow 职责边界，以及 VSCode / JetBrains Marketplace 是否仍消费已有 artifact。

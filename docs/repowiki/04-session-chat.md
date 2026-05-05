@@ -71,7 +71,7 @@ WebGUI 的核心体验是“IDE 内多会话聊天”。本项目在上游 openc
 
 - 首次只加载最近一页消息。
 - 更早历史通过顶部“加载更多”显式触发。
-- `MessagesContext` 保存分页真相，包括 cursor、loaded、loading、error、complete。
+- `MessagesContext` 保存分页真相，包括 cursor、loaded、complete，以及 latest/older 两段独立加载状态（`latest_loading`、`latest_error`、`older_loading`、`older_error`）。
 - SSE 增量事件实时更新 message/part，不要求一次性加载完整历史。
 
 消息模型还包含 WebGUI 扩展 part：
@@ -123,13 +123,37 @@ WebGUI 避免全量 virtualization，采用更保守的聊天滚动模型：
 - Lexical 富文本输入。
 - 文件、目录、agent、symbol、opened-files mention。
 - `/command` 命令弹层与命令搜索。
+- `/xxx` 只有精确命中 `/command` 真源列表才走 `session.command`；未命中时按普通消息发送，并保留前导 `/`。
 - 图片、PDF、文本附件；`fileUtils` 负责 MIME 识别和 text attachment 归一化。
+- `@文件` mention 的后端分流顺序固定为：目录 → PDF/图片 → 文本文件 → 其他二进制；其他二进制只保留路径引用，不自动 `Read`，也不应制造 `Session.Error`。
 - 拖拽文件路径插入。
 - 快捷短语，支持填入输入框、确认后发送、双击发送等模式。
 - 会话维度草稿保存与恢复。
 - 会话 busy、selection restore、加载错误时禁用或保护输入。
+- abort 当前会话时，前端会先本地 reject 该 session 下仍未回答的 question，再调用 `session.abort`，避免 UI 残留阻塞问题卡片。
 
 拖拽和键盘处理是 IDE 场景的兼容层：`dnd.ts` 解析 VSCode/JCEF 传入的 uri-list 与文件/目录信息；`keyboardHandler.ts` 在 iframe 中接管复制、粘贴、撤销、重做等组合键，避免宿主 webview 吞掉编辑器快捷键。
+
+## 当前会话前台读取优先级
+
+关键文件：
+
+- `packages/opencode/webgui/src/hooks/useSessionVisibilitySync.ts`
+- `packages/opencode/webgui/src/state/useSessionActivation.ts`
+- `packages/opencode/webgui/src/state/MessagesContext.tsx`
+- `packages/opencode/src/session/summary-scheduler.ts`
+- `packages/opencode/src/server/routes/instance/httpapi/session.ts`
+- `packages/opencode/src/server/routes/instance/session.ts`
+
+规则：**当前正在激活和读取的会话，应优先于后台 summary/diff 调度。**
+
+当前约束：
+
+- `prompt.ts` / `processor.ts` 只负责 `markDirty(...)`。
+- `SessionPrompt.loop(...)` 运行期间也会显式持有 foreground 保护。
+- 前端会对 visible session 去重排序，并避免把当前激活 session 过早放入 background visible set；sync 失败会延迟重试并收敛到最新可见集。
+- 后端在 `session.messages`、`session.diff` 等关键读取期间使用 foreground 保护。
+- foreground 只影响后台 diff 启动时机，不改变 dirty 来源和 scheduler 状态机。
 
 ## 消息展示层
 
@@ -189,3 +213,6 @@ WebGUI 避免全量 virtualization，采用更保守的聊天滚动模型：
 - `SessionContext` 与 `MessagesContext` 分工要清晰：前者管会话元数据，后者管消息内容与分页。
 - 不要把 subagent session 混入主会话历史列表。
 - retry/revert/redo 依赖上游会话语义，修改前需确认 SDK 返回结构。
+- slash 补全和真实发送必须共用同一份 `/command` 真源。
+- 不要把 PDF/图片误归到普通二进制，也不要让二进制路径重新触发无意义 `Read`。
+- 修改会话激活、历史分页或 diff 状态链时，要同时检查前端 visibility、后端 foreground 保护和 `SessionSummaryScheduler`。

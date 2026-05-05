@@ -24,16 +24,29 @@
 关键目录：
 
 - `packages/opencode/webgui/src/components/parts/ToolPart/`
+- `packages/opencode/webgui/src/components/parts/ToolPart/utils.tsx`
+- `packages/opencode/webgui/src/components/parts/ToolPart/utils.test.ts`
 - `packages/opencode/webgui/src/lib/task-part.ts`
 - `packages/opencode/webgui/src/lib/task-result.ts`
 
 ToolPart 负责将 opencode 工具 part 转成 IDE 友好 UI：
 
 - bash/read/write/edit/apply_patch 等工具专门展示。
+- 工具卡片标题优先使用后端回写的 `state.title`，缺失时再按工具类型从 `input` 推导本地展示文案。
+- `bash` 是单独适配点：运行中若还没有 `title`，前端先用 `input.description` 展示 `执行命令：...`。
 - edit/write 后可展示 diff 或 patch 信息。
 - 权限请求必须可见，不能因为折叠状态丢失授权入口。
 - task 工具需要关联子任务状态。
 - 对不认识的工具保留 generic output fallback。
+
+`utils.tsx` 是标题与中文名规则的集中入口；`utils.test.ts` 负责保护这些展示语义，避免规则外溢。
+
+当前被测试锁定的展示语义还包括：
+
+- `skill` 标题要去掉 `Loaded skill:` / `Loading skill:` / `加载技能：` 前缀，避免重复。
+- `todoread/todowrite` 在 output 是 todo JSON 列表时显示完成数/总数。
+- `grep` 标题除 `pattern` 外还要补 `include`。
+- `plan_enter` / `plan_exit` / `batch` / `question` / `websearch` / `codesearch` / `lsp` / `invalid` 等工具都有固定中文名。
 
 ## Diff、patch 与文件变更浏览
 
@@ -127,5 +140,6 @@ Skills 与 MCP 类似，属于项目能力开关，但语义不同：
 ## 维护注意点
 
 - 工具 part schema 变化会影响 ToolPart、task 抽屉、文件刷新逻辑。
+- 调整工具标题来源时，要同时检查 `state.title` 优先级、运行中 fallback 与 completed 阶段一致性；当前仅 `bash` 使用 `input.description` 提前展示，不要默认扩散到其他工具。
 - MCP/Skill 开关涉及前端、SDK client、后端 config 三处，不能只改 UI。
 - 权限和问题事件仍由 opencode 底层判定，WebGUI 只负责展示与回复。

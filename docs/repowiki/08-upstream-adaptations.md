@@ -85,7 +85,58 @@ RepoWiki 只记录 WebGUI/IDE 如何消费这些能力，以及本 fork 为插�
 
 用途：IDE 中传入 file/directory、路径 range、LSP symbol 等上下文时，需要服务端正确解析。
 
+当前约定：
+
+- `file://` mention 的固定分流顺序是：目录 → PDF/图片 → 文本文件 → 其他二进制文件。
+- 文本文件继续走 `Read`，并保持行号范围语义兼容。
+- PDF/图片继续作为 attachment / media 处理。
+- 其他二进制只保留路径引用，不自动 `Read`，也不应制造额外 `Session.Error`。
+
 风险：上游 prompt 结构调整可能影响文件/目录 mention、拖拽上下文、范围读取。
+
+### 前台读取优先于后台 diff
+
+关键文件：
+
+- `packages/opencode/src/session/summary-scheduler.ts`
+- `packages/opencode/src/server/routes/instance/httpapi/session.ts`
+- `packages/opencode/src/server/routes/instance/session.ts`
+- `packages/opencode/webgui/src/hooks/useSessionVisibilitySync.ts`
+- `packages/opencode/webgui/src/state/useSessionActivation.ts`
+
+用途：保护当前会话首屏读取、历史分页扫描和当前会话 diff 读取，不被后台 summary/diff 抢占。
+
+当前约定：
+
+- `prompt.ts` / `processor.ts` 只负责 `markDirty(...)`，后台 diff 调度由 `SessionSummaryScheduler` 统一处理。
+- `SessionPrompt.loop(...)` 运行期间也会显式持有 foreground 保护。
+- 前端会避免把当前激活 session 过早纳入 background visible 集合。
+- 后端关键读取期间会设置 foreground 保护，foreground 结束后再回到现有 `scheduleDirty + signal` 收口。
+- `visibilityReady === false`（首次 `syncVisible` 之前）时，scheduler 默认把所有 session 视为可见；首次 sync 后才切换到真实 visible gating。
+- 当 session 在后台 summarize 过程中被隐藏时，scheduler 通过 `guardVersion/canWrite` 丢弃旧结果写回，而不是依赖中断底层计算。
+
+风险：如果上游 session 路由、summary scheduler 或 visibility 语义变化，这条保护链最容易被破坏，表现为切换会话时首屏卡顿、历史扫描被抢占或 diff 状态抖动。
+
+### Diff 主线回归测试边界
+
+关键文件：
+
+- `packages/opencode/test/server/httpapi-session.test.ts`
+- `packages/opencode/test/session/summary-scheduler.test.ts`
+- `packages/opencode/webgui/src/hooks/useSessionVisibilitySync.test.tsx`
+- `packages/opencode/webgui/src/state/useSessionActivation.test.tsx`
+- `packages/opencode/webgui/src/state/MessagesContext.pagination.test.tsx`
+- `packages/opencode/webgui/src/components/MessageInput/FooterPanels.test.tsx`
+- `packages/opencode/webgui/src/components/FileChangesPanel.test.tsx`
+
+用途：本仓库对 diff 主线的测试目标不是追求覆盖率数字，而是锁定高风险需求语义。
+
+维护约束：
+
+- 高风险需求优先保留“直接测试”，不要只依赖间接覆盖或 smoke test。
+- 重点关注 foreground 期间后台 diff 不启动、foreground 结束后恢复调度、visible gating、真实历史分页路由保护，以及 `session.diff.status -> UI` 的状态链。
+- cleanup 类改动不要混入 diff 主线覆盖结论里。
+- 标准 Hono 路由与 experimental HttpApi 路由都要保留相同的 foreground 语义，避免只修一套路由。
 
 ## 上游同步检查重点
 
@@ -110,6 +161,8 @@ RepoWiki 只记录 WebGUI/IDE 如何消费这些能力，以及本 fork 为插�
 - 确认 scoped storage 可读写。
 - 确认 MCP/Skill 开关仍能显示并调用。
 - 确认插件内写文件后 IDE 能刷新。
+- 确认 `@文件` mention 对文本/PDF/图片/其他二进制的分流仍符合 IDE 场景预期。
+- 确认切换当前会话时，首屏消息/历史扫描/当前会话 diff 不会被后台 diff 抢占。
 
 ## 维护原则
 

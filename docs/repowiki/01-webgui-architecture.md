@@ -40,6 +40,46 @@ IDE Host（VSCode / JetBrains）
 - `/app/api/*` 不应回流到旧兼容接口。
 - `/app` 路由必须早于 workspace middleware，避免静态资源请求被当成实例 API。
 
+## 开发模式双链路
+
+WebGUI 有两条独立链路：
+
+- **正式链路：** opencode server 提供 embedded WebGUI，并由 `/app` 对外服务。
+- **开发链路：** VSCode 直接启动 `packages/opencode/webgui` 的 Vite dev server，用于浏览器/HMR 联调。
+
+关键文件：
+
+- `.vscode/launch.json`
+- `.vscode/launch.example.json`（Bun attach 样例，不是标准启动链路）
+- `packages/opencode/webgui/package.json`
+
+维护约束：
+
+- `WebGUI: dev` 只启动前端，不自动带起 backend。
+- 调试配置优先复用仓库脚本，不分散硬编码 Vite 细节。
+- dev 链路只服务联调，不替代 `/app` 正式托管。
+
+## Vite dev 的 backend 发现与代理
+
+关键文件：
+
+- `packages/opencode/webgui/vite.config.ts`
+- `packages/opencode/webgui/dev/discoverBackend.ts`
+- `packages/opencode/webgui/dev/discoverBackend.test.ts`
+- `packages/opencode/webgui/src/lib/api/sdkClient.ts`
+- `packages/opencode/webgui/src/lib/api/events.ts`
+
+开发模式下，WebGUI 采用“Node 侧发现 backend + Vite proxy 转发”：浏览器继续按当前 origin 访问 API/SSE，`/app` 和静态资源由 Vite 提供，API/SSE 根路径继续走 proxy。
+
+当前约定：
+
+- backend discovery 属于 dev tooling，不应扩散到正式运行时代码。
+- 候选端口是收紧的固定集合，当前顺序为：`4300`、`4096`、`4097`、`4098`、`4099`、`4100`；其中 `4300` 与仓库内 VSCode backend 调试配置保持一致。
+- 当前只探测 `127.0.0.1`，不默认覆盖局域网、容器或 SSH 转发。
+- 后端识别不能只看 `/app` 是否可访问，必须通过 `/global/config` 做结构化校验。
+- 如果所有候选端口都失败，Vite dev 应直接启动失败，而不是进入半可用状态。
+- dev 模式还会注入 `__OPENCODE_BACKEND_URL__` 常量，供前端感知已发现的 backend 地址；浏览器侧 API/SSE 入口仍以当前 origin + proxy 为准。
+
 ## 与 opencode API 的关系
 
 WebGUI 通过 `sdkClient` 访问 opencode 核心 API。迁移目标是优先使用上游官方 API / SDK，而不是依赖历史 `/app/api/*` 兼容层。
@@ -107,3 +147,4 @@ WebGUI 通过 `sdkClient` 访问 opencode 核心 API。迁移目标是优先使�
 - 修改 server 路由时，必须确认 `/app` 挂载仍在 workspace middleware 之前。
 - 修改 WebGUI 构建路径或 asset 命名时，必须同步嵌入脚本与 `webgui/server/app.ts`。
 - 修改 `sdkClient.ts` 时，要保持 WebGUI 现有 `{ data, error }` 调用习惯，避免把异常直接抛给组件层。
+- 修改 dev 模式链路时，不要把 backend 发现、proxy 或端口探测逻辑泄漏到生产 `/app` 托管路径。
