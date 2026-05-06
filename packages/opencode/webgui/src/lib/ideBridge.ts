@@ -36,6 +36,8 @@ class IdeBridge {
   private reconnectDelay = 1000
   private readonly maxReconnectDelay = 30000
   private readonly timeout: Partial<Record<string, number>> = {
+    getUpdateInfo: 5000,
+    checkForUpdates: 5000,
     restartHost: 5000,
   }
   private reconnectScheduled = false

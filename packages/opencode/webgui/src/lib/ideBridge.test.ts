@@ -77,6 +77,24 @@ describe("ideBridge connected metadata", () => {
     expect(String(bad.mock.calls[0]?.[0])).toContain("restartHost")
   })
 
+  it("checkForUpdates 请求超时会 reject", async () => {
+    const { ideBridge } = await import("./ideBridge")
+    ideBridge.init()
+
+    const source = MockEventSource.all[0]
+    expect(source).toBeDefined()
+    source.onopen?.call(source as unknown as EventSource, new Event("open"))
+
+    const bad = vi.fn()
+    ideBridge.request("checkForUpdates").catch(bad)
+
+    await vi.advanceTimersByTimeAsync(5001)
+
+    expect(bad).toHaveBeenCalledTimes(1)
+    expect(bad.mock.calls[0]?.[0]).toBeInstanceOf(Error)
+    expect(String(bad.mock.calls[0]?.[0])).toContain("checkForUpdates")
+  })
+
   it("bridge 断连时 pending request 会 reject", async () => {
     const { ideBridge } = await import("./ideBridge")
     ideBridge.init()
