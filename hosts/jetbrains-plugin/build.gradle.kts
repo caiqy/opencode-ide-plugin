@@ -6,7 +6,7 @@ plugins {
 
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 
-group = "qtkj.opencode"
+group = "Caiqy.opencode"
 version = findProperty("plugin.version")?.toString() ?: "26.2.15"
 
 repositories {
