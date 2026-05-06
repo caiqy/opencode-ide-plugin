@@ -138,6 +138,8 @@ class PluginUpdateService(
 ) {
     private val lock = Any()
 
+    fun currentVersion(): String = versionSource.currentVersion()
+
     private val latestProvider = latestProvider ?: {
         loadLatestMarketplaceUpdate(
             versionSource = versionSource,
@@ -149,7 +151,7 @@ class PluginUpdateService(
     private var latest: AvailablePluginUpdate? = null
 
     fun getUpdateInfo(): UpdateInfoResult {
-        val currentVersion = versionSource.currentVersion()
+        val currentVersion = currentVersion()
         if (!supportsInAppUpdate()) {
             synchronized(lock) {
                 latest = null
@@ -176,7 +178,7 @@ class PluginUpdateService(
     }
 
     fun checkForUpdates(): CheckForUpdatesResult {
-        val currentVersion = versionSource.currentVersion()
+        val currentVersion = currentVersion()
         if (!supportsInAppUpdate()) {
             synchronized(lock) {
                 latest = null

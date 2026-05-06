@@ -36,8 +36,7 @@ data class Session(
     val sseClients: MutableSet<HttpExchange> = Collections.synchronizedSet(mutableSetOf()),
     val mem: MutableMap<String, String> = ConcurrentHashMap(),
     val storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend,
-    val versionSource: PluginVersionSource = installedPluginVersionSource(),
-    val updateService: PluginUpdateService = PluginUpdateService(versionSource = versionSource),
+    val updateService: PluginUpdateService = PluginUpdateService(),
 )
 
 data class SessionInfo(val baseUrl: String, val token: String, val sessionId: String)
@@ -102,7 +101,9 @@ object IdeBridge {
         project: Project,
         storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend,
         versionSource: PluginVersionSource = installedPluginVersionSource(),
-        updateService: PluginUpdateService = PluginUpdateService(versionSource = versionSource),
+        updateServiceFactory: (PluginVersionSource) -> PluginUpdateService = { source ->
+            PluginUpdateService(versionSource = source)
+        },
     ): SessionInfo {
         start() // ensure server is running
         
@@ -113,12 +114,12 @@ object IdeBridge {
         
         val sessionId = UUID.randomUUID().toString()
         val token = UUID.randomUUID().toString()
+        val updateService = updateServiceFactory(versionSource)
         sessions[sessionId] = Session(
             id = sessionId,
             token = token,
             project = project,
             storage = storage,
-            versionSource = versionSource,
             updateService = updateService,
         )
         projectToSession[project] = sessionId
@@ -380,7 +381,7 @@ object IdeBridge {
                         replyResult(
                             session,
                             id,
-                            mapOf("version" to session.versionSource.currentVersion()),
+                            mapOf("version" to session.updateService.currentVersion()),
                         )
                     } catch (e: Exception) {
                         replyError(session, id, "getExtensionVersion failed: ${e.message ?: e}")

@@ -111,12 +111,15 @@ class IdeBridgeUpdateTest {
     fun `getUpdateInfo returns marketplace only support state`() {
         val session = IdeBridge.createSession(
             project = project(),
-            updateService = PluginUpdateService(
-                versionSource = PluginVersionSource { "26.5.501" },
-                distributionChannelProvider = { "local" },
-                latestProvider = { null },
-                backgroundRunner = { task -> task() },
-            ),
+            versionSource = PluginVersionSource { "26.5.501" },
+            updateServiceFactory = { source ->
+                PluginUpdateService(
+                    versionSource = source,
+                    distributionChannelProvider = { "local" },
+                    latestProvider = { null },
+                    backgroundRunner = { task -> task() },
+                )
+            },
         )
 
         sse(session).use { events ->
@@ -134,17 +137,20 @@ class IdeBridgeUpdateTest {
     fun `checkForUpdates returns structured available result`() {
         val session = IdeBridge.createSession(
             project = project(),
-            updateService = PluginUpdateService(
-                versionSource = PluginVersionSource { "26.5.501" },
-                distributionChannelProvider = { "marketplace" },
-                latestProvider = {
-                    AvailablePluginUpdate(
-                        release = UpdateRelease(version = "26.5.502"),
-                        install = {},
-                    )
-                },
-                backgroundRunner = { task -> task() },
-            ),
+            versionSource = PluginVersionSource { "26.5.501" },
+            updateServiceFactory = { source ->
+                PluginUpdateService(
+                    versionSource = source,
+                    distributionChannelProvider = { "marketplace" },
+                    latestProvider = {
+                        AvailablePluginUpdate(
+                            release = UpdateRelease(version = "26.5.502"),
+                            install = {},
+                        )
+                    },
+                    backgroundRunner = { task -> task() },
+                )
+            },
         )
 
         sse(session).use { events ->
@@ -163,17 +169,20 @@ class IdeBridgeUpdateTest {
         val attempts = AtomicInteger(0)
         val session = IdeBridge.createSession(
             project = project(),
-            updateService = PluginUpdateService(
-                versionSource = PluginVersionSource {
-                    if (attempts.getAndIncrement() == 0) {
-                        throw IllegalStateException("boom")
-                    }
-                    "26.5.501"
-                },
-                distributionChannelProvider = { "local" },
-                latestProvider = { null },
-                backgroundRunner = { task -> task() },
-            ),
+            versionSource = PluginVersionSource { "26.5.501" },
+            updateServiceFactory = { source ->
+                PluginUpdateService(
+                    versionSource = PluginVersionSource {
+                        if (attempts.getAndIncrement() == 0) {
+                            throw IllegalStateException("boom")
+                        }
+                        source.currentVersion()
+                    },
+                    distributionChannelProvider = { "local" },
+                    latestProvider = { null },
+                    backgroundRunner = { task -> task() },
+                )
+            },
         )
 
         sse(session).use { events ->
@@ -198,32 +207,37 @@ class IdeBridgeUpdateTest {
         val allowInstall = CountDownLatch(1)
         val startedBeforeReply = AtomicBoolean(false)
 
-        val service = PluginUpdateService(
+        lateinit var service: PluginUpdateService
+        val session = IdeBridge.createSession(
+            project = project(),
             versionSource = PluginVersionSource { "26.5.501" },
-            distributionChannelProvider = { "marketplace" },
-            latestProvider = {
-                AvailablePluginUpdate(
-                    release = UpdateRelease(version = "26.5.502"),
-                    install = {
-                        allowInstall.await(2, TimeUnit.SECONDS)
-                        installed.incrementAndGet()
+            updateServiceFactory = { source ->
+                PluginUpdateService(
+                    versionSource = source,
+                    distributionChannelProvider = { "marketplace" },
+                    latestProvider = {
+                        AvailablePluginUpdate(
+                            release = UpdateRelease(version = "26.5.502"),
+                            install = {
+                                allowInstall.await(2, TimeUnit.SECONDS)
+                                installed.incrementAndGet()
+                            },
+                        )
                     },
-                )
-            },
-            backgroundRunner = { task ->
-                startRequested.countDown()
-                if (replyObserved.count > 0L) {
-                    startedBeforeReply.set(true)
-                }
-                thread(start = true, isDaemon = true) {
-                    replyObserved.await(2, TimeUnit.SECONDS)
-                    task()
-                }
+                    backgroundRunner = { task ->
+                        startRequested.countDown()
+                        if (replyObserved.count > 0L) {
+                            startedBeforeReply.set(true)
+                        }
+                        thread(start = true, isDaemon = true) {
+                            replyObserved.await(2, TimeUnit.SECONDS)
+                            task()
+                        }
+                    },
+                ).also { service = it }
             },
         )
         service.checkForUpdates()
-
-        val session = IdeBridge.createSession(project = project(), updateService = service)
 
         sse(session).use { events ->
             val request = events.post("installUpdate", JsonObject().apply {
@@ -253,12 +267,15 @@ class IdeBridgeUpdateTest {
     fun `installUpdate missing version returns error reply`() {
         val session = IdeBridge.createSession(
             project = project(),
-            updateService = PluginUpdateService(
-                versionSource = PluginVersionSource { "26.5.501" },
-                distributionChannelProvider = { "marketplace" },
-                latestProvider = { null },
-                backgroundRunner = { task -> task() },
-            ),
+            versionSource = PluginVersionSource { "26.5.501" },
+            updateServiceFactory = { source ->
+                PluginUpdateService(
+                    versionSource = source,
+                    distributionChannelProvider = { "marketplace" },
+                    latestProvider = { null },
+                    backgroundRunner = { task -> task() },
+                )
+            },
         )
 
         sse(session).use { events ->
@@ -275,12 +292,15 @@ class IdeBridgeUpdateTest {
     fun `installUpdate prepareInstall rejection returns request error`() {
         val session = IdeBridge.createSession(
             project = project(),
-            updateService = PluginUpdateService(
-                versionSource = PluginVersionSource { "26.5.501" },
-                distributionChannelProvider = { "marketplace" },
-                latestProvider = { null },
-                backgroundRunner = { task -> task() },
-            ),
+            versionSource = PluginVersionSource { "26.5.501" },
+            updateServiceFactory = { source ->
+                PluginUpdateService(
+                    versionSource = source,
+                    distributionChannelProvider = { "marketplace" },
+                    latestProvider = { null },
+                    backgroundRunner = { task -> task() },
+                )
+            },
         )
 
         sse(session).use { events ->
@@ -300,20 +320,25 @@ class IdeBridgeUpdateTest {
             throw RejectedExecutionException("scheduler down")
         }
 
-        val service = PluginUpdateService(
+        lateinit var service: PluginUpdateService
+        val session = IdeBridge.createSession(
+            project = project(),
             versionSource = PluginVersionSource { "26.5.501" },
-            distributionChannelProvider = { "marketplace" },
-            latestProvider = {
-                AvailablePluginUpdate(
-                    release = UpdateRelease(version = "26.5.502"),
-                    install = { installed.incrementAndGet() },
-                )
+            updateServiceFactory = { source ->
+                PluginUpdateService(
+                    versionSource = source,
+                    distributionChannelProvider = { "marketplace" },
+                    latestProvider = {
+                        AvailablePluginUpdate(
+                            release = UpdateRelease(version = "26.5.502"),
+                            install = { installed.incrementAndGet() },
+                        )
+                    },
+                    backgroundRunner = { task -> task() },
+                ).also { service = it }
             },
-            backgroundRunner = { task -> task() },
         )
         service.checkForUpdates()
-
-        val session = IdeBridge.createSession(project = project(), updateService = service)
 
         sse(session).use { events ->
             val request = events.post("installUpdate", JsonObject().apply {
