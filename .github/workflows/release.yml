@@ -317,6 +317,19 @@ jobs:
           sed -i "s/^version = findProperty(\"plugin.version\")?.toString() ?: \".*\"/version = findProperty(\"plugin.version\")?.toString() ?: \"$CLEAN_VERSION\"/" hosts/jetbrains-plugin/build.gradle.kts
           echo "Updated hosts/jetbrains-plugin/build.gradle.kts to version $CLEAN_VERSION"
 
+      - name: Inject WebGUI version for JetBrains build
+        run: |
+          RAW_VERSION="${{ needs.preflight.outputs.version }}"
+          CLEAN_VERSION="${RAW_VERSION#v}"
+          node -e '
+            const fs = require("fs");
+            const path = "packages/opencode/webgui/package.json";
+            const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
+            pkg.version = process.argv[1];
+            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
+            console.log("Updated " + path + " to version " + process.argv[1]);
+          ' "$CLEAN_VERSION"
+
       - name: Build single-target backend binary
         run: |
           cd packages/opencode
@@ -579,6 +592,19 @@ jobs:
           chmod +x hosts/jetbrains-plugin/src/main/resources/bin/macos/arm64/opencode
           chmod +x hosts/jetbrains-plugin/src/main/resources/bin/linux/amd64/opencode
 
+      - name: Inject WebGUI version for JetBrains build
+        run: |
+          RAW_VERSION="${{ needs.preflight.outputs.version }}"
+          CLEAN_VERSION="${RAW_VERSION#v}"
+          node -e '
+            const fs = require("fs");
+            const path = "packages/opencode/webgui/package.json";
+            const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
+            pkg.version = process.argv[1];
+            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
+            console.log("Updated " + path + " to version " + process.argv[1]);
+          ' "$CLEAN_VERSION"
+
       - name: Build Marketplace plugin package
         working-directory: hosts/jetbrains-plugin
         run: |
@@ -619,6 +645,9 @@ jobs:
           if plugin_xml is None:
               raise SystemExit("Could not find META-INF/plugin.xml inside Marketplace package")
 
+          if "<vendor>Caiqy</vendor>" not in plugin_xml:
+              raise SystemExit("Marketplace package missing Caiqy vendor")
+
           match = re.search(r"<description><!\[CDATA\[(.*?)\]\]></description>", plugin_xml, re.S)
           if not match:
               raise SystemExit("Marketplace package missing plugin description")
@@ -638,6 +667,20 @@ jobs:
 
           print("marketplace metadata ok")
           PY
+
+      - name: Verify JetBrains build WebGUI version injection
+        run: |
+          RAW_VERSION="${{ needs.preflight.outputs.version }}"
+          CLEAN_VERSION="${RAW_VERSION#v}"
+          node -e '
+            const fs = require("fs");
+            const pkg = JSON.parse(fs.readFileSync("packages/opencode/webgui/package.json", "utf8"));
+            const expected = process.argv[1];
+            if (pkg.version !== expected) {
+              throw new Error(`webgui version ${pkg.version} does not match ${expected}`);
+            }
+            console.log("jetbrains webgui version injection ok");
+          ' "$CLEAN_VERSION"
 
       - name: Verify Marketplace distribution channel metadata
         run: |
