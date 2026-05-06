@@ -128,7 +128,7 @@ git commit -m "feat(vscode-plugin): add restartHost bridge support"
 **Files:**
 
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt`
-- Create: `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt`
+- Create: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt`
 
 **Step 1: 写失败测试（先约束行为，不触发真实重启）**
 
@@ -154,7 +154,7 @@ fun `restartHost calls restart hook and replies ok`() {
 Run (workdir=`hosts/jetbrains-plugin`):
 
 ```bash
-./gradlew test --tests "paviko.opencode.ui.IdeBridgeRestartHostTest"
+./gradlew unitTest --tests "paviko.opencode.ui.IdeBridgeRestartHostTest"
 ```
 
 Expected: FAIL（当前无 `restartHost` 分支/无可注入重启 hook）。
@@ -186,7 +186,7 @@ addProperty("restartMode", "ide")
 Run (workdir=`hosts/jetbrains-plugin`):
 
 ```bash
-./gradlew test --tests "paviko.opencode.ui.IdeBridgeRestartHostTest"
+./gradlew unitTest --tests "paviko.opencode.ui.IdeBridgeRestartHostTest"
 ```
 
 Expected: PASS。
@@ -194,7 +194,7 @@ Expected: PASS。
 **Step 5: Commit**
 
 ```bash
-git add hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt
+git add hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt
 git commit -m "feat(jetbrains-plugin): support restartHost bridge message"
 ```
 
@@ -390,7 +390,7 @@ git commit -m "feat(webgui): confirm and request host restart from compact heade
 **Files:**
 
 - Modify (if needed): `hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts`
-- Modify (if needed): `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt`
+- Modify (if needed): `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt`
 - Modify (if needed): `packages/opencode/webgui/src/components/CompactHeader/*.test.tsx`
 
 **Step 1: 运行 WebGUI 相关回归**
@@ -418,7 +418,7 @@ Expected: PASS（至少覆盖 `restartHost` 新分支）。
 Run (workdir=`hosts/jetbrains-plugin`):
 
 ```bash
-./gradlew test --tests "paviko.opencode.ui.IdeBridge*"
+./gradlew unitTest --tests "paviko.opencode.ui.IdeBridge*"
 ```
 
 Expected: PASS。
@@ -437,6 +437,6 @@ Expected: 仅包含本需求相关文件。
 **Step 5: Commit**
 
 ```bash
-git add hosts/vscode-plugin/src/ui/IdeBridgeServer.ts hosts/vscode-plugin/src/ui/WebviewController.ts hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt packages/opencode/webgui/src/lib/ideBridge.ts packages/opencode/webgui/src/components/CompactHeader/ActionButtons.tsx packages/opencode/webgui/src/components/CompactHeader/ActionButtons.test.tsx packages/opencode/webgui/src/components/CompactHeader/index.tsx packages/opencode/webgui/src/components/CompactHeader/index.test.tsx
+git add hosts/vscode-plugin/src/ui/IdeBridgeServer.ts hosts/vscode-plugin/src/ui/WebviewController.ts hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt packages/opencode/webgui/src/lib/ideBridge.ts packages/opencode/webgui/src/components/CompactHeader/ActionButtons.tsx packages/opencode/webgui/src/components/CompactHeader/ActionButtons.test.tsx packages/opencode/webgui/src/components/CompactHeader/index.tsx packages/opencode/webgui/src/components/CompactHeader/index.test.tsx
 git commit -m "feat(webgui): add host-aware restart action in more menu"
 ```

@@ -33,7 +33,7 @@
 ### 当前阻塞与验证状态
 
 - VSCode 侧整套测试仍有既有噪音（与本改动无关），已改用 `pnpm exec vscode-test --grep "IdeBridgeServer"` 收敛验证入口。
-- JetBrains 侧环境阻塞已解除；`./gradlew test --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"` 可稳定通过。
+- JetBrains 侧环境阻塞已通过迁移到 `unitTest` 绕开；`./gradlew unitTest --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"` 可稳定通过。
 
 ### 下一个会话最小继续步骤
 
@@ -277,8 +277,8 @@ git commit -m "refactor(vscode-host): keep scoped storage protocol only"
 **Files:**
 
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt`
-- Create: `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt`
-- Test: `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt`
+- Create: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt`
+- Test: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt`
 
 **Step 1: Write the failing test**
 
@@ -293,7 +293,7 @@ fun `only storageGet and storageSet are accepted`() {
 
 **Step 2: Run test to verify it fails**
 
-Run（在 `hosts/jetbrains-plugin`）：`./gradlew test --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`  
+Run（在 `hosts/jetbrains-plugin`）：`./gradlew unitTest --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`  
 Expected: FAIL（当前仍有 `Session.uiState` 与旧 case）。
 
 **Step 3: Write minimal implementation**
@@ -310,13 +310,13 @@ when (type) {
 
 **Step 4: Run test to verify it passes**
 
-Run（在 `hosts/jetbrains-plugin`）：`./gradlew test --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`  
+Run（在 `hosts/jetbrains-plugin`）：`./gradlew unitTest --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`  
 Expected: PASS。
 
 **Step 5: Commit**
 
 ```bash
-git add hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt
+git add hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt
 git commit -m "refactor(jetbrains-host): remove legacy ui and kv routes"
 ```
 
@@ -329,11 +329,11 @@ git commit -m "refactor(jetbrains-host): remove legacy ui and kv routes"
 - Modify: `packages/opencode/webgui/src/state/globalState.test.ts`
 - Modify: `packages/opencode/webgui/src/lib/api/sdkClient.migration.test.ts`
 - Modify: `hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts`
-- Modify: `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt`
+- Modify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt`
 - Test: `packages/opencode/webgui/src/state/globalState.test.ts`
 - Test: `packages/opencode/webgui/src/lib/api/sdkClient.migration.test.ts`
 - Test: `hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts`
-- Test: `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt`
+- Test: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt`
 
 **Step 1: Write the failing test**
 
@@ -352,7 +352,7 @@ Expected: FAIL（仍有旧字段兼容或旧 key 路径）。
 Run（在 `hosts/vscode-plugin`）：`pnpm test -- ideBridgeServer.test.ts`  
 Expected: FAIL（仍可能接受历史 message type）。
 
-Run（在 `hosts/jetbrains-plugin`）：`./gradlew test --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`  
+Run（在 `hosts/jetbrains-plugin`）：`./gradlew unitTest --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`  
 Expected: FAIL（仍可能接受历史 message type）。
 
 **Step 3: Write minimal implementation**
@@ -372,13 +372,13 @@ Expected: PASS。
 Run（在 `hosts/vscode-plugin`）：`pnpm test -- ideBridgeServer.test.ts`  
 Expected: PASS。
 
-Run（在 `hosts/jetbrains-plugin`）：`./gradlew test --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`  
+Run（在 `hosts/jetbrains-plugin`）：`./gradlew unitTest --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`  
 Expected: PASS。
 
 **Step 5: Commit**
 
 ```bash
-git add packages/opencode/webgui/src/state/globalState.test.ts packages/opencode/webgui/src/lib/api/sdkClient.migration.test.ts hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt
+git add packages/opencode/webgui/src/state/globalState.test.ts packages/opencode/webgui/src/lib/api/sdkClient.migration.test.ts hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt
 git commit -m "test(storage): enforce hard-cut behavior without legacy compatibility"
 ```
 
@@ -418,7 +418,7 @@ git commit -m "test(storage): enforce hard-cut behavior without legacy compatibi
 
 - [ ] 在 `packages/opencode/webgui` 运行：`bun run test:run src/state/globalState.test.ts src/lib/api/sdkClient.migration.test.ts`
 - [ ] 在 `hosts/vscode-plugin` 运行：`pnpm test -- ideBridgeServer.test.ts`
-- [ ] 在 `hosts/jetbrains-plugin` 运行：`./gradlew test --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`
+- [ ] 在 `hosts/jetbrains-plugin` 运行：`./gradlew unitTest --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`
 - [ ] 确认未从仓库根目录执行测试。
 
 ### E. 手工回归检查（最终）

@@ -252,4 +252,4 @@ UI 与 Context 只调用 Repo，不直接接触 key/scope/bridge message。
 - `packages/opencode/webgui`: `bun run test:run src/test/legacyStorageGate.test.ts` ✅
 - `packages/opencode/webgui`: `bun run test:run` ✅
 - `hosts/vscode-plugin`: `pnpm run compile && pnpm exec vscode-test --run out/test/test/suite/ideBridgeServer.test.js` ✅
-- `hosts/jetbrains-plugin`: `./gradlew test --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"` ✅
+- `hosts/jetbrains-plugin`: `./gradlew unitTest --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"` ✅

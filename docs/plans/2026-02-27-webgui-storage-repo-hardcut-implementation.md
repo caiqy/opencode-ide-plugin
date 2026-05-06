@@ -196,7 +196,7 @@ Expected: PASS。
 **Files:**
 
 - Modify: `hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts`
-- Modify: `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt`
+- Modify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt`
 
 **Step 1: 写失败测试**
 
@@ -213,7 +213,7 @@ Run（在 `hosts/vscode-plugin`）：
 `pnpm run compile && pnpm exec vscode-test --grep "IdeBridgeServer"`
 
 Run（在 `hosts/jetbrains-plugin`）：
-`./gradlew.bat test --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`
+`./gradlew.bat unitTest --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`
 
 Expected: FAIL。
 
@@ -254,7 +254,7 @@ Run（在 `hosts/vscode-plugin`）：
 `pnpm run compile && pnpm exec vscode-test --grep "IdeBridgeServer"`
 
 Run（在 `hosts/jetbrains-plugin`）：
-`./gradlew.bat test --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`
+`./gradlew.bat unitTest --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`
 
 Expected: PASS。
 
@@ -293,7 +293,7 @@ Expected: PASS。
    - 结果：PASS（`6 passing`，覆盖 scoped storage + legacy reject）
 
 3. JetBrains host 定向回归（`hosts/jetbrains-plugin`）
-   - `./gradlew test --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`
+   - `./gradlew unitTest --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest"`
    - 结果：PASS（`BUILD SUCCESSFUL`）
 
 4. 静态硬切门禁（生产代码）

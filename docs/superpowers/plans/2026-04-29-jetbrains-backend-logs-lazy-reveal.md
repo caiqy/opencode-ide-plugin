@@ -14,7 +14,7 @@
 
 **Files:**
 - Create: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/BackendLogsVisibilityController.kt`
-- Create: `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt`
+- Create: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt`
 
 - [ ] **Step 1: 先写失败测试，锁定“默认隐藏 / 只挂载一次 / removeAll 后可重新挂载”行为**
 
@@ -82,7 +82,7 @@ class BackendLogsVisibilityControllerTest {
 Run（PowerShell, `hosts/jetbrains-plugin/` 目录）:
 
 ```powershell
-.\gradlew test --tests "paviko.opencode.ui.BackendLogsVisibilityControllerTest"
+.\gradlew unitTest --tests "paviko.opencode.ui.BackendLogsVisibilityControllerTest"
 ```
 
 Expected:
@@ -126,7 +126,7 @@ internal class BackendLogsVisibilityController(
 Run（PowerShell, `hosts/jetbrains-plugin/` 目录）:
 
 ```powershell
-.\gradlew test --tests "paviko.opencode.ui.BackendLogsVisibilityControllerTest"
+.\gradlew unitTest --tests "paviko.opencode.ui.BackendLogsVisibilityControllerTest"
 ```
 
 Expected:
@@ -138,7 +138,7 @@ BUILD SUCCESSFUL
 - [ ] **Step 5: 提交这一小步**
 
 ```bash
-git add hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/BackendLogsVisibilityController.kt hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt
+git add hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/BackendLogsVisibilityController.kt hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt
 git commit -m "test: cover jetbrains lazy backend logs visibility"
 ```
 
@@ -147,7 +147,7 @@ git commit -m "test: cover jetbrains lazy backend logs visibility"
 **Files:**
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt`
 - Reuse: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/BackendLogsVisibilityController.kt`
-- Re-run: `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt`
+- Re-run: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt`
 
 - [ ] **Step 1: 先定位要替换的 4 个挂载点，避免实现时漏掉成功路径或错误路径**
 
@@ -187,7 +187,7 @@ mainPanel.repaint()
 Run（PowerShell, `hosts/jetbrains-plugin/` 目录）:
 
 ```powershell
-.\gradlew test --tests "paviko.opencode.ui.BackendLogsVisibilityControllerTest"
+.\gradlew unitTest --tests "paviko.opencode.ui.BackendLogsVisibilityControllerTest"
 ```
 
 Expected:
@@ -273,7 +273,7 @@ override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
 Run（PowerShell, `hosts/jetbrains-plugin/` 目录）:
 
 ```powershell
-.\gradlew test --tests "paviko.opencode.ui.BackendLogsVisibilityControllerTest" --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest" --tests "paviko.opencode.ui.IdeBridgeRestartHostTest"
+.\gradlew unitTest --tests "paviko.opencode.ui.BackendLogsVisibilityControllerTest" --tests "paviko.opencode.ui.BackendLogsErrorViewTest" --tests "paviko.opencode.ui.IdeBridgeStorageScopeTest" --tests "paviko.opencode.ui.IdeBridgeRestartHostTest"
 ```
 
 Expected:
@@ -285,7 +285,7 @@ BUILD SUCCESSFUL
 - [ ] **Step 5: 提交接线改动**
 
 ```bash
-git add hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/BackendLogsVisibilityController.kt hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt
+git add hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/BackendLogsVisibilityController.kt hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsErrorViewTest.kt
 git commit -m "fix: reveal jetbrains backend logs only on error"
 ```
 
