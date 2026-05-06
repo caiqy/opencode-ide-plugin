@@ -675,6 +675,43 @@ jobs:
           print("marketplace metadata ok")
           PY
 
+      - name: Verify JetBrains build WebGUI version injection
+        run: |
+          RAW_VERSION="${{ needs.preflight.outputs.version }}"
+          CLEAN_VERSION="${RAW_VERSION#v}"
+          export CLEAN_VERSION
+          python <<'PY'
+          import io
+          import os
+          import zipfile
+          from pathlib import Path
+
+          expected = os.environ["CLEAN_VERSION"]
+          archives = sorted(Path("hosts/jetbrains-plugin/build/distributions").glob("*.zip"))
+          if len(archives) != 1:
+              raise SystemExit(f"Expected exactly one Marketplace zip, found {len(archives)}")
+
+          plugin_xml = None
+          with zipfile.ZipFile(archives[0]) as plugin_zip:
+              for member in plugin_zip.namelist():
+                  if not member.endswith(".jar"):
+                      continue
+                  payload = plugin_zip.read(member)
+                  with zipfile.ZipFile(io.BytesIO(payload)) as jar_zip:
+                      try:
+                          plugin_xml = jar_zip.read("META-INF/plugin.xml").decode("utf-8")
+                          break
+                      except KeyError:
+                          continue
+
+          if plugin_xml is None:
+              raise SystemExit("Could not find META-INF/plugin.xml inside Marketplace package")
+          if f"<version>{expected}</version>" not in plugin_xml:
+              raise SystemExit(f"Marketplace package version does not match clean tag version {expected}")
+
+          print("jetbrains webgui clean version semantics ok")
+          PY
+
       - name: Verify Marketplace distribution channel metadata
         run: |
           python <<'PY'
