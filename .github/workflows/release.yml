@@ -338,6 +338,26 @@ jobs:
         env:
           OPENCODE_VERSION: ${{ needs.preflight.outputs.version_number }}
 
+      - name: Verify JetBrains build WebGUI version injection
+        run: |
+          RAW_VERSION="${{ needs.preflight.outputs.version }}"
+          CLEAN_VERSION="${RAW_VERSION#v}"
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const dir = "packages/opencode/webgui-dist/assets";
+            const expected = process.argv[1];
+            const files = fs.readdirSync(dir).filter((name) => name.endsWith(".js"));
+            if (files.length === 0) {
+              throw new Error("missing built webgui js assets");
+            }
+            const matched = files.some((name) => fs.readFileSync(path.join(dir, name), "utf8").includes(expected));
+            if (!matched) {
+              throw new Error(`built webgui assets do not contain ${expected}`);
+            }
+            console.log("jetbrains webgui version injection ok");
+          ' "$CLEAN_VERSION"
+
       - name: Copy binary to JetBrains resources
         run: |
           JETBRAINS_BIN_DIR="hosts/jetbrains-plugin/src/main/resources/bin"
@@ -592,19 +612,6 @@ jobs:
           chmod +x hosts/jetbrains-plugin/src/main/resources/bin/macos/arm64/opencode
           chmod +x hosts/jetbrains-plugin/src/main/resources/bin/linux/amd64/opencode
 
-      - name: Inject WebGUI version for JetBrains build
-        run: |
-          RAW_VERSION="${{ needs.preflight.outputs.version }}"
-          CLEAN_VERSION="${RAW_VERSION#v}"
-          node -e '
-            const fs = require("fs");
-            const path = "packages/opencode/webgui/package.json";
-            const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
-            pkg.version = process.argv[1];
-            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
-            console.log("Updated " + path + " to version " + process.argv[1]);
-          ' "$CLEAN_VERSION"
-
       - name: Build Marketplace plugin package
         working-directory: hosts/jetbrains-plugin
         run: |
@@ -667,20 +674,6 @@ jobs:
 
           print("marketplace metadata ok")
           PY
-
-      - name: Verify JetBrains build WebGUI version injection
-        run: |
-          RAW_VERSION="${{ needs.preflight.outputs.version }}"
-          CLEAN_VERSION="${RAW_VERSION#v}"
-          node -e '
-            const fs = require("fs");
-            const pkg = JSON.parse(fs.readFileSync("packages/opencode/webgui/package.json", "utf8"));
-            const expected = process.argv[1];
-            if (pkg.version !== expected) {
-              throw new Error(`webgui version ${pkg.version} does not match ${expected}`);
-            }
-            console.log("jetbrains webgui version injection ok");
-          ' "$CLEAN_VERSION"
 
       - name: Verify Marketplace distribution channel metadata
         run: |
