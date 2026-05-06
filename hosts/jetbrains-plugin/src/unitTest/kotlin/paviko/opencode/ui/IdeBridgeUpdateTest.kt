@@ -47,6 +47,40 @@ class IdeBridgeUpdateTest {
     }
 
     @Test
+    fun `getExtensionVersion returns installed plugin version`() {
+        val session = IdeBridge.createSession(
+            project = project(),
+            extensionVersionProvider = { "26.5.600" },
+        )
+
+        sse(session).use { events ->
+            val reply = events.send("getExtensionVersion", JsonObject())
+            val result = reply.getAsJsonObject("result")
+
+            assertEquals(true, reply.get("ok")?.asBoolean)
+            assertNotNull(result)
+            assertEquals("26.5.600", result.get("version")?.asString)
+        }
+    }
+
+    @Test
+    fun `getExtensionVersion failure replies with bridge error`() {
+        val session = IdeBridge.createSession(
+            project = project(),
+            extensionVersionProvider = {
+                throw IllegalStateException("descriptor missing")
+            },
+        )
+
+        sse(session).use { events ->
+            val reply = events.send("getExtensionVersion", JsonObject())
+
+            assertEquals(false, reply.get("ok")?.asBoolean)
+            assertEquals("getExtensionVersion failed: descriptor missing", reply.get("error")?.asString)
+        }
+    }
+
+    @Test
     fun `getUpdateInfo returns marketplace only support state`() {
         val session = IdeBridge.createSession(
             project = project(),

@@ -1,9 +1,8 @@
 package paviko.opencode.update
 
-import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.ide.plugins.marketplace.MarketplaceRequests
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.updateSettings.impl.PluginDownloader
 import com.intellij.util.text.VersionComparatorUtil
 import paviko.opencode.JETBRAINS_PLUGIN_ID
@@ -130,7 +129,7 @@ private fun createDownloader(model: Any): PluginDownloader {
 }
 
 class PluginUpdateService(
-    private val currentVersionProvider: () -> String = ::readInstalledVersion,
+    private val currentVersionProvider: () -> String = ::readInstalledPluginVersion,
     private val distributionChannelProvider: () -> String = ::readDistributionChannel,
     latestProvider: (() -> AvailablePluginUpdate?)? = null,
     private val marketplaceLookup: () -> MarketplaceLookup = ::loadMarketplaceUpdate,
@@ -240,11 +239,6 @@ class PluginUpdateService(
     private fun supportsInAppUpdate(): Boolean = distributionChannelProvider() == "marketplace"
 
     companion object {
-        private fun readInstalledVersion(): String {
-            return PluginManagerCore.getPlugin(pluginId)?.version
-                ?: throw IllegalStateException("Installed plugin descriptor not found")
-        }
-
         private fun readDistributionChannel(): String {
             return runCatching {
                 val props = Properties()

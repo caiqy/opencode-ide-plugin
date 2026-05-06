@@ -14,6 +14,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import paviko.opencode.update.PluginUpdateService
+import paviko.opencode.update.readInstalledPluginVersion
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.io.File
@@ -35,6 +36,7 @@ data class Session(
     val mem: MutableMap<String, String> = ConcurrentHashMap(),
     val storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend,
     val updateService: PluginUpdateService = PluginUpdateService(),
+    val extensionVersionProvider: () -> String = ::readInstalledPluginVersion,
 )
 
 data class SessionInfo(val baseUrl: String, val token: String, val sessionId: String)
@@ -99,6 +101,7 @@ object IdeBridge {
         project: Project,
         storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend,
         updateService: PluginUpdateService = PluginUpdateService(),
+        extensionVersionProvider: () -> String = ::readInstalledPluginVersion,
     ): SessionInfo {
         start() // ensure server is running
         
@@ -115,6 +118,7 @@ object IdeBridge {
             project = project,
             storage = storage,
             updateService = updateService,
+            extensionVersionProvider = extensionVersionProvider,
         )
         projectToSession[project] = sessionId
         
@@ -367,6 +371,18 @@ object IdeBridge {
                         replyOk(session, id)
                     } else {
                         replyError(session, id, "Missing text")
+                    }
+                }
+
+                "getExtensionVersion" -> {
+                    try {
+                        replyResult(
+                            session,
+                            id,
+                            mapOf("version" to session.extensionVersionProvider()),
+                        )
+                    } catch (e: Exception) {
+                        replyError(session, id, "getExtensionVersion failed: ${e.message ?: e}")
                     }
                 }
 
