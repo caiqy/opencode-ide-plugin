@@ -10,9 +10,28 @@ import kotlin.concurrent.thread
 
 class PluginUpdateServiceTest {
     @Test
+    fun `service reports current version from injected version source`() {
+        var version = "26.5.501"
+        val service = PluginUpdateService(
+            versionSource = PluginVersionSource { version },
+            distributionChannelProvider = { "local" },
+            latestProvider = {
+                throw AssertionError("latestProvider should not run for local builds")
+            },
+            backgroundRunner = { task -> task() },
+        )
+
+        assertEquals("26.5.501", service.getUpdateInfo().currentVersion)
+
+        version = "26.5.502"
+
+        assertEquals("26.5.502", service.getUpdateInfo().currentVersion)
+    }
+
+    @Test
     fun `local build reports marketplace only support`() {
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "local" },
             latestProvider = {
                 throw AssertionError("latestProvider should not run for local builds")
@@ -43,7 +62,7 @@ class PluginUpdateServiceTest {
     @Test
     fun `marketplace build returns available update and caches it`() {
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
             latestProvider = {
                 AvailablePluginUpdate(
@@ -76,7 +95,7 @@ class PluginUpdateServiceTest {
     @Test
     fun `marketplace build with no update reports supported but empty state`() {
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
             latestProvider = null,
             marketplaceLookup = { MarketplaceLookup.NoUpdate },
@@ -103,7 +122,7 @@ class PluginUpdateServiceTest {
     @Test
     fun `checkForUpdates propagates marketplace query failures`() {
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
             latestProvider = null,
             marketplaceLookup = {
@@ -122,7 +141,7 @@ class PluginUpdateServiceTest {
     @Test
     fun `checkForUpdates fails when marketplace update model is missing`() {
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
             latestProvider = null,
             marketplaceLookup = {
@@ -142,7 +161,7 @@ class PluginUpdateServiceTest {
     @Test
     fun `checkForUpdates fails when marketplace metadata lookup itself fails`() {
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
             latestProvider = null,
             marketplaceLookup = {
@@ -163,7 +182,7 @@ class PluginUpdateServiceTest {
         val release = CountDownLatch(1)
 
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
             latestProvider = {
                 AvailablePluginUpdate(
@@ -189,7 +208,7 @@ class PluginUpdateServiceTest {
     @Test
     fun `prepareInstall rejects a stale version`() {
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
             latestProvider = {
                 AvailablePluginUpdate(
@@ -216,7 +235,7 @@ class PluginUpdateServiceTest {
         val payloads = mutableListOf<Map<String, Any?>>()
 
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
             latestProvider = {
                 AvailablePluginUpdate(
@@ -249,7 +268,7 @@ class PluginUpdateServiceTest {
         )
 
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
             latestProvider = { latest },
             backgroundRunner = { task -> task() },
@@ -276,7 +295,7 @@ class PluginUpdateServiceTest {
         val payloads = mutableListOf<Map<String, Any?>>()
 
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
             latestProvider = {
                 AvailablePluginUpdate(

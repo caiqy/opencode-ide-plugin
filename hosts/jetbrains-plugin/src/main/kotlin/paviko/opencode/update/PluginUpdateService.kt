@@ -20,11 +20,11 @@ sealed interface MarketplaceLookup {
 }
 
 private fun loadLatestMarketplaceUpdate(
-    currentVersionProvider: () -> String,
+    versionSource: PluginVersionSource,
     marketplaceLookup: () -> MarketplaceLookup,
     updateVersionProvider: (Any) -> String?,
 ): AvailablePluginUpdate? {
-    val currentVersion = currentVersionProvider()
+    val currentVersion = versionSource.currentVersion()
     val lookup = marketplaceLookup()
     if (lookup === MarketplaceLookup.NoUpdate) {
         return null
@@ -129,7 +129,7 @@ private fun createDownloader(model: Any): PluginDownloader {
 }
 
 class PluginUpdateService(
-    private val currentVersionProvider: () -> String = ::readInstalledPluginVersion,
+    private val versionSource: PluginVersionSource = installedPluginVersionSource(),
     private val distributionChannelProvider: () -> String = ::readDistributionChannel,
     latestProvider: (() -> AvailablePluginUpdate?)? = null,
     private val marketplaceLookup: () -> MarketplaceLookup = ::loadMarketplaceUpdate,
@@ -140,7 +140,7 @@ class PluginUpdateService(
 
     private val latestProvider = latestProvider ?: {
         loadLatestMarketplaceUpdate(
-            currentVersionProvider = currentVersionProvider,
+            versionSource = versionSource,
             marketplaceLookup = marketplaceLookup,
             updateVersionProvider = updateVersionProvider,
         )
@@ -149,7 +149,7 @@ class PluginUpdateService(
     private var latest: AvailablePluginUpdate? = null
 
     fun getUpdateInfo(): UpdateInfoResult {
-        val currentVersion = currentVersionProvider()
+        val currentVersion = versionSource.currentVersion()
         if (!supportsInAppUpdate()) {
             synchronized(lock) {
                 latest = null
@@ -176,7 +176,7 @@ class PluginUpdateService(
     }
 
     fun checkForUpdates(): CheckForUpdatesResult {
-        val currentVersion = currentVersionProvider()
+        val currentVersion = versionSource.currentVersion()
         if (!supportsInAppUpdate()) {
             synchronized(lock) {
                 latest = null

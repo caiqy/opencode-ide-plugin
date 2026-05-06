@@ -14,7 +14,8 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import paviko.opencode.update.PluginUpdateService
-import paviko.opencode.update.readInstalledPluginVersion
+import paviko.opencode.update.PluginVersionSource
+import paviko.opencode.update.installedPluginVersionSource
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.io.File
@@ -35,8 +36,8 @@ data class Session(
     val sseClients: MutableSet<HttpExchange> = Collections.synchronizedSet(mutableSetOf()),
     val mem: MutableMap<String, String> = ConcurrentHashMap(),
     val storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend,
-    val updateService: PluginUpdateService = PluginUpdateService(),
-    val extensionVersionProvider: () -> String = ::readInstalledPluginVersion,
+    val versionSource: PluginVersionSource = installedPluginVersionSource(),
+    val updateService: PluginUpdateService = PluginUpdateService(versionSource = versionSource),
 )
 
 data class SessionInfo(val baseUrl: String, val token: String, val sessionId: String)
@@ -100,8 +101,8 @@ object IdeBridge {
     fun createSession(
         project: Project,
         storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend,
-        updateService: PluginUpdateService = PluginUpdateService(),
-        extensionVersionProvider: () -> String = ::readInstalledPluginVersion,
+        versionSource: PluginVersionSource = installedPluginVersionSource(),
+        updateService: PluginUpdateService = PluginUpdateService(versionSource = versionSource),
     ): SessionInfo {
         start() // ensure server is running
         
@@ -117,8 +118,8 @@ object IdeBridge {
             token = token,
             project = project,
             storage = storage,
+            versionSource = versionSource,
             updateService = updateService,
-            extensionVersionProvider = extensionVersionProvider,
         )
         projectToSession[project] = sessionId
         
@@ -379,7 +380,7 @@ object IdeBridge {
                         replyResult(
                             session,
                             id,
-                            mapOf("version" to session.extensionVersionProvider()),
+                            mapOf("version" to session.versionSource.currentVersion()),
                         )
                     } catch (e: Exception) {
                         replyError(session, id, "getExtensionVersion failed: ${e.message ?: e}")

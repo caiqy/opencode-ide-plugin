@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import paviko.opencode.update.AvailablePluginUpdate
 import paviko.opencode.update.PluginUpdateService
+import paviko.opencode.update.PluginVersionSource
 import paviko.opencode.update.UpdateRelease
 import java.net.HttpURLConnection
 import java.net.URL
@@ -50,7 +51,7 @@ class IdeBridgeUpdateTest {
     fun `getExtensionVersion returns installed plugin version`() {
         val session = IdeBridge.createSession(
             project = project(),
-            extensionVersionProvider = { "26.5.600" },
+            versionSource = PluginVersionSource { "26.5.600" },
         )
 
         sse(session).use { events ->
@@ -67,7 +68,7 @@ class IdeBridgeUpdateTest {
     fun `getExtensionVersion failure replies with bridge error`() {
         val session = IdeBridge.createSession(
             project = project(),
-            extensionVersionProvider = {
+            versionSource = PluginVersionSource {
                 throw IllegalStateException("descriptor missing")
             },
         )
@@ -81,11 +82,37 @@ class IdeBridgeUpdateTest {
     }
 
     @Test
+    fun `getExtensionVersion and getUpdateInfo share the same version source`() {
+        var version = "26.5.501"
+        val source = PluginVersionSource { version }
+        val session = IdeBridge.createSession(
+            project = project(),
+            versionSource = source,
+        )
+
+        sse(session).use { events ->
+            val versionReply = events.send("getExtensionVersion", JsonObject())
+            val updateReply = events.send("getUpdateInfo", JsonObject())
+
+            assertEquals("26.5.501", versionReply.getAsJsonObject("result").get("version")?.asString)
+            assertEquals("26.5.501", updateReply.getAsJsonObject("result").get("currentVersion")?.asString)
+
+            version = "26.5.502"
+
+            val nextVersionReply = events.send("getExtensionVersion", JsonObject())
+            val nextUpdateReply = events.send("getUpdateInfo", JsonObject())
+
+            assertEquals("26.5.502", nextVersionReply.getAsJsonObject("result").get("version")?.asString)
+            assertEquals("26.5.502", nextUpdateReply.getAsJsonObject("result").get("currentVersion")?.asString)
+        }
+    }
+
+    @Test
     fun `getUpdateInfo returns marketplace only support state`() {
         val session = IdeBridge.createSession(
             project = project(),
             updateService = PluginUpdateService(
-                currentVersionProvider = { "26.5.501" },
+                versionSource = PluginVersionSource { "26.5.501" },
                 distributionChannelProvider = { "local" },
                 latestProvider = { null },
                 backgroundRunner = { task -> task() },
@@ -108,7 +135,7 @@ class IdeBridgeUpdateTest {
         val session = IdeBridge.createSession(
             project = project(),
             updateService = PluginUpdateService(
-                currentVersionProvider = { "26.5.501" },
+                versionSource = PluginVersionSource { "26.5.501" },
                 distributionChannelProvider = { "marketplace" },
                 latestProvider = {
                     AvailablePluginUpdate(
@@ -137,7 +164,7 @@ class IdeBridgeUpdateTest {
         val session = IdeBridge.createSession(
             project = project(),
             updateService = PluginUpdateService(
-                currentVersionProvider = {
+                versionSource = PluginVersionSource {
                     if (attempts.getAndIncrement() == 0) {
                         throw IllegalStateException("boom")
                     }
@@ -172,7 +199,7 @@ class IdeBridgeUpdateTest {
         val startedBeforeReply = AtomicBoolean(false)
 
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
             latestProvider = {
                 AvailablePluginUpdate(
@@ -227,7 +254,7 @@ class IdeBridgeUpdateTest {
         val session = IdeBridge.createSession(
             project = project(),
             updateService = PluginUpdateService(
-                currentVersionProvider = { "26.5.501" },
+                versionSource = PluginVersionSource { "26.5.501" },
                 distributionChannelProvider = { "marketplace" },
                 latestProvider = { null },
                 backgroundRunner = { task -> task() },
@@ -249,7 +276,7 @@ class IdeBridgeUpdateTest {
         val session = IdeBridge.createSession(
             project = project(),
             updateService = PluginUpdateService(
-                currentVersionProvider = { "26.5.501" },
+                versionSource = PluginVersionSource { "26.5.501" },
                 distributionChannelProvider = { "marketplace" },
                 latestProvider = { null },
                 backgroundRunner = { task -> task() },
@@ -274,7 +301,7 @@ class IdeBridgeUpdateTest {
         }
 
         val service = PluginUpdateService(
-            currentVersionProvider = { "26.5.501" },
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
             latestProvider = {
                 AvailablePluginUpdate(
