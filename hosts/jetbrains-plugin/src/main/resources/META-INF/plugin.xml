@@ -1,6 +1,6 @@
 <idea-plugin>
   <vendor>qtkj</vendor>
-  <id>qtkj.opencode-ui</id>
+  <id>caiqy.opencode-ui</id>
   <name>OpenCode UI (unofficial)</name>
   <description>Run a local OpenCode backend inside JetBrains IDEs with a chat-based AI coding interface.</description>
 

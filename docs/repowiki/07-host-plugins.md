@@ -163,6 +163,8 @@ Marketplace 规则：
 
 - VSCode 只发 Visual Studio Marketplace，不发 Open VSX。
 - VSCode 继续发布 5 个平台定向包，不引入通用 fallback 包。
+- VSCode 对外 Unique Identifier 为 `caiqy.opencode-ui`（`publisher/name`）。
+- JetBrains 当前技术插件 ID 也使用 `caiqy.opencode-ui`；旧 `qtkj.opencode-ui` 只作为历史迁移标识保留，不应再出现在运行时代码或更新查询中。
 - JetBrains Marketplace 额外发布一个组合包：先从既有平台插件产物中提取 backend binary，再重新构建并签名一个 Marketplace 专用插件包。
 - JetBrains Marketplace build/sign/publish 的 Gradle 命令都必须注入 `-Pdistribution.channel="marketplace"`，并保留产物内 `distribution.channel=marketplace` 元数据校验。
 - 当前 JetBrains Marketplace 组合包只包含 3 个 binary：Windows x64、macOS ARM64、Linux x64。
@@ -206,4 +208,5 @@ JetBrains 还会在 IDE bridge 的 `connected` 事件里下发 `minVersion`；�
 - 不要删除 VSCode 的 SW/CSP/Remote 兼容代码；这些看似“包装细节”，实际是插件可用性的关键。
 - 调整 JetBrains backend 启动 UI 时，不要把“日志面板懒显示”改回默认常驻，也不要移除监听地址解析所需的日志采集链路。
 - JetBrains 站内更新只对 Marketplace 包生效；调整构建链路时不要移除 `distribution.channel=marketplace` 注入。
+- 调整 JetBrains 发布或更新逻辑时，不要把运行时 plugin ID 改回 `qtkj.opencode-ui`；若需提及旧 ID，只能放在迁移说明中。
 - 修改发布流程时，要同时检查共享内容真源、release workflow 职责边界，以及 VSCode / JetBrains Marketplace 是否仍消费已有 artifact。

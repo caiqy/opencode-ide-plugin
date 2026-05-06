@@ -6,10 +6,11 @@ import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.updateSettings.impl.PluginDownloader
 import com.intellij.util.text.VersionComparatorUtil
+import paviko.opencode.JETBRAINS_PLUGIN_ID
 import java.lang.reflect.InvocationTargetException
 import java.util.Properties
 
-private val pluginId = PluginId.getId("qtkj.opencode-ui")
+private val pluginId = PluginId.getId(JETBRAINS_PLUGIN_ID)
 
 sealed interface MarketplaceLookup {
     data object NoUpdate : MarketplaceLookup
