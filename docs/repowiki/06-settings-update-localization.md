@@ -67,7 +67,7 @@
 
 Toast 是 WebGUI 的全局用户反馈通道：创建会话失败、保存设置失败、更新状态、打开文件失败、附件解析失败、scoped storage 写入失败等都会走这里。ConfirmModal 则服务删除、关闭、危险操作确认。两者属于产品体验层，不应把错误只留在 console 或 SDK 返回值中。
 
-## VSCode 更新流
+## IDE 更新流
 
 关键文件：
 
@@ -80,15 +80,19 @@ Toast 是 WebGUI 的全局用户反馈通道：创建会话失败、保存设置
 职责划分：
 
 - VSCode 插件后台检查 GitHub Release、下载 `.vsix`、安装更新。
+- JetBrains 插件后台检查 JetBrains Marketplace，并走 IDE 原生插件安装链路。
 - WebGUI 只展示更新状态、触发检查、触发安装、忽略指定版本。
 - 更新状态通过 IDE Bridge 请求和 SSE 推送同步。
 
-Bridge 请求：
+VSCode 与 JetBrains 共同支持的更新 Bridge 请求：
 
-- `getExtensionVersion`
 - `getUpdateInfo`
 - `checkForUpdates`
 - `installUpdate`
+
+VSCode 额外请求：
+
+- `getExtensionVersion`
 
 Host 推送：
 
@@ -98,7 +102,12 @@ Host 推送：
 - `success`
 - `error`
 
-JetBrains 当前没有同等更新 API，WebGUI 在 JetBrains 下应视为能力退化。
+JetBrains 现已补齐同名更新 API，但有明确边界：
+
+- 只以 JetBrains Marketplace 为版本来源
+- Marketplace 安装版支持站内更新
+- 本地 ZIP / 开发版返回 `unsupported`
+- 更新成功后的生效方式以 IDE 原生提示为准
 
 ## 重启入口
 
@@ -130,4 +139,5 @@ WebGUI 固定中文，不引入 i18n，也不提供语言切换。
 
 - 新增设置项时先判断是真 opencode config，还是 WebGUI scoped storage。
 - 新增更新相关 UI 时，不要绕过 `UpdateContext` 新建第二套状态机。
+- 维护 JetBrains 发布链路时，不要移除 `distribution.channel=marketplace` 注入，否则站内更新能力判断会失真。
 - 新增文案时保持中文风格一致，避免中英混杂但保留必要专有名词。

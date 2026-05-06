@@ -43,11 +43,15 @@ type UpdateMessage = {
 type UpdateInfoResult = {
   latest?: unknown
   hasUpdate?: unknown
+  supported?: unknown
+  reason?: unknown
 }
 
 type CheckForUpdatesResult = {
   status?: unknown
   latest?: unknown
+  currentVersion?: unknown
+  reason?: unknown
 }
 
 const Ctx = createContext<UpdateValue | null>(null)
@@ -124,11 +128,18 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
     ])
       .then(([message, savedDismissed]) => {
         if (disposed) return
-        const next = toRelease(message.result?.latest)
-        setLatest(next)
         if (savedDismissed) {
           setDismissedVersion(savedDismissed)
         }
+
+        if (message.result?.supported === false) {
+          setLatest(null)
+          setStatus("idle")
+          return
+        }
+
+        const next = toRelease(message.result?.latest)
+        setLatest(next)
         const initialStatus = getInitialStatus(message.result, next)
         setStatus(initialStatus)
       })
@@ -216,6 +227,14 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
     try {
       const message = await ideBridge.request<CheckForUpdatesResult>("checkForUpdates")
       const result = message.result
+
+      if (result?.status === "unsupported") {
+        setLatest(null)
+        setStatus("idle")
+        clearInstallConfirm()
+        showToast("当前安装包不支持站内更新，请使用 JetBrains Marketplace 安装版")
+        return
+      }
 
       if (result?.status === "up-to-date") {
         setLatest(null)

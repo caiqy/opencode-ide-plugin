@@ -247,6 +247,40 @@ describe("UpdateContext", () => {
     expect(result.current.confirmVersion).toBe(null)
   })
 
+  it("JetBrains 返回 unsupported 时提示仅 Marketplace 安装版支持", async () => {
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        supported: false,
+        reason: "marketplace-only",
+        latest: null,
+        hasUpdate: false,
+      },
+    })
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        status: "unsupported",
+        reason: "marketplace-only",
+        currentVersion: "26.5.501",
+      },
+    })
+
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(mocks.request).toHaveBeenCalledWith("getUpdateInfo", undefined)
+    })
+
+    await act(async () => {
+      await result.current.checkForUpdates()
+    })
+
+    expect(mocks.showToast).toHaveBeenCalledWith("当前安装包不支持站内更新，请使用 JetBrains Marketplace 安装版")
+    expect(result.current.status).toBe("idle")
+    expect(result.current.confirmOpen).toBe(false)
+    expect(result.current.confirmVersion).toBe(null)
+    expect(result.current.latest).toBe(null)
+  })
+
   it("手动检查更新发现新版本时会记录 latest 并等待确认", async () => {
     mocks.request.mockResolvedValueOnce({
       result: {

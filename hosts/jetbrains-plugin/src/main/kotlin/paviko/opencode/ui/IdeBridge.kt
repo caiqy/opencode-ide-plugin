@@ -13,6 +13,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
+import paviko.opencode.update.PluginUpdateService
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.io.File
@@ -20,8 +21,11 @@ import java.io.OutputStreamWriter
 import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.util.*
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class Session(
     val id: String,
@@ -29,7 +33,8 @@ data class Session(
     val project: Project,
     val sseClients: MutableSet<HttpExchange> = Collections.synchronizedSet(mutableSetOf()),
     val mem: MutableMap<String, String> = ConcurrentHashMap(),
-    val storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend
+    val storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend,
+    val updateService: PluginUpdateService = PluginUpdateService(),
 )
 
 data class SessionInfo(val baseUrl: String, val token: String, val sessionId: String)
@@ -42,6 +47,9 @@ object IdeBridge {
     internal var restartHook: () -> Unit = {
         ApplicationManager.getApplication().restart()
     }
+
+    @Volatile
+    internal var installStartRunner: ((() -> Unit) -> Unit)? = null
     
     private var server: HttpServer? = null
     private var port: Int = 0
@@ -78,14 +86,20 @@ object IdeBridge {
     fun stop() {
         keepaliveTimer?.cancel()
         keepaliveTimer = null
+        sessions.keys.toList().forEach(::removeSession)
         server?.stop(0)
         server = null
-        sessions.clear()
-        projectToSession.clear()
-        try { executor.shutdownNow() } catch (_: Throwable) {}
+        try {
+            executor.shutdownNow()
+            executor.awaitTermination(1, TimeUnit.SECONDS)
+        } catch (_: Throwable) {}
     }
 
-    fun createSession(project: Project, storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend): SessionInfo {
+    fun createSession(
+        project: Project,
+        storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend,
+        updateService: PluginUpdateService = PluginUpdateService(),
+    ): SessionInfo {
         start() // ensure server is running
         
         // Remove any existing session for this project
@@ -95,7 +109,13 @@ object IdeBridge {
         
         val sessionId = UUID.randomUUID().toString()
         val token = UUID.randomUUID().toString()
-        sessions[sessionId] = Session(sessionId, token, project, storage = storage)
+        sessions[sessionId] = Session(
+            id = sessionId,
+            token = token,
+            project = project,
+            storage = storage,
+            updateService = updateService,
+        )
         projectToSession[project] = sessionId
         
         // Start keepalive timer if not running
@@ -116,11 +136,16 @@ object IdeBridge {
     fun removeSession(sessionId: String) {
         sessions.remove(sessionId)?.let { session ->
             projectToSession.remove(session.project)
-            synchronized(session.sseClients) {
-                session.sseClients.forEach { 
-                    try { it.close() } catch (_: Throwable) {}
-                }
+            closeSessionClients(session)
+        }
+    }
+
+    private fun closeSessionClients(session: Session) {
+        synchronized(session.sseClients) {
+            session.sseClients.forEach {
+                try { it.close() } catch (_: Throwable) {}
             }
+            session.sseClients.clear()
         }
     }
 
@@ -345,6 +370,63 @@ object IdeBridge {
                     }
                 }
 
+                "getUpdateInfo" -> {
+                    try {
+                        replyResult(session, id, session.updateService.getUpdateInfo())
+                    } catch (e: Exception) {
+                        replyError(session, id, "getUpdateInfo failed: ${e.message ?: e}")
+                    }
+                }
+
+                "checkForUpdates" -> {
+                    try {
+                        replyResult(session, id, session.updateService.checkForUpdates())
+                    } catch (e: Exception) {
+                        replyError(session, id, "checkForUpdates failed: ${e.message ?: e}")
+                    }
+                }
+
+                "installUpdate" -> {
+                    val version = payload?.get("version")?.asString?.trim()
+                    if (version.isNullOrEmpty()) {
+                        replyError(session, id, "Missing version")
+                    } else {
+                        val ready = CountDownLatch(1)
+                        val shouldStart = AtomicBoolean(false)
+
+                        try {
+                            val prepared = session.updateService.prepareInstall(version)
+                            scheduleInstallStart {
+                                ready.await()
+                                if (!shouldStart.get()) return@scheduleInstallStart
+
+                                try {
+                                    prepared.start { eventType, eventPayload ->
+                                        send(session.id, eventType, eventPayload)
+                                    }
+                                } catch (e: Exception) {
+                                    send(
+                                        session.id,
+                                        "error",
+                                        mapOf(
+                                            "version" to version,
+                                            "error" to (e.message ?: e),
+                                        ),
+                                    )
+                                }
+                            }
+
+                            if (replyOk(session, id)) {
+                                shouldStart.set(true)
+                            }
+                        } catch (e: Exception) {
+                            replyError(session, id, "installUpdate failed: ${e.message ?: e}")
+                        } finally {
+                            ready.countDown()
+                        }
+                    }
+                }
+
                 "restartHost" -> {
                     try {
                         restartHook()
@@ -412,35 +494,52 @@ object IdeBridge {
         exchange.close()
     }
 
-    private fun replyOk(session: Session, id: String?) {
-        if (id == null) return
+    private fun replyOk(session: Session, id: String?): Boolean {
+        if (id == null) return false
         val msg = JsonObject().apply {
             addProperty("replyTo", id)
             addProperty("ok", true)
             addProperty("timestamp", System.currentTimeMillis())
         }
-        broadcastSSE(session, gson.toJson(msg))
+        return broadcastSSE(session, gson.toJson(msg))
     }
 
-    private fun replyError(session: Session, id: String?, error: String) {
-        if (id == null) return
+    private fun replyResult(session: Session, id: String?, result: Any): Boolean {
+        if (id == null) return false
+        val msg = JsonObject().apply {
+            addProperty("replyTo", id)
+            addProperty("ok", true)
+            add("result", gson.toJsonTree(result))
+            addProperty("timestamp", System.currentTimeMillis())
+        }
+        return broadcastSSE(session, gson.toJson(msg))
+    }
+
+    private fun replyError(session: Session, id: String?, error: String): Boolean {
+        if (id == null) return false
         val msg = JsonObject().apply {
             addProperty("replyTo", id)
             addProperty("ok", false)
             addProperty("error", error)
             addProperty("timestamp", System.currentTimeMillis())
         }
-        broadcastSSE(session, gson.toJson(msg))
+        return broadcastSSE(session, gson.toJson(msg))
     }
 
-    private fun broadcastSSE(session: Session, json: String) {
+    private fun scheduleInstallStart(task: () -> Unit) {
+        installStartRunner?.invoke(task) ?: executor.execute(task)
+    }
+
+    private fun broadcastSSE(session: Session, json: String): Boolean {
         synchronized(session.sseClients) {
             val toRemove = mutableListOf<HttpExchange>()
+            var delivered = 0
             session.sseClients.forEach { client ->
                 try {
                     val writer = OutputStreamWriter(client.responseBody)
                     writer.write("event: message\ndata: $json\n\n")
                     writer.flush()
+                    delivered += 1
                 } catch (e: Exception) {
                     toRemove.add(client)
                 }
@@ -449,6 +548,7 @@ object IdeBridge {
                 session.sseClients.remove(it)
                 try { it.close() } catch (_: Throwable) {}
             }
+            return delivered > 0
         }
     }
 

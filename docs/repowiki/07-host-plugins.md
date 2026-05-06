@@ -91,6 +91,44 @@ JetBrains 工具窗口中的 backend logs 面板采用“懒显示”规则：
 
 这里只改 **UI 暴露时机**，不改日志采集机制；当前仍依赖后端输出中的监听地址建立 JCEF 连接。
 
+### JetBrains 测试分层约定
+
+JetBrains 宿主测试长期分成两层：
+
+- `unitTest`：普通 JVM `Test` 任务，**优先承载轻量测试**
+- `test`：IntelliJ Platform Gradle Plugin 的 `TestIdeTask`，只承载真实 IDE sandbox / 平台集成测试
+
+目录约定：
+
+- `hosts/jetbrains-plugin/src/unitTest/kotlin/`：轻量测试
+- `hosts/jetbrains-plugin/src/test/kotlin/`：重型集成测试
+
+放入 `unitTest` 的典型条件：
+
+- 只依赖 JUnit / Mockito / Kotlin 标准库
+- 只依赖 Swing / AWT 组件
+- 被测对象是纯 Kotlin / 纯 JVM 逻辑类
+- 通过构造注入、lambda 注入或 mock 就能隔离外部依赖
+- 只 mock `Project` 等轻量接口，不需要真实 IDE 生命周期
+
+必须保留在 `test` 的典型条件：
+
+- 依赖 IntelliJ sandbox 初始化
+- 需要真实 `ApplicationManager` 行为
+- 需要真实 ToolWindow / JCEF / browser 创建流程
+- 需要真实 IntelliJ 平台服务、扩展点、VFS 或 editor 打开流程
+
+常用命令：
+
+- 轻量测试：`./gradlew[.bat] unitTest --tests "<FullyQualifiedTestClass>"`
+- 重型集成测试：`./gradlew[.bat] test --tests "<FullyQualifiedTestClass>"`
+
+维护约束：
+
+- 新增 JetBrains 测试时，先判断依赖边界，再决定放入 `unitTest` 或 `test`
+- 不再为了“一条命令跑完”把明显轻量测试塞回 `test`
+- 混合验证场景应拆成 `unitTest` 与 `test` 两条命令
+
 ## 发布内容与 Marketplace
 
 关键文件：
@@ -126,6 +164,7 @@ Marketplace 规则：
 - VSCode 只发 Visual Studio Marketplace，不发 Open VSX。
 - VSCode 继续发布 5 个平台定向包，不引入通用 fallback 包。
 - JetBrains Marketplace 额外发布一个组合包：先从既有平台插件产物中提取 backend binary，再重新构建并签名一个 Marketplace 专用插件包。
+- JetBrains Marketplace build/sign/publish 的 Gradle 命令都必须注入 `-Pdistribution.channel="marketplace"`，并保留产物内 `distribution.channel=marketplace` 元数据校验。
 - 当前 JetBrains Marketplace 组合包只包含 3 个 binary：Windows x64、macOS ARM64、Linux x64。
 - 任一 Marketplace job 失败时，整个 Release workflow 应失败；但 GitHub Release 可能已先创建，这是允许的流程结果，不做自动回滚。
 
@@ -138,7 +177,7 @@ Marketplace 规则：
 | Remote 支持   | `asExternalUri()`                | 本地 IDE 语义                       |
 | 存储          | `globalState/workspaceState/Map` | `PropertiesComponent/Session.mem`   |
 | 重启          | reload window                    | restart IDE                         |
-| 更新          | 支持 GitHub Release `.vsix` 更新 | 暂未对齐                            |
+| 更新          | 支持 GitHub Release `.vsix` 更新 | JetBrains Marketplace 安装版支持站内更新；本地 ZIP / 开发版返回 `unsupported` |
 | 打开文件列表  | `FileMonitor`                    | `IdeOpenFilesUpdater`               |
 
 ## URL 注入
@@ -163,7 +202,8 @@ JetBrains 还会在 IDE bridge 的 `connected` 事件里下发 `minVersion`；�
 ## 维护注意点
 
 - WebGUI 新增宿主能力时，必须明确 VSCode 和 JetBrains 是否都支持。
-- 更新能力目前主要是 VSCode 独有，WebGUI 需要优雅处理 JetBrains 缺失。
+- `getUpdateInfo` / `checkForUpdates` / `installUpdate` 现已由 VSCode 与 JetBrains 共同支持，但 JetBrains 只对 Marketplace 安装版开放站内更新。
 - 不要删除 VSCode 的 SW/CSP/Remote 兼容代码；这些看似“包装细节”，实际是插件可用性的关键。
 - 调整 JetBrains backend 启动 UI 时，不要把“日志面板懒显示”改回默认常驻，也不要移除监听地址解析所需的日志采集链路。
+- JetBrains 站内更新只对 Marketplace 包生效；调整构建链路时不要移除 `distribution.channel=marketplace` 注入。
 - 修改发布流程时，要同时检查共享内容真源、release workflow 职责边界，以及 VSCode / JetBrains Marketplace 是否仍消费已有 artifact。

@@ -587,6 +587,7 @@ jobs:
           chmod +x gradlew
           ./gradlew clean buildPlugin \
             -Pplugin.version="$CLEAN_VERSION" \
+            -Pdistribution.channel="marketplace" \
             -x test \
             -x unitTest
 
@@ -638,6 +639,38 @@ jobs:
           print("marketplace metadata ok")
           PY
 
+      - name: Verify Marketplace distribution channel metadata
+        run: |
+          python <<'PY'
+          import io
+          import zipfile
+          from pathlib import Path
+
+          archives = sorted(Path("hosts/jetbrains-plugin/build/distributions").glob("*.zip"))
+          if len(archives) != 1:
+              raise SystemExit(f"Expected exactly one Marketplace zip, found {len(archives)}")
+
+          props = None
+          with zipfile.ZipFile(archives[0]) as plugin_zip:
+              for member in plugin_zip.namelist():
+                  if not member.endswith(".jar"):
+                      continue
+                  payload = plugin_zip.read(member)
+                  with zipfile.ZipFile(io.BytesIO(payload)) as jar_zip:
+                      try:
+                          props = jar_zip.read("opencode-build.properties").decode("utf-8")
+                          break
+                      except KeyError:
+                          continue
+
+          if props is None:
+              raise SystemExit("Could not find opencode-build.properties inside Marketplace package")
+          if "distribution.channel=marketplace" not in props:
+              raise SystemExit(f"Marketplace package has wrong distribution channel: {props!r}")
+
+          print("marketplace distribution channel ok")
+          PY
+
       - name: Verify Marketplace package contains only 3 binaries
         run: |
           python <<'PY'
@@ -684,6 +717,7 @@ jobs:
           chmod +x gradlew
           ./gradlew signPlugin publishPlugin \
             -Pplugin.version="$CLEAN_VERSION" \
+            -Pdistribution.channel="marketplace" \
             -x test \
             -x unitTest
 

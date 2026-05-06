@@ -4,6 +4,8 @@ plugins {
     kotlin("jvm") version "1.9.23"
 }
 
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+
 group = "qtkj.opencode"
 version = findProperty("plugin.version")?.toString() ?: "26.2.15"
 
@@ -39,8 +41,8 @@ sourceSets {
         resources {
             srcDir("src/unitTest/resources")
         }
-        compileClasspath += sourceSets.main.get().output
-        runtimeClasspath += output + compileClasspath
+        compileClasspath += sourceSets.main.get().output + sourceSets.main.get().compileClasspath
+        runtimeClasspath += output + compileClasspath + sourceSets.main.get().runtimeClasspath
     }
 }
 
@@ -64,9 +66,15 @@ dependencies {
     testImplementation(kotlin("test"))
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     
-    // Unit test dependencies (no IntelliJ, no JUnit)
+    // Unit test dependencies (plain JVM + JUnit, no IntelliJ TestIdeTask)
     "unitTestImplementation"("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.1")
     "unitTestImplementation"(kotlin("stdlib"))
+    "unitTestImplementation"("org.junit.jupiter:junit-jupiter:5.10.0")
+    "unitTestImplementation"("org.mockito:mockito-core:5.5.0")
+    "unitTestImplementation"("org.mockito:mockito-inline:5.2.0")
+    "unitTestImplementation"("org.mockito.kotlin:mockito-kotlin:5.1.0")
+    "unitTestImplementation"(kotlin("test"))
+    "unitTestRuntimeOnly"("org.junit.platform:junit-platform-launcher")
 }
 
 intellijPlatform {
@@ -117,9 +125,14 @@ intellijPlatform {
 tasks {
     processResources {
         val minVersion = project.findProperty("opencode.min.version")?.toString() ?: "1.1.1"
+        val distributionChannel = project.findProperty("distribution.channel")?.toString() ?: "local"
         inputs.property("opencodeMinVersion", minVersion)
+        inputs.property("distributionChannel", distributionChannel)
         filesMatching("opencode-build.properties") {
-            expand("opencodeMinVersion" to minVersion)
+            expand(
+                "opencodeMinVersion" to minVersion,
+                "distributionChannel" to distributionChannel,
+            )
         }
     }
 
@@ -151,20 +164,21 @@ tasks {
         )
     }
     
-    // Create unit test task that runs without IntelliJ dependencies
-    register<JavaExec>("unitTest") {
-        dependsOn("compileUnitTestKotlin")
-        
-        mainClass.set("paviko.opencode.ui.StandaloneMessageTestKt")
+    // Create unit test task that runs without IntelliJ TestIdeTask / sandbox setup
+    register<Test>("unitTest") {
+        testClassesDirs = sourceSets["unitTest"].output.classesDirs
         classpath = sourceSets["unitTest"].runtimeClasspath
-        
+        useJUnitPlatform()
         systemProperty("java.awt.headless", "true")
-        
         jvmArgs(
             "-Djava.awt.headless=true",
             "--add-opens=java.base/java.lang=ALL-UNNAMED",
             "--add-opens=java.base/java.util=ALL-UNNAMED"
         )
+    }
+
+    named<KotlinJvmCompile>("compileUnitTestKotlin") {
+        friendPaths.from(sourceSets.main.get().output.classesDirs)
     }
     
     // Make build depend on unit tests

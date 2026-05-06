@@ -1,25 +1,31 @@
+import { ideBridge } from "../lib/ideBridge"
 import { useUpdate } from "../state/UpdateContext"
 
-const statusText = {
-  available: "待更新",
-  downloading: "下载中",
-  installing: "安装中",
-  success: "安装完成，请重载 VSCode",
-  error: "更新失败",
-  idle: "空闲",
-} as const
-
-const titleText = {
-  available: "发现新版本可更新",
-  downloading: "正在下载更新",
-  installing: "正在安装更新",
-  success: "更新已安装完成，请重载 VSCode",
-  error: "更新失败，请重试",
-  idle: "",
-} as const
+function successCopy() {
+  return ideBridge.restartMode === "ide" ? "安装完成，请按 IDE 提示重启" : "安装完成，请重载 VSCode"
+}
 
 export function UpdateBanner() {
   const update = useUpdate()
+  const successText = successCopy()
+
+  const statusText = {
+    available: "待更新",
+    downloading: "下载中",
+    installing: "安装中",
+    success: successText,
+    error: "更新失败",
+    idle: "空闲",
+  } as const
+
+  const titleText = {
+    available: "发现新版本可更新",
+    downloading: "正在下载更新",
+    installing: "正在安装更新",
+    success: ideBridge.restartMode === "ide" ? "更新已安装完成，请按 IDE 提示重启" : "更新已安装完成，请重载 VSCode",
+    error: "更新失败，请重试",
+    idle: "",
+  } as const
 
   if (!update.latest || update.status === "idle" || update.dismissed) return null
 

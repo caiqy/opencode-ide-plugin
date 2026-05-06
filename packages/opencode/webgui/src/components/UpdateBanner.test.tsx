@@ -2,6 +2,10 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { render, screen } from "../test/test-utils"
 
+const bridge = vi.hoisted(() => ({
+  restartMode: "window" as "window" | "ide" | null,
+}))
+
 const mocks = vi.hoisted(() => ({
   installUpdate: vi.fn(),
   openRelease: vi.fn(),
@@ -15,6 +19,10 @@ const mocks = vi.hoisted(() => ({
     status: "available" as "available" | "downloading" | "installing" | "success" | "error" | "idle",
     dismissed: false,
   },
+}))
+
+vi.mock("../lib/ideBridge", () => ({
+  ideBridge: bridge,
 }))
 
 vi.mock("../state/UpdateContext", () => ({
@@ -34,6 +42,7 @@ import { UpdateBanner } from "./UpdateBanner"
 describe("UpdateBanner", () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    bridge.restartMode = "window"
     mocks.update.currentVersion = "26.4.1405"
     mocks.update.latest = {
       version: "26.4.1406",
@@ -75,8 +84,18 @@ describe("UpdateBanner", () => {
 
     render(<UpdateBanner />)
 
-    expect(screen.getByText("更新已安装完成，请重载 VSCode"))
+    expect(screen.getByText("更新已安装完成，请重载 VSCode")).toBeInTheDocument()
     expect(screen.getByText("状态：安装完成，请重载 VSCode")).toBeInTheDocument()
+  })
+
+  it("JetBrains success 状态提示按 IDE 提示重启", () => {
+    bridge.restartMode = "ide"
+    mocks.update.status = "success"
+
+    render(<UpdateBanner />)
+
+    expect(screen.getByText("更新已安装完成，请按 IDE 提示重启")).toBeInTheDocument()
+    expect(screen.getByText("状态：安装完成，请按 IDE 提示重启")).toBeInTheDocument()
   })
 
   it("error 状态展示失败提示并允许重试", () => {

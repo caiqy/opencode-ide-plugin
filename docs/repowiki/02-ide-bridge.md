@@ -58,9 +58,18 @@ WebGUI 在 `ideBridge.ts` 中解析这些元数据，供版本门禁、重启按
 VSCode 额外支持更新能力：
 
 - `getExtensionVersion`
+
+VSCode 与 JetBrains 共同支持的更新请求：
+
 - `getUpdateInfo`
 - `checkForUpdates`
 - `installUpdate`
+
+JetBrains 更新限制：
+
+- 只对 JetBrains Marketplace 安装版开放站内更新
+- 本地 ZIP / 开发版返回 `unsupported`
+- 更新成功后的生效方式以 IDE 原生提示为准
 
 ## Host → UI 推送
 
@@ -69,7 +78,7 @@ VSCode 额外支持更新能力：
 - `insertPaths`：将文件路径插入输入框。
 - `pastePath`：插入目录路径。
 - `updateOpenedFiles`：同步 IDE 当前打开文件与当前文件。
-- 更新事件：`updateAvailable`、`downloading`、`installing`、`success`、`error`（目前主要是 VSCode）。
+- 更新事件：`updateAvailable`、`downloading`、`installing`、`success`、`error`。
 
 消费位置：
 
