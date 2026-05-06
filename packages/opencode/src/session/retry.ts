@@ -63,9 +63,13 @@ export function retryable(error: Err) {
     return error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message
   }
 
-  // Check for rate limit patterns in plain text error messages
+  // Check for exact plain-text retry signals and known rate limit patterns.
   const msg = error.data?.message
   if (typeof msg === "string") {
+    if (msg === "stream_timeout" || msg === JSON.stringify("stream_timeout")) {
+      return "stream_timeout"
+    }
+
     const lower = msg.toLowerCase()
     if (
       lower.includes("rate increased too quickly") ||

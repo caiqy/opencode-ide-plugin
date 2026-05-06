@@ -169,6 +169,51 @@ describe("session.retry.retryable", () => {
     expect(SessionRetry.retryable(error)).toBe(msg)
   })
 
+  test("retries plain text stream_timeout errors", () => {
+    const error = wrap("stream_timeout")
+    expect(SessionRetry.retryable(error)).toBe("stream_timeout")
+  })
+
+  test("retries json-stringified stream_timeout errors", () => {
+    const error = wrap(JSON.stringify("stream_timeout"))
+    expect(SessionRetry.retryable(error)).toBe("stream_timeout")
+  })
+
+  test("does not retry unrelated plain text errors", () => {
+    const error = wrap("plain_failure")
+    expect(SessionRetry.retryable(error)).toBeUndefined()
+  })
+
+  test("does not retry quoted unrelated plain text errors", () => {
+    const error = wrap(JSON.stringify("plain_failure"))
+    expect(SessionRetry.retryable(error)).toBeUndefined()
+  })
+
+  test("does not retry messages that only contain stream_timeout as a substring", () => {
+    const error = wrap("before stream_timeout after")
+    expect(SessionRetry.retryable(error)).toBeUndefined()
+  })
+
+  test("does not retry json objects with stream_timeout code", () => {
+    const error = wrap(JSON.stringify({ code: "stream_timeout" }))
+    expect(SessionRetry.retryable(error)).toBeUndefined()
+  })
+
+  test("does not retry stream_timeout with leading whitespace", () => {
+    const error = wrap(" stream_timeout")
+    expect(SessionRetry.retryable(error)).toBeUndefined()
+  })
+
+  test("does not retry stream_timeout with trailing whitespace", () => {
+    const error = wrap("stream_timeout ")
+    expect(SessionRetry.retryable(error)).toBeUndefined()
+  })
+
+  test("does not retry quoted stream_timeout with surrounding newlines", () => {
+    const error = wrap("\n\"stream_timeout\"\n")
+    expect(SessionRetry.retryable(error)).toBeUndefined()
+  })
+
   test("does not retry context overflow errors", () => {
     const error = new MessageV2.ContextOverflowError({
       message: "Input exceeds context window of this model",

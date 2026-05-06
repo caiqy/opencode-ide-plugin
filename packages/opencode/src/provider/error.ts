@@ -138,6 +138,15 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
     }
   }
 
+  if (body?.error?.type === "upstream_error" && body?.error?.code === "stream_timeout") {
+    return {
+      type: "api_error",
+      message: typeof body?.error?.message === "string" ? body.error.message : "stream_timeout",
+      isRetryable: true,
+      responseBody,
+    }
+  }
+
   switch (body?.error?.code) {
     case "context_length_exceeded":
       return {

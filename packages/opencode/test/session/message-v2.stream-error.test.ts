@@ -42,11 +42,39 @@ describe("session.message-v2 stream error recovery", () => {
     expect(result).toStrictEqual({
       name: "APIError",
       data: {
-        message: "Stream interrupted by upstream: stream_read_error",
+        message: "stream_read_error",
         isRetryable: true,
         responseBody: JSON.stringify(input),
       },
     })
+  })
+
+  test("serializes upstream stream_timeout frames as retryable APIError", () => {
+    const input = {
+      type: "error",
+      sequence_number: 0,
+      error: {
+        type: "upstream_error",
+        code: "stream_timeout",
+        message: "stream_timeout",
+      },
+    }
+    const err = new TypeValidationError({
+      value: input,
+      cause: new Error("bad chunk"),
+    })
+
+    const result = MessageV2.fromError(err, { providerID })
+
+    expect(result).toStrictEqual({
+      name: "APIError",
+      data: {
+        message: "stream_timeout",
+        isRetryable: true,
+        responseBody: JSON.stringify(input),
+      },
+    })
+    expect(SessionRetry.retryable(result)).toBe("stream_timeout")
   })
 
   test("marks recovered stream_read_error as retryable", () => {
@@ -57,6 +85,6 @@ describe("session.message-v2 stream error recovery", () => {
     const result = MessageV2.fromError(err, { providerID })
 
     expect(MessageV2.APIError.isInstance(result)).toBe(true)
-    expect(SessionRetry.retryable(result)).toBe("Stream interrupted by upstream: stream_read_error")
+    expect(SessionRetry.retryable(result)).toBe("stream_read_error")
   })
 })
