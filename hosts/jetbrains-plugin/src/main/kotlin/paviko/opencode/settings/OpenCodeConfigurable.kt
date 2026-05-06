@@ -12,7 +12,7 @@ import javax.swing.JPanel
 
 /**
  * Settings UI component for OpenCode plugin configuration.
- * Provides a settings panel under Tools > OpenCode Plug with configurable options.
+ * Provides a settings panel under Tools > OpenCode Plugin with configurable options.
  */
 class OpenCodeConfigurable : Configurable {
 
@@ -23,7 +23,7 @@ class OpenCodeConfigurable : Configurable {
     private val settings = OpenCodeSettings.getInstance()
     private val logger = Logger.getInstance(OpenCodeConfigurable::class.java)
 
-    override fun getDisplayName(): String = "OpenCode Plug"
+    override fun getDisplayName(): String = "OpenCode Plugin"
 
     override fun createComponent(): JComponent? {
         try {

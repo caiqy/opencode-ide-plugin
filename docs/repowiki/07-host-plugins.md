@@ -111,7 +111,7 @@ JetBrains 工具窗口中的 backend logs 面板采用“懒显示”规则：
 
 - 共享真源位于 `docs/release-content/`。
 - 平台目录中的 README / description / changelog 更接近生成产物，不应作为长期手工维护真源。
-- 共享 release-content 真源统一使用 `OpenCode UI (unofficial)` 及其“非官方”语义；JetBrains `plugin.xml` 中的插件显示名当前仍为中文 `OpenCode UI（非官方）`。
+- 共享 release-content 真源统一使用 `OpenCode UI (unofficial)` 及其“非官方”语义；JetBrains `plugin.xml` 中的插件显示名也已对齐为英文。
 
 `release.yml` 的职责边界：
 
