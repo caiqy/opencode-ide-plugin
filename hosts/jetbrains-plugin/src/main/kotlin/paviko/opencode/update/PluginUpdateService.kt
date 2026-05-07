@@ -19,6 +19,14 @@ sealed interface MarketplaceLookup {
     ) : MarketplaceLookup
 }
 
+internal fun descriptorToMarketplaceLookup(model: Any?): MarketplaceLookup {
+    return if (model == null) {
+        MarketplaceLookup.NoUpdate
+    } else {
+        MarketplaceLookup.Available(model)
+    }
+}
+
 private fun loadLatestMarketplaceUpdate(
     versionSource: PluginVersionSource,
     marketplaceLookup: () -> MarketplaceLookup,
@@ -84,7 +92,7 @@ private fun loadMarketplaceUpdateStrict(requests: MarketplaceRequests): Marketpl
             legacy.invoke(requests, pluginId, null, null)
         }.getOrElse(::unwrapReflectionFailure)
 
-        return if (result == null) MarketplaceLookup.NoUpdate else MarketplaceLookup.Available(result)
+        return descriptorToMarketplaceLookup(result)
     }
 
     val listMethod = requests.javaClass.methods.firstOrNull { method ->
@@ -105,9 +113,9 @@ private fun loadMarketplaceUpdateStrict(requests: MarketplaceRequests): Marketpl
 
     val model = runCatching {
         descriptor.invoke(requests, pluginId.idString, first, null)
-    }.getOrElse(::unwrapReflectionFailure) ?: throw IllegalStateException("Marketplace update metadata missing")
+    }.getOrElse(::unwrapReflectionFailure)
 
-    return MarketplaceLookup.Available(model)
+    return descriptorToMarketplaceLookup(model)
 }
 
 private fun unwrapReflectionFailure(error: Throwable): Nothing {

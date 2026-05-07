@@ -120,6 +120,30 @@ class PluginUpdateServiceTest {
     }
 
     @Test
+    fun `checkForUpdates treats missing descriptor result as up to date`() {
+        val service = PluginUpdateService(
+            versionSource = PluginVersionSource { "26.5.700" },
+            distributionChannelProvider = { "marketplace" },
+            latestProvider = {
+                val lookup = descriptorToMarketplaceLookup(null)
+                when (lookup) {
+                    MarketplaceLookup.NoUpdate -> null
+                    is MarketplaceLookup.Available -> AvailablePluginUpdate(
+                        release = UpdateRelease(version = "26.5.701"),
+                        install = {},
+                    )
+                }
+            },
+            backgroundRunner = { task -> task() },
+        )
+
+        assertEquals(
+            CheckForUpdatesResult.UpToDate(currentVersion = "26.5.700"),
+            service.checkForUpdates(),
+        )
+    }
+
+    @Test
     fun `checkForUpdates propagates marketplace query failures`() {
         val service = PluginUpdateService(
             versionSource = PluginVersionSource { "26.5.501" },
@@ -175,6 +199,18 @@ class PluginUpdateServiceTest {
         }
 
         assertEquals("Marketplace update metadata missing", error.message)
+    }
+
+    @Test
+    fun `missing marketplace descriptor is treated as no update`() {
+        assertEquals(MarketplaceLookup.NoUpdate, descriptorToMarketplaceLookup(null))
+    }
+
+    @Test
+    fun `marketplace descriptor is treated as available update`() {
+        val model = Any()
+
+        assertEquals(MarketplaceLookup.Available(model), descriptorToMarketplaceLookup(model))
     }
 
     @Test
