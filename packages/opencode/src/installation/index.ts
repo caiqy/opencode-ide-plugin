@@ -4,6 +4,7 @@ import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { withTransientReadRetry } from "@/util/effect-http-client"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import path from "path"
+import os from "os"
 import z from "zod"
 import { BusEvent } from "@/bus/bus-event"
 import { Flag } from "@opencode-ai/core/flag/flag"
@@ -55,7 +56,24 @@ export const Info = z
   })
 export type Info = z.infer<typeof Info>
 
-export const USER_AGENT = `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT}`
+const OPENCODE_USER_AGENT_PRODUCT = `opencode/${InstallationVersion}`
+// Keep the legacy channel/version/client shape for installation and model-list requests.
+const INSTALLATION_USER_AGENT_PRODUCT = `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT}`
+const UI_USER_AGENT_PRODUCT = `opencode-ui/${InstallationVersion}`
+const USER_AGENT_COMMENT = "codex app"
+
+export function userAgent(options?: { base?: "default" | "installation"; products?: string[]; system?: boolean }) {
+  const base = options?.base === "installation" ? INSTALLATION_USER_AGENT_PRODUCT : OPENCODE_USER_AGENT_PRODUCT
+  const products = [base, ...(options?.products ?? []), UI_USER_AGENT_PRODUCT]
+  const comments = [
+    USER_AGENT_COMMENT,
+    ...(options?.system ? [`${os.platform()} ${os.release()}`, os.arch()] : []),
+  ]
+
+  return `${products.join(" ")} (${comments.join("; ")})`
+}
+
+export const USER_AGENT = userAgent({ base: "installation" })
 
 export function isPreview() {
   return InstallationChannel !== "latest"
@@ -143,7 +161,11 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
 
       const upgradeCurl = Effect.fnUntraced(
         function* (target: string) {
-          const response = yield* httpOk.execute(HttpClientRequest.get("https://opencode.ai/install"))
+          const response = yield* httpOk.execute(
+            HttpClientRequest.get("https://opencode.ai/install").pipe(
+              HttpClientRequest.setHeaders({ "User-Agent": USER_AGENT }),
+            ),
+          )
           const body = yield* response.text
           const bodyBytes = new TextEncoder().encode(body)
           const proc = ChildProcess.make("bash", [], {
@@ -217,6 +239,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
             const response = yield* httpOk.execute(
               HttpClientRequest.get("https://formulae.brew.sh/api/formula/opencode.json").pipe(
                 HttpClientRequest.acceptJson,
+                HttpClientRequest.setHeaders({ "User-Agent": USER_AGENT }),
               ),
             )
             const data = yield* HttpClientResponse.schemaBodyJson(BrewFormula)(response)
@@ -227,7 +250,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
             const response = yield* httpOk.execute(
               HttpClientRequest.get(
                 `${yield* NpmConfig.registry(process.cwd())}/opencode-ai/${InstallationChannel}`,
-              ).pipe(HttpClientRequest.acceptJson),
+              ).pipe(HttpClientRequest.acceptJson, HttpClientRequest.setHeaders({ "User-Agent": USER_AGENT })),
             )
             const data = yield* HttpClientResponse.schemaBodyJson(NpmPackage)(response)
             return data.version
@@ -237,7 +260,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
             const response = yield* httpOk.execute(
               HttpClientRequest.get(
                 "https://community.chocolatey.org/api/v2/Packages?$filter=Id%20eq%20%27opencode%27%20and%20IsLatestVersion&$select=Version",
-              ).pipe(HttpClientRequest.setHeaders({ Accept: "application/json;odata=verbose" })),
+              ).pipe(HttpClientRequest.setHeaders({ Accept: "application/json;odata=verbose", "User-Agent": USER_AGENT })),
             )
             const data = yield* HttpClientResponse.schemaBodyJson(ChocoPackage)(response)
             return data.d.results[0].Version
@@ -247,7 +270,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
             const response = yield* httpOk.execute(
               HttpClientRequest.get(
                 "https://raw.githubusercontent.com/ScoopInstaller/Main/master/bucket/opencode.json",
-              ).pipe(HttpClientRequest.setHeaders({ Accept: "application/json" })),
+              ).pipe(HttpClientRequest.setHeaders({ Accept: "application/json", "User-Agent": USER_AGENT })),
             )
             const data = yield* HttpClientResponse.schemaBodyJson(ScoopManifest)(response)
             return data.version
@@ -256,6 +279,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
           const response = yield* httpOk.execute(
             HttpClientRequest.get("https://api.github.com/repos/anomalyco/opencode/releases/latest").pipe(
               HttpClientRequest.acceptJson,
+              HttpClientRequest.setHeaders({ "User-Agent": USER_AGENT }),
             ),
           )
           const data = yield* HttpClientResponse.schemaBodyJson(GitHubRelease)(response)

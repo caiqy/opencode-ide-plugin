@@ -1,9 +1,7 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import { Log } from "../util"
 import { Installation } from "../installation"
-import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { OAUTH_DUMMY_KEY } from "../auth"
-import os from "os"
 import { setTimeout as sleep } from "node:timers/promises"
 import { createServer } from "http"
 
@@ -110,10 +108,17 @@ interface TokenResponse {
   expires_in?: number
 }
 
+export function codexTokenHeaders() {
+  return {
+    "Content-Type": "application/x-www-form-urlencoded",
+    "User-Agent": Installation.userAgent(),
+  }
+}
+
 async function exchangeCodeForTokens(code: string, redirectUri: string, pkce: PkceCodes): Promise<TokenResponse> {
   const response = await fetch(`${ISSUER}/oauth/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: codexTokenHeaders(),
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
@@ -131,7 +136,7 @@ async function exchangeCodeForTokens(code: string, redirectUri: string, pkce: Pk
 async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
   const response = await fetch(`${ISSUER}/oauth/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: codexTokenHeaders(),
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
@@ -523,7 +528,7 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                "User-Agent": `opencode/${InstallationVersion}`,
+                "User-Agent": Installation.userAgent(),
               },
               body: JSON.stringify({ client_id: CLIENT_ID }),
             })
@@ -547,7 +552,7 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json",
-                      "User-Agent": `opencode/${InstallationVersion}`,
+                      "User-Agent": Installation.userAgent(),
                     },
                     body: JSON.stringify({
                       device_auth_id: deviceData.device_auth_id,
@@ -563,7 +568,7 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
 
                     const tokenResponse = await fetch(`${ISSUER}/oauth/token`, {
                       method: "POST",
-                      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                      headers: codexTokenHeaders(),
                       body: new URLSearchParams({
                         grant_type: "authorization_code",
                         code: data.authorization_code,
@@ -607,7 +612,7 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
     "chat.headers": async (input, output) => {
       if (input.model.providerID !== "openai") return
       output.headers.originator = "opencode"
-      output.headers["User-Agent"] = `opencode/${InstallationVersion} (${os.platform()} ${os.release()}; ${os.arch()})`
+      output.headers["User-Agent"] = Installation.userAgent({ system: true })
       output.headers.session_id = input.sessionID
     },
     "chat.params": async (input, output) => {

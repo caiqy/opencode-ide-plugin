@@ -69,6 +69,20 @@ function paid(providers: Awaited<ReturnType<typeof list>>) {
   return Object.values(item.models).filter((model) => model.cost.input > 0).length
 }
 
+test("gitlab discovery headers include API token and user agent", () => {
+  expect(Provider.gitlabDiscoveryHeaders({ type: "api" }, "glpat-token", "agent/1")).toEqual({
+    "PRIVATE-TOKEN": "glpat-token",
+    "User-Agent": "agent/1",
+  })
+})
+
+test("gitlab discovery headers include OAuth token and user agent", () => {
+  expect(Provider.gitlabDiscoveryHeaders({ type: "oauth" }, "oauth-token", "agent/1")).toEqual({
+    Authorization: "Bearer oauth-token",
+    "User-Agent": "agent/1",
+  })
+})
+
 test("provider loaded from env variable", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {

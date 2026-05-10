@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
+import os from "os"
 import { Effect, Layer, Stream } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { Installation } from "../../src/installation"
-import { InstallationChannel } from "@opencode-ai/core/installation/version"
+import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
+import { Flag } from "@opencode-ai/core/flag/flag"
 
 const encoder = new TextEncoder()
 
@@ -50,7 +52,48 @@ function testLayer(
 }
 
 describe("installation", () => {
+  describe("userAgent", () => {
+    test("builds the default opencode UI user agent", () => {
+      expect(Installation.userAgent()).toBe(
+        `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (codex app)`,
+      )
+    })
+
+    test("builds the installation-scoped user agent", () => {
+      expect(Installation.USER_AGENT).toBe(
+        `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/${InstallationVersion} (codex app)`,
+      )
+    })
+
+    test("keeps provider integration products before the UI product", () => {
+      expect(Installation.userAgent({ products: ["gitlab-ai-provider/1.2.3"] })).toBe(
+        `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/${InstallationVersion} (codex app)`,
+      )
+    })
+
+    test("adds system details to the comment", () => {
+      expect(Installation.userAgent({ system: true })).toBe(
+        `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (codex app; ${os.platform()} ${os.release()}; ${os.arch()})`,
+      )
+    })
+  })
+
   describe("latest", () => {
+    test("sends installation user agent and preserves accept header to version APIs", async () => {
+      let headers: HttpClientRequest.HttpClientRequest["headers"] | undefined
+      const layer = testLayer((request) => {
+        headers = request.headers
+        return jsonResponse({ tag_name: "v1.2.3" })
+      })
+
+      const result = await Effect.runPromise(
+        Installation.Service.use((svc) => svc.latest("unknown")).pipe(Effect.provide(layer)),
+      )
+      expect(result).toBe("1.2.3")
+      expect(headers?.["user-agent"]).toBe(Installation.USER_AGENT)
+      expect(headers?.accept).toBe("application/json")
+    })
+
     test("reads release version from GitHub releases", async () => {
       const layer = testLayer(() => jsonResponse({ tag_name: "v1.2.3" }))
 

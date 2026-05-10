@@ -1,4 +1,3 @@
-import os from "os"
 import fuzzysort from "fuzzysort"
 import { Config } from "../config"
 import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
@@ -11,8 +10,8 @@ import { type LanguageModelV3 } from "@ai-sdk/provider"
 import * as ModelsDev from "./models"
 import { Auth } from "../auth"
 import { Env } from "../env"
-import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { Flag } from "@opencode-ai/core/flag/flag"
+import { Installation } from "@/installation"
 import { zod } from "@/util/effect-zod"
 import { namedSchemaError } from "@/util/named-schema-error"
 import { iife } from "@/util/iife"
@@ -208,6 +207,13 @@ type CustomDep = {
 
 function useLanguageModel(sdk: any) {
   return sdk.responses === undefined && sdk.chat === undefined
+}
+
+export function gitlabDiscoveryHeaders(auth: { type: string } | undefined, token: string, agent: string) {
+  return {
+    ...(auth?.type === "api" ? { "PRIVATE-TOKEN": token } : { Authorization: `Bearer ${token}` }),
+    "User-Agent": agent,
+  }
 }
 
 function custom(dep: CustomDep): Record<string, CustomLoader> {
@@ -621,7 +627,10 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
       const directory = yield* InstanceState.directory
 
       const aiGatewayHeaders = {
-        "User-Agent": `opencode/${InstallationVersion} gitlab-ai-provider/${GITLAB_PROVIDER_VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`,
+        "User-Agent": Installation.userAgent({
+          products: [`gitlab-ai-provider/${GITLAB_PROVIDER_VERSION}`],
+          system: true,
+        }),
         "anthropic-beta": "context-1m-2025-08-07",
         ...providerConfig?.options?.aiGatewayHeaders,
       }
@@ -670,7 +679,7 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
           try {
             const token = apiKey
             const getHeaders = (): Record<string, string> =>
-              auth?.type === "api" ? { "PRIVATE-TOKEN": token } : { Authorization: `Bearer ${token}` }
+              gitlabDiscoveryHeaders(auth, token, aiGatewayHeaders["User-Agent"])
 
             log.info("gitlab model discovery starting", { instanceUrl })
             const result = await discoverWorkflowModels({ instanceUrl, getHeaders }, { workingDirectory: directory })
@@ -774,7 +783,7 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         options: {
           apiKey,
           headers: {
-            "User-Agent": `opencode/${InstallationVersion} cloudflare-workers-ai (${os.platform()} ${os.release()}; ${os.arch()})`,
+            "User-Agent": Installation.userAgent({ products: ["cloudflare-workers-ai"], system: true }),
           },
         },
         async getModel(sdk: any, modelID: string) {
@@ -845,7 +854,7 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         skipCache: input.options?.skipCache,
         collectLog: input.options?.collectLog,
         headers: {
-          "User-Agent": `opencode/${InstallationVersion} cloudflare-ai-gateway (${os.platform()} ${os.release()}; ${os.arch()})`,
+          "User-Agent": Installation.userAgent({ products: ["cloudflare-ai-gateway"], system: true }),
         },
       }
 

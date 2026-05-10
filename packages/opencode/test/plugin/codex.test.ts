@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  codexTokenHeaders,
   parseJwtClaims,
   extractAccountIdFromClaims,
   extractAccountId,
@@ -13,6 +14,15 @@ function createTestJwt(payload: object): string {
 }
 
 describe("plugin.codex", () => {
+  describe("codexTokenHeaders", () => {
+    test("adds the opencode UI user agent to token requests", () => {
+      expect(codexTokenHeaders()).toEqual({
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": expect.stringContaining("opencode-ui/"),
+      })
+    })
+  })
+
   describe("parseJwtClaims", () => {
     test("parses valid JWT with claims", () => {
       const payload = { email: "test@example.com", chatgpt_account_id: "acc-123" }
