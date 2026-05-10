@@ -8,6 +8,7 @@ function successCopy() {
 export function UpdateBanner() {
   const update = useUpdate()
   const successText = successCopy()
+  const isManualAvailable = update.status === "available" && update.latest?.manualUpdate === true
 
   const statusText = {
     available: "待更新",
@@ -19,7 +20,7 @@ export function UpdateBanner() {
   } as const
 
   const titleText = {
-    available: "发现新版本可更新",
+    available: isManualAvailable ? "发现新版本，请到插件管理页面更新" : "发现新版本可更新",
     downloading: "正在下载更新",
     installing: "正在安装更新",
     success: ideBridge.restartMode === "ide" ? "更新已安装完成，请按 IDE 提示重启" : "更新已安装完成，请重载 VSCode",
@@ -55,7 +56,7 @@ export function UpdateBanner() {
               void update.installUpdate(update.latest!.version)
             }}
           >
-            立即更新
+            {isManualAvailable ? "打开插件管理" : "立即更新"}
           </button>
           {update.latest.releaseUrl ? (
             <button

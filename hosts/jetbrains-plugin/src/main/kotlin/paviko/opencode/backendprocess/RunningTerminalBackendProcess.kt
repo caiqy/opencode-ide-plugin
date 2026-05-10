@@ -1,7 +1,8 @@
 package paviko.opencode.backendprocess
 
 import com.intellij.openapi.diagnostic.Logger
-import org.jetbrains.plugins.terminal.ShellTerminalWidget
+import com.intellij.terminal.frontend.view.TerminalView
+import com.intellij.terminal.ui.TerminalWidget
 import java.io.InputStream
 import java.io.PipedOutputStream
 
@@ -10,7 +11,8 @@ import java.io.PipedOutputStream
  * Not intended to be used directly by consumers; created internally by `BackendLauncher`.
  */
 internal class RunningTerminalBackendProcess(
-    private val terminalWidget: ShellTerminalWidget,
+    private val terminalWidget: TerminalWidget,
+    private val terminalView: TerminalView,
     private val commandLine: String,
     outputBuffer: PipedOutputStream
 ) : BackendProcess {
@@ -20,7 +22,7 @@ internal class RunningTerminalBackendProcess(
 
     init {
         // Start capturing output from the terminal
-        outputCapture.startCapturing(terminalWidget)
+        outputCapture.startCapturing(terminalView)
         logger.info("Backend process started in terminal: $commandLine")
     }
 
@@ -36,7 +38,7 @@ internal class RunningTerminalBackendProcess(
     override fun destroy() {
         try {
             // Send Ctrl+C to terminate the process
-            terminalWidget.executeCommand("\u0003") // Ctrl+C
+            terminalView.sendText("\u0003")
             logger.info("Sent termination signal to backend process")
         } catch (e: Exception) {
             logger.warn("Failed to send termination signal", e)
@@ -48,7 +50,7 @@ internal class RunningTerminalBackendProcess(
 
     override fun isAlive(): Boolean {
         // For terminal-based processes, assume alive if terminal widget is still active
-        return terminalWidget.hasRunningCommands()
+        return terminalWidget.isCommandRunning()
     }
 
     override fun stopCapture() {

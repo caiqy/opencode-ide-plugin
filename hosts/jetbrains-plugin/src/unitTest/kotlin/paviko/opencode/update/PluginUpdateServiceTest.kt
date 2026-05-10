@@ -2,11 +2,8 @@ package paviko.opencode.update
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
-import java.util.concurrent.CountDownLatch
-import kotlin.concurrent.thread
 
 class PluginUpdateServiceTest {
     @Test
@@ -15,8 +12,8 @@ class PluginUpdateServiceTest {
         val service = PluginUpdateService(
             versionSource = PluginVersionSource { version },
             distributionChannelProvider = { "local" },
-            latestProvider = {
-                throw AssertionError("latestProvider should not run for local builds")
+            marketplaceVersionSource = MarketplaceVersionSource {
+                throw AssertionError("marketplaceVersionSource should not run for currentVersion")
             },
             backgroundRunner = { task -> task() },
         )
@@ -29,53 +26,25 @@ class PluginUpdateServiceTest {
     }
 
     @Test
-    fun `local build reports marketplace only support`() {
-        val service = PluginUpdateService(
-            versionSource = PluginVersionSource { "26.5.501" },
-            distributionChannelProvider = { "local" },
-            latestProvider = {
-                throw AssertionError("latestProvider should not run for local builds")
-            },
-            backgroundRunner = { task -> task() },
+    fun `newer public marketplace release returns available manual update and caches it`() {
+        val release = MarketplacePluginRelease(
+            version = "26.5.502",
+            releaseUrl = "https://plugins.jetbrains.com/plugin/31609-opencode-ui-unofficial-/versions/stable/123456",
         )
-
-        assertEquals(
-            UpdateInfoResult(
-                supported = false,
-                reason = "marketplace-only",
-                currentVersion = "26.5.501",
-                latest = null,
-                hasUpdate = false,
-            ),
-            service.getUpdateInfo(),
-        )
-
-        assertEquals(
-            CheckForUpdatesResult.Unsupported(
-                currentVersion = "26.5.501",
-                reason = "marketplace-only",
-            ),
-            service.checkForUpdates(),
-        )
-    }
-
-    @Test
-    fun `marketplace build returns available update and caches it`() {
         val service = PluginUpdateService(
             versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
-            latestProvider = {
-                AvailablePluginUpdate(
-                    release = UpdateRelease(version = "26.5.502"),
-                    install = {},
-                )
-            },
+            marketplaceVersionSource = MarketplaceVersionSource { release },
             backgroundRunner = { task -> task() },
         )
 
         assertEquals(
             CheckForUpdatesResult.Available(
-                latest = UpdateRelease(version = "26.5.502"),
+                latest = UpdateRelease(
+                    version = "26.5.502",
+                    releaseUrl = release.releaseUrl,
+                    manualUpdate = true,
+                ),
             ),
             service.checkForUpdates(),
         )
@@ -83,9 +52,12 @@ class PluginUpdateServiceTest {
         assertEquals(
             UpdateInfoResult(
                 supported = true,
-                reason = null,
                 currentVersion = "26.5.501",
-                latest = UpdateRelease(version = "26.5.502"),
+                latest = UpdateRelease(
+                    version = "26.5.502",
+                    releaseUrl = release.releaseUrl,
+                    manualUpdate = true,
+                ),
                 hasUpdate = true,
             ),
             service.getUpdateInfo(),
@@ -93,152 +65,176 @@ class PluginUpdateServiceTest {
     }
 
     @Test
-    fun `marketplace build with no update reports supported but empty state`() {
+    fun `null marketplace release returns manual check and clears cached update`() {
+        var latestRelease: MarketplacePluginRelease? = MarketplacePluginRelease(
+            version = "26.5.502",
+            releaseUrl = "https://plugins.jetbrains.com/plugin/31609-opencode-ui-unofficial-/versions/stable/123456",
+        )
         val service = PluginUpdateService(
             versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
-            latestProvider = null,
-            marketplaceLookup = { MarketplaceLookup.NoUpdate },
+            marketplaceVersionSource = MarketplaceVersionSource { latestRelease },
             backgroundRunner = { task -> task() },
+        )
+
+        assertEquals("available", service.checkForUpdates().status)
+        latestRelease = null
+
+        assertEquals(
+            CheckForUpdatesResult.ManualCheck(
+                currentVersion = "26.5.501",
+                reason = "marketplace update unavailable",
+            ),
+            service.checkForUpdates(),
         )
 
         assertEquals(
             UpdateInfoResult(
                 supported = true,
-                reason = null,
+                reason = "marketplace update unavailable",
                 currentVersion = "26.5.501",
                 latest = null,
                 hasUpdate = false,
             ),
             service.getUpdateInfo(),
         )
+    }
+
+    @Test
+    fun `same current version returns up to date and clears cached update`() {
+        var currentVersion = "26.5.501"
+        var latestRelease = MarketplacePluginRelease(
+            version = "26.5.502",
+            releaseUrl = "https://plugins.jetbrains.com/plugin/31609-opencode-ui-unofficial-/versions/stable/123456",
+        )
+        val service = PluginUpdateService(
+            versionSource = PluginVersionSource { currentVersion },
+            distributionChannelProvider = { "local" },
+            marketplaceVersionSource = MarketplaceVersionSource { latestRelease },
+            backgroundRunner = { task -> task() },
+        )
+
+        assertEquals("available", service.checkForUpdates().status)
+
+        currentVersion = "26.5.502"
+        latestRelease = latestRelease.copy(version = "26.5.502")
 
         assertEquals(
-            CheckForUpdatesResult.UpToDate(currentVersion = "26.5.501"),
+            CheckForUpdatesResult.UpToDate(currentVersion = "26.5.502"),
             service.checkForUpdates(),
+        )
+
+        assertEquals(
+            UpdateInfoResult(
+                supported = true,
+                currentVersion = "26.5.502",
+                latest = null,
+                hasUpdate = false,
+            ),
+            service.getUpdateInfo(),
         )
     }
 
     @Test
-    fun `checkForUpdates treats missing descriptor result as up to date`() {
+    fun `higher current version than marketplace returns up to date and clears cached update`() {
+        var currentVersion = "26.5.501"
+        var latestRelease = MarketplacePluginRelease(
+            version = "26.5.502",
+            releaseUrl = "https://plugins.jetbrains.com/plugin/31609-opencode-ui-unofficial-/versions/stable/123456",
+        )
         val service = PluginUpdateService(
-            versionSource = PluginVersionSource { "26.5.700" },
+            versionSource = PluginVersionSource { currentVersion },
+            distributionChannelProvider = { "local" },
+            marketplaceVersionSource = MarketplaceVersionSource { latestRelease },
+            backgroundRunner = { task -> task() },
+        )
+
+        assertEquals("available", service.checkForUpdates().status)
+
+        currentVersion = "26.5.503"
+        latestRelease = latestRelease.copy(version = "26.5.502")
+
+        assertEquals(
+            CheckForUpdatesResult.UpToDate(currentVersion = "26.5.503"),
+            service.checkForUpdates(),
+        )
+
+        assertEquals(
+            UpdateInfoResult(
+                supported = true,
+                currentVersion = "26.5.503",
+                latest = null,
+                hasUpdate = false,
+            ),
+            service.getUpdateInfo(),
+        )
+    }
+
+    @Test
+    fun `marketplace exception returns manual check instead of throwing`() {
+        var fail = false
+        val service = PluginUpdateService(
+            versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
-            latestProvider = {
-                val lookup = descriptorToMarketplaceLookup(null)
-                when (lookup) {
-                    MarketplaceLookup.NoUpdate -> null
-                    is MarketplaceLookup.Available -> AvailablePluginUpdate(
-                        release = UpdateRelease(version = "26.5.701"),
-                        install = {},
-                    )
+            marketplaceVersionSource = MarketplaceVersionSource {
+                if (fail) {
+                    throw IllegalStateException("marketplace unavailable")
                 }
-            },
-            backgroundRunner = { task -> task() },
-        )
-
-        assertEquals(
-            CheckForUpdatesResult.UpToDate(currentVersion = "26.5.700"),
-            service.checkForUpdates(),
-        )
-    }
-
-    @Test
-    fun `checkForUpdates propagates marketplace query failures`() {
-        val service = PluginUpdateService(
-            versionSource = PluginVersionSource { "26.5.501" },
-            distributionChannelProvider = { "marketplace" },
-            latestProvider = null,
-            marketplaceLookup = {
-                throw IllegalStateException("marketplace unavailable")
-            },
-            backgroundRunner = { task -> task() },
-        )
-
-        val error = assertThrows(IllegalStateException::class.java) {
-            service.checkForUpdates()
-        }
-
-        assertEquals("marketplace unavailable", error.message)
-    }
-
-    @Test
-    fun `checkForUpdates fails when marketplace update model is missing`() {
-        val service = PluginUpdateService(
-            versionSource = PluginVersionSource { "26.5.501" },
-            distributionChannelProvider = { "marketplace" },
-            latestProvider = null,
-            marketplaceLookup = {
-                MarketplaceLookup.Available(Any())
-            },
-            updateVersionProvider = { null },
-            backgroundRunner = { task -> task() },
-        )
-
-        val error = assertThrows(IllegalStateException::class.java) {
-            service.checkForUpdates()
-        }
-
-        assertEquals("Marketplace update version missing", error.message)
-    }
-
-    @Test
-    fun `checkForUpdates fails when marketplace metadata lookup itself fails`() {
-        val service = PluginUpdateService(
-            versionSource = PluginVersionSource { "26.5.501" },
-            distributionChannelProvider = { "marketplace" },
-            latestProvider = null,
-            marketplaceLookup = {
-                throw IllegalStateException("Marketplace update metadata missing")
-            },
-            backgroundRunner = { task -> task() },
-        )
-
-        val error = assertThrows(IllegalStateException::class.java) {
-            service.checkForUpdates()
-        }
-
-        assertEquals("Marketplace update metadata missing", error.message)
-    }
-
-    @Test
-    fun `missing marketplace descriptor is treated as no update`() {
-        assertEquals(MarketplaceLookup.NoUpdate, descriptorToMarketplaceLookup(null))
-    }
-
-    @Test
-    fun `marketplace descriptor is treated as available update`() {
-        val model = Any()
-
-        assertEquals(MarketplaceLookup.Available(model), descriptorToMarketplaceLookup(model))
-    }
-
-    @Test
-    fun `default background runner does not block install preparation`() {
-        val release = CountDownLatch(1)
-
-        val service = PluginUpdateService(
-            versionSource = PluginVersionSource { "26.5.501" },
-            distributionChannelProvider = { "marketplace" },
-            latestProvider = {
-                AvailablePluginUpdate(
-                    release = UpdateRelease(version = "26.5.502"),
-                    install = {
-                        release.await(1, java.util.concurrent.TimeUnit.SECONDS)
-                    },
+                MarketplacePluginRelease(
+                    version = "26.5.502",
+                    releaseUrl = "https://plugins.jetbrains.com/plugin/31609-opencode-ui-unofficial-/versions/stable/123456",
                 )
             },
+            backgroundRunner = { task -> task() },
+        )
+
+        assertEquals("available", service.checkForUpdates().status)
+        fail = true
+
+        assertEquals(
+            CheckForUpdatesResult.ManualCheck(
+                currentVersion = "26.5.501",
+                reason = "marketplace unavailable",
+                releaseUrl = marketplacePluginPage(),
+            ),
+            service.checkForUpdates(),
+        )
+        assertFalse(service.getUpdateInfo().hasUpdate)
+        assertEquals(null, service.getUpdateInfo().latest)
+        assertEquals("marketplace unavailable", service.getUpdateInfo().reason)
+    }
+
+    @Test
+    fun `prepareInstall emits manualUpdate only`() {
+        val release = MarketplacePluginRelease(
+            version = "26.5.502",
+            releaseUrl = "https://plugins.jetbrains.com/plugin/31609-opencode-ui-unofficial-/versions/stable/123456",
+        )
+        val events = mutableListOf<String>()
+        val payloads = mutableListOf<Map<String, Any?>>()
+        val service = PluginUpdateService(
+            versionSource = PluginVersionSource { "26.5.501" },
+            distributionChannelProvider = { "marketplace" },
+            marketplaceVersionSource = MarketplaceVersionSource { release },
+            backgroundRunner = { task -> task() },
         )
 
         service.checkForUpdates()
         val prepared = service.prepareInstall("26.5.502")
-
-        val caller = thread(start = true) {
-            prepared.start { _, _ -> }
+        prepared.start { type, payload ->
+            events += type
+            payloads += payload
         }
 
-        caller.join(500)
-        assertFalse(caller.isAlive)
+        assertEquals(listOf("manualUpdate"), events)
+        assertEquals(
+            mapOf(
+                "version" to "26.5.502",
+                "releaseUrl" to release.releaseUrl,
+                "manualUpdate" to true,
+            ),
+            payloads.single(),
+        )
     }
 
     @Test
@@ -246,10 +242,10 @@ class PluginUpdateServiceTest {
         val service = PluginUpdateService(
             versionSource = PluginVersionSource { "26.5.501" },
             distributionChannelProvider = { "marketplace" },
-            latestProvider = {
-                AvailablePluginUpdate(
-                    release = UpdateRelease(version = "26.5.502"),
-                    install = {},
+            marketplaceVersionSource = MarketplaceVersionSource {
+                MarketplacePluginRelease(
+                    version = "26.5.502",
+                    releaseUrl = "https://plugins.jetbrains.com/plugin/31609-opencode-ui-unofficial-/versions/stable/123456",
                 )
             },
             backgroundRunner = { task -> task() },
@@ -262,95 +258,5 @@ class PluginUpdateServiceTest {
         }
 
         assertEquals("Update not available: 26.5.503", error.message)
-    }
-
-    @Test
-    fun `prepared install emits installing then success and clears latest`() {
-        var installed = 0
-        val events = mutableListOf<String>()
-        val payloads = mutableListOf<Map<String, Any?>>()
-
-        val service = PluginUpdateService(
-            versionSource = PluginVersionSource { "26.5.501" },
-            distributionChannelProvider = { "marketplace" },
-            latestProvider = {
-                AvailablePluginUpdate(
-                    release = UpdateRelease(version = "26.5.502"),
-                    install = { installed += 1 },
-                )
-            },
-            backgroundRunner = { task -> task() },
-        )
-
-        service.checkForUpdates()
-        val prepared = service.prepareInstall("26.5.502")
-        prepared.start { type, payload ->
-            events += type
-            payloads += payload
-        }
-
-        assertEquals(1, installed)
-        assertEquals(listOf("installing", "success"), events)
-        assertEquals("26.5.502", payloads.first()["version"])
-        assertNull(service.getUpdateInfo().latest)
-        assertEquals(false, service.getUpdateInfo().hasUpdate)
-    }
-
-    @Test
-    fun `successful install does not clear a newer cached update`() {
-        var latest = AvailablePluginUpdate(
-            release = UpdateRelease(version = "26.5.502"),
-            install = {},
-        )
-
-        val service = PluginUpdateService(
-            versionSource = PluginVersionSource { "26.5.501" },
-            distributionChannelProvider = { "marketplace" },
-            latestProvider = { latest },
-            backgroundRunner = { task -> task() },
-        )
-
-        service.checkForUpdates()
-        val prepared = service.prepareInstall("26.5.502")
-
-        latest = AvailablePluginUpdate(
-            release = UpdateRelease(version = "26.5.503"),
-            install = {},
-        )
-        service.checkForUpdates()
-
-        prepared.start { _, _ -> }
-
-        assertEquals("26.5.503", service.getUpdateInfo().latest?.version)
-        assertEquals(true, service.getUpdateInfo().hasUpdate)
-    }
-
-    @Test
-    fun `prepared install emits error when installer fails`() {
-        val events = mutableListOf<String>()
-        val payloads = mutableListOf<Map<String, Any?>>()
-
-        val service = PluginUpdateService(
-            versionSource = PluginVersionSource { "26.5.501" },
-            distributionChannelProvider = { "marketplace" },
-            latestProvider = {
-                AvailablePluginUpdate(
-                    release = UpdateRelease(version = "26.5.502"),
-                    install = { throw IllegalStateException("install failed") },
-                )
-            },
-            backgroundRunner = { task -> task() },
-        )
-
-        service.checkForUpdates()
-        val prepared = service.prepareInstall("26.5.502")
-        prepared.start { type, payload ->
-            events += type
-            payloads += payload
-        }
-
-        assertEquals(listOf("installing", "error"), events)
-        assertEquals("install failed", payloads.last()["error"])
-        assertEquals("26.5.502", payloads.last()["version"])
     }
 }

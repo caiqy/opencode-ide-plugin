@@ -1,7 +1,9 @@
 package paviko.opencode.backendprocess
 
 import com.intellij.openapi.diagnostic.Logger
-import org.jetbrains.plugins.terminal.ShellTerminalWidget
+import com.intellij.terminal.frontend.view.TerminalView
+import org.jetbrains.plugins.terminal.view.TerminalLineIndex
+import org.jetbrains.plugins.terminal.view.TerminalOutputModelSnapshot
 import java.io.PipedOutputStream
 import java.nio.charset.StandardCharsets
 
@@ -20,71 +22,24 @@ internal class TerminalOutputCapture(private val outputBuffer: PipedOutputStream
     private val controlRegex = Regex("[\\x00-\\x1F\\x7F]")
     private val maxScan = 250
 
-    fun startCapturing(terminalWidget: ShellTerminalWidget) {
+    fun startCapturing(terminalView: TerminalView) {
         isCapturing = true
         logger.info("Starting terminal output capture...")
 
         captureThread = Thread {
             try {
-                // Get terminal text buffer with error handling for different IntelliJ versions
-                val terminalTextBuffer = try {
-                    terminalWidget.terminalTextBuffer
-                } catch (e: Exception) {
-                    logger.warn("Failed to access terminal text buffer: ${e.message}")
-                    return@Thread
-                }
-
-                var lastNonEmptyLineIndex = -1
+                var lastProcessedLine = -1L
                 
                 while (isCapturing && !Thread.currentThread().isInterrupted) {
                     try {
-                        val captured = ArrayList<String>(maxScan)
-
-                        terminalTextBuffer.lock()
-                        try {
-                            val currentHeight = terminalTextBuffer.height
-
-                            val tailStart = (currentHeight - maxScan).coerceAtLeast(0)
-                            val startIndex = maxOf(tailStart, maxOf(0, lastNonEmptyLineIndex))
-
-                            var lineIndex = startIndex
-                            while (lineIndex < currentHeight) {
-                                try {
-                                    val line = terminalTextBuffer.getLine(lineIndex)
-                                    var rawText = line.getText().trim()
-
-                                    var currentIndex = lineIndex
-                                    while (currentIndex < currentHeight - 1 && terminalTextBuffer.getLine(currentIndex).isWrapped) {
-                                        currentIndex++
-                                        val nextLine = terminalTextBuffer.getLine(currentIndex)
-                                        rawText += nextLine.getText().trim()
-                                    }
-
-                                    if (rawText.isNotEmpty()) {
-                                        if (currentIndex > lastNonEmptyLineIndex) lastNonEmptyLineIndex = currentIndex
-                                        captured.add(rawText)
-                                    }
-
-                                    lineIndex = currentIndex + 1
-                                } catch (e: Exception) {
-                                    logger.debug("Error reading line $lineIndex: ${e.message}")
-                                    lineIndex++
-                                }
-                            }
-                        } finally {
-                            terminalTextBuffer.unlock()
+                        val snapshot = terminalView.outputModels.active.value.takeSnapshot()
+                        val lines = readNewLines(snapshot, lastProcessedLine)
+                        if (lines.isNotEmpty()) {
+                            lastProcessedLine = lines.last().first
                         }
 
-                        for (rawText in captured) {
-                            val cleanText = rawText
-                                .replace(ansiRegex, "")
-                                .replace(titleRegex, "")
-                                .replace(controlRegex, "")
-                                .trim()
-
-                            if (cleanText.isEmpty()) continue
-                            if (isShellPromptOrCommand(cleanText)) continue
-                            if (processedLines.contains(cleanText)) continue
+                        for ((_, rawText) in lines) {
+                            val cleanText = cleanCapturedLine(rawText) ?: continue
 
                             if (processedLines.size >= processedLimit) {
                                 val it = processedLines.iterator()
@@ -149,4 +104,47 @@ internal class TerminalOutputCapture(private val outputBuffer: PipedOutputStream
             logger.debug("Error closing output buffer", e)
         }
     }
+
+    private fun readNewLines(snapshot: TerminalOutputModelSnapshot, lastProcessedLine: Long): List<Pair<Long, String>> {
+        val lineCount = snapshot.lineCount
+        if (lineCount <= 0) return emptyList()
+
+        val startLine = maxOf((lineCount - maxScan).toLong(), lastProcessedLine + 1, 0)
+        val lines = ArrayList<Pair<Long, String>>()
+        var index = startLine
+        while (index < lineCount.toLong()) {
+            try {
+                val lineIndex = TerminalLineIndex.of(index)
+                val startOffset = snapshot.getStartOfLine(lineIndex)
+                val endOffset = snapshot.getEndOfLine(lineIndex, false)
+                val text = snapshot.getText(startOffset, endOffset).toString().trim()
+                if (text.isNotEmpty()) {
+                    lines.add(index to text)
+                }
+            } catch (e: Exception) {
+                logger.debug("Error reading line $index: ${e.message}")
+            }
+            index++
+        }
+        return lines
+    }
+}
+
+internal fun cleanCapturedLine(rawText: String): String? {
+    val cleanText = rawText
+        .replace(Regex("\\x1B\\[[0-9;]*[mGKHF]"), "")
+        .replace(Regex("\\x1B\\]0;[^\\x07]*\\x07"), "")
+        .replace(Regex("[\\x00-\\x1F\\x7F]"), "")
+        .trim()
+
+    if (cleanText.isEmpty()) return null
+    if (!cleanText.contains("server listening") &&
+        (cleanText.matches(Regex(".*[$#%>]\\s*$")) ||
+            cleanText.startsWith("cd ") ||
+            cleanText.contains("opencode") && cleanText.contains("serve") ||
+            cleanText.matches(Regex("^[a-zA-Z0-9_-]+@[a-zA-Z0-9_-]+.*")))) {
+        return null
+    }
+
+    return cleanText
 }

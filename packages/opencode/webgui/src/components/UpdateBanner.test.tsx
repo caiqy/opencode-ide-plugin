@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
     latest: {
       version: "26.4.1406",
       releaseUrl: "https://example.test/releases/26.4.1406",
-    } as { version: string; releaseUrl?: string },
+    } as { version: string; releaseUrl?: string; manualUpdate?: boolean },
     status: "available" as "available" | "downloading" | "installing" | "success" | "error" | "idle",
     dismissed: false,
   },
@@ -129,6 +129,20 @@ describe("UpdateBanner", () => {
 
     await user.click(btn)
     expect(mocks.dismissUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it("manualUpdate 时显示打开插件管理按钮", () => {
+    mocks.update.latest = {
+      version: "26.4.1406",
+      releaseUrl: "https://example.test/releases/26.4.1406",
+      manualUpdate: true,
+    }
+
+    render(<UpdateBanner />)
+
+    expect(screen.getByText("发现新版本，请到插件管理页面更新")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "打开插件管理" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "立即更新" })).not.toBeInTheDocument()
   })
 
   it("downloading/installing/success 时暂不更新按钮禁用", () => {

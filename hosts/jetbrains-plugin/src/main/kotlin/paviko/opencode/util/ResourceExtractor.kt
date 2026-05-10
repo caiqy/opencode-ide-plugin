@@ -6,9 +6,16 @@ import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+
+internal fun resourceStableDirName(bytes: ByteArray): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+    val hash = digest.take(8).joinToString("") { "%02x".format(it) }
+    return "opencode-bin-$hash"
+}
 
 object ResourceExtractor {
-    private const val STABLE_DIR = "opencode-bin"
+    private const val STABLE_PREFIX = "opencode-bin"
     private const val STALE_PREFIX = "opencode-"
     private val logger = Logger.getInstance(ResourceExtractor::class.java)
     private val lock = Any()
@@ -42,7 +49,8 @@ object ResourceExtractor {
             val stream: InputStream = javaClass.classLoader.getResourceAsStream(resourcePath) ?: return null
             val bytes = stream.use { it.readBytes() }
 
-            val stableDir = File(System.getProperty("java.io.tmpdir"), STABLE_DIR)
+            val stableDirName = resourceStableDirName(bytes)
+            val stableDir = File(System.getProperty("java.io.tmpdir"), stableDirName)
 
             // Wipe the previous directory so a stale binary is never reused
             logger.info("ResourceExtractor: deleting stable directory $stableDir")
@@ -113,7 +121,7 @@ object ResourceExtractor {
             }
 
             // Best-effort cleanup of stale random temp dirs from previous versions
-            cleanupStaleTempDirs()
+            cleanupStaleTempDirs(stableDirName)
 
             cached = dest.absolutePath
             logger.info("ResourceExtractor: extraction complete, cached path ${cached}")
@@ -124,12 +132,29 @@ object ResourceExtractor {
     /**
      * Remove stale opencode-<random> temp directories left by older plugin versions.
      */
-    private fun cleanupStaleTempDirs() {
+    private fun cleanupStaleTempDirs(currentDirName: String) {
         try {
             val tmpDir = File(System.getProperty("java.io.tmpdir"))
             val entries = tmpDir.listFiles() ?: return
             for (entry in entries) {
-                if (!entry.name.startsWith(STALE_PREFIX) || entry.name == STABLE_DIR) continue
+                if (entry.name == currentDirName) continue
+                if (entry.name == STABLE_PREFIX) {
+                    try {
+                        if (entry.isDirectory) entry.deleteRecursively() else entry.delete()
+                    } catch (_: Exception) {
+                        // ignore – file may be in use or already removed
+                    }
+                    continue
+                }
+                if (entry.name.startsWith(STABLE_PREFIX)) {
+                    try {
+                        if (entry.isDirectory) entry.deleteRecursively() else entry.delete()
+                    } catch (_: Exception) {
+                        // ignore – another IDE window may still be using an older binary
+                    }
+                    continue
+                }
+                if (!entry.name.startsWith(STALE_PREFIX)) continue
                 // Match old random pattern: opencode-<digits…>
                 if (!entry.name.matches(Regex("^opencode-\\d.*"))) continue
                 try {

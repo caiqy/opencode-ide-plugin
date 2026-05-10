@@ -88,11 +88,27 @@ describe("ideBridge connected metadata", () => {
     const bad = vi.fn()
     ideBridge.request("checkForUpdates").catch(bad)
 
-    await vi.advanceTimersByTimeAsync(5001)
+    await vi.advanceTimersByTimeAsync(15001)
 
     expect(bad).toHaveBeenCalledTimes(1)
     expect(bad.mock.calls[0]?.[0]).toBeInstanceOf(Error)
     expect(String(bad.mock.calls[0]?.[0])).toContain("checkForUpdates")
+  })
+
+  it("checkForUpdates 不应早于 Marketplace 请求超时", async () => {
+    const { ideBridge } = await import("./ideBridge")
+    ideBridge.init()
+
+    const source = MockEventSource.all[0]
+    expect(source).toBeDefined()
+    source.onopen?.call(source as unknown as EventSource, new Event("open"))
+
+    const bad = vi.fn()
+    ideBridge.request("checkForUpdates").catch(bad)
+
+    await vi.advanceTimersByTimeAsync(8001)
+
+    expect(bad).not.toHaveBeenCalled()
   })
 
   it("bridge 断连时 pending request 会 reject", async () => {

@@ -143,4 +143,13 @@ describe("CompactHeader/ActionButtons", () => {
 
     expect(screen.getByTitle("检查更新")).toBeDisabled()
   })
+
+  it("检查更新完成后不在版本区域显示结果", async () => {
+    const user = userEvent.setup()
+    renderButtons({ onCheckForUpdates: vi.fn() })
+
+    await user.click(screen.getByTitle("更多选项"))
+
+    expect(screen.queryByText("已是最新版")).not.toBeInTheDocument()
+  })
 })

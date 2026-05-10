@@ -15,10 +15,12 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
 import paviko.opencode.backendprocess.BackendLauncher
+import paviko.opencode.backendprocess.TerminalBackendProcess
 import java.awt.BorderLayout
 import java.awt.Font
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -26,6 +28,18 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.*
+
+internal fun webGuiUrlWithCacheBuster(url: String, version: String, cache: String): String {
+    val sep = if (url.contains("?")) "&" else "?"
+    return buildString {
+        append(url)
+        append(sep)
+        append("v=")
+        append(URLEncoder.encode(version, StandardCharsets.UTF_8))
+        append("&cache=")
+        append(URLEncoder.encode(cache, StandardCharsets.UTF_8))
+    }
+}
 
 class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
     private var connectionInfo: ConnInfo? = null
@@ -36,10 +50,19 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         return javaClass.`package`?.implementationVersion ?: java.time.LocalDate.now().toString()
     }
 
-    private fun withCacheBuster(url: String, version: String): String {
-        val encodedVersion = URLEncoder.encode(version, StandardCharsets.UTF_8)
-        val sep = if (url.contains("?")) "&" else "?"
-        return if (url.contains("v=")) url else "${url}${sep}v=${encodedVersion}"
+    private fun isBackendReady(appUrl: String): Boolean {
+        return try {
+            val conn = URI(appUrl).toURL().openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 1_000
+            conn.readTimeout = 1_000
+            conn.instanceFollowRedirects = false
+            val code = conn.responseCode
+            conn.disconnect()
+            code in 200..399
+        } catch (_: Exception) {
+            false
+        }
     }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -66,11 +89,10 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         // Create backend logs panel but keep it detached until an error needs diagnostics.
         val logsPanel = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.empty(4)
+            add(JLabel("Backend logs (merged stdout/stderr)"), BorderLayout.NORTH)
             add(logScroll, BorderLayout.CENTER)
         }
-        val hideableLogs = com.intellij.ui.HideableTitledPanel("Backend logs (merged stdout/stderr)", false)
-        hideableLogs.setContentComponent(logsPanel)
-        val logsVisibility = BackendLogsVisibilityController(mainPanel, hideableLogs)
+        val logsVisibility = BackendLogsVisibilityController(mainPanel, logsPanel)
 
         // Placeholder center until browser loads
         mainPanel.add(JPanel(BorderLayout()).apply {
@@ -124,6 +146,75 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
             try { procRef.get()?.inputStream?.close() } catch (_: Throwable) {}
         }, timeoutMs, TimeUnit.MILLISECONDS)
 
+        fun connectToBackend(appUrl: String) {
+            val serverUri = URI(appUrl)
+            val port = if (serverUri.port != -1) serverUri.port else when (serverUri.scheme?.lowercase()) {
+                "https" -> 443
+                else -> 80
+            }
+            val normalizedAppUrl = appUrl.trimEnd('/')
+            if (!connected.compareAndSet(false, true)) return
+
+            procRef.get()?.stopCapture()
+            connectionInfo = ConnInfo(port, normalizedAppUrl)
+            timeoutFuture.cancel(false)
+            logger.info("Backend connection established at $normalizedAppUrl")
+
+            SwingUtilities.invokeLater {
+                try {
+                    val client = JBCefApp.getInstance().createClient()
+
+                    val browser = JBCefBrowser.createBuilder()
+                        .setClient(client)
+                        .build()
+
+                    try {
+                        DragAndDropInstaller.install(project, browser, logger)
+                    } catch (e: Exception) {
+                        logger.warn("Failed to set up drag and drop", e)
+                    }
+
+                    mainPanel.removeAll()
+                    mainPanel.add(browser.component, BorderLayout.CENTER)
+                    mainPanel.revalidate()
+                    mainPanel.repaint()
+
+                    val session = IdeBridge.createSession(project)
+                    val baseUrl = webGuiUrlWithCacheBuster(
+                        normalizedAppUrl,
+                        pluginVersion(),
+                        System.currentTimeMillis().toString(),
+                    )
+                    val urlWithBridge = buildString {
+                        append(baseUrl)
+                        append(if ('?' in baseUrl) '&' else '?')
+                        append("ideBridge=")
+                        append(URLEncoder.encode(session.baseUrl, StandardCharsets.UTF_8))
+                        append("&ideBridgeToken=")
+                        append(URLEncoder.encode(session.token, StandardCharsets.UTF_8))
+                        append("&jcefScrollMultiplier=4")
+                    }
+
+                    browser.loadURL(urlWithBridge)
+
+                    Disposer.register(toolWindow.disposable) {
+                        IdeBridge.removeSession(session.sessionId)
+                    }
+
+                    try {
+                        val filesUpdater = IdeOpenFilesUpdater(project, browser, session.sessionId)
+                        filesUpdater.install()
+                        Disposer.register(browser, filesUpdater)
+                    } catch (e: Exception) {
+                        logger.warn("Failed to install IdeOpenFilesUpdater", e)
+                    }
+                } catch (e: Exception) {
+                    logger.error("Failed to create browser component", e)
+                    BackendLogsErrorView.show(mainPanel, logsVisibility, "Failed to create browser:<br/>${e.message}")
+                }
+            }
+        }
+
         Disposer.register(toolWindow.disposable) {
             timeoutFuture.cancel(false)
             try { procRef.get()?.destroy() } catch (_: Throwable) {}
@@ -143,6 +234,23 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
             }
             procRef.set(proc)
 
+            (proc as? TerminalBackendProcess)?.command?.let { command ->
+                AppExecutorUtil.getAppExecutorService().execute {
+                    while (!connected.get() && !Thread.currentThread().isInterrupted) {
+                        if (isBackendReady(command.appUrl)) {
+                            queueLog("opencode server listening on ${command.baseUrl}")
+                            connectToBackend(command.appUrl)
+                            return@execute
+                        }
+                        try {
+                            Thread.sleep(500)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                        }
+                    }
+                }
+            }
+
             val reader = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8))
             val logThread = Thread {
                 try {
@@ -156,73 +264,8 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                             if (serverMatch != null) {
                                 val serverUrlRaw = serverMatch.groupValues[1]
                                 try {
-                                    val serverUri = URI(serverUrlRaw)
-                                    val port = if (serverUri.port != -1) serverUri.port else when (serverUri.scheme?.lowercase()) {
-                                        "https" -> 443
-                                        else -> 80
-                                    }
-                                    val baseUrl = serverUri.toString().trimEnd('/')
-                                    val appUrl = "$baseUrl/app"
-
-                                    proc.stopCapture()
-                                    connectionInfo = ConnInfo(port, appUrl)
-                                    connected.set(true)
-                                    timeoutFuture.cancel(false)
-                                    logger.info("Backend connection established at $appUrl")
-
-                                    SwingUtilities.invokeLater {
-                                        try {
-                                            val client = JBCefApp.getInstance().createClient()
-                                            
-                                            // Create browser WITHOUT URL first
-                                            val browser = JBCefBrowser.createBuilder()
-                                                .setClient(client)
-                                                .build()
-
-                                            try {
-                                                DragAndDropInstaller.install(project, browser, logger)
-                                            } catch (e: Exception) {
-                                                logger.warn("Failed to set up drag and drop", e)
-                                            }
-
-                                            mainPanel.removeAll()
-                                            mainPanel.add(browser.component, BorderLayout.CENTER)
-                                            mainPanel.revalidate()
-                                            mainPanel.repaint()
-
-                                            // Create bridge session and build URL with bridge params
-                                            val session = IdeBridge.createSession(project)
-                                            val baseUrl = withCacheBuster(appUrl, pluginVersion())
-                                            val urlWithBridge = buildString {
-                                                append(baseUrl)
-                                                append(if ('?' in baseUrl) '&' else '?')
-                                                append("ideBridge=")
-                                                append(URLEncoder.encode(session.baseUrl, StandardCharsets.UTF_8))
-                                                append("&ideBridgeToken=")
-                                                append(URLEncoder.encode(session.token, StandardCharsets.UTF_8))
-                                                append("&jcefScrollMultiplier=4")
-                                            }
-                                            
-                                            // Load the URL with bridge params
-                                            browser.loadURL(urlWithBridge)
-                                            
-                                            // Register cleanup for the session
-                                            Disposer.register(toolWindow.disposable) {
-                                                IdeBridge.removeSession(session.sessionId)
-                                            }
-                                            
-                                            try {
-                                                val filesUpdater = IdeOpenFilesUpdater(project, browser, session.sessionId)
-                                                filesUpdater.install()
-                                                Disposer.register(browser, filesUpdater)
-                                            } catch (e: Exception) {
-                                                logger.warn("Failed to install IdeOpenFilesUpdater", e)
-                                            }
-                                        } catch (e: Exception) {
-                                            logger.error("Failed to create browser component", e)
-                                            BackendLogsErrorView.show(mainPanel, logsVisibility, "Failed to create browser:<br/>${e.message}")
-                                        }
-                                    }
+                                    val baseUrl = URI(serverUrlRaw).toString().trimEnd('/')
+                                    connectToBackend("$baseUrl/app")
                                 } catch (e: Exception) {
                                     logger.warn("Failed to set up browser for backend connection", e)
                                 }

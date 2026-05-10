@@ -7,6 +7,7 @@ type UpdateStatus = "idle" | "available" | "downloading" | "installing" | "succe
 
 type UpdateRelease = {
   version: string
+  manualUpdate?: boolean
   releaseUrl?: string
   notes?: string
   publishedAt?: string
@@ -18,6 +19,7 @@ type UpdateValue = {
   latest: UpdateRelease | null
   status: UpdateStatus
   isChecking: boolean
+  lastCheckMessage: string | null
   /** Whether the current latest version has been dismissed by the user */
   dismissed: boolean
   installUpdate: (version: string) => Promise<void>
@@ -62,6 +64,7 @@ function toRelease(input: unknown): UpdateRelease | null {
   if (typeof data.version !== "string" || data.version.length === 0) return null
   return {
     version: data.version,
+    manualUpdate: typeof data.manualUpdate === "boolean" ? data.manualUpdate : undefined,
     releaseUrl: typeof data.releaseUrl === "string" ? data.releaseUrl : undefined,
     notes: typeof data.notes === "string" ? data.notes : undefined,
     publishedAt: typeof data.publishedAt === "string" ? data.publishedAt : undefined,
@@ -74,6 +77,7 @@ function mergeRelease(current: UpdateRelease | null, input: unknown): UpdateRele
   if (next)
     return {
       version: next.version,
+      manualUpdate: next.manualUpdate ?? current?.manualUpdate,
       releaseUrl: next.releaseUrl ?? current?.releaseUrl,
       notes: next.notes ?? current?.notes,
       publishedAt: next.publishedAt ?? current?.publishedAt,
@@ -84,6 +88,7 @@ function mergeRelease(current: UpdateRelease | null, input: unknown): UpdateRele
   if (typeof data.version !== "string" || data.version.length === 0) return current
   return {
     version: data.version,
+    manualUpdate: typeof data.manualUpdate === "boolean" ? data.manualUpdate : current?.manualUpdate,
     releaseUrl: typeof data.releaseUrl === "string" ? data.releaseUrl : current?.releaseUrl,
     notes: typeof data.notes === "string" ? data.notes : current?.notes,
     publishedAt: typeof data.publishedAt === "string" ? data.publishedAt : current?.publishedAt,
@@ -108,6 +113,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
   const [latest, setLatest] = useState<UpdateRelease | null>(null)
   const [status, setStatus] = useState<UpdateStatus>("idle")
   const [isChecking, setIsChecking] = useState(false)
+  const [lastCheckMessage, setLastCheckMessage] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmVersion, setConfirmVersion] = useState<string | null>(null)
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null)
@@ -152,6 +158,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       const payload = message.payload ?? message
 
       if (message.type === "updateAvailable") {
+        clearInstallConfirm()
         setLatest((current) => mergeRelease(current, payload))
         setStatus("available")
         return
@@ -197,6 +204,15 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       clearInstallConfirm()
       setDismissedVersion(null)
       void scopedStateSetJSON("global", "update.dismissedVersion", null)
+      if (latest?.manualUpdate === true) {
+        try {
+          await ideBridge.request("openPluginManager", { version })
+          showToast("请在 JetBrains 插件管理页面完成更新")
+        } catch {
+          showToast("无法打开插件管理页面，请手动打开 Settings | Plugins")
+        }
+        return
+      }
       setStatus("downloading")
       try {
         await ideBridge.request("installUpdate", { version })
@@ -204,7 +220,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
         setStatus("error")
       }
     },
-    [clearInstallConfirm],
+    [clearInstallConfirm, latest?.manualUpdate, showToast],
   )
 
   const cancelInstallConfirm = useCallback(() => {
@@ -221,6 +237,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
 
   const checkForUpdates = useCallback(async () => {
     setIsChecking(true)
+    setLastCheckMessage(null)
     // Manual check always clears dismissed state
     setDismissedVersion(null)
     void scopedStateSetJSON("global", "update.dismissedVersion", null)
@@ -229,36 +246,67 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       const result = message.result
 
       if (result?.status === "unsupported") {
+        const message = "当前安装包不支持站内更新，请使用 JetBrains Marketplace 安装版"
         setLatest(null)
         setStatus("idle")
         clearInstallConfirm()
-        showToast("当前安装包不支持站内更新，请使用 JetBrains Marketplace 安装版")
+        setLastCheckMessage(message)
+        showToast(message)
         return
       }
 
       if (result?.status === "up-to-date") {
+        const message = "已是最新版"
         setLatest(null)
         setStatus("idle")
         clearInstallConfirm()
-        showToast("已是最新版")
+        setLastCheckMessage(message)
+        showToast(message)
+        return
+      }
+
+      if (result?.status === "manual-check") {
+        const message = "无法确认最新版本，请到 JetBrains 插件管理页面手动检查更新"
+        setLatest(null)
+        setStatus("idle")
+        clearInstallConfirm()
+        setLastCheckMessage(message)
+        showToast(message)
         return
       }
 
       if (result?.status === "available") {
         const next = toRelease(result.latest)
         if (!next) {
+          const message = "检查更新失败，请稍后重试"
           clearInstallConfirm()
-          showToast("检查更新失败，请稍后重试")
+          setLastCheckMessage(message)
+          showToast(message)
           return
         }
         setLatest(next)
         setStatus("available")
+        setLastCheckMessage(`发现新版本 ${next.version}`)
+        if (next.manualUpdate === true) {
+          clearInstallConfirm()
+          return
+        }
         setConfirmOpen(true)
         setConfirmVersion(next.version)
+        return
       }
-    } catch {
+
+      const fallback = "检查更新失败，请稍后重试"
+      setLatest(null)
+      setStatus("idle")
       clearInstallConfirm()
-      showToast("检查更新失败，请稍后重试")
+      setLastCheckMessage(fallback)
+      showToast(fallback)
+    } catch {
+      const message = "检查更新失败，请稍后重试"
+      clearInstallConfirm()
+      setLastCheckMessage(message)
+      showToast(message)
     } finally {
       setIsChecking(false)
     }
@@ -292,6 +340,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       latest,
       status,
       isChecking,
+      lastCheckMessage,
       dismissed,
       installUpdate,
       checkForUpdates,
@@ -313,6 +362,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       installUpdate,
       isChecking,
       latest,
+      lastCheckMessage,
       openRelease,
       status,
     ],

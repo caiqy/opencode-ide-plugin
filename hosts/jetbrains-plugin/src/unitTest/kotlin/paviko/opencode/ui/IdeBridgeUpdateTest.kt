@@ -2,17 +2,25 @@ package paviko.opencode.ui
 
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import com.intellij.openapi.application.Application
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.options.Configurable
+import com.intellij.openapi.options.SearchableConfigurable
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
-import paviko.opencode.update.AvailablePluginUpdate
+import paviko.opencode.update.MarketplacePluginRelease
+import paviko.opencode.update.MarketplaceVersionSource
 import paviko.opencode.update.PluginUpdateService
 import paviko.opencode.update.PluginVersionSource
-import paviko.opencode.update.UpdateRelease
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.CopyOnWriteArrayList
@@ -23,6 +31,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import java.util.function.Consumer
+import java.util.function.Predicate
 import kotlin.concurrent.thread
 
 class IdeBridgeUpdateTest {
@@ -31,6 +41,7 @@ class IdeBridgeUpdateTest {
     @AfterEach
     fun cleanup() {
         IdeBridge.installStartRunner = null
+        IdeBridge.openPluginSettingsHook = null
         IdeBridge.stop()
     }
 
@@ -108,7 +119,7 @@ class IdeBridgeUpdateTest {
     }
 
     @Test
-    fun `getUpdateInfo returns marketplace only support state`() {
+    fun `getUpdateInfo stays supported for local builds`() {
         val session = IdeBridge.createSession(
             project = project(),
             versionSource = PluginVersionSource { "26.5.501" },
@@ -116,7 +127,7 @@ class IdeBridgeUpdateTest {
                 PluginUpdateService(
                     versionSource = source,
                     distributionChannelProvider = { "local" },
-                    latestProvider = { null },
+                    marketplaceVersionSource = MarketplaceVersionSource { null },
                     backgroundRunner = { task -> task() },
                 )
             },
@@ -128,8 +139,8 @@ class IdeBridgeUpdateTest {
 
             assertEquals(true, reply.get("ok")?.asBoolean)
             assertNotNull(result)
-            assertEquals(false, result.get("supported")?.asBoolean)
-            assertEquals("marketplace-only", result.get("reason")?.asString)
+            assertEquals(true, result.get("supported")?.asBoolean)
+            assertEquals(null, result.get("reason"))
         }
     }
 
@@ -142,10 +153,10 @@ class IdeBridgeUpdateTest {
                 PluginUpdateService(
                     versionSource = source,
                     distributionChannelProvider = { "marketplace" },
-                    latestProvider = {
-                        AvailablePluginUpdate(
-                            release = UpdateRelease(version = "26.5.502"),
-                            install = {},
+                    marketplaceVersionSource = MarketplaceVersionSource {
+                        MarketplacePluginRelease(
+                            version = "26.5.502",
+                            releaseUrl = "https://plugins.jetbrains.com/plugin/31609-opencode-ui-unofficial-/versions/stable/123456",
                         )
                     },
                     backgroundRunner = { task -> task() },
@@ -161,6 +172,7 @@ class IdeBridgeUpdateTest {
             assertNotNull(result)
             assertEquals("available", result.get("status")?.asString)
             assertEquals("26.5.502", result.getAsJsonObject("latest")?.get("version")?.asString)
+            assertEquals(true, result.getAsJsonObject("latest")?.get("manualUpdate")?.asBoolean)
         }
     }
 
@@ -179,7 +191,7 @@ class IdeBridgeUpdateTest {
                         source.currentVersion()
                     },
                     distributionChannelProvider = { "local" },
-                    latestProvider = { null },
+                    marketplaceVersionSource = MarketplaceVersionSource { null },
                     backgroundRunner = { task -> task() },
                 )
             },
@@ -194,18 +206,123 @@ class IdeBridgeUpdateTest {
             val result = success.getAsJsonObject("result")
 
             assertEquals(true, success.get("ok")?.asBoolean)
-            assertEquals(false, result.get("supported")?.asBoolean)
-            assertEquals("marketplace-only", result.get("reason")?.asString)
+            assertEquals(true, result.get("supported")?.asBoolean)
+            assertEquals(false, result.get("hasUpdate")?.asBoolean)
         }
     }
 
     @Test
+    fun `openPluginManager delegates to settings opener`() {
+        val opened = AtomicInteger(0)
+        IdeBridge.openPluginSettingsHook = {
+            opened.incrementAndGet()
+        }
+
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("openPluginManager", JsonObject())
+
+            assertEquals(true, reply.get("ok")?.asBoolean)
+            assertEquals(1, opened.get())
+        }
+    }
+
+    @Test
+    fun `openPluginManager failure replies with bridge error`() {
+        IdeBridge.openPluginSettingsHook = {
+            throw IllegalStateException("settings unavailable")
+        }
+
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("openPluginManager", JsonObject())
+
+            assertEquals(false, reply.get("ok")?.asBoolean)
+            assertEquals("openPluginManager failed: settings unavailable", reply.get("error")?.asString)
+        }
+    }
+
+    @Test
+    fun `open plugin settings propagates failures off edt`() {
+        val project = project()
+        val app = Mockito.mock(Application::class.java)
+        val settingsUtil = Mockito.mock(ShowSettingsUtil::class.java)
+
+        Mockito.`when`(app.isDispatchThread).thenReturn(false)
+        Mockito.doAnswer {
+            (it.arguments[0] as Runnable).run()
+            null
+        }.`when`(app).invokeAndWait(Mockito.any(Runnable::class.java))
+        Mockito.doThrow(IllegalStateException("settings unavailable"))
+            .`when`(settingsUtil)
+            .showSettingsDialog(
+                Mockito.eq(project),
+                Mockito.any<Predicate<Configurable>>(),
+                Mockito.isNull<Consumer<in Configurable>>(),
+            )
+
+        Mockito.mockStatic(ApplicationManager::class.java).use { applicationManager ->
+            applicationManager.`when`<Application> { ApplicationManager.getApplication() }.thenReturn(app)
+            Mockito.mockStatic(ShowSettingsUtil::class.java).use { settingsUtilStatic ->
+                settingsUtilStatic.`when`<ShowSettingsUtil> { ShowSettingsUtil.getInstance() }.thenReturn(settingsUtil)
+
+                val error = assertThrows(IllegalStateException::class.java) {
+                    OpenPluginSettings.open(project)
+                }
+
+                assertEquals("settings unavailable", error.message)
+            }
+        }
+    }
+
+    @Test
+    fun `open plugin settings matches plugin manager configurable id`() {
+        val project = project()
+        val app = Mockito.mock(Application::class.java)
+        val settingsUtil = Mockito.mock(ShowSettingsUtil::class.java)
+        var predicate: Predicate<Configurable>? = null
+
+        Mockito.`when`(app.isDispatchThread).thenReturn(true)
+        Mockito.doAnswer {
+            @Suppress("UNCHECKED_CAST")
+            predicate = it.arguments[1] as Predicate<Configurable>
+            null
+        }.`when`(settingsUtil).showSettingsDialog(
+            Mockito.eq(project),
+            Mockito.any<Predicate<Configurable>>(),
+            Mockito.isNull<Consumer<in Configurable>>(),
+        )
+
+        Mockito.mockStatic(ApplicationManager::class.java).use { applicationManager ->
+            applicationManager.`when`<Application> { ApplicationManager.getApplication() }.thenReturn(app)
+            Mockito.mockStatic(ShowSettingsUtil::class.java).use { settingsUtilStatic ->
+                settingsUtilStatic.`when`<ShowSettingsUtil> { ShowSettingsUtil.getInstance() }.thenReturn(settingsUtil)
+
+                OpenPluginSettings.open(project)
+            }
+        }
+
+        val pluginManager = Mockito.mock(SearchableConfigurable::class.java)
+        Mockito.`when`(pluginManager.id).thenReturn("preferences.pluginManager")
+        val other = Mockito.mock(SearchableConfigurable::class.java)
+        Mockito.`when`(other.id).thenReturn("Plugins")
+
+        assertNotNull(predicate)
+        assertTrue(predicate!!.test(pluginManager as Configurable))
+        assertFalse(predicate!!.test(other as Configurable))
+    }
+
+    @Test
     fun `installUpdate replies before starting install and emits bridge events`() {
-        val installed = AtomicInteger(0)
         val replyObserved = CountDownLatch(1)
         val startRequested = CountDownLatch(1)
-        val allowInstall = CountDownLatch(1)
         val startedBeforeReply = AtomicBoolean(false)
+        val settingsOpened = AtomicInteger(0)
+        IdeBridge.openPluginSettingsHook = {
+            settingsOpened.incrementAndGet()
+        }
 
         lateinit var service: PluginUpdateService
         val session = IdeBridge.createSession(
@@ -215,13 +332,10 @@ class IdeBridgeUpdateTest {
                 PluginUpdateService(
                     versionSource = source,
                     distributionChannelProvider = { "marketplace" },
-                    latestProvider = {
-                        AvailablePluginUpdate(
-                            release = UpdateRelease(version = "26.5.502"),
-                            install = {
-                                allowInstall.await(2, TimeUnit.SECONDS)
-                                installed.incrementAndGet()
-                            },
+                    marketplaceVersionSource = MarketplaceVersionSource {
+                        MarketplacePluginRelease(
+                            version = "26.5.502",
+                            releaseUrl = "https://plugins.jetbrains.com/plugin/31609-opencode-ui-unofficial-/versions/stable/123456",
                         )
                     },
                     backgroundRunner = { task ->
@@ -252,14 +366,10 @@ class IdeBridgeUpdateTest {
 
             val relevant = events.awaitRelevantCount(request, 2)
             assertEquals(request.id, relevant[0].get("replyTo")?.asString)
-            assertEquals("installing", relevant[1].get("type")?.asString)
+            assertEquals("manualUpdate", relevant[1].get("type")?.asString)
             assertEquals("26.5.502", relevant[1].getAsJsonObject("payload")?.get("version")?.asString)
-
-            allowInstall.countDown()
-
-            val success = events.awaitEvent("success")
-            assertEquals("26.5.502", success.getAsJsonObject("payload")?.get("version")?.asString)
-            assertEquals(1, installed.get())
+            assertEquals(true, relevant[1].getAsJsonObject("payload")?.get("manualUpdate")?.asBoolean)
+            assertEquals(1, settingsOpened.get())
         }
     }
 
@@ -272,7 +382,7 @@ class IdeBridgeUpdateTest {
                 PluginUpdateService(
                     versionSource = source,
                     distributionChannelProvider = { "marketplace" },
-                    latestProvider = { null },
+                    marketplaceVersionSource = MarketplaceVersionSource { null },
                     backgroundRunner = { task -> task() },
                 )
             },
@@ -297,7 +407,7 @@ class IdeBridgeUpdateTest {
                 PluginUpdateService(
                     versionSource = source,
                     distributionChannelProvider = { "marketplace" },
-                    latestProvider = { null },
+                    marketplaceVersionSource = MarketplaceVersionSource { null },
                     backgroundRunner = { task -> task() },
                 )
             },
@@ -315,7 +425,6 @@ class IdeBridgeUpdateTest {
 
     @Test
     fun `installUpdate scheduling failure returns single request error without fake success`() {
-        val installed = AtomicInteger(0)
         IdeBridge.installStartRunner = {
             throw RejectedExecutionException("scheduler down")
         }
@@ -328,10 +437,10 @@ class IdeBridgeUpdateTest {
                 PluginUpdateService(
                     versionSource = source,
                     distributionChannelProvider = { "marketplace" },
-                    latestProvider = {
-                        AvailablePluginUpdate(
-                            release = UpdateRelease(version = "26.5.502"),
-                            install = { installed.incrementAndGet() },
+                    marketplaceVersionSource = MarketplaceVersionSource {
+                        MarketplacePluginRelease(
+                            version = "26.5.502",
+                            releaseUrl = "https://plugins.jetbrains.com/plugin/31609-opencode-ui-unofficial-/versions/stable/123456",
                         )
                     },
                     backgroundRunner = { task -> task() },
@@ -349,7 +458,6 @@ class IdeBridgeUpdateTest {
             assertEquals(false, reply.get("ok")?.asBoolean)
             assertEquals("installUpdate failed: scheduler down", reply.get("error")?.asString)
             events.assertRelatedCount(request, 1)
-            assertEquals(0, installed.get())
         }
     }
 
@@ -374,6 +482,7 @@ class IdeBridgeUpdateTest {
         private val error = AtomicReference<Throwable?>(null)
         private val sendError = AtomicReference<Throwable?>(null)
         private val connected = CountDownLatch(1)
+        private val connectedOk = AtomicBoolean(false)
         private val connection = URL("${session.baseUrl}/events?token=${session.token}").openConnection() as HttpURLConnection
         @Volatile private var closed = false
         private var readerThread: Thread? = null
@@ -387,6 +496,7 @@ class IdeBridgeUpdateTest {
             readerThread = thread(start = true, isDaemon = true) {
                 try {
                     connection.inputStream.bufferedReader().use { reader ->
+                        connectedOk.set(true)
                         connected.countDown()
                         var dataLine: String? = null
                         while (true) {
@@ -412,6 +522,8 @@ class IdeBridgeUpdateTest {
             }
 
             assertEquals(true, connected.await(2, TimeUnit.SECONDS), "timeout waiting for sse connect")
+            error.get()?.let { throw it }
+            assertEquals(true, connectedOk.get(), "sse reader exited before connection was established")
         }
 
         fun send(type: String, payload: JsonObject): JsonObject {
@@ -479,10 +591,13 @@ class IdeBridgeUpdateTest {
         fun awaitDisconnected(timeout: Long = 3) {
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeout)
             while (System.nanoTime() < deadline) {
+                error.get()?.let { err ->
+                    if (err is IOException) return
+                    throw err
+                }
                 if (readerThread?.isAlive == false) {
                     return
                 }
-                error.get()?.let { throw it }
                 Thread.sleep(10)
             }
             throw AssertionError("timeout waiting for SSE disconnect")
@@ -493,8 +608,12 @@ class IdeBridgeUpdateTest {
             connection.disconnect()
             readerThread?.join(1000)
             senders.forEach { it.join(1000) }
-            error.get()?.let { throw it }
+            error.get()?.let { err -> if (!isExpectedDisconnect(err)) throw err }
             sendError.get()?.let { throw it }
+        }
+
+        private fun isExpectedDisconnect(error: Throwable): Boolean {
+            return closed && error is IOException
         }
 
         private fun awaitSince(startIndex: Int, timeout: Long, match: (JsonObject) -> Boolean): JsonObject {
@@ -517,8 +636,7 @@ class IdeBridgeUpdateTest {
         private fun relatedMessages(request: Request): List<JsonObject> {
             return messages.drop(request.startIndex).filter { msg ->
                 msg.get("replyTo")?.asString == request.id ||
-                    msg.get("type")?.asString == "installing" ||
-                    msg.get("type")?.asString == "success" ||
+                    msg.get("type")?.asString == "manualUpdate" ||
                     msg.get("type")?.asString == "error"
             }
         }

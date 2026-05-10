@@ -1,7 +1,7 @@
 plugins {
     id("java")
-    id("org.jetbrains.intellij.platform") version "2.2.1"
-    kotlin("jvm") version "1.9.23"
+    id("org.jetbrains.intellij.platform") version "2.10.5"
+    kotlin("jvm") version "2.3.20"
 }
 
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
@@ -51,7 +51,7 @@ dependencies {
 
     // IntelliJ Platform dependencies
     intellijPlatform {
-        intellijIdeaCommunity("2024.3")
+        intellijIdea("2026.1.1")
         bundledPlugin("com.intellij.java")
         bundledPlugin("org.jetbrains.plugins.terminal")
 
@@ -78,11 +78,13 @@ dependencies {
 }
 
 intellijPlatform {
+    buildSearchableOptions.set(false)
+
     pluginConfiguration {
         ideaVersion {
-            sinceBuild.set("243")
+            sinceBuild.set("261")
+            untilBuild.set("261.*")
         }
-        // Provide metadata without setting an upper build bound (no untilBuild)
         description = providers.provider {
             val f = file("description.html")
             if (!f.isFile) {
@@ -120,6 +122,12 @@ intellijPlatform {
     publishing {
         token = providers.environmentVariable("JETBRAINS_MARKETPLACE_TOKEN")
     }
+
+    pluginVerification {
+        ides {
+            recommended()
+        }
+    }
 }
 
 tasks {
@@ -136,9 +144,7 @@ tasks {
         }
     }
 
-    // Ensure no upper build bound is set in plugin.xml so the plugin stays compatible with newer IDEs
     patchPluginXml {
-        // keep sinceBuild from pluginConfiguration, but expand upper bound to newer IDE builds
         untilBuild.set("261.*")
     }
 

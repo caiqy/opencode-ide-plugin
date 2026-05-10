@@ -1,32 +1,24 @@
 package paviko.opencode.backendprocess
 
-/**
- * BackendLauncher - Migrated from deprecated TerminalView to TerminalToolWindowManager
- * 
- * This implementation provides compatibility with earlier versions of IntelliJ IDEA than 2025.2
- * by using TerminalToolWindowManager instead of the deprecated TerminalView API.
- * 
- * Key changes:
- * - Replaced TerminalView.getInstance() with TerminalToolWindowManager.getInstance()
- * - Uses createShellWidget() with fallback to createLocalShellWidget() for older versions
- * - Added robust error handling for terminal text buffer access across different versions
- * - Maintains compatibility with ShellTerminalWidget for terminal output capture
- */
-
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTab
+import com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTabsManager
 import com.intellij.terminal.ui.TerminalWidget
+import com.intellij.ui.content.Content
 import com.intellij.util.Alarm
-import org.jetbrains.plugins.terminal.ShellTerminalWidget
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import paviko.opencode.settings.OpenCodeSettings
+import java.io.IOException
 import java.io.PipedOutputStream
-import javax.swing.JComponent
-import javax.swing.SwingUtilities
+import java.net.ServerSocket
 
+/**
+ * Launches the bundled backend inside the Terminal tool window using the 2026.1 tab API.
+ */
 object BackendLauncher {
     private val logger = Logger.getInstance(BackendLauncher::class.java)
 
@@ -38,64 +30,71 @@ object BackendLauncher {
             "launchBackend must not be called from EDT - it performs heavy I/O operations"
         }
         val isWin = System.getProperty("os.name").lowercase().contains("win")
-        val bin = findBundledBinary(if (isWin) "opencode.exe" else "opencode") ?: "opencode" // fallback to PATH
+        val bin = findBundledBinary(if (isWin) "opencode.exe" else "opencode") ?: "opencode"
 
         val settings = OpenCodeSettings.getInstance()
-
         val customCommand = settings.state.customCommand.trim()
-
-        // Build command arguments
-        val args = mutableListOf(bin, "serve")
-
-        if (customCommand.isNotEmpty()) {
-            val extraArgs = customCommand.split(" ").filter { it.isNotBlank() }
-            args.addAll(extraArgs)
-            logger.info("Launching backend with extra args: '${extraArgs.joinToString(" ")}'")
-        } else {
-            logger.info("Launching backend with default args")
-        }
+        val command = backendCommand(bin, customCommand, reserveLoopbackPort())
+        logger.info("Launching backend with args: '${command.args.drop(1).joinToString(" ")}'")
 
         val baseDir = project.basePath ?: System.getProperty("user.dir")
-        
-        // Return a TerminalBackendProcess (async wrapper) that handles terminal waiting internally
-        return TerminalBackendProcess(project, args, baseDir, customCommand)
+        return TerminalBackendProcess(project, command.args, baseDir, customCommand, command)
     }
-    
+
+    internal data class BackendCommand(val args: List<String>, val baseUrl: String, val appUrl: String)
+
+    internal fun backendCommand(bin: String, customCommand: String, port: Int): BackendCommand {
+        val extraArgs = customCommand.split(" ").filter { it.isNotBlank() }
+        val args = listOf(bin, "serve") + extraArgs + listOf("--hostname", "127.0.0.1", "--port", port.toString())
+        val baseUrl = "http://127.0.0.1:$port"
+        return BackendCommand(args, baseUrl, "$baseUrl/app")
+    }
+
+    private fun reserveLoopbackPort(): Int {
+        return try {
+            ServerSocket(0).use { socket ->
+                socket.reuseAddress = true
+                socket.localPort
+            }
+        } catch (e: IOException) {
+            logger.warn("Failed to reserve loopback port; falling back to 4096", e)
+            4096
+        }
+    }
+
     internal fun launchBackendWithTerminalCheck(
         project: Project,
         args: List<String>,
         baseDir: String,
         customCommand: String,
         outputBuffer: PipedOutputStream,
-        callback: (BackendProcess?, Exception?) -> Unit
+        isCancelled: () -> Boolean,
+        callback: (BackendProcess?, Exception?) -> Unit,
     ) {
-        // Start waiting for terminal availability asynchronously
-        waitForTerminalAvailabilityAsync(project) { success, isVisible ->
+        waitForTerminalAvailabilityAsync(project, isCancelled) { success, isVisible ->
+            if (isCancelled()) return@waitForTerminalAvailabilityAsync
             if (success) {
-                try {
-                    val result = doLaunchBackend(project, args, baseDir, customCommand, outputBuffer, isVisible)
-                    callback(result, null)
-                } catch (e: Exception) {
-                    callback(null, e)
-                }
+                doLaunchBackend(project, args, baseDir, customCommand, outputBuffer, isVisible, isCancelled, callback)
             } else {
                 callback(null, RuntimeException("Terminal tool window is not available. Please ensure the Terminal plugin is installed and enabled."))
             }
         }
     }
-    
-    /**
-     * Waits for the terminal tool window to become available without blocking the UI thread.
-     * Uses IntelliJ's Alarm mechanism to periodically check availability.
-     */
-    private fun waitForTerminalAvailabilityAsync(project: Project, callback: (Boolean, Boolean) -> Unit) {
+
+    private fun waitForTerminalAvailabilityAsync(project: Project, isCancelled: () -> Boolean, callback: (Boolean, Boolean) -> Unit) {
         val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, project)
-        val maxAttempts = 100 // 10 seconds with 100ms intervals
+        val maxAttempts = 100
         var attempts = 0
 
         val isVisible = ToolWindowManager.getInstance(project).getToolWindow("Terminal")?.isVisible ?: false
 
         fun checkAvailability() {
+            if (isCancelled()) {
+                logger.info("Terminal availability wait cancelled")
+                alarm.cancelAllRequests()
+                return
+            }
+
             try {
                 val terminalManager = TerminalToolWindowManager.getInstance(project)
                 val terminalWindow: ToolWindow? = terminalManager.toolWindow
@@ -105,17 +104,18 @@ object BackendLauncher {
                     return
                 }
 
+                if (isCancelled()) return
                 ToolWindowManager.getInstance(project).getToolWindow("Terminal")?.show()
                 attempts++
                 if (attempts >= maxAttempts) {
-                    logger.error("Terminal tool window did not become available within ${maxAttempts * 100}ms")
-                    callback(true, isVisible)
+                    logger.warn("Terminal tool window did not become available within ${maxAttempts * 100}ms")
+                    callback(false, isVisible)
                     return
                 }
 
                 alarm.addRequest({ checkAvailability() }, 100)
             } catch (e: Exception) {
-                logger.error("Error checking terminal availability: ${e.message}", e)
+                logger.warn("Error checking terminal availability: ${e.message}", e)
                 callback(false, false)
             }
         }
@@ -123,95 +123,96 @@ object BackendLauncher {
         logger.info("Waiting for terminal tool window to become available...")
         alarm.addRequest({ checkAvailability() }, 0)
     }
-    
+
     private fun doLaunchBackend(
         project: Project,
         args: List<String>,
         baseDir: String,
         customCommand: String,
         outputBuffer: PipedOutputStream,
-        isVisible: Boolean
-    ): BackendProcess {
-        // At this point, terminal should be available
-        return try {
+        isVisible: Boolean,
+        isCancelled: () -> Boolean,
+        callback: (BackendProcess?, Exception?) -> Unit,
+    ) {
+        if (isCancelled()) return
+        try {
             logger.info("Starting backend in minimized terminal: ${args.joinToString(" ")}")
-            launchInTerminal(project, args, baseDir, outputBuffer, isVisible, minimized = true)
-        } catch (e: Exception) {
-            // If launching with custom command fails, try with default command
-            if (customCommand.isNotEmpty()) {
-                logger.warn("Failed to launch backend with custom command '$customCommand': ${e.message}")
-                logger.info("Attempting fallback to default command")
-
-                try {
-                    val bin = args.first()
-                    val fallbackArgs = listOf(bin, "serve")
-                    logger.info("Starting fallback backend in minimized terminal: ${fallbackArgs.joinToString(" ")}")
-                    launchInTerminal(project, fallbackArgs, baseDir, outputBuffer, isVisible, minimized = true)
-                } catch (fallbackException: Exception) {
-                    logger.error("Fallback backend launch also failed", fallbackException)
-                    throw RuntimeException("Failed to launch backend with custom command '$customCommand' and fallback also failed: ${fallbackException.message}")
+            launchInTerminal(project, args, baseDir, outputBuffer, isVisible, true, isCancelled) { process, exception ->
+                if (exception == null) {
+                    callback(process, null)
+                    return@launchInTerminal
                 }
-            } else {
-                logger.error("Failed to launch backend with default command", e)
-                throw RuntimeException("Failed to launch backend: ${e.message}")
+
+                if (isCancelled()) return@launchInTerminal
+                if (customCommand.isEmpty()) {
+                    logger.warn("Failed to launch backend with default command", exception)
+                    callback(null, RuntimeException("Failed to launch backend: ${exception.message}"))
+                    return@launchInTerminal
+                }
+
+                logger.warn("Failed to launch backend with custom command '$customCommand': ${exception.message}")
+                logger.info("Attempting fallback to default command")
+                val bin = args.first()
+                val fallbackArgs = listOf(bin, "serve")
+                logger.info("Starting fallback backend in minimized terminal: ${fallbackArgs.joinToString(" ")}")
+                launchInTerminal(project, fallbackArgs, baseDir, outputBuffer, isVisible, true, isCancelled) { fallbackProcess, fallbackException ->
+                    if (fallbackException == null) {
+                        callback(fallbackProcess, null)
+                    } else if (!isCancelled()) {
+                        logger.warn("Fallback backend launch also failed", fallbackException)
+                        callback(
+                            null,
+                            RuntimeException("Failed to launch backend with custom command '$customCommand' and fallback also failed: ${fallbackException.message}"),
+                        )
+                    }
+                }
             }
+        } catch (e: Exception) {
+            if (!isCancelled()) callback(null, e)
         }
     }
 
-    /**
-     * Creates a terminal widget with optional minimization.
-     * If minimized, immediately hides the terminal tool window after creation.
-     */
-    private data class TerminalSelection(val previous: com.intellij.ui.content.Content?, val current: com.intellij.ui.content.Content?)
+    private data class TerminalSelection(val previous: Content?, val current: Content?)
 
-    private fun createShellWidget(project: Project, workingDir: String, terminalName: String, isVisible: Boolean, minimized: Boolean): Pair<ShellTerminalWidget, TerminalSelection> {
-        val terminalManager = TerminalToolWindowManager.getInstance(project)
-        
+    internal data class TerminalStartup(
+        val shellCommand: List<String>,
+        val requiresTypedSend: Boolean,
+        val reuseExistingTab: Boolean,
+    )
+
+    internal fun terminalStartup(args: List<String>) = TerminalStartup(args, requiresTypedSend = false, reuseExistingTab = false)
+
+    private data class TerminalTabSession(
+        val tab: TerminalToolWindowTab,
+        val selection: TerminalSelection,
+    )
+
+    private fun createTerminalTabSession(
+        project: Project,
+        workingDir: String,
+        terminalName: String,
+        args: List<String>,
+        isVisible: Boolean,
+        minimized: Boolean,
+        isCancelled: () -> Boolean,
+    ): TerminalTabSession {
+        if (isCancelled()) throw RuntimeException("Backend launch cancelled")
+        val tabsManager = TerminalToolWindowTabsManager.getInstance(project)
         val terminalToolWindow = ToolWindowManager.getInstance(project).getToolWindow("Terminal")
-        val contentManager = terminalToolWindow?.contentManager
-        val previousSelected = contentManager?.selectedContent
-        var currentContent: com.intellij.ui.content.Content? = null
-        
-        // Try to find an existing terminal tab with the same display name to avoid duplicates
-        val existing = try {
-            terminalManager.getTerminalWidgets().firstOrNull { w ->
-                try {
-                    val displayName = getContentForWidget(project, w)?.displayName
-                    displayName == terminalName
-                } catch (e: Exception) {
-                    false
-                }
-            }
-        } catch (e: Exception) {
-            null
-        }
+        val previousSelected = terminalToolWindow?.contentManager?.selectedContent
 
-        val widget: Any = if (existing != null) {
-            logger.info("Reusing existing terminal '$terminalName'")
-            // Workaround for JetBrains behavior: existing terminal tab may not run commands unless focused
-            focusTerminal(project, isVisible, terminalToolWindow, existing, minimized, terminalName)
-            existing
-        } else {
-            terminalManager.createShellWidget(workingDir, terminalName, false, !minimized)
-        }
+        if (isCancelled()) throw RuntimeException("Backend launch cancelled")
+        val tab = tabsManager.createTabBuilder()
+            .workingDirectory(workingDir)
+            .shellCommand(terminalStartup(args).shellCommand)
+            .tabName(terminalName)
+            .requestFocus(!minimized)
+            .deferSessionStartUntilUiShown(false)
+            .createTab()
 
-        val terminalWidget =
-            if (widget is ShellTerminalWidget) {
-                widget
-            } else {
-                // Try to extract ShellTerminalWidget from the returned widget
-                extractShellTerminalWidget(widget)
-            }
-
-        // Determine current content (tab) associated with this terminal widget
-        try {
-            currentContent = getContentForWidget(project, terminalWidget)
-        } catch (_: Exception) {}
-        
-        // Hide the tool window immediately only for newly created terminals when minimized and initially not visible.
-        // For existing terminals, we already handled show/focus/hide above to guarantee command execution.
-        if (existing == null && !isVisible && minimized) {
+        if (!isVisible && minimized) {
             ApplicationManager.getApplication().invokeLater {
+                if (isCancelled()) return@invokeLater
                 val tw = ToolWindowManager.getInstance(project).getToolWindow("Terminal")
                 if (tw != null && tw.isVisible) {
                     tw.hide(null)
@@ -220,55 +221,44 @@ object BackendLauncher {
             }
         }
 
-        return Pair(terminalWidget, TerminalSelection(previousSelected, currentContent))
+        return TerminalTabSession(tab, TerminalSelection(previousSelected, tab.content))
     }
 
-    private fun focusTerminal(
-        project: Project,
-        isVisible: Boolean,
-        terminalToolWindow: ToolWindow?,
-        existing: TerminalWidget?,
-        minimized: Boolean,
-        terminalName: String
+    internal fun waitForTerminalWidget(
+        content: Content,
+        terminalName: String,
+        isCancelled: () -> Boolean,
+        findWidget: () -> TerminalWidget?,
+        schedule: (() -> Unit, Int) -> Unit,
+        callback: (TerminalWidget?, Exception?) -> Unit,
     ) {
-        try {
-            // Show the terminal tool window if it is not visible
-            if (!isVisible) {
-                val app = ApplicationManager.getApplication()
-                if (app.isDispatchThread) {
-                    terminalToolWindow?.show(null)
-                } else {
-                    app.invokeAndWait { terminalToolWindow?.show(null) }
-                }
+        // Terminal tab creation can publish its Content before the backing widget is registered.
+        // Poll for up to 5 seconds to cover that IDE-side async gap without blocking the EDT.
+        val maxAttempts = 50
+        var attempts = 0
+
+        fun resolve() {
+            if (isCancelled()) {
+                callback(null, RuntimeException("Backend launch cancelled"))
+                return
             }
 
-            // Focus/select the existing tab to ensure it receives input/execution
-            try {
-                if (existing != null) {
-                    val content = getContentForWidget(project, existing)
-                    if (content != null) {
-                        ApplicationManager.getApplication().invokeAndWait {
-                            terminalToolWindow?.contentManager?.setSelectedContent(content, true)
-                            terminalToolWindow?.activate(null, true)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                logger.warn("Failed to focus existing terminal tab: ${e.message}", e)
+            val widget = findWidget()
+            if (widget != null) {
+                callback(widget, null)
+                return
             }
 
-            // If the tool window was not visible originally and we are minimized, hide it back
-            if (!isVisible && minimized) {
-                ApplicationManager.getApplication().invokeLater {
-                    if (terminalToolWindow != null && terminalToolWindow.isVisible) {
-                        terminalToolWindow.hide(null)
-                        logger.info("Terminal '$terminalName' tool window hidden after focusing existing tab - running in background")
-                    }
-                }
+            attempts++
+            if (attempts >= maxAttempts) {
+                callback(null, UnsupportedOperationException("Cannot resolve TerminalWidget for terminal '$terminalName'"))
+                return
             }
-        } catch (e: Exception) {
-            logger.warn("Error while ensuring focus on existing terminal: ${e.message}", e)
+
+            schedule({ resolve() }, 100)
         }
+
+        resolve()
     }
 
     private fun launchInTerminal(
@@ -277,213 +267,67 @@ object BackendLauncher {
         workingDir: String,
         outputBuffer: PipedOutputStream,
         isVisible: Boolean,
-        minimized: Boolean = false 
-    ): BackendProcess {
-        // Create terminal widget using unified method - this will handle terminal initialization
-        val (shellWidget, selection) = createShellWidget(project, workingDir, "Opencode Backend", isVisible, minimized)
-        
-        // Build the command to execute in terminal. The terminal widget is already initialized
-        // with the desired working directory, so we can execute the backend command directly
-        // without shell-specific 'cd' or chaining operators that vary by shell (cmd vs PowerShell).
+        minimized: Boolean = false,
+        isCancelled: () -> Boolean,
+        callback: (BackendProcess?, Exception?) -> Unit,
+    ) {
+        if (isCancelled()) return
+        val session = createTerminalTabSession(project, workingDir, "Opencode Backend", args, isVisible, minimized, isCancelled)
         val adjustedArgs = args.toList()
-        val command = (listOf(quoteIfNeeded(adjustedArgs.first())) + adjustedArgs.drop(1)).joinToString(" ")
-        
-        // Create a terminal-only backend process
-        val backendProcess = RunningTerminalBackendProcess(shellWidget, adjustedArgs.joinToString(" "), outputBuffer)
 
-        // Execute the command in the terminal - this inherits full environment
-        shellWidget.executeCommand(command)
-
-        // Restore previously active terminal tab if it was different from our tab
-        try {
-            val prev = selection.previous
-            val curr = selection.current
-            if (prev != null && curr != null && prev != curr) {
-                ApplicationManager.getApplication().invokeLater {
-                    try {
-                        val tw = ToolWindowManager.getInstance(project).getToolWindow("Terminal")
-                        val cm = tw?.contentManager
-                        cm?.setSelectedContent(prev, true)
-                        logger.info("Restored previously active terminal tab after launching backend")
-                    } catch (e: Exception) {
-                        logger.warn("Failed to restore previously active terminal tab: ${e.message}", e)
-                    }
-                }
+        val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, project)
+        waitForTerminalWidget(
+            content = session.tab.content,
+            terminalName = "Opencode Backend",
+            isCancelled = isCancelled,
+            findWidget = { TerminalToolWindowManager.findWidgetByContent(session.tab.content) },
+            schedule = { task, delay -> alarm.addRequest({ task() }, delay) },
+        ) { widget, exception ->
+            if (exception != null) {
+                if (!isCancelled()) callback(null, exception)
+                return@waitForTerminalWidget
             }
-        } catch (e: Exception) {
-            logger.warn("Error while attempting to restore previous terminal selection: ${e.message}", e)
-        }
-        
-        if (!isVisible && minimized) {
-            logger.info("Backend launched in minimized terminal without focus")
-        } else {
-            logger.info("Backend launched in regular terminal")
-        }
-        
-        return backendProcess
-    }
-    
-    /**
-     * Helper method to extract ShellTerminalWidget from various terminal widget types
-     * for compatibility across different IntelliJ IDEA versions
-     */
-    private fun extractShellTerminalWidget(widget: Any): ShellTerminalWidget {
-        return when {
-            // If it's already a ShellTerminalWidget, return it directly
-            widget is ShellTerminalWidget -> widget
-            
-            // Handle TerminalWidgetBridge specifically
-            widget::class.java.simpleName == "TerminalWidgetBridge" -> {
-                logger.info("Attempting to extract ShellTerminalWidget from TerminalWidgetBridge")
-                logger.debug("Available methods in ShellTerminalWidget: ${ShellTerminalWidget::class.java.methods.filter { it.name.contains("toShell") || it.name.contains("extract") || it.name.contains("Widget") }.map { "${it.name}(${it.parameterTypes.map { p -> p.simpleName }.joinToString(", ")})" }}")
-                
-                try {
-                    // Try different parameter types for toShellJediTermWidgetOrThrow
-                    val possibleParameterTypes = listOf(
-                        widget::class.java,
-                        Object::class.java,
-                        Any::class.java,
-                        Class.forName("org.jetbrains.plugins.terminal.TerminalWidget")
-                    )
 
-                    for (paramType in possibleParameterTypes) {
-                        try {
-                            val method = ShellTerminalWidget::class.java.getDeclaredMethod("toShellJediTermWidgetOrThrow", paramType)
-                            logger.info("Found toShellJediTermWidgetOrThrow method with parameter type: ${paramType.simpleName}")
-                            val result = method.invoke(null, widget) as ShellTerminalWidget
-                            logger.info("Successfully extracted ShellTerminalWidget using toShellJediTermWidgetOrThrow")
-                            return result
-                        } catch (e: NoSuchMethodException) {
-                            logger.debug("Method not found with parameter type: ${paramType.simpleName}")
-                        } catch (e: ClassNotFoundException) {
-                            logger.debug("Class not found: ${e.message}")
+            try {
+                if (isCancelled()) return@waitForTerminalWidget
+                val terminalWidget = checkNotNull(widget)
+                val backendProcess = RunningTerminalBackendProcess(terminalWidget, session.tab.view, adjustedArgs.joinToString(" "), outputBuffer)
+
+                if (isCancelled()) {
+                    backendProcess.destroy()
+                    return@waitForTerminalWidget
+                }
+
+                try {
+                    val prev = session.selection.previous
+                    val curr = session.selection.current
+                    if (prev != null && curr != null && prev != curr) {
+                        ApplicationManager.getApplication().invokeLater {
+                            if (isCancelled()) return@invokeLater
+                            try {
+                                val tw = ToolWindowManager.getInstance(project).getToolWindow("Terminal")
+                                tw?.contentManager?.setSelectedContent(prev, true)
+                                logger.info("Restored previously active terminal tab after launching backend")
+                            } catch (e: Exception) {
+                                logger.warn("Failed to restore previously active terminal tab: ${e.message}", e)
+                            }
                         }
                     }
-
-                    // If no method worked, try reflection
-                    logger.info("toShellJediTermWidgetOrThrow method not found, trying reflection")
-                    extractFromBridgeUsingReflection(widget)
-
                 } catch (e: Exception) {
-                    logger.debug("Could not extract ShellTerminalWidget using toShellJediTermWidgetOrThrow: ${e.message}")
-                    extractFromBridgeUsingReflection(widget)
+                    logger.warn("Error while attempting to restore previous terminal selection: ${e.message}", e)
                 }
-            }
-            
-            // Try to use reflection to extract from other bridge types
-            else -> {
-                try {
-                    // Try to call toShellJediTermWidgetOrThrow if available
-                    val method = ShellTerminalWidget::class.java.getMethod("toShellJediTermWidgetOrThrow", widget::class.java)
-                    method.invoke(null, widget) as ShellTerminalWidget
-                } catch (e: Exception) {
-                    logger.debug("Could not extract ShellTerminalWidget using toShellJediTermWidgetOrThrow: ${e.message}")
 
-                    // Final fallback - try direct cast
-                    try {
-                        widget as ShellTerminalWidget
-                    } catch (castException: ClassCastException) {
-                        throw UnsupportedOperationException(
-                            "Cannot extract ShellTerminalWidget from terminal type: ${widget::class.java.simpleName}. " +
-                            "This terminal implementation is not supported for backend launching. " +
-                            "Available methods: ${widget::class.java.methods.map { it.name }.distinct().sorted()}"
-                        )
-                    }
+                if (!isVisible && minimized) {
+                    logger.info("Backend launched in minimized terminal without focus")
+                } else {
+                    logger.info("Backend launched in regular terminal")
                 }
+
+                callback(backendProcess, null)
+            } catch (e: Exception) {
+                if (!isCancelled()) callback(null, e)
             }
         }
-    }
-    
-    /**
-     * Attempts to extract ShellTerminalWidget from TerminalWidgetBridge using reflection
-     */
-    private fun extractFromBridgeUsingReflection(widget: Any): ShellTerminalWidget {
-        try {
-            logger.info("Attempting reflection-based extraction from ${widget::class.java.simpleName}")
-
-            // Log all available fields for debugging
-            val allFields = widget::class.java.declaredFields
-            logger.debug("Available fields in ${widget::class.java.simpleName}: ${allFields.map { "${it.name}: ${it.type.simpleName}" }.sorted()}")
-
-            // Try to access common field names that might contain the underlying widget
-            val possibleFieldNames = listOf("myWidget", "widget", "terminalWidget", "shellWidget", "delegate", "myTerminalWidget", "myShellWidget")
-
-            for (fieldName in possibleFieldNames) {
-                try {
-                    val field = widget::class.java.getDeclaredField(fieldName)
-                    field.isAccessible = true
-                    val fieldValue = field.get(widget)
-
-                    logger.debug("Field $fieldName contains: ${fieldValue?.let { it::class.java.simpleName } ?: "null"}")
-
-                    if (fieldValue is ShellTerminalWidget) {
-                        logger.info("Successfully extracted ShellTerminalWidget from field: $fieldName")
-                        return fieldValue
-                    }
-                } catch (e: NoSuchFieldException) {
-                    // Continue to next field name
-                } catch (e: Exception) {
-                    logger.debug("Error accessing field $fieldName: ${e.message}")
-                }
-            }
-
-            // If no direct field access worked, try to find any ShellTerminalWidget in the object hierarchy
-            for (field in allFields) {
-                try {
-                    field.isAccessible = true
-                    val fieldValue = field.get(widget)
-                    if (fieldValue is ShellTerminalWidget) {
-                        logger.info("Found ShellTerminalWidget in field: ${field.name}")
-                        return fieldValue
-                    }
-                } catch (e: Exception) {
-                    // Continue searching
-                }
-            }
-
-            // Try to look for methods that might return a ShellTerminalWidget
-            val methods = widget::class.java.methods
-            logger.debug("Available methods in ${widget::class.java.simpleName}: ${methods.filter { it.parameterCount == 0 && it.returnType != Void.TYPE }.map { "${it.name}(): ${it.returnType.simpleName}" }.sorted()}")
-
-            for (method in methods) {
-                if (method.parameterCount == 0 && method.returnType != Void.TYPE) {
-                    try {
-                        val result = method.invoke(widget)
-                        if (result is ShellTerminalWidget) {
-                            logger.info("Found ShellTerminalWidget via method: ${method.name}()")
-                            return result
-                        }
-                    } catch (e: Exception) {
-                        // Continue searching
-                    }
-                }
-            }
-
-            throw UnsupportedOperationException(
-                "Could not extract ShellTerminalWidget from TerminalWidgetBridge using reflection. " +
-                "Available fields: ${allFields.map { "${it.name}: ${it.type.simpleName}" }.sorted()}. " +
-                "Available methods: ${methods.filter { it.parameterCount == 0 }.map { it.name }.sorted()}"
-            )
-
-        } catch (e: Exception) {
-            throw UnsupportedOperationException(
-                "Failed to extract ShellTerminalWidget from TerminalWidgetBridge: ${e.message}"
-            )
-        }
-    }
-
-
-    private fun ensureQuoted(value: String): String {
-        val t = value.trim()
-        return if (t.startsWith("\"") && t.endsWith("\"")) t else "\"$t\""
-    }
-
-    private fun quoteIfNeeded(path: String): String {
-        val isWin = System.getProperty("os.name").lowercase().contains("win")
-        if (!isWin) return path
-        val trimmed = path.trim()
-        val needsQuotes = trimmed.any { it.isWhitespace() } || trimmed.contains("(") || trimmed.contains(")") || trimmed.contains("&")
-        return if (needsQuotes && !(trimmed.startsWith("\"") && trimmed.endsWith("\""))) "\"$trimmed\"" else trimmed
     }
 
     private fun findBundledBinary(name: String): String? {
@@ -505,80 +349,4 @@ object BackendLauncher {
         val resourcePath = "bin/$osDir/$archDir/$name"
         return paviko.opencode.util.ResourceExtractor.extractToTemp(resourcePath, name)
     }
-
-    /**
-      * Helper to find the ToolWindow Content associated with a terminal widget.
-      * In 2025.3+ `TerminalToolWindowManager#getContainer(TerminalWidget)` exists, but reflection must
-      * not rely on the widget's concrete class (the method parameter is the `TerminalWidget` interface).
-      * For older builds, fall back to mapping via Swing hierarchy.
-      */
-    private fun getContentForWidget(project: Project, widget: Any): com.intellij.ui.content.Content? {
-        // First try the API on TerminalToolWindowManager if it exists.
-        // In 2025.3+ the public method is `getContainer(TerminalWidget)`.
-        // Earlier versions used different signatures and/or required mapping via Swing hierarchy.
-        try {
-            val manager = TerminalToolWindowManager.getInstance(project)
-            val direct = manager.javaClass.methods.firstOrNull { m ->
-                m.name == "getContainer" &&
-                    m.parameterCount == 1 &&
-                    m.parameterTypes.first().isAssignableFrom(widget.javaClass)
-            } ?: manager.javaClass.declaredMethods.firstOrNull { m ->
-                m.name == "getContainer" &&
-                    m.parameterCount == 1 &&
-                    m.parameterTypes.first().isAssignableFrom(widget.javaClass)
-            }?.apply { isAccessible = true }
-
-            val container = direct?.invoke(manager, widget)
-            if (container != null) {
-                val contentMethod = container.javaClass.methods.firstOrNull { m ->
-                    m.name == "getContent" && m.parameterCount == 0
-                } ?: container.javaClass.declaredMethods.firstOrNull { m ->
-                    m.name == "getContent" && m.parameterCount == 0
-                }?.apply { isAccessible = true }
-
-                val content = contentMethod?.invoke(container)
-                if (content is com.intellij.ui.content.Content) return content
-            }
-        } catch (e: Exception) {
-            // Method missing or failed, proceed to fallback
-        }
-
-        // Fallback: Check component hierarchy
-        val component = when (widget) {
-            is JComponent -> widget
-            is TerminalWidget -> widget.component
-            else -> {
-                // Try to find a component via reflection (e.g. for wrapped widgets)
-                try {
-                    widget.javaClass.getMethod("getComponent").invoke(widget) as? JComponent
-                } catch (e: Exception) {
-                    null
-                }
-            }
-        } ?: return null
-
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Terminal") ?: return null
-        val contentManager = toolWindow.contentManager
-
-        val contents = try {
-            val m = contentManager.javaClass.methods.firstOrNull { it.name == "getContentsRecursively" && it.parameterCount == 0 }
-            val result = m?.invoke(contentManager)
-            when (result) {
-                is Array<*> -> result.filterIsInstance<com.intellij.ui.content.Content>()
-                is Iterable<*> -> result.filterIsInstance<com.intellij.ui.content.Content>()
-                else -> contentManager.contents.toList()
-            }
-        } catch (_: Exception) {
-            contentManager.contents.toList()
-        }
-
-        for (content in contents) {
-            if (SwingUtilities.isDescendingFrom(component, content.component)) {
-                return content
-            }
-        }
-
-        return null
-    }
-
 }

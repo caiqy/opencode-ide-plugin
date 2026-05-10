@@ -52,6 +52,9 @@ object IdeBridge {
 
     @Volatile
     internal var installStartRunner: ((() -> Unit) -> Unit)? = null
+
+    @Volatile
+    internal var openPluginSettingsHook: (() -> Unit)? = null
     
     private var server: HttpServer? = null
     private var port: Int = 0
@@ -420,6 +423,9 @@ object IdeBridge {
 
                                 try {
                                     prepared.start { eventType, eventPayload ->
+                                        if (eventType == "manualUpdate") {
+                                            openPluginSettings(session.project)
+                                        }
                                         send(session.id, eventType, eventPayload)
                                     }
                                 } catch (e: Exception) {
@@ -451,6 +457,15 @@ object IdeBridge {
                         replyOk(session, id)
                     } catch (e: Exception) {
                         replyError(session, id, "restartHost failed: $e")
+                    }
+                }
+
+                "openPluginManager" -> {
+                    try {
+                        openPluginSettings(session.project)
+                        replyOk(session, id)
+                    } catch (e: Exception) {
+                        replyError(session, id, "openPluginManager failed: ${e.message ?: e}")
                     }
                 }
 
@@ -546,6 +561,10 @@ object IdeBridge {
 
     private fun scheduleInstallStart(task: () -> Unit) {
         installStartRunner?.invoke(task) ?: executor.execute(task)
+    }
+
+    private fun openPluginSettings(project: Project) {
+        openPluginSettingsHook?.invoke() ?: OpenPluginSettings.open(project)
     }
 
     private fun broadcastSSE(session: Session, json: String): Boolean {

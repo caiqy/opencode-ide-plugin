@@ -53,4 +53,30 @@ class BackendLogsVisibilityControllerTest {
         assertEquals(2, mainPanel.componentCount)
         assertSame(mainPanel, logsPanel.parent)
     }
+
+    @Test
+    fun `普通 Swing 日志面板在错误页场景下会 reveal 到底部`() {
+        val mainPanel = JPanel(BorderLayout()).apply {
+            add(JLabel("Starting backend..."), BorderLayout.CENTER)
+        }
+        val middlePanel = JPanel()
+        val logsPanel = JPanel(BorderLayout()).apply {
+            add(JLabel("Backend logs (merged stdout/stderr)"), BorderLayout.NORTH)
+            add(middlePanel, BorderLayout.CENTER)
+        }
+        val controller = BackendLogsVisibilityController(mainPanel, logsPanel)
+
+        mainPanel.removeAll()
+        mainPanel.add(JLabel("Backend connection timeout"), BorderLayout.CENTER)
+        controller.reveal()
+
+        val layout = mainPanel.layout as BorderLayout
+
+        assertTrue(controller.wasRevealed())
+        assertEquals(2, mainPanel.componentCount)
+        assertSame(mainPanel, logsPanel.parent)
+        assertSame(logsPanel, layout.getLayoutComponent(BorderLayout.SOUTH))
+        assertTrue(logsPanel.getComponent(0) is JLabel)
+        assertSame(middlePanel, logsPanel.getComponent(1))
+    }
 }

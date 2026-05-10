@@ -242,6 +242,7 @@ describe("UpdateContext", () => {
 
     expect(mocks.request).toHaveBeenLastCalledWith("checkForUpdates", undefined)
     expect(mocks.showToast).toHaveBeenCalledWith("已是最新版")
+    expect(result.current.lastCheckMessage).toBe("已是最新版")
     expect(result.current.isChecking).toBe(false)
     expect(result.current.confirmOpen).toBe(false)
     expect(result.current.confirmVersion).toBe(null)
@@ -275,6 +276,7 @@ describe("UpdateContext", () => {
     })
 
     expect(mocks.showToast).toHaveBeenCalledWith("当前安装包不支持站内更新，请使用 JetBrains Marketplace 安装版")
+    expect(result.current.lastCheckMessage).toBe("当前安装包不支持站内更新，请使用 JetBrains Marketplace 安装版")
     expect(result.current.status).toBe("idle")
     expect(result.current.confirmOpen).toBe(false)
     expect(result.current.confirmVersion).toBe(null)
@@ -320,9 +322,354 @@ describe("UpdateContext", () => {
       vsixUrl: undefined,
     })
     expect(result.current.status).toBe("available")
+    expect(result.current.lastCheckMessage).toBe("发现新版本 26.4.1407")
     expect(result.current.confirmOpen).toBe(true)
     expect(result.current.confirmVersion).toBe("26.4.1407")
     expect(mocks.showToast).not.toHaveBeenCalled()
+  })
+
+  it("手动更新结果会记录 latest.manualUpdate，但手动检查后不打开确认框", async () => {
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        latest: {
+          version: "26.4.1406",
+          releaseUrl: "https://example.test/releases/26.4.1406",
+        },
+        hasUpdate: true,
+      },
+    })
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        status: "available",
+        latest: {
+          version: "26.4.1407",
+          manualUpdate: true,
+          releaseUrl: "https://example.test/releases/26.4.1407",
+        },
+      },
+    })
+    mocks.request.mockResolvedValueOnce({ result: undefined })
+
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(mocks.request).toHaveBeenCalledWith("getUpdateInfo", undefined)
+    })
+
+    await act(async () => {
+      await result.current.checkForUpdates()
+    })
+
+    expect(result.current.latest).toEqual({
+      version: "26.4.1407",
+      manualUpdate: true,
+      releaseUrl: "https://example.test/releases/26.4.1407",
+      notes: undefined,
+      publishedAt: undefined,
+      vsixUrl: undefined,
+    })
+    expect(result.current.status).toBe("available")
+    expect(result.current.confirmOpen).toBe(false)
+    expect(result.current.confirmVersion).toBe(null)
+  })
+
+  it("旧确认框已打开时，手动更新检查结果会关闭确认框", async () => {
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        latest: {
+          version: "26.4.1406",
+          releaseUrl: "https://example.test/releases/26.4.1406",
+        },
+        hasUpdate: true,
+      },
+    })
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        status: "available",
+        latest: {
+          version: "26.4.1407",
+          releaseUrl: "https://example.test/releases/26.4.1407",
+        },
+      },
+    })
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        status: "available",
+        latest: {
+          version: "26.4.1407",
+          manualUpdate: true,
+          releaseUrl: "https://example.test/releases/26.4.1407",
+        },
+      },
+    })
+
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(mocks.request).toHaveBeenCalledWith("getUpdateInfo", undefined)
+    })
+
+    await act(async () => {
+      await result.current.checkForUpdates()
+    })
+
+    expect(result.current.confirmOpen).toBe(true)
+    expect(result.current.confirmVersion).toBe("26.4.1407")
+
+    await act(async () => {
+      await result.current.checkForUpdates()
+    })
+
+    expect(result.current.latest).toEqual({
+      version: "26.4.1407",
+      manualUpdate: true,
+      releaseUrl: "https://example.test/releases/26.4.1407",
+      notes: undefined,
+      publishedAt: undefined,
+      vsixUrl: undefined,
+    })
+    expect(result.current.status).toBe("available")
+    expect(result.current.confirmOpen).toBe(false)
+    expect(result.current.confirmVersion).toBe(null)
+  })
+
+  it("手动更新安装时不会调用 installUpdate bridge，而是打开插件管理页面", async () => {
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        latest: {
+          version: "26.4.1406",
+          releaseUrl: "https://example.test/releases/26.4.1406",
+        },
+        hasUpdate: true,
+      },
+    })
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        status: "available",
+        latest: {
+          version: "26.4.1407",
+          manualUpdate: true,
+          releaseUrl: "https://example.test/releases/26.4.1407",
+        },
+      },
+    })
+    mocks.request.mockResolvedValueOnce({ result: undefined })
+
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(mocks.request).toHaveBeenCalledWith("getUpdateInfo", undefined)
+    })
+
+    await act(async () => {
+      await result.current.checkForUpdates()
+    })
+
+    await act(async () => {
+      await result.current.installUpdate("26.4.1407")
+    })
+
+    expect(mocks.request).toHaveBeenLastCalledWith("openPluginManager", { version: "26.4.1407" })
+    expect(mocks.request).not.toHaveBeenCalledWith("installUpdate", { version: "26.4.1407" })
+    expect(mocks.showToast).toHaveBeenCalledWith("请在 JetBrains 插件管理页面完成更新")
+    expect(result.current.status).toBe("available")
+  })
+
+  it("手动更新打开插件管理页面失败时提示手动打开 Settings | Plugins", async () => {
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        latest: {
+          version: "26.4.1406",
+          releaseUrl: "https://example.test/releases/26.4.1406",
+        },
+        hasUpdate: true,
+      },
+    })
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        status: "available",
+        latest: {
+          version: "26.4.1407",
+          manualUpdate: true,
+          releaseUrl: "https://example.test/releases/26.4.1407",
+        },
+      },
+    })
+    mocks.request.mockRejectedValueOnce(new Error("open failed"))
+
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(mocks.request).toHaveBeenCalledWith("getUpdateInfo", undefined)
+    })
+
+    await act(async () => {
+      await result.current.checkForUpdates()
+    })
+
+    await act(async () => {
+      await result.current.installUpdate("26.4.1407")
+    })
+
+    expect(mocks.request).toHaveBeenLastCalledWith("openPluginManager", { version: "26.4.1407" })
+    expect(mocks.request).not.toHaveBeenCalledWith("installUpdate", { version: "26.4.1407" })
+    expect(mocks.showToast).toHaveBeenCalledWith("无法打开插件管理页面，请手动打开 Settings | Plugins")
+    expect(result.current.status).toBe("available")
+  })
+
+  it("手动更新标记在 bridge 事件 merge 时会保留", async () => {
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        latest: {
+          version: "26.4.1407",
+          manualUpdate: true,
+          releaseUrl: "https://example.test/releases/26.4.1407",
+        },
+        hasUpdate: true,
+      },
+    })
+
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.latest).toEqual({
+        version: "26.4.1407",
+        manualUpdate: true,
+        releaseUrl: "https://example.test/releases/26.4.1407",
+        notes: undefined,
+        publishedAt: undefined,
+        vsixUrl: undefined,
+      })
+    })
+
+    act(() => {
+      mocks.emit({
+        type: "error",
+        payload: {
+          version: "26.4.1407",
+          notes: "keep manual flag",
+        },
+      })
+    })
+
+    expect(result.current.latest).toEqual({
+      version: "26.4.1407",
+      manualUpdate: true,
+      releaseUrl: "https://example.test/releases/26.4.1407",
+      notes: "keep manual flag",
+      publishedAt: undefined,
+      vsixUrl: undefined,
+    })
+    expect(result.current.status).toBe("error")
+  })
+
+  it("确认框已打开时收到新的 updateAvailable 事件会关闭旧确认态并切到新版本", async () => {
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        latest: {
+          version: "26.4.1406",
+          releaseUrl: "https://example.test/releases/26.4.1406",
+        },
+        hasUpdate: true,
+      },
+    })
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        status: "available",
+        latest: {
+          version: "26.4.1407",
+          releaseUrl: "https://example.test/releases/26.4.1407",
+        },
+      },
+    })
+
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(mocks.request).toHaveBeenCalledWith("getUpdateInfo", undefined)
+    })
+
+    await act(async () => {
+      await result.current.checkForUpdates()
+    })
+
+    expect(result.current.confirmOpen).toBe(true)
+    expect(result.current.confirmVersion).toBe("26.4.1407")
+
+    act(() => {
+      mocks.emit({
+        type: "updateAvailable",
+        payload: {
+          version: "26.4.1408",
+          releaseUrl: "https://example.test/releases/26.4.1408",
+        },
+      })
+    })
+
+    expect(result.current.confirmOpen).toBe(false)
+    expect(result.current.confirmVersion).toBe(null)
+    expect(result.current.latest).toEqual({
+      version: "26.4.1408",
+      releaseUrl: "https://example.test/releases/26.4.1408",
+      notes: undefined,
+      publishedAt: undefined,
+      vsixUrl: undefined,
+      manualUpdate: undefined,
+    })
+    expect(result.current.status).toBe("available")
+  })
+
+  it("manual-check 时会提示手动检查更新并隐藏 Banner", async () => {
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        latest: {
+          version: "26.4.1406",
+          releaseUrl: "https://example.test/releases/26.4.1406",
+        },
+        hasUpdate: true,
+      },
+    })
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        status: "manual-check",
+        currentVersion: "26.4.1405",
+        reason: "marketplace-unavailable",
+      },
+    })
+
+    function TestHarness({ onUpdate }: { onUpdate: (u: ReturnType<typeof useUpdate>) => void }) {
+      const update = useUpdate()
+      onUpdate(update)
+      return <UpdateBanner />
+    }
+
+    let updateRef: ReturnType<typeof useUpdate> | null = null
+    render(
+      <UpdateProvider>
+        <TestHarness
+          onUpdate={(update) => {
+            updateRef = update
+          }}
+        />
+      </UpdateProvider>,
+    )
+
+    await waitFor(() => {
+      expect(updateRef?.status).toBe("available")
+    })
+    expect(screen.getByRole("status")).toBeInTheDocument()
+
+    await act(async () => {
+      await updateRef!.checkForUpdates()
+    })
+
+    expect(mocks.showToast).toHaveBeenCalledWith("无法确认最新版本，请到 JetBrains 插件管理页面手动检查更新")
+    expect(updateRef!.lastCheckMessage).toBe("无法确认最新版本，请到 JetBrains 插件管理页面手动检查更新")
+    expect(updateRef!.status).toBe("idle")
+    expect(updateRef!.latest).toBe(null)
+    expect(updateRef!.confirmOpen).toBe(false)
+    expect(updateRef!.confirmVersion).toBe(null)
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })
 
   it("手动打开确认态后收到 downloading 事件会关闭确认态", async () => {
@@ -437,6 +784,42 @@ describe("UpdateContext", () => {
 
     expect(mocks.request).toHaveBeenLastCalledWith("checkForUpdates", undefined)
     expect(mocks.showToast).toHaveBeenCalledWith("检查更新失败，请稍后重试")
+    expect(result.current.lastCheckMessage).toBe("检查更新失败，请稍后重试")
+    expect(result.current.isChecking).toBe(false)
+  })
+
+  it("checkForUpdates 返回未知成功结果时会显示失败兜底", async () => {
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        latest: {
+          version: "26.4.1406",
+          releaseUrl: "https://example.test/releases/26.4.1406",
+        },
+        hasUpdate: true,
+      },
+    })
+    mocks.request.mockResolvedValueOnce({
+      result: {
+        status: "unexpected",
+      },
+    })
+
+    const { result } = renderHook(() => useUpdate(), { wrapper })
+
+    await waitFor(() => {
+      expect(mocks.request).toHaveBeenCalledWith("getUpdateInfo", undefined)
+    })
+
+    await act(async () => {
+      await result.current.checkForUpdates()
+    })
+
+    expect(mocks.showToast).toHaveBeenCalledWith("检查更新失败，请稍后重试")
+    expect(result.current.lastCheckMessage).toBe("检查更新失败，请稍后重试")
+    expect(result.current.status).toBe("idle")
+    expect(result.current.latest).toBe(null)
+    expect(result.current.confirmOpen).toBe(false)
+    expect(result.current.confirmVersion).toBe(null)
     expect(result.current.isChecking).toBe(false)
   })
 
@@ -486,6 +869,7 @@ describe("UpdateContext", () => {
     })
 
     expect(mocks.showToast).toHaveBeenCalledWith("检查更新失败，请稍后重试")
+    expect(result.current.lastCheckMessage).toBe("检查更新失败，请稍后重试")
     expect(result.current.confirmOpen).toBe(false)
     expect(result.current.confirmVersion).toBe(null)
     expect(result.current.isChecking).toBe(false)
