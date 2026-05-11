@@ -69,6 +69,20 @@ export type EventFileWatcherUpdated = {
   }
 }
 
+export type EventInstallationUpdated = {
+  type: "installation.updated"
+  properties: {
+    version: string
+  }
+}
+
+export type EventInstallationUpdateAvailable = {
+  type: "installation.update-available"
+  properties: {
+    version: string
+  }
+}
+
 export type EventLspClientDiagnostics = {
   type: "lsp.client.diagnostics"
   properties: {
@@ -81,20 +95,6 @@ export type EventLspUpdated = {
   type: "lsp.updated"
   properties: {
     [key: string]: unknown
-  }
-}
-
-export type EventInstallationUpdated = {
-  type: "installation.updated"
-  properties: {
-    version: string
-  }
-}
-
-export type EventInstallationUpdateAvailable = {
-  type: "installation.update-available"
-  properties: {
-    version: string
   }
 }
 
@@ -151,6 +151,15 @@ export type EventSessionDiff = {
   properties: {
     sessionID: string
     diff: Array<SnapshotFileDiff>
+  }
+}
+
+export type EventSessionDiffStatus = {
+  type: "session.diff.status"
+  properties: {
+    sessionID: string
+    status: "scheduled" | "running" | "idle" | "deleted" | "failed"
+    message: string
   }
 }
 
@@ -734,6 +743,7 @@ export type FilePart = {
   type: "file"
   mime: string
   filename?: string
+  relativePath?: string
   url: string
   source?: FilePartSource
 }
@@ -1115,14 +1125,15 @@ export type GlobalEvent = {
     | EventGlobalDisposed
     | EventFileEdited
     | EventFileWatcherUpdated
-    | EventLspClientDiagnostics
-    | EventLspUpdated
     | EventInstallationUpdated
     | EventInstallationUpdateAvailable
+    | EventLspClientDiagnostics
+    | EventLspUpdated
     | EventMessagePartDelta
     | EventPermissionAsked
     | EventPermissionReplied
     | EventSessionDiff
+    | EventSessionDiffStatus
     | EventSessionError
     | EventQuestionAsked
     | EventQuestionReplied
@@ -1938,6 +1949,7 @@ export type FilePartInput = {
   type: "file"
   mime: string
   filename?: string
+  relativePath?: string
   url: string
   source?: FilePartSource
 }
@@ -2058,14 +2070,15 @@ export type Event =
   | EventGlobalDisposed
   | EventFileEdited
   | EventFileWatcherUpdated
-  | EventLspClientDiagnostics
-  | EventLspUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
+  | EventLspClientDiagnostics
+  | EventLspUpdated
   | EventMessagePartDelta
   | EventPermissionAsked
   | EventPermissionReplied
   | EventSessionDiff
+  | EventSessionDiffStatus
   | EventSessionError
   | EventQuestionAsked
   | EventQuestionReplied
@@ -3374,6 +3387,38 @@ export type SessionStatusResponses = {
 }
 
 export type SessionStatusResponse = SessionStatusResponses[keyof SessionStatusResponses]
+
+export type SessionVisibilityData = {
+  body?: {
+    sessionIDs: Array<string>
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/visibility"
+}
+
+export type SessionVisibilityErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type SessionVisibilityError = SessionVisibilityErrors[keyof SessionVisibilityErrors]
+
+export type SessionVisibilityResponses = {
+  /**
+   * Visible sessions synced
+   */
+  200: {
+    sessionIDs: Array<string>
+  }
+}
+
+export type SessionVisibilityResponse = SessionVisibilityResponses[keyof SessionVisibilityResponses]
 
 export type SessionDeleteData = {
   body?: never
@@ -4684,6 +4729,24 @@ export type SyncHistoryListResponses = {
 }
 
 export type SyncHistoryListResponse = SyncHistoryListResponses[keyof SyncHistoryListResponses]
+
+export type GeneratedImageReadData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    path: string
+  }
+  url: "/generated-image"
+}
+
+export type GeneratedImageReadResponses = {
+  /**
+   * Generated image
+   */
+  200: unknown
+}
 
 export type FindTextData = {
   body?: never

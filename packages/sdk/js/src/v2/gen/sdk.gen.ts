@@ -49,6 +49,7 @@ import type {
   FindSymbolsResponses,
   FindTextResponses,
   FormatterStatusResponses,
+  GeneratedImageReadResponses,
   GlobalConfigGetResponses,
   GlobalConfigUpdateErrors,
   GlobalConfigUpdateResponses,
@@ -168,6 +169,8 @@ import type {
   SessionUnshareResponses,
   SessionUpdateErrors,
   SessionUpdateResponses,
+  SessionVisibilityErrors,
+  SessionVisibilityResponses,
   SubtaskPartInput,
   SyncHistoryListErrors,
   SyncHistoryListResponses,
@@ -1805,6 +1808,43 @@ export class Session2 extends HeyApiClient {
   }
 
   /**
+   * Sync visible sessions
+   *
+   * Sync the currently visible sessions so the backend can prioritize summary refreshes.
+   */
+  public visibility<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      sessionIDs?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "sessionIDs" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<SessionVisibilityResponses, SessionVisibilityErrors, ThrowOnError>({
+      url: "/session/visibility",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Delete session
    *
    * Delete a session and permanently remove all associated data, including messages and history.
@@ -3266,6 +3306,40 @@ export class Sync extends HeyApiClient {
   }
 }
 
+export class GeneratedImage extends HeyApiClient {
+  /**
+   * Read generated image
+   *
+   * Read a generated image file from the current project.
+   */
+  public read<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      path: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GeneratedImageReadResponses, unknown, ThrowOnError>({
+      url: "/generated-image",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Find extends HeyApiClient {
   /**
    * Find text
@@ -4644,6 +4718,11 @@ export class OpencodeClient extends HeyApiClient {
   private _sync?: Sync
   get sync(): Sync {
     return (this._sync ??= new Sync({ client: this.client }))
+  }
+
+  private _generatedImage?: GeneratedImage
+  get generatedImage(): GeneratedImage {
+    return (this._generatedImage ??= new GeneratedImage({ client: this.client }))
   }
 
   private _find?: Find

@@ -230,6 +230,7 @@ export type FilePart = {
   type: "file"
   mime: string
   filename?: string
+  relativePath?: string
   url: string
   source?: FilePartSource
 }
@@ -1421,6 +1422,7 @@ export type FilePartInput = {
   type: "file"
   mime: string
   filename?: string
+  relativePath?: string
   url: string
   source?: FilePartSource
 }
