@@ -1,5 +1,6 @@
-import { Cause, Deferred, Effect, Layer, Context } from "effect"
+import { Cause, Deferred, Effect, Exit, Layer, Context } from "effect"
 import * as Stream from "effect/Stream"
+import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { Agent } from "@/agent/agent"
 import { Bus } from "@/bus"
 import { Config } from "@/config"
@@ -8,6 +9,7 @@ import { Plugin } from "@/plugin"
 import { Snapshot } from "@/snapshot"
 import * as Session from "./session"
 import { normalizeImageGenerationOutput } from "./generated-image"
+import { persistGeneratedImageAttachments } from "./generated-image-persistence"
 import { LLM } from "./llm"
 import { MessageV2 } from "./message-v2"
 import { isOverflow } from "./overflow"
@@ -91,6 +93,7 @@ export const layer: Layer.Layer<
   | Plugin.Service
   | SessionSummaryScheduler.Service
   | SessionStatus.Service
+  | AppFileSystem.Service
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -100,6 +103,7 @@ export const layer: Layer.Layer<
     const snapshot = yield* Snapshot.Service
     const agents = yield* Agent.Service
     const llm = yield* LLM.Service
+    const fs = yield* AppFileSystem.Service
     const permission = yield* Permission.Service
     const plugin = yield* Plugin.Service
     const summaryScheduler = yield* SessionSummaryScheduler.Service
@@ -185,6 +189,17 @@ export const layer: Layer.Layer<
           messageID: match.part.messageID,
           output,
         })
+        const attachmentsExit = yield* persistGeneratedImageAttachments(
+          fs,
+          ctx.assistantMessage.path.root,
+          normalized.attachments,
+        ).pipe(Effect.exit)
+        if (Exit.isFailure(attachmentsExit)) {
+          const detail = errorMessage(Cause.squash(attachmentsExit.cause))
+          yield* failToolCall(toolCallID, new Error(`Failed to persist generated image attachment: ${detail}`))
+          return
+        }
+        const attachments = attachmentsExit.value
         yield* session.updatePart({
           ...match.part,
           state: {
@@ -194,7 +209,7 @@ export const layer: Layer.Layer<
             metadata: normalized.metadata,
             title: normalized.title,
             time: { start: match.part.state.time.start, end: Date.now() },
-            attachments: normalized.attachments,
+            attachments,
           },
         })
         yield* settleToolCall(toolCallID)
@@ -636,6 +651,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(SessionStatus.defaultLayer),
     Layer.provide(Bus.layer),
     Layer.provide(Config.defaultLayer),
+    Layer.provide(AppFileSystem.defaultLayer),
   ),
 )
 

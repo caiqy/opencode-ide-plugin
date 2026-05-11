@@ -13,6 +13,7 @@ interface ProjectInfo {
 
 interface ProjectContextState {
   project: ProjectInfo | null
+  directory: string | null
   worktree: string | null
   isLoading: boolean
   error: Error | null
@@ -74,6 +75,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
 
   const value: ProjectContextState = {
     project,
+    directory,
     worktree: directory ?? project?.worktree ?? null,
     isLoading,
     error,

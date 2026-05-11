@@ -1,8 +1,10 @@
 import { NodeFileSystem } from "@effect/platform-node"
+import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { ChildProcessSpawner } from "effect/unstable/process"
 import { tool } from "ai"
 import { expect } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Layer } from "effect"
+import * as PlatformError from "effect/PlatformError"
 import * as Stream from "effect/Stream"
 import path from "path"
 import z from "zod"
@@ -267,10 +269,46 @@ const deps = Layer.mergeAll(
 ).pipe(Layer.provideMerge(infra))
 const env = Layer.mergeAll(
   TestLLMServer.layer,
-  SessionProcessor.layer.pipe(Layer.provide(summaryScheduler), Layer.provide(summary), Layer.provideMerge(deps)),
+  SessionProcessor.layer.pipe(
+    Layer.provide(summaryScheduler),
+    Layer.provide(summary),
+    Layer.provide(AppFileSystem.defaultLayer),
+    Layer.provideMerge(deps),
+  ),
+)
+
+const failingGeneratedImageFs = Layer.effect(
+  AppFileSystem.Service,
+  Effect.gen(function* () {
+    const fs = yield* AppFileSystem.Service
+    return AppFileSystem.Service.of({
+      ...fs,
+      writeWithDirs: (file) =>
+        Effect.fail(
+          PlatformError.systemError({
+            _tag: "Unknown",
+            module: "FileSystem",
+            method: "writeWithDirs",
+            pathOrDescriptor: file,
+            cause: new Error("disk full"),
+          }),
+        ),
+    })
+  }),
+).pipe(Layer.provide(AppFileSystem.defaultLayer))
+
+const envWithFailingGeneratedImageFs = Layer.mergeAll(
+  TestLLMServer.layer,
+  SessionProcessor.layer.pipe(
+    Layer.provide(summaryScheduler),
+    Layer.provide(summary),
+    Layer.provide(failingGeneratedImageFs),
+    Layer.provideMerge(deps),
+  ),
 )
 
 const it = testEffect(env)
+const itWithFailingGeneratedImageFs = testEffect(envWithFailingGeneratedImageFs)
 const processorDefaultIt = testEffect(Layer.mergeAll(SessionProcessor.defaultLayer, mockSpawner()))
 
 const boot = Effect.fn("test.boot")(function* () {
@@ -498,7 +536,7 @@ it.live("records text part start and end times", () =>
   ),
 )
 
-it.live("normalizes image_generation tool results before storing completed state", () =>
+it.live("normalizes image_generation tool results into persisted relative-path attachments", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -516,17 +554,8 @@ it.live("normalizes image_generation tool results before storing completed state
           sessionID: chat.id,
           model: mdl,
         })
-        const existing: MessageV2.FilePart = {
-          id: PartID.ascending(),
-          sessionID: chat.id,
-          messageID: msg.id,
-          type: "file",
-          mime: "image/png",
-          filename: "existing.png",
-          url: "data:image/png;base64,AAAA",
-        }
-
-        const value = yield* handle.process({
+        const exit = yield* Effect.exit(
+          handle.process({
           user: {
             id: parent.id,
             sessionID: chat.id,
@@ -548,19 +577,24 @@ it.live("normalizes image_generation tool results before storing completed state
                 title: "image_generation",
                 metadata: { source: "test" },
                 output: png,
-                attachments: [existing],
               }),
             }),
           },
-        })
+          }),
+        )
+        if (Exit.isFailure(exit)) {
+          throw new Error(Cause.pretty(exit.cause))
+        }
 
         const parts = MessageV2.parts(msg.id)
         const call = parts.find(
           (part): part is MessageV2.ToolPart => part.type === "tool" && part.tool === "image_generation",
         )
 
-        expect(value).toBe("continue")
         expect(yield* llm.calls).toBe(1)
+        if (call?.state.status === "error") {
+          throw new Error(call.state.error)
+        }
         expect(call?.state.status).toBe("completed")
         if (call?.state.status !== "completed") return
         expect(call.state.output).toContain("已生成 1 张图片")
@@ -568,13 +602,95 @@ it.live("normalizes image_generation tool results before storing completed state
         expect(call.state.output).not.toContain(png)
         expect(call.state.title).toBe("image_generation")
         expect(call.state.metadata).toEqual({ source: "test" })
-        expect(call.state.attachments).toHaveLength(2)
-        expect(call.state.attachments?.[0]).toEqual(existing)
-        expect(call.state.attachments?.[1]).toMatchObject({
-          filename: "generated-image-2.png",
+        expect(call.state.attachments).toHaveLength(1)
+        const generated = call.state.attachments?.[0]
+        expect(generated).toMatchObject({
+          filename: `generated-image-${msg.id}-1.png`,
           mime: "image/png",
-          url: `data:image/png;base64,${png}`,
+          relativePath: `.opencode/generated-images/generated-image-${msg.id}-1.png`,
+          url: `/generated-image?path=.opencode%2Fgenerated-images%2Fgenerated-image-${msg.id}-1.png`,
         })
+        expect(generated?.url).not.toContain("data:image/")
+        expect(
+          yield* Effect.promise(() => Bun.file(path.join(dir, ".opencode", "generated-images", `generated-image-${msg.id}-1.png`)).exists()),
+        ).toBe(true)
+
+        const history = yield* session.messages({ sessionID: chat.id })
+        expect(JSON.stringify(history)).not.toContain("data:image/")
+        const replay = yield* Effect.promise(() => MessageV2.toModelMessages(history, mdl))
+        const replayText = JSON.stringify(replay)
+        expect(replayText).toContain(`已生成图片文件：.opencode/generated-images/generated-image-${msg.id}-1.png`)
+        expect(replay).toHaveLength(3)
+        expect(replayText).not.toContain("Attached image(s) from tool result:")
+      }),
+    { git: true, config: (url) => providerCfg(url) },
+  ),
+)
+
+itWithFailingGeneratedImageFs.live("generated image persistence failures mark the tool call as error instead of defecting", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+
+        yield* llm.tool("image_generation", { prompt: "draw a pixel" })
+        yield* llm.text("done")
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "draw a pixel")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: chat.id,
+          model: mdl,
+        })
+
+        const exit = yield* Effect.exit(
+          handle.process({
+            user: {
+              id: parent.id,
+              sessionID: chat.id,
+              role: "user",
+              time: parent.time,
+              agent: parent.agent,
+              model: { providerID: ref.providerID, modelID: ref.modelID },
+            } satisfies MessageV2.User,
+            sessionID: chat.id,
+            model: mdl,
+            agent: agent(),
+            system: [],
+            messages: [{ role: "user", content: "draw a pixel" }],
+            tools: {
+              image_generation: tool({
+                description: "Generate an image",
+                inputSchema: z.object({ prompt: z.string() }),
+                execute: async () => ({
+                  title: "image_generation",
+                  metadata: { source: "test" },
+                  output: png,
+                }),
+              }),
+            },
+          }),
+        )
+
+        expect(Exit.isSuccess(exit)).toBe(true)
+        if (Exit.isSuccess(exit)) {
+          expect(exit.value).toBe("continue")
+        }
+        expect(handle.message.error).toBeUndefined()
+
+        const parts = MessageV2.parts(msg.id)
+        const call = parts.find(
+          (part): part is MessageV2.ToolPart => part.type === "tool" && part.tool === "image_generation",
+        )
+
+        expect(call?.state.status).toBe("error")
+        if (call?.state.status !== "error") return
+        expect(call.state.error).toContain("Failed to persist generated image attachment")
+        expect(call.state.error).toContain("FileSystem.writeWithDirs")
+        expect(call.state.time.end).toBeDefined()
       }),
     { git: true, config: (url) => providerCfg(url) },
   ),

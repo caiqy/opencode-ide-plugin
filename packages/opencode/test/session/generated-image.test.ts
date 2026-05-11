@@ -5,6 +5,7 @@ import { MessageID, PartID, SessionID } from "../../src/session/schema"
 const sessionID = SessionID.zod.parse("ses_01J5Y5H0AH4Q4NXJ6P4C3P5V2K")
 const messageID = MessageID.zod.parse("msg_01J5Y5H0AH4Q4NXJ6P4C3P5V2M")
 const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAF/gL+ee1vNwAAAABJRU5ErkJggg=="
+const svgDataUrl = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg=="
 
 describe("normalizeImageGenerationOutput", () => {
   test("生成图片时仅输出汇总文案，不附带逐张标题行", () => {
@@ -22,7 +23,7 @@ describe("normalizeImageGenerationOutput", () => {
     expect(result.title).toBe("image_generation")
     expect(result.output).toBe("已生成 1 张图片：")
     expect(result.attachments).toHaveLength(1)
-    expect(result.attachments?.[0]?.filename).toBe("generated-image-1.png")
+    expect(result.attachments?.[0]?.filename).toBe(`generated-image-${messageID}-1.png`)
   })
 
   test("结构化 output 也保留原 title metadata 和已有附件", () => {
@@ -78,6 +79,25 @@ describe("normalizeImageGenerationOutput", () => {
       },
     })
 
-    expect(result.attachments?.map((item) => item.filename)).toEqual(["existing.png", "generated-image-2.png"])
+    expect(result.attachments?.map((item) => item.filename)).toEqual([
+      "existing.png",
+      `generated-image-${messageID}-2.png`,
+    ])
+  })
+
+  test("SVG data URL 不会生成后续无法通过 generated-image 路由读取的持久化附件", () => {
+    const result = normalizeImageGenerationOutput({
+      tool: "image_generation",
+      sessionID,
+      messageID,
+      output: {
+        title: "image_generation",
+        metadata: { source: "provider" },
+        output: svgDataUrl,
+      },
+    })
+
+    expect(result.output).toBe(svgDataUrl)
+    expect(result.attachments).toBeUndefined()
   })
 })

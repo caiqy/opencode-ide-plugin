@@ -615,6 +615,94 @@ it.live("replays image_generation tool attachments into the next loop request co
   ),
 )
 
+it.live("replays generated image relative paths as text without reinjecting media", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const prompt = yield* SessionPrompt.Service
+        const session = yield* Session.Service
+        const chat = yield* session.create({ title: "Pinned" })
+        const parent = yield* user(chat.id, "draw a pixel")
+        const assistant: MessageV2.Assistant = {
+          id: MessageID.ascending(),
+          role: "assistant",
+          parentID: parent.id,
+          sessionID: chat.id,
+          mode: "build",
+          agent: "build",
+          cost: 0,
+          path: { cwd: "/tmp", root: "/tmp" },
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          modelID: ref.modelID,
+          providerID: ref.providerID,
+          time: { created: Date.now() },
+          finish: "stop",
+        }
+        yield* session.updateMessage(assistant)
+        yield* session.updatePart({
+          id: PartID.ascending(),
+          messageID: assistant.id,
+          sessionID: chat.id,
+          type: "tool",
+          callID: "call-image-relative-path-1",
+          tool: "image_generation",
+          state: {
+            status: "completed",
+            input: { prompt: "draw a pixel" },
+            output: "已生成 1 张图片：",
+            title: "image_generation",
+            metadata: { source: "test" },
+            time: { start: 0, end: 1 },
+            attachments: [
+              {
+                id: PartID.ascending(),
+                sessionID: chat.id,
+                messageID: assistant.id,
+                type: "file",
+                mime: "image/png",
+                filename: "generated-image-msg_123-1.png",
+                relativePath: ".opencode/generated-images/generated-image-msg_123-1.png",
+                url: "/generated-image?path=.opencode/generated-images/generated-image-msg_123-1.png",
+              },
+            ],
+          },
+        })
+
+        yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          model: { providerID: ProviderID.make("openai"), modelID: ModelID.make("gpt-5.5") },
+          noReply: true,
+          parts: [{ type: "text", text: "continue" }],
+        })
+        yield* llm.text("ok")
+
+        const result = yield* prompt.loop({ sessionID: chat.id })
+        expect(result.info.role).toBe("assistant")
+
+        const body = (yield* llm.hits)[0]?.body
+        const input = Array.isArray(body?.input) ? body.input : []
+        const replayOutput = input.find(
+          (item) =>
+            item &&
+            typeof item === "object" &&
+            "type" in item &&
+            item.type === "function_call_output" &&
+            "call_id" in item &&
+            item.call_id === "call-image-relative-path-1",
+        ) as { output?: unknown } | undefined
+
+        const replayText = JSON.stringify(replayOutput?.output)
+
+        expect(replayText).toContain('已生成 1 张图片：')
+        expect(replayText).toContain('已生成图片文件：.opencode/generated-images/generated-image-msg_123-1.png')
+        expect(replayText).not.toContain('"type":"input_image"')
+        expect(replayText).not.toContain('/generated-image?path=.opencode/generated-images/generated-image-msg_123-1.png')
+      }),
+    { git: true, config: openaiProviderCfg },
+  ),
+)
+
 it.live("loop exits immediately when last assistant has stop finish", () =>
   provideTmpdirServer(
     Effect.fnUntraced(function* ({ llm }) {
@@ -1107,7 +1195,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  10_000,
+  3_000,
 )
 
 it.live(
@@ -1382,7 +1470,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  3_000,
+  10_000,
 )
 
 it.live(

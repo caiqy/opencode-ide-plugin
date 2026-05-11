@@ -27,6 +27,7 @@ import { Snapshot } from "../../src/snapshot"
 import { ProviderTest } from "../fake/provider"
 import { testEffect } from "../lib/effect"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
+import { AppFileSystem } from "@opencode-ai/core/filesystem"
 
 void Log.init({ print: false })
 
@@ -280,6 +281,7 @@ function liveRuntime(layer: Layer.Layer<LLM.Service>, provider = ProviderTest.fa
   const processor = SessionProcessorModule.SessionProcessor.layer.pipe(
     Layer.provide(summaryScheduler),
     Layer.provide(summary),
+    Layer.provide(AppFileSystem.defaultLayer),
   )
   return ManagedRuntime.make(
     Layer.mergeAll(SessionCompaction.layer.pipe(Layer.provide(processor)), processor, bus, status).pipe(

@@ -31,17 +31,19 @@ type ImageData = {
 const dataUrlPattern = /^data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=\s]+)$/i
 const base64Pattern = /^[a-z0-9+/]+={0,2}$/i
 const orderedKeys = ["result", "b64_json", "b64Json", "base64", "data", "images", "results"]
+const persistableImageMimes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
 
 export function normalizeImageGenerationOutput(input: NormalizeImageGenerationOutputInput): GeneratedImageOutput {
   if (input.tool !== "image_generation") return input.output as GeneratedImageOutput
 
   const output = toToolOutput(input.output)
   const images = extractImages(output.output)
-  if (images.length === 0) return outputForStorage(output)
+  const persistableImages = images.filter((image) => persistableImageMimes.has(image.mime))
+  if (persistableImages.length === 0) return outputForStorage(output)
   const existingImageCount = countImageAttachments(output.attachments)
 
-  const generatedAttachments = images.map((image, index) => {
-    const filename = `generated-image-${existingImageCount + index + 1}.${extension(image.mime)}`
+  const generatedAttachments = persistableImages.map((image, index) => {
+    const filename = generatedImageFilename(input.messageID, existingImageCount + index + 1, image.mime)
     return {
       id: PartID.ascending(),
       sessionID: input.sessionID,
@@ -54,11 +56,25 @@ export function normalizeImageGenerationOutput(input: NormalizeImageGenerationOu
   })
 
   return {
-    output: formatOutput(images),
+    output: formatOutput(persistableImages),
     title: output.title,
     metadata: output.metadata,
     attachments: [...(output.attachments ?? []), ...generatedAttachments],
   }
+}
+
+export function generatedImageFilename(messageID: MessageID, index: number, mime: string) {
+  return `generated-image-${messageID}-${index}.${extension(mime)}`
+}
+
+export function generatedImageRelativePath(filename: string) {
+  return `.opencode/generated-images/${filename}`
+}
+
+export function generatedImageBytes(url: string) {
+  const image = parseDataUrl(url)
+  if (!image) return
+  return Buffer.from(image.base64, "base64")
 }
 
 function outputForStorage(output: ImageGenerationToolOutput): GeneratedImageOutput {
@@ -216,7 +232,6 @@ function detectImageMime(base64: string) {
 
 function extension(mime: string) {
   if (mime === "image/jpeg") return "jpg"
-  if (mime === "image/svg+xml") return "svg"
   return mime.slice("image/".length).split("+")[0] || "png"
 }
 

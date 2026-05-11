@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import { fireEvent } from "@testing-library/react"
 import { waitFor } from "@testing-library/react"
+import { getGeneratedImageUrl } from "../../../lib/fileUtils"
 
 const mocks = vi.hoisted(() => ({
   isOpen: vi.fn(),
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   openSubtaskDrawer: vi.fn(),
   permissions: [] as Array<{ id: string; sessionID: string; tool?: { messageID: string; callID: string } }>,
   getQuestionsBySession: vi.fn<(sessionID: string) => Array<any>>(),
+  directory: null as string | null,
 }))
 
 vi.mock("../../../state/MessagesContext", () => ({
@@ -50,7 +52,7 @@ vi.mock("../../../hooks/useOpenFile", () => ({
 }))
 
 vi.mock("../../../state/ProjectContext", () => ({
-  useProject: () => ({ worktree: null }),
+  useProject: () => ({ worktree: mocks.directory, directory: mocks.directory }),
 }))
 
 import { ToolPart } from "./index"
@@ -67,6 +69,7 @@ describe("ToolPart", () => {
     mocks.openSubtaskDrawer.mockReset()
     mocks.permissions = []
     mocks.getQuestionsBySession.mockReturnValue([])
+    mocks.directory = null
   })
 
   it("apply_patch 使用 patchText 字段时，展开应显示补丁内容", () => {
@@ -133,7 +136,10 @@ describe("ToolPart", () => {
     expect(root).not.toHaveClass("my-1")
   })
 
-  it("completed 工具接入图片附件网格，只显示图片缩略图", () => {
+  it("completed 工具接入图片附件网格，relativePath 图片显示专用路由和引用路径", () => {
+    const relativePath = ".opencode/generated-images/preview-1.png"
+    mocks.directory = "/repo/subdir"
+
     const part = {
       id: "p-image-attachments",
       type: "tool",
@@ -156,6 +162,7 @@ describe("ToolPart", () => {
             type: "file",
             mime: "image/png",
             filename: "preview-1.png",
+            relativePath,
             url: "data:image/png;base64,AA==",
           },
           {
@@ -173,8 +180,12 @@ describe("ToolPart", () => {
 
     expect(screen.getByText("Image #1")).toBeInTheDocument()
     expect(screen.getByText("Image #2")).toBeInTheDocument()
+    expect(screen.getByText(relativePath)).toBeInTheDocument()
     expect(screen.queryByText("Image #3")).not.toBeInTheDocument()
     expect(screen.queryByText("note.txt")).not.toBeInTheDocument()
+    expect(screen.getByRole("img", { name: "preview-1.png" }).getAttribute("src")).toBe(
+      getGeneratedImageUrl(relativePath, mocks.directory),
+    )
   })
 
   it("image_generation 工具头部显示中文，且结果区不重复展示 title", () => {

@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import * as fileUtils from "./fileUtils"
 
+describe("getGeneratedImageUrl", () => {
+  it("正确编码 relativePath 和 directory 到专用图片路由", () => {
+    expect(fileUtils.getGeneratedImageUrl("generated images/foo bar?#.png", "/repo/sub dir")).toBe(
+      "/generated-image?path=generated+images%2Ffoo+bar%3F%23.png&directory=%2Frepo%2Fsub+dir",
+    )
+  })
+})
+
 describe("sanitizeFilename", () => {
   it("替换非法字符并保留可用文件名", () => {
     expect(fileUtils.sanitizeFilename(' report<>:"/\\|?*.png ')).toBe("report---------.png")

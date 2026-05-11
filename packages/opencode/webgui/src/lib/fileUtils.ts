@@ -59,6 +59,12 @@ export function sanitizeFilename(filename: string): string {
   return value || "image.png"
 }
 
+export function getGeneratedImageUrl(relativePath: string, directory?: string | null): string {
+  const query = new URLSearchParams({ path: relativePath })
+  if (directory) query.set("directory", directory)
+  return `/generated-image?${query.toString()}`
+}
+
 export function dataUrlToBlob(url: string): Blob {
   const comma = url.indexOf(",")
   if (comma < 0) throw new Error("Invalid data URL")

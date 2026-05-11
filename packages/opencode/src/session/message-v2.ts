@@ -187,6 +187,7 @@ export const FilePart = Schema.Struct({
   type: Schema.Literal("file"),
   mime: Schema.String,
   filename: Schema.optional(Schema.String),
+  relativePath: Schema.optional(Schema.String),
   url: Schema.String,
   source: Schema.optional(_FilePartSource),
 })
@@ -328,6 +329,10 @@ function truncateToolOutput(text: string, maxChars?: number) {
   if (!maxChars || text.length <= maxChars) return text
   const omitted = text.length - maxChars
   return `${text.slice(0, maxChars)}\n[Tool output truncated for compaction: omitted ${omitted} chars]`
+}
+
+function isGeneratedImagePathAttachment(part: FilePart) {
+  return part.mime.startsWith("image/") && typeof part.relativePath === "string"
 }
 
 export const ToolStateError = Schema.Struct({
@@ -861,24 +866,32 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
             const outputText = part.state.time.compacted
               ? "[Old tool result content cleared]"
               : truncateToolOutput(part.state.output, options?.toolOutputMaxChars)
-            const attachments = part.state.time.compacted || options?.stripMedia ? [] : (part.state.attachments ?? [])
+            const attachments = part.state.time.compacted ? [] : (part.state.attachments ?? [])
+            const generatedImagePathAttachments = attachments.filter(isGeneratedImagePathAttachment)
+            const outputTextWithPaths =
+              generatedImagePathAttachments.length > 0
+                ? `${outputText}\n${generatedImagePathAttachments.map((attachment) => `已生成图片文件：${attachment.relativePath}`).join("\n")}`
+                : outputText
+            const replayAttachments = options?.stripMedia
+              ? []
+              : attachments.filter((attachment) => !isGeneratedImagePathAttachment(attachment))
 
             // For providers that don't support media in tool results, extract media files
             // (images, PDFs) to be sent as a separate user message
-            const mediaAttachments = attachments.filter((a) => isMedia(a.mime))
-            const nonMediaAttachments = attachments.filter((a) => !isMedia(a.mime))
+            const mediaAttachments = replayAttachments.filter((a) => isMedia(a.mime))
+            const nonMediaAttachments = replayAttachments.filter((a) => !isMedia(a.mime))
             if (!supportsMediaInToolResults && mediaAttachments.length > 0) {
               media.push(...mediaAttachments)
             }
-            const finalAttachments = supportsMediaInToolResults ? attachments : nonMediaAttachments
+            const finalAttachments = supportsMediaInToolResults ? replayAttachments : nonMediaAttachments
 
             const output =
               finalAttachments.length > 0
                 ? {
-                    text: outputText,
+                    text: outputTextWithPaths,
                     attachments: finalAttachments,
                   }
-                : outputText
+                : outputTextWithPaths
 
             assistantMessage.parts.push({
               type: ("tool-" + part.tool) as `tool-${string}`,

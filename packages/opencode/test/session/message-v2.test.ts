@@ -655,6 +655,86 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
+  test("keeps generated image relative path text when stripMedia is true", async () => {
+    const userID = "m-user"
+    const assistantID = "m-assistant"
+
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "run tool",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "tool",
+            callID: "call-1",
+            tool: "image_generation",
+            state: {
+              status: "completed",
+              input: { prompt: "draw a pixel" },
+              output: "已生成 1 张图片：",
+              title: "image_generation",
+              metadata: {},
+              time: { start: 0, end: 1 },
+              attachments: [
+                {
+                  ...basePart(assistantID, "file-1"),
+                  type: "file",
+                  mime: "image/png",
+                  filename: "generated-image-msg_123-1.png",
+                  relativePath: ".opencode/generated-images/generated-image-msg_123-1.png",
+                  url: "/generated-image?path=.opencode/generated-images/generated-image-msg_123-1.png",
+                },
+              ],
+            },
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(await MessageV2.toModelMessages(input, model, { stripMedia: true })).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "run tool" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-1",
+            toolName: "image_generation",
+            input: { prompt: "draw a pixel" },
+            providerExecuted: undefined,
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-1",
+            toolName: "image_generation",
+            output: {
+              type: "text",
+              value: "已生成 1 张图片：\n已生成图片文件：.opencode/generated-images/generated-image-msg_123-1.png",
+            },
+          },
+        ],
+      },
+    ])
+  })
+
   test("converts assistant tool error into error-text tool result", async () => {
     const userID = "m-user"
     const assistantID = "m-assistant"

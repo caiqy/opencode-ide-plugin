@@ -1,0 +1,52 @@
+import path from "path"
+import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { Effect } from "effect"
+import { generatedImageBytes, generatedImageRelativePath } from "./generated-image"
+import type { MessageV2 } from "./message-v2"
+
+function isSafeGeneratedImageFilename(filename: string) {
+  return (
+    filename.length > 0 &&
+    filename === path.posix.basename(filename) &&
+    filename === path.win32.basename(filename) &&
+    filename !== "." &&
+    filename !== ".."
+  )
+}
+
+function isGeneratedImageAttachment(
+  part: MessageV2.FilePart,
+): part is MessageV2.FilePart & { filename: string; relativePath?: undefined } {
+  return (
+    part.mime.startsWith("image/") &&
+    typeof part.filename === "string" &&
+    part.filename.startsWith("generated-image-") &&
+    typeof part.relativePath !== "string"
+  )
+}
+
+export const persistGeneratedImageAttachments = Effect.fn(
+  "SessionGeneratedImagePersistence.persistGeneratedImageAttachments",
+)(function* (fs: AppFileSystem.Interface, root: string, attachments: MessageV2.FilePart[] | undefined) {
+  if (!attachments || attachments.length === 0) return attachments
+
+  return yield* Effect.forEach(attachments, (attachment) =>
+    Effect.gen(function* () {
+      if (!isGeneratedImageAttachment(attachment)) return attachment
+      if (!isSafeGeneratedImageFilename(attachment.filename)) {
+        throw new Error(`Unsafe generated image filename: ${attachment.filename}`)
+      }
+      const bytes = generatedImageBytes(attachment.url)
+      if (!bytes) return attachment
+      const relativePath = generatedImageRelativePath(attachment.filename)
+      yield* fs.writeWithDirs(path.join(root, ".opencode", "generated-images", attachment.filename), bytes)
+      return {
+        ...attachment,
+        relativePath,
+        url: `/generated-image?path=${encodeURIComponent(relativePath)}`,
+      }
+    }),
+  )
+})
+
+export * as SessionGeneratedImagePersistence from "./generated-image-persistence"
