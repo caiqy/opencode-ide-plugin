@@ -7,6 +7,8 @@ import { BackendDiscoveryError, discoverBackend } from "./dev/discoverBackend"
 const pkg = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8"))
 
 const proxyRoots = [
+  "/generated-image",
+  "/app/generated-image",
   "/global",
   "/session",
   "/config",

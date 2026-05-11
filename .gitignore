@@ -20,6 +20,7 @@ Session.vim
 /opencode.json
 a.out
 target
+.opencode/generated-images
 
 *.bak
 /hosts/jetbrains-plugin/bin/

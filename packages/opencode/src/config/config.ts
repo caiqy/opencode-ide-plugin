@@ -217,6 +217,9 @@ export const Info = Schema.Struct({
   model: Schema.optional(ConfigModelID).annotate({
     description: "Model to use in the format of provider/model, eg anthropic/claude-2",
   }),
+  image_model: Schema.optional(ConfigModelID).annotate({
+    description: "Default image generation model in the format of provider/model, eg openai/gpt-image-2",
+  }),
   small_model: Schema.optional(ConfigModelID).annotate({
     description: "Small model to use for tasks like title generation in the format of provider/model",
   }),

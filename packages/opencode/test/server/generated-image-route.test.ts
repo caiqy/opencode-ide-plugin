@@ -25,6 +25,17 @@ function request(directory: string, imagePath: string) {
   })
 }
 
+function requestViaApp(directory: string, imagePath: string) {
+  const url = new URL("http://localhost/app/generated-image")
+  url.searchParams.set("path", imagePath)
+
+  return Server.createApp({}).request(url, {
+    headers: {
+      "x-opencode-directory": directory,
+    },
+  })
+}
+
 afterEach(async () => {
   await Instance.disposeAll()
   await resetDatabase()
@@ -40,6 +51,21 @@ describe("generated image route", () => {
     await Bun.write(absolutePath, pngBytes)
 
     const response = await request(tmp.path, relativePath)
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("image/png")
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(pngBytes)
+  })
+
+  test("serves generated images through the /app base path without SPA fallback", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const relativePath = ".opencode/generated-images/generated-image-msg_123-1.png"
+    const absolutePath = path.join(tmp.path, ".opencode", "generated-images", "generated-image-msg_123-1.png")
+
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true })
+    await Bun.write(absolutePath, pngBytes)
+
+    const response = await requestViaApp(tmp.path, relativePath)
 
     expect(response.status).toBe(200)
     expect(response.headers.get("content-type")).toContain("image/png")

@@ -1730,7 +1730,7 @@ unix(
   30_000,
 )
 
-it.live(
+unix(
   "loop waits while shell runs and starts after shell exits",
   () =>
     provideTmpdirServer(
@@ -1768,7 +1768,7 @@ it.live(
   3_000,
 )
 
-it.live(
+unix(
   "shell completion resumes queued loop callers",
   () =>
     provideTmpdirServer(

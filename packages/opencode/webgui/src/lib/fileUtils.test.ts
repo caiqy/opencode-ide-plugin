@@ -7,6 +7,16 @@ describe("getGeneratedImageUrl", () => {
       "/generated-image?path=generated+images%2Ffoo+bar%3F%23.png&directory=%2Frepo%2Fsub+dir",
     )
   })
+
+  it("会带上当前 WebGUI 的 public base path", () => {
+    vi.stubEnv("BASE_URL", "/app/")
+
+    expect(fileUtils.getGeneratedImageUrl("generated images/foo bar?#.png", "/repo/sub dir")).toBe(
+      "/app/generated-image?path=generated+images%2Ffoo+bar%3F%23.png&directory=%2Frepo%2Fsub+dir",
+    )
+
+    vi.unstubAllEnvs()
+  })
 })
 
 describe("sanitizeFilename", () => {

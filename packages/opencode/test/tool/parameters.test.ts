@@ -13,6 +13,7 @@ import { Parameters as ApplyPatch } from "../../src/tool/apply_patch"
 import { Parameters as Bash } from "../../src/tool/bash"
 import { Parameters as CodeSearch } from "../../src/tool/codesearch"
 import { Parameters as Edit } from "../../src/tool/edit"
+import { Parameters as GenerateImage } from "../../src/tool/generate-image"
 import { Parameters as Glob } from "../../src/tool/glob"
 import { Parameters as Grep } from "../../src/tool/grep"
 import { Parameters as Invalid } from "../../src/tool/invalid"
@@ -39,6 +40,7 @@ describe("tool parameters", () => {
     test("bash", () => expect(toJsonSchema(Bash)).toMatchSnapshot())
     test("codesearch", () => expect(toJsonSchema(CodeSearch)).toMatchSnapshot())
     test("edit", () => expect(toJsonSchema(Edit)).toMatchSnapshot())
+    test("generate_image", () => expect(toJsonSchema(GenerateImage)).toMatchSnapshot())
     test("glob", () => expect(toJsonSchema(Glob)).toMatchSnapshot())
     test("grep", () => expect(toJsonSchema(Grep)).toMatchSnapshot())
     test("invalid", () => expect(toJsonSchema(Invalid)).toMatchSnapshot())
@@ -127,6 +129,43 @@ describe("tool parameters", () => {
     })
     test("rejects missing pattern", () => {
       expect(accepts(Glob, {})).toBe(false)
+    })
+  })
+
+  describe("generate_image", () => {
+    test("prompt-only applies defaults", () => {
+      expect(parse(GenerateImage, { prompt: "draw a cat" })).toEqual({
+        action: "generate",
+        prompt: "draw a cat",
+        size: "auto",
+        quality: "high",
+        format: "png",
+        n: 1,
+      })
+    })
+
+    test("documents GPT image size constraints", () => {
+      const schema = toJsonSchema(GenerateImage) as {
+        properties?: Record<string, { description?: string }>
+      }
+
+      expect(schema.properties?.size?.description).toBe(
+        "Requested output size. Use auto or WIDTHxHEIGHT. For gpt-image-* models, 1024x1024 is the recommended minimum starting size. Smaller sizes may still work if they satisfy the model constraints: width and height must be multiples of 16, the longest edge must be <= 3840, aspect ratio must be <= 3:1, and total pixels must be between 655360 and 8294400.",
+      )
+    })
+
+    test("rejects fractional n", () => {
+      expect(accepts(GenerateImage, { prompt: "draw a cat", n: 1.5 })).toBe(false)
+    })
+
+    test("rejects n outside 1..10", () => {
+      expect(accepts(GenerateImage, { prompt: "draw a cat", n: 0 })).toBe(false)
+      expect(accepts(GenerateImage, { prompt: "draw a cat", n: 11 })).toBe(false)
+    })
+
+    test("rejects empty and too-long prompts", () => {
+      expect(accepts(GenerateImage, { prompt: "" })).toBe(false)
+      expect(accepts(GenerateImage, { prompt: "x".repeat(4001) })).toBe(false)
     })
   })
 

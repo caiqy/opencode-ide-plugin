@@ -36,6 +36,7 @@ const InputObject = Schema.StructWithRest(
     webfetch: Schema.optional(Action),
     websearch: Schema.optional(Action),
     codesearch: Schema.optional(Action),
+    generate_image: Schema.optional(Rule),
     lsp: Schema.optional(Rule),
     doom_loop: Schema.optional(Action),
     skill: Schema.optional(Rule),

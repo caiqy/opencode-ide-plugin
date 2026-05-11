@@ -111,6 +111,88 @@ exports[`tool parameters JSON Schema (wire shape) edit 1`] = `
 }
 `;
 
+exports[`tool parameters JSON Schema (wire shape) generate_image 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "action": {
+      "default": "generate",
+      "description": "Whether to generate a new image or edit existing images",
+      "enum": [
+        "generate",
+        "edit",
+      ],
+      "type": "string",
+    },
+    "filename": {
+      "description": "Optional filename prefix for persisted outputs",
+      "type": "string",
+    },
+    "format": {
+      "default": "png",
+      "description": "Requested output image format",
+      "enum": [
+        "png",
+        "jpeg",
+        "webp",
+      ],
+      "type": "string",
+    },
+    "images": {
+      "description": "Project-relative image paths or data URLs for edit inputs",
+      "items": {
+        "type": "string",
+      },
+      "type": "array",
+    },
+    "mask": {
+      "description": "Optional mask path or data URL for image edits",
+      "type": "string",
+    },
+    "model": {
+      "description": "Optional model override",
+      "type": "string",
+    },
+    "n": {
+      "default": 1,
+      "description": "Number of images to generate (1-10)",
+      "maximum": 10,
+      "minimum": 1,
+      "type": "integer",
+    },
+    "prompt": {
+      "description": "Text prompt describing the desired image result",
+      "pattern": "^[\\s\\S]{1,4000}$",
+      "type": "string",
+    },
+    "provider": {
+      "description": "Optional provider override",
+      "type": "string",
+    },
+    "quality": {
+      "default": "high",
+      "description": "Requested image quality",
+      "enum": [
+        "auto",
+        "low",
+        "medium",
+        "high",
+      ],
+      "type": "string",
+    },
+    "size": {
+      "default": "auto",
+      "description": "Requested output size. Use auto or WIDTHxHEIGHT. For gpt-image-* models, 1024x1024 is the recommended minimum starting size. Smaller sizes may still work if they satisfy the model constraints: width and height must be multiples of 16, the longest edge must be <= 3840, aspect ratio must be <= 3:1, and total pixels must be between 655360 and 8294400.",
+      "type": "string",
+    },
+  },
+  "required": [
+    "prompt",
+  ],
+  "type": "object",
+}
+`;
+
 exports[`tool parameters JSON Schema (wire shape) glob 1`] = `
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -223,7 +305,6 @@ exports[`tool parameters JSON Schema (wire shape) lsp 1`] = `
   "type": "object",
 }
 `;
-
 
 exports[`tool parameters JSON Schema (wire shape) plan 1`] = `
 {

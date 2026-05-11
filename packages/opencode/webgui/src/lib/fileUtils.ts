@@ -62,7 +62,8 @@ export function sanitizeFilename(filename: string): string {
 export function getGeneratedImageUrl(relativePath: string, directory?: string | null): string {
   const query = new URLSearchParams({ path: relativePath })
   if (directory) query.set("directory", directory)
-  return `/generated-image?${query.toString()}`
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "")
+  return `${base === "/" ? "" : base}/generated-image?${query.toString()}`
 }
 
 export function dataUrlToBlob(url: string): Blob {

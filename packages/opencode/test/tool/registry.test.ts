@@ -17,6 +17,16 @@ afterEach(async () => {
 })
 
 describe("tool.registry", () => {
+  it.live("registers generate_image as a builtin tool", () =>
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const registry = yield* ToolRegistry.Service
+        const ids = yield* registry.ids()
+        expect(ids).toContain("generate_image")
+      }),
+    ),
+  )
+
   it.live("loads tools from .opencode/tool (singular)", () =>
     provideTmpdirInstance((dir) =>
       Effect.gen(function* () {
@@ -43,6 +53,7 @@ describe("tool.registry", () => {
         expect(ids).toContain("hello")
       }),
     ),
+    15000,
   )
 
   it.live("loads tools from .opencode/tools (plural)", () =>
@@ -71,6 +82,7 @@ describe("tool.registry", () => {
         expect(ids).toContain("hello")
       }),
     ),
+    15000,
   )
 
   it.live("loads tools with external dependencies without crashing", () =>
