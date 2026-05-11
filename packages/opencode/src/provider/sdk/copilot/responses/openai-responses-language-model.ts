@@ -1145,15 +1145,6 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV3 {
                   delta: value.delta,
                 })
               }
-            } else if (isResponseImageGenerationCallPartialImageChunk(value)) {
-              controller.enqueue({
-                type: "tool-result",
-                toolCallId: value.item_id,
-                toolName: "image_generation",
-                result: {
-                  result: value.partial_image_b64,
-                } satisfies z.infer<typeof imageGenerationOutputSchema>,
-              })
             } else if (isResponseCodeInterpreterCallCodeDeltaChunk(value)) {
               const toolCall = ongoingToolCalls[value.output_index]
 

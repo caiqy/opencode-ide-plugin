@@ -1,9 +1,11 @@
 import { NodeFileSystem } from "@effect/platform-node"
 import { ChildProcessSpawner } from "effect/unstable/process"
+import { tool } from "ai"
 import { expect } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Layer } from "effect"
 import * as Stream from "effect/Stream"
 import path from "path"
+import z from "zod"
 import type { Agent } from "../../src/agent/agent"
 import { Agent as AgentSvc } from "../../src/agent/agent"
 import { Bus } from "../../src/bus"
@@ -90,6 +92,8 @@ const ref = {
   providerID: ProviderID.make("test"),
   modelID: ModelID.make("test-model"),
 }
+
+const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
 
 const cfg = {
   provider: {
@@ -489,6 +493,88 @@ it.live("records text part start and end times", () =>
         expect(text?.time?.end).toBeDefined()
         if (!text?.time?.start || !text.time.end) return
         expect(text.time.start).toBeLessThan(text.time.end)
+      }),
+    { git: true, config: (url) => providerCfg(url) },
+  ),
+)
+
+it.live("normalizes image_generation tool results before storing completed state", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+
+        yield* llm.tool("image_generation", { prompt: "draw a pixel" })
+        yield* llm.text("done")
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "draw a pixel")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: chat.id,
+          model: mdl,
+        })
+        const existing: MessageV2.FilePart = {
+          id: PartID.ascending(),
+          sessionID: chat.id,
+          messageID: msg.id,
+          type: "file",
+          mime: "image/png",
+          filename: "existing.png",
+          url: "data:image/png;base64,AAAA",
+        }
+
+        const value = yield* handle.process({
+          user: {
+            id: parent.id,
+            sessionID: chat.id,
+            role: "user",
+            time: parent.time,
+            agent: parent.agent,
+            model: { providerID: ref.providerID, modelID: ref.modelID },
+          } satisfies MessageV2.User,
+          sessionID: chat.id,
+          model: mdl,
+          agent: agent(),
+          system: [],
+          messages: [{ role: "user", content: "draw a pixel" }],
+          tools: {
+            image_generation: tool({
+              description: "Generate an image",
+              inputSchema: z.object({ prompt: z.string() }),
+              execute: async () => ({
+                title: "image_generation",
+                metadata: { source: "test" },
+                output: png,
+                attachments: [existing],
+              }),
+            }),
+          },
+        })
+
+        const parts = MessageV2.parts(msg.id)
+        const call = parts.find(
+          (part): part is MessageV2.ToolPart => part.type === "tool" && part.tool === "image_generation",
+        )
+
+        expect(value).toBe("continue")
+        expect(yield* llm.calls).toBe(1)
+        expect(call?.state.status).toBe("completed")
+        if (call?.state.status !== "completed") return
+        expect(call.state.output).toContain("已生成 1 张图片")
+        expect(call.state.output).not.toContain("generated-image-1.png")
+        expect(call.state.output).not.toContain(png)
+        expect(call.state.title).toBe("image_generation")
+        expect(call.state.metadata).toEqual({ source: "test" })
+        expect(call.state.attachments).toHaveLength(2)
+        expect(call.state.attachments?.[0]).toEqual(existing)
+        expect(call.state.attachments?.[1]).toMatchObject({
+          filename: "generated-image-2.png",
+          mime: "image/png",
+          url: `data:image/png;base64,${png}`,
+        })
       }),
     { git: true, config: (url) => providerCfg(url) },
   ),

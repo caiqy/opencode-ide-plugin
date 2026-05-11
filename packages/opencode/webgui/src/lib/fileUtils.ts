@@ -53,3 +53,55 @@ export function normalizeTextAttachment(mime: string, url: string): { mime: stri
     url: url.replace(/^data:[^;,]+/, "data:text/plain"),
   }
 }
+
+export function sanitizeFilename(filename: string): string {
+  const value = filename.trim().replace(/[\\/:*?"<>|]/g, "-")
+  return value || "image.png"
+}
+
+export function dataUrlToBlob(url: string): Blob {
+  const comma = url.indexOf(",")
+  if (comma < 0) throw new Error("Invalid data URL")
+
+  const header = url.slice(0, comma)
+  const data = url.slice(comma + 1)
+  if (!header.startsWith("data:")) throw new Error("Invalid data URL")
+
+  const meta = header.slice(5)
+  const parts = meta.split(";")
+  const mime = parts[0] || "application/octet-stream"
+  const hasBase64 = parts.slice(1).some((part) => part.toLowerCase() === "base64")
+  if (!hasBase64) throw new Error("Invalid data URL")
+
+  try {
+    if (!data) return new Blob([new Uint8Array(0)], { type: mime })
+
+    const text = atob(data)
+    const bytes = Uint8Array.from(text, (char) => char.charCodeAt(0))
+
+    return new Blob([bytes], { type: mime })
+  } catch {
+    throw new Error("Invalid data URL")
+  }
+}
+
+export function downloadUrl(url: string, filename: string): void {
+  const link = document.createElement("a")
+  const safeName = sanitizeFilename(filename)
+  const objectUrl = url.startsWith("data:") ? URL.createObjectURL(dataUrlToBlob(url)) : null
+  const href = objectUrl ?? url
+
+  link.href = href
+  link.download = safeName
+  document.body.append(link)
+
+  try {
+    link.click()
+  } finally {
+    link.remove()
+    if (objectUrl) {
+      // Delay revoke so browsers/WebViews can start the download before the blob URL disappears.
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+    }
+  }
+}

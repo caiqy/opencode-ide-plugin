@@ -55,6 +55,7 @@ import { SessionRunState } from "./run-state"
 import { EffectBridge } from "@/effect"
 import { makeRuntime } from "@/effect/run-service"
 import { SessionSummaryScheduler } from "./summary-scheduler"
+import { imageGeneration } from "@/provider/sdk/copilot/responses/tool/image-generation"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -576,6 +577,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             }),
           )
         tools[key] = item
+      }
+
+      if (supportsOpenAIImageGeneration(input.model) && !tools.image_generation) {
+        tools.image_generation = imageGeneration()
       }
 
       return tools
@@ -1867,6 +1872,10 @@ export function createStructuredOutputTool(input: {
       }
     },
   })
+}
+
+function supportsOpenAIImageGeneration(model: Provider.Model) {
+  return model.api.npm === "@ai-sdk/openai" && (model.capabilities.output.image || /^gpt-5(\.|-|$)/.test(model.api.id))
 }
 const bashRegex = /!`([^`]+)`/g
 // Match [Image N] as single token, quoted strings, or non-space sequences

@@ -7,6 +7,7 @@ import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
 import { Snapshot } from "@/snapshot"
 import * as Session from "./session"
+import { normalizeImageGenerationOutput } from "./generated-image"
 import { LLM } from "./llm"
 import { MessageV2 } from "./message-v2"
 import { isOverflow } from "./overflow"
@@ -178,16 +179,22 @@ export const layer: Layer.Layer<
       ) {
         const match = yield* readToolCall(toolCallID)
         if (!match || match.part.state.status !== "running") return
+        const normalized = normalizeImageGenerationOutput({
+          tool: match.part.tool,
+          sessionID: match.part.sessionID,
+          messageID: match.part.messageID,
+          output,
+        })
         yield* session.updatePart({
           ...match.part,
           state: {
             status: "completed",
             input: match.part.state.input,
-            output: output.output,
-            metadata: output.metadata,
-            title: output.title,
+            output: normalized.output,
+            metadata: normalized.metadata,
+            title: normalized.title,
             time: { start: match.part.state.time.start, end: Date.now() },
-            attachments: output.attachments,
+            attachments: normalized.attachments,
           },
         })
         yield* settleToolCall(toolCallID)
@@ -286,6 +293,24 @@ export const layer: Layer.Layer<
           case "tool-call": {
             if (ctx.assistantMessage.summary) {
               throw new Error(`Tool call not allowed while generating summary: ${value.toolName}`)
+            }
+            if (!ctx.toolcalls[value.toolCallId]) {
+              const part = yield* session.updatePart({
+                id: PartID.ascending(),
+                messageID: ctx.assistantMessage.id,
+                sessionID: ctx.assistantMessage.sessionID,
+                type: "tool",
+                tool: value.toolName,
+                callID: value.toolCallId,
+                state: { status: "pending", input: {}, raw: "" },
+                metadata: value.providerExecuted ? { providerExecuted: true } : undefined,
+              } satisfies MessageV2.ToolPart)
+              ctx.toolcalls[value.toolCallId] = {
+                done: yield* Deferred.make<void>(),
+                partID: part.id,
+                messageID: part.messageID,
+                sessionID: part.sessionID,
+              }
             }
             yield* updateToolCall(value.toolCallId, (match) => ({
               ...match,

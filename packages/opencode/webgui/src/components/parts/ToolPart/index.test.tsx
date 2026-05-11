@@ -133,6 +133,138 @@ describe("ToolPart", () => {
     expect(root).not.toHaveClass("my-1")
   })
 
+  it("completed 工具接入图片附件网格，只显示图片缩略图", () => {
+    const part = {
+      id: "p-image-attachments",
+      type: "tool",
+      callID: "c-image-attachments",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "generate-images" },
+        output: "done",
+        attachments: [
+          {
+            id: "text-1",
+            type: "file",
+            mime: "text/plain",
+            filename: "note.txt",
+            url: "data:text/plain;base64,QQ==",
+          },
+          {
+            id: "image-1",
+            type: "file",
+            mime: "image/png",
+            filename: "preview-1.png",
+            url: "data:image/png;base64,AA==",
+          },
+          {
+            id: "image-2",
+            type: "file",
+            mime: "image/jpeg",
+            filename: "preview-2.jpg",
+            url: "data:image/jpeg;base64,AA==",
+          },
+        ],
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("Image #1")).toBeInTheDocument()
+    expect(screen.getByText("Image #2")).toBeInTheDocument()
+    expect(screen.queryByText("Image #3")).not.toBeInTheDocument()
+    expect(screen.queryByText("note.txt")).not.toBeInTheDocument()
+  })
+
+  it("image_generation 工具头部显示中文，且结果区不重复展示 title", () => {
+    const part = {
+      id: "p-image-generation",
+      type: "tool",
+      callID: "c-image-generation",
+      tool: "image_generation",
+      state: {
+        status: "completed",
+        title: "image_generation",
+        output: "已生成 1 张图片：",
+        attachments: [
+          {
+            id: "image-1",
+            type: "file",
+            mime: "image/png",
+            filename: "generated-image-1.png",
+            url: "data:image/png;base64,AA==",
+          },
+        ],
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("图片生成")).toBeInTheDocument()
+    expect(screen.queryByText("图片生成：image_generation")).not.toBeInTheDocument()
+    expect(screen.getByText("已生成 1 张图片：")).toBeInTheDocument()
+    expect(screen.queryByText("Image #1 generated-image-1.png")).not.toBeInTheDocument()
+    expect(screen.getByText("Image #1")).toBeInTheDocument()
+    expect(screen.getByText("generated-image-1.png")).toBeInTheDocument()
+  })
+
+  it("可展开工具收起时不显示图片附件", () => {
+    mocks.isOpen.mockReturnValue(false)
+
+    const part = {
+      id: "p-image-collapsed",
+      type: "tool",
+      callID: "c-image-collapsed",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "generate-images" },
+        output: "done",
+        attachments: [
+          {
+            id: "image-1",
+            type: "file",
+            mime: "image/png",
+            filename: "preview-1.png",
+            url: "data:image/png;base64,AA==",
+          },
+        ],
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.queryByText("Image #1")).not.toBeInTheDocument()
+  })
+
+  it("header-only 工具完成后即使 isOpen=false 也显示图片附件", () => {
+    mocks.isOpen.mockReturnValue(false)
+
+    const part = {
+      id: "p-image-header-only",
+      type: "tool",
+      callID: "c-image-header-only",
+      tool: "webfetch",
+      state: {
+        status: "completed",
+        attachments: [
+          {
+            id: "image-1",
+            type: "file",
+            mime: "image/png",
+            filename: "preview-1.png",
+            url: "data:image/png;base64,AA==",
+          },
+        ],
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+
+    expect(screen.getByText("Image #1")).toBeInTheDocument()
+  })
+
   it("task 工具在头部提供查看子任务入口", () => {
     mocks.getMessagesBySession.mockReturnValue([
       {

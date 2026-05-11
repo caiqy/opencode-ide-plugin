@@ -388,6 +388,44 @@ function providerCfg(url: string) {
   }
 }
 
+function openaiProviderCfg(url: string) {
+  return {
+    provider: {
+      openai: {
+        name: "OpenAI",
+        id: "openai",
+        env: [],
+        npm: "@ai-sdk/openai",
+        api: "https://api.openai.com/v1",
+        models: {
+          "gpt-5.5": {
+            id: "gpt-5.5",
+            name: "GPT-5.5",
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            tool_call: true,
+            release_date: "2026-01-01",
+            limit: { context: 100000, output: 10000 },
+            cost: { input: 0, output: 0 },
+            options: {},
+          },
+        },
+        options: {
+          apiKey: "test-openai-key",
+          baseURL: url,
+          reasoningSummary: "auto",
+          textVerbosity: "medium",
+        },
+      },
+    },
+  }
+}
+
+function isTitleBody(body: Record<string, unknown>) {
+  return JSON.stringify(body).includes("Generate a title for this conversation")
+}
+
 const user = Effect.fn("test.user")(function* (sessionID: SessionID, text: string) {
   const session = yield* Session.Service
   const msg = yield* session.updateMessage({
@@ -463,6 +501,119 @@ const boot = Effect.fn("test.boot")(function* (input?: { title?: string }) {
 })
 
 // Loop semantics
+
+it.live("adds OpenAI image generation provider tool for GPT image requests", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({ title: "Pinned" })
+        yield* llm.text("ok")
+
+        yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          model: { providerID: ProviderID.make("openai"), modelID: ModelID.make("gpt-5.5") },
+          parts: [{ type: "text", text: "生成一张猫咪照片" }],
+        })
+
+        const hits = yield* llm.hits
+        const request = hits.find((hit) => hit.url.pathname.endsWith("/responses") && !isTitleBody(hit.body))
+        const tools = request?.body.tools
+        expect(Array.isArray(tools)).toBe(true)
+        expect(tools).toContainEqual(expect.objectContaining({ type: "image_generation" }))
+      }),
+    { git: true, config: openaiProviderCfg },
+  ),
+)
+
+it.live("replays image_generation tool attachments into the next loop request context", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const prompt = yield* SessionPrompt.Service
+        const session = yield* Session.Service
+        const chat = yield* session.create({ title: "Pinned" })
+        const parent = yield* user(chat.id, "draw a pixel")
+        const assistant: MessageV2.Assistant = {
+          id: MessageID.ascending(),
+          role: "assistant",
+          parentID: parent.id,
+          sessionID: chat.id,
+          mode: "build",
+          agent: "build",
+          cost: 0,
+          path: { cwd: "/tmp", root: "/tmp" },
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          modelID: ref.modelID,
+          providerID: ref.providerID,
+          time: { created: Date.now() },
+          finish: "stop",
+        }
+        yield* session.updateMessage(assistant)
+        yield* session.updatePart({
+          id: PartID.ascending(),
+          messageID: assistant.id,
+          sessionID: chat.id,
+          type: "tool",
+          callID: "call-image-1",
+          tool: "image_generation",
+          state: {
+            status: "completed",
+            input: { prompt: "draw a pixel" },
+            output: "已生成 1 张图片：",
+            title: "image_generation",
+            metadata: { source: "test" },
+            time: { start: 0, end: 1 },
+            attachments: [
+              {
+                id: PartID.ascending(),
+                sessionID: chat.id,
+                messageID: assistant.id,
+                type: "file",
+                mime: "image/png",
+                filename: "generated-image-1.png",
+                url: "data:image/png;base64,AAAA",
+              },
+            ],
+          },
+        })
+
+        yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          model: { providerID: ProviderID.make("openai"), modelID: ModelID.make("gpt-5.5") },
+          noReply: true,
+          parts: [{ type: "text", text: "continue" }],
+        })
+        yield* llm.text("ok")
+
+        const result = yield* prompt.loop({ sessionID: chat.id })
+        expect(result.info.role).toBe("assistant")
+
+        const body = (yield* llm.hits)[0]?.body
+        const input = Array.isArray(body?.input) ? body.input : []
+        const replayOutput = input.find(
+          (item) =>
+            item &&
+            typeof item === "object" &&
+            "type" in item &&
+            item.type === "function_call_output" &&
+            "call_id" in item &&
+            item.call_id === "call-image-1",
+        ) as { output?: unknown } | undefined
+
+        const replayText = JSON.stringify(replayOutput?.output)
+
+        expect(replayText).toContain('"type":"input_text"')
+        expect(replayText).toContain('"text":"已生成 1 张图片："')
+        expect(replayText).toContain('"type":"input_image"')
+        expect(replayText).toContain('"image_url":"data:image/png;base64,AAAA"')
+      }),
+    { git: true, config: openaiProviderCfg },
+  ),
+)
 
 it.live("loop exits immediately when last assistant has stop finish", () =>
   provideTmpdirServer(

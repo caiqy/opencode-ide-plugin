@@ -15,6 +15,7 @@ import { GenericOutput } from "./GenericOutput"
 import { ErrorDisplay } from "./ErrorDisplay"
 import { TaskTool } from "./TaskTool"
 import { QuestionTool } from "./QuestionTool"
+import { ToolImageAttachments } from "./ToolImageAttachments"
 import { getToolDisplayName, getBorderColor, getSubtaskStatusLabel, getToolLabel } from "./utils"
 import { parseTaskResult } from "../../../lib/task-result"
 import type { QuestionInfo } from "@opencode-ai/sdk/v2/client"
@@ -25,16 +26,23 @@ interface ToolPartProps {
     type: "tool"
     callID: string
     tool: string
-    state: {
-      status: "pending" | "running" | "completed" | "error"
-      input?: Record<string, unknown>
-      output?: string
-      title?: string
-      error?: string
-      metadata?: Record<string, unknown>
-      time?: {
-        start: number
-        end?: number
+      state: {
+        status: "pending" | "running" | "completed" | "error"
+        input?: Record<string, unknown>
+        output?: string
+        title?: string
+        error?: string
+        attachments?: Array<{
+          id?: string
+          type?: "file"
+          mime?: string
+          filename?: string
+          url?: string
+        }>
+        metadata?: Record<string, unknown>
+        time?: {
+          start: number
+          end?: number
       }
     }
     parsed?: {
@@ -419,10 +427,20 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
           {/* apply_patch: show patch content as additions */}
           {showApplyPatchContent && <WriteTool content={applyPatchContent} filePath={filePath || ""} />}
 
+          {/* Expandable tools keep attachments inside the collapsible content. */}
+          {part.state.status === "completed" && !isHeaderOnlyTool ? (
+            <ToolImageAttachments attachments={part.state.attachments} />
+          ) : null}
+
           {/* Error */}
           {showError && !questionMode ? <ErrorDisplay error={part.state.error!} /> : null}
         </div>
       )}
+
+      {/* Header-only tools have no expand area, so attachments render directly below the header. */}
+      {isHeaderOnlyTool && part.state.status === "completed" ? (
+        <ToolImageAttachments attachments={part.state.attachments} />
+      ) : null}
 
       {/* read tool: only show error when present (no expand needed) */}
       {isHeaderOnlyTool && showError && (
