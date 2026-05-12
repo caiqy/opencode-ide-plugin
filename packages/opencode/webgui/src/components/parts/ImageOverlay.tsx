@@ -1,21 +1,23 @@
 import { useEffect, useId, useRef, useState } from "react"
-import { downloadUrl } from "../../lib/fileUtils"
+import { saveImage } from "../../lib/fileUtils"
 
 interface Props {
   url: string
   alt: string
+  filename: string
   onClose: () => void
 }
 
 const MIN_SCALE = 0.05
 const MAX_SCALE = 5
-const SCALE_STEP = 0.25
+const SCALE_STEP = 0.04
+const WHEEL_SCALE_STEP = 0.04
 
 function clampScale(value: number) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, value))
 }
 
-export function ImageOverlay({ url, alt, onClose }: Props) {
+export function ImageOverlay({ url, alt, filename, onClose }: Props) {
   const titleId = useId()
   const [scale, setScale] = useState(1)
   const [isFit, setIsFit] = useState(true)
@@ -51,6 +53,12 @@ export function ImageOverlay({ url, alt, onClose }: Props) {
   const zoomBy = (delta: number) => {
     setScale((value) => clampScale(value + delta))
     setIsFit(false)
+  }
+
+  const handleSave = () => {
+    void Promise.resolve(saveImage(url, filename)).catch((error) => {
+      console.warn("[ImageOverlay] Failed to save image", { url, filename }, error)
+    })
   }
 
   useEffect(() => {
@@ -112,7 +120,7 @@ export function ImageOverlay({ url, alt, onClose }: Props) {
               type="button"
               aria-label="保存图片"
               className="rounded border border-white/15 px-3 py-1.5 transition-colors hover:border-white/30 hover:text-white"
-              onClick={() => downloadUrl(url, alt)}
+              onClick={handleSave}
             >
               保存
             </button>
@@ -194,7 +202,7 @@ export function ImageOverlay({ url, alt, onClose }: Props) {
           }}
           onWheel={(event) => {
             event.preventDefault()
-            zoomBy(event.deltaY < 0 ? SCALE_STEP : -SCALE_STEP)
+            zoomBy(event.deltaY < 0 ? WHEEL_SCALE_STEP : -WHEEL_SCALE_STEP)
           }}
         >
           <img

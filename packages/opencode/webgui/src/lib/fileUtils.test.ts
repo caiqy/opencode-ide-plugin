@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import * as fileUtils from "./fileUtils"
+import { ideBridge } from "./ideBridge"
+import type { SaveImageResult } from "./fileUtils"
+
+type FileUtilsWithSaveImage = typeof fileUtils & {
+  saveImage: (url: string, filename: string) => Promise<SaveImageResult>
+}
 
 describe("getGeneratedImageUrl", () => {
   it("正确编码 relativePath 和 directory 到专用图片路由", () => {
@@ -135,5 +141,70 @@ describe("downloadUrl", () => {
     expect(click).toHaveBeenCalledTimes(1)
     expect(lastDownload).toBe("remote-name.png")
     expect(document.body.querySelector("a")).toBeNull()
+  })
+})
+
+describe("saveImage", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("ideBridge 已安装时通过 bridge 请求保存，并使用清洗后的文件名", async () => {
+    vi.spyOn(ideBridge, "isInstalled").mockReturnValue(true)
+    const request = vi.spyOn(ideBridge, "request").mockResolvedValue({
+      type: "saveImage",
+      ok: true,
+      result: { cancelled: true },
+    })
+    const downloadUrl = vi.spyOn(fileUtils, "downloadUrl")
+
+    const result = await (fileUtils as FileUtilsWithSaveImage).saveImage(
+      "https://example.com/image.png",
+      ' bad:name.png ',
+    )
+
+    expect(request).toHaveBeenCalledWith("saveImage", {
+      url: "https://example.com/image.png",
+      filename: "bad-name.png",
+    })
+    expect(result).toEqual({ cancelled: true })
+    expect(downloadUrl).not.toHaveBeenCalled()
+  })
+
+  it("ideBridge 成功但未返回 result 时回退为未取消", async () => {
+    vi.spyOn(ideBridge, "isInstalled").mockReturnValue(true)
+    vi.spyOn(ideBridge, "request").mockResolvedValue({ type: "saveImage", ok: true })
+
+    const result = await (fileUtils as FileUtilsWithSaveImage).saveImage("https://example.com/image.png", "sample.png")
+
+    expect(result).toEqual({ cancelled: false })
+  })
+
+  it("ideBridge 未安装时回退到浏览器下载，并返回未取消", async () => {
+    vi.spyOn(ideBridge, "isInstalled").mockReturnValue(false)
+    const request = vi.spyOn(ideBridge, "request")
+    const lastDownload = { value: "" }
+    const originalClick = HTMLAnchorElement.prototype.click
+
+    Object.defineProperty(HTMLAnchorElement.prototype, "click", {
+      configurable: true,
+      value: vi.fn(function (this: HTMLAnchorElement) {
+        lastDownload.value = this.download
+      }),
+    })
+
+    try {
+      const result = await (fileUtils as FileUtilsWithSaveImage).saveImage("https://example.com/image.png", "sample.png")
+
+      expect(result).toEqual({ cancelled: false })
+    } finally {
+      Object.defineProperty(HTMLAnchorElement.prototype, "click", {
+        configurable: true,
+        value: originalClick,
+      })
+    }
+
+    expect(lastDownload.value).toBe("sample.png")
+    expect(request).not.toHaveBeenCalled()
   })
 })

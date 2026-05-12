@@ -229,4 +229,28 @@ describe("ToolImageAttachments", () => {
 
     expect(screen.getByRole("img", { name: "preview.png" }).getAttribute("src")).toBe(url)
   })
+
+  it("图片缩略图使用固定宽度且高度自适应，而不是固定宽高比", () => {
+    render(
+      <ToolImageAttachments
+        attachments={[
+          {
+            id: "image-1",
+            mime: "image/png",
+            filename: "preview.png",
+            url: "data:image/png;base64,AA==",
+          },
+        ]}
+      />,
+    )
+
+    const image = screen.getByRole("img", { name: "preview.png" })
+    const previewFrame = image.parentElement
+
+    expect(previewFrame?.className).not.toContain("aspect-[4/3]")
+    expect(image.className).toContain("w-full")
+    expect(image.className).toContain("h-auto")
+    expect(image.className).not.toContain("h-full")
+    expect(image.className).not.toContain("group-hover:scale-[1.02]")
+  })
 })

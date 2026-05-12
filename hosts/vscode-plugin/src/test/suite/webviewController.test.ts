@@ -12,6 +12,53 @@ suite("WebviewController Test Suite", () => {
     sinon.restore()
   })
 
+  async function loadController(options: { uiBase?: string } = {}) {
+    let handlers: unknown
+
+    sinon.stub(globals, "getUpdateService").returns(undefined)
+    sinon.stub(bridgeServer, "createSession").callsFake(async (input) => {
+      handlers = input
+      return {
+        sessionId: "session-save-image",
+        baseUrl: "http://127.0.0.1:4000/idebridge/session-save-image",
+        token: "token-save-image",
+      }
+    })
+    sinon.stub(FileMonitor.prototype, "startMonitoring").callsFake(() => undefined)
+    sinon.stub(FileMonitor.prototype, "stopMonitoring").callsFake(() => undefined)
+    sinon.stub(vscode.env, "asExternalUri").callsFake(async (uri: vscode.Uri) => uri)
+    sinon.stub(vscode.workspace.fs, "readFile").resolves(Buffer.from("<html>${uiUrl}${cspSource}${cspOrigins}</html>"))
+
+    const webview = {
+      html: "",
+      cspSource: "vscode-webview:",
+      asWebviewUri: sinon.stub().callsFake((uri: vscode.Uri) => uri),
+      onDidReceiveMessage: sinon.stub().returns({ dispose: sinon.spy() }),
+      postMessage: sinon.stub().resolves(true),
+    } as unknown as vscode.Webview
+
+    const context = {
+      extensionUri: vscode.Uri.file("D:/test-extension"),
+      extension: { packageJSON: { version: "1.0.0" } },
+    } as unknown as vscode.ExtensionContext
+
+    const controller = new WebviewController({
+      webview,
+      context,
+      storageGet: async () => ({}),
+      storageSet: async () => undefined,
+    })
+
+    await controller.load({
+      uiBase: options.uiBase ?? "http://127.0.0.1:4096/app",
+    } as any)
+
+    return {
+      controller,
+      saveImage: (handlers as { saveImage?: (url: string, filename: string) => Promise<{ cancelled: boolean }> }).saveImage,
+    }
+  }
+
   test("load 过程中若先 dispose 再 await 失败，仍会回滚已延后创建的资源", async () => {
     const updateService = {
       attachSession: sinon.spy(),
@@ -135,5 +182,138 @@ suite("WebviewController Test Suite", () => {
     assert.ok(removeSession.calledOnceWithExactly("session-1"))
     assert.ok(updateService.detachSession.calledOnceWithExactly("session-1"))
     assert.ok(handleLoadError.calledOnce)
+  })
+
+  test("load wires a saveImage handler that decodes data URLs and writes the selected file", async () => {
+    const target = vscode.Uri.file("D:/tmp/opencode-data-url.png")
+    const showSaveDialog = sinon.stub(vscode.window, "showSaveDialog").resolves(target)
+    const writeFile = sinon.stub(vscode.workspace.fs, "writeFile").resolves()
+
+    const { controller, saveImage } = await loadController()
+
+    assert.ok(saveImage)
+
+    const result = await saveImage!("data:image/png;base64,aGVsbG8=", "copied-image.png")
+
+    assert.ok(showSaveDialog.calledOnce)
+    assert.ok(writeFile.calledOnce)
+    assert.strictEqual(writeFile.firstCall.args[0].toString(), target.toString())
+    assert.strictEqual(Buffer.from(writeFile.firstCall.args[1]).toString("utf8"), "hello")
+    assert.deepStrictEqual(result, { cancelled: false })
+
+    controller.dispose()
+  })
+
+  test("load wires a saveImage handler that fetches remote URLs before writing", async () => {
+    const target = vscode.Uri.file("D:/tmp/opencode-remote-url.png")
+    const originalFetch = globalThis.fetch
+    const showSaveDialog = sinon.stub(vscode.window, "showSaveDialog").resolves(target)
+    const writeFile = sinon.stub(vscode.workspace.fs, "writeFile").resolves()
+    globalThis.fetch = (async (input) => {
+      assert.strictEqual(String(input), "https://example.com/image.png")
+      return new Response(Buffer.from("remote-image"), { status: 200 })
+    }) as typeof fetch
+
+    try {
+      const { controller, saveImage } = await loadController()
+
+      assert.ok(saveImage)
+
+      const result = await saveImage!("https://example.com/image.png", "remote-image.png")
+
+      assert.ok(showSaveDialog.calledOnce)
+      assert.ok(writeFile.calledOnce)
+      assert.strictEqual(writeFile.firstCall.args[0].toString(), target.toString())
+      assert.strictEqual(Buffer.from(writeFile.firstCall.args[1]).toString("utf8"), "remote-image")
+      assert.deepStrictEqual(result, { cancelled: false })
+
+      controller.dispose()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("saveImage resolves generated-image relative URLs against the web UI base", async () => {
+    const target = vscode.Uri.file("D:/tmp/opencode-relative-url.png")
+    const originalFetch = globalThis.fetch
+    const showSaveDialog = sinon.stub(vscode.window, "showSaveDialog").resolves(target)
+    const writeFile = sinon.stub(vscode.workspace.fs, "writeFile").resolves()
+    globalThis.fetch = (async (input) => {
+      assert.strictEqual(
+        String(input),
+        "http://127.0.0.1:4096/generated-image?path=.opencode%2Fgenerated-images%2Ffoo.png",
+      )
+      return new Response(Buffer.from("relative-image"), { status: 200 })
+    }) as typeof fetch
+
+    try {
+      const { controller, saveImage } = await loadController()
+
+      assert.ok(saveImage)
+
+      const result = await saveImage!("/generated-image?path=.opencode%2Fgenerated-images%2Ffoo.png", "relative-image.png")
+
+      assert.ok(showSaveDialog.calledOnce)
+      assert.ok(writeFile.calledOnce)
+      assert.strictEqual(Buffer.from(writeFile.firstCall.args[1]).toString("utf8"), "relative-image")
+      assert.deepStrictEqual(result, { cancelled: false })
+
+      controller.dispose()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("saveImage rejects non-base64 data URLs and does not write a file", async () => {
+    const target = vscode.Uri.file("D:/tmp/opencode-invalid-data-url.png")
+    sinon.stub(vscode.window, "showSaveDialog").resolves(target)
+    const writeFile = sinon.stub(vscode.workspace.fs, "writeFile").resolves()
+
+    const { controller, saveImage } = await loadController()
+
+    await assert.rejects(() => saveImage!("data:image/png,hello", "invalid-data-url.png"), /Unsupported data URL/)
+    assert.ok(writeFile.notCalled)
+
+    controller.dispose()
+  })
+
+  test("saveImage rejects invalid base64 data URLs and does not write a file", async () => {
+    const target = vscode.Uri.file("D:/tmp/opencode-invalid-base64.png")
+    sinon.stub(vscode.window, "showSaveDialog").resolves(target)
+    const writeFile = sinon.stub(vscode.workspace.fs, "writeFile").resolves()
+
+    const { controller, saveImage } = await loadController()
+
+    await assert.rejects(() => saveImage!("data:image/png;base64,%%%", "invalid-base64.png"), /Invalid base64 data URL/)
+    assert.ok(writeFile.notCalled)
+
+    controller.dispose()
+  })
+
+  test("saveImage returns early when the user cancels the save dialog", async () => {
+    const originalFetch = globalThis.fetch
+    const fetchCalls: string[] = []
+    globalThis.fetch = (async (input) => {
+      fetchCalls.push(String(input))
+      return new Response(Buffer.from("unexpected"), { status: 200 })
+    }) as typeof fetch
+    sinon.stub(vscode.window, "showSaveDialog").resolves(undefined)
+    const writeFile = sinon.stub(vscode.workspace.fs, "writeFile").resolves()
+
+    try {
+      const { controller, saveImage } = await loadController()
+
+      assert.ok(saveImage)
+
+      const result = await saveImage!("https://example.com/cancelled-image.png", "cancelled-image.png")
+
+      assert.ok(writeFile.notCalled)
+      assert.deepStrictEqual(fetchCalls, [])
+      assert.deepStrictEqual(result, { cancelled: true })
+
+      controller.dispose()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 })

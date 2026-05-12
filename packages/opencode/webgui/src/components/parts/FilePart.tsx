@@ -1,5 +1,6 @@
 import { useCallback, useState, type KeyboardEvent } from "react"
 import { useOpenFile } from "../../hooks/useOpenFile"
+import { getImageFilename } from "../../lib/fileUtils"
 import { ImageOverlay } from "./ImageOverlay"
 
 interface FilePartProps {
@@ -129,7 +130,14 @@ export function FilePart({ part }: FilePartProps) {
         )}
       </span>
 
-      {preview && <ImageOverlay url={part.url} alt={displayName} onClose={() => setPreview(false)} />}
+      {preview && (
+        <ImageOverlay
+          url={part.url}
+          alt={displayName}
+          filename={getImageFilename(part.filename, mime)}
+          onClose={() => setPreview(false)}
+        />
+      )}
     </>
   )
 }

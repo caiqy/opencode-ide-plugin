@@ -1,3 +1,9 @@
+import { ideBridge } from "./ideBridge"
+
+export interface SaveImageResult {
+  cancelled: boolean
+}
+
 export function getMimeTypeFromExtension(ext: string): string {
   const map: Record<string, string> = {
     ".jpg": "image/jpeg",
@@ -16,6 +22,21 @@ export function getMimeTypeFromExtension(ext: string): string {
 export function getExtensionFromFilename(filename: string): string {
   const parts = filename.split(".")
   return parts.length > 1 ? `.${parts[parts.length - 1]}` : ""
+}
+
+export function getImageExtensionFromMime(mime: string): string {
+  if (mime === "image/jpeg") return "jpg"
+  if (mime === "image/png") return "png"
+  if (mime === "image/webp") return "webp"
+  if (mime === "image/gif") return "gif"
+
+  const suffix = mime.slice("image/".length).trim().toLowerCase()
+  return suffix.length > 0 ? suffix : "png"
+}
+
+export function getImageFilename(filename: string | undefined, mime: string, fallbackBase = "image"): string {
+  if (filename) return filename
+  return `${fallbackBase}.${getImageExtensionFromMime(mime)}`
 }
 
 export async function fileToDataURL(file: File): Promise<string> {
@@ -111,4 +132,18 @@ export function downloadUrl(url: string, filename: string): void {
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
     }
   }
+}
+
+export async function saveImage(url: string, filename: string): Promise<SaveImageResult> {
+  if (!ideBridge.isInstalled()) {
+    downloadUrl(url, filename)
+    return { cancelled: false }
+  }
+
+  const message = await ideBridge.request<SaveImageResult>("saveImage", {
+    url,
+    filename: sanitizeFilename(filename),
+  })
+
+  return message.result ?? { cancelled: false }
 }

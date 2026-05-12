@@ -21,6 +21,7 @@ import java.awt.datatransfer.StringSelection
 import java.io.File
 import java.io.OutputStreamWriter
 import java.net.InetSocketAddress
+import java.net.URL
 import java.net.URLDecoder
 import java.util.*
 import java.util.concurrent.CountDownLatch
@@ -28,11 +29,14 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.swing.JFileChooser
+import javax.swing.SwingUtilities
 
 data class Session(
     val id: String,
     val token: String,
     val project: Project,
+    var webUiBaseUrl: String? = null,
     val sseClients: MutableSet<HttpExchange> = Collections.synchronizedSet(mutableSetOf()),
     val mem: MutableMap<String, String> = ConcurrentHashMap(),
     val storage: IdeBridgeStorageBackend = IdeBridgePropertiesStorageBackend,
@@ -55,6 +59,12 @@ object IdeBridge {
 
     @Volatile
     internal var openPluginSettingsHook: (() -> Unit)? = null
+
+    @Volatile
+    internal var saveImageTargetHook: ((Project, String) -> File?)? = null
+
+    @Volatile
+    internal var readUrlBytesHook: ((String) -> ByteArray)? = null
     
     private var server: HttpServer? = null
     private var port: Int = 0
@@ -107,6 +117,7 @@ object IdeBridge {
         updateServiceFactory: (PluginVersionSource) -> PluginUpdateService = { source ->
             PluginUpdateService(versionSource = source)
         },
+        webUiBaseUrl: String? = null,
     ): SessionInfo {
         start() // ensure server is running
         
@@ -122,6 +133,7 @@ object IdeBridge {
             id = sessionId,
             token = token,
             project = project,
+            webUiBaseUrl = webUiBaseUrl,
             storage = storage,
             updateService = updateService,
         )
@@ -379,6 +391,28 @@ object IdeBridge {
                     }
                 }
 
+                "saveImage" -> {
+                    val url = payload?.get("url")?.asString?.trim()
+                    val filename = payload?.get("filename")?.asString?.trim()
+                    if (url.isNullOrEmpty() || filename.isNullOrEmpty()) {
+                        replyError(session, id, "Missing url or filename")
+                    } else {
+                        try {
+                            val target = chooseSaveImageTarget(session.project, filename)
+                            if (target == null) {
+                                replyResult(session, id, mapOf("cancelled" to true))
+                            } else {
+                                val bytes = readImageBytes(session, url)
+                                target.parentFile?.mkdirs()
+                                target.writeBytes(bytes)
+                                replyResult(session, id, mapOf("cancelled" to false))
+                            }
+                        } catch (e: Exception) {
+                            replyError(session, id, "saveImage failed: ${e.message ?: e}")
+                        }
+                    }
+                }
+
                 "getExtensionVersion" -> {
                     try {
                         replyResult(
@@ -565,6 +599,82 @@ object IdeBridge {
 
     private fun openPluginSettings(project: Project) {
         openPluginSettingsHook?.invoke() ?: OpenPluginSettings.open(project)
+    }
+
+    private fun chooseSaveImageTarget(project: Project, filename: String): File? {
+        saveImageTargetHook?.let { return it(project, filename) }
+
+        val target = arrayOfNulls<File>(1)
+        val task = Runnable {
+            val chooser = JFileChooser(project.basePath?.let(::File)).apply {
+                dialogTitle = "Save Image"
+                selectedFile = File(defaultImageFilename(filename))
+            }
+            if (chooser.showSaveDialog(null) == JFileChooser.APPROVE_OPTION) {
+                target[0] = chooser.selectedFile
+            }
+        }
+
+        val app = ApplicationManager.getApplication()
+        if (app != null) {
+            if (app.isDispatchThread) task.run() else app.invokeAndWait(task)
+        } else {
+            if (SwingUtilities.isEventDispatchThread()) task.run() else SwingUtilities.invokeAndWait(task)
+        }
+        return target[0]
+    }
+
+    private fun readImageBytes(session: Session, url: String): ByteArray {
+        return if (url.startsWith("data:")) {
+            readDataUrl(url)
+        } else {
+            val resolved = resolveImageUrl(session, url)
+            readUrlBytesHook?.invoke(resolved) ?: URL(resolved).openStream().use { it.readBytes() }
+        }
+    }
+
+    private fun resolveImageUrl(session: Session, url: String): String {
+        return try {
+            URL(url).toString()
+        } catch (_: Exception) {
+            val baseUrl = session.webUiBaseUrl ?: throw IllegalArgumentException("Relative image URL requires web UI base URL")
+            URL(URL(baseUrl), url).toString()
+        }
+    }
+
+    private fun readDataUrl(url: String): ByteArray {
+        val comma = url.indexOf(',')
+        if (comma < 0 || !url.startsWith("data:")) {
+            throw IllegalArgumentException("Unsupported data URL")
+        }
+
+        val meta = url.substring(5, comma).split(';')
+        if (meta.drop(1).none { it.trim().equals("base64", ignoreCase = true) }) {
+            throw IllegalArgumentException("Unsupported data URL")
+        }
+
+        val data = url.substring(comma + 1)
+        if (!isValidBase64(data)) {
+            throw IllegalArgumentException("Invalid base64 data URL")
+        }
+
+        return Base64.getDecoder().decode(data)
+    }
+
+    private fun isValidBase64(value: String): Boolean {
+        if (value.isEmpty()) return true
+        if (value.length % 4 != 0) return false
+        if (!Regex("^[A-Za-z0-9+/]*={0,2}$").matches(value)) return false
+
+        return try {
+            Base64.getEncoder().encodeToString(Base64.getDecoder().decode(value)) == value
+        } catch (_: IllegalArgumentException) {
+            false
+        }
+    }
+
+    private fun defaultImageFilename(filename: String): String {
+        return filename.split('/', '\\').filter { it.isNotBlank() }.lastOrNull() ?: filename
     }
 
     private fun broadcastSSE(session: Session, json: String): Boolean {

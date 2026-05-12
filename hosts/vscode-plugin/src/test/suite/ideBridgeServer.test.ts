@@ -423,6 +423,120 @@ suite("IdeBridgeServer scoped storage", () => {
   })
 })
 
+suite("IdeBridgeServer saveImage", () => {
+  let baseUrl: string
+  let token: string
+  let sessionId: string
+  let calls: Array<{ url: string; filename: string }>
+
+  setup(async () => {
+    calls = []
+
+    const handlers = {
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+      saveImage: async (url: string, filename: string) => {
+        calls.push({ url, filename })
+        return { cancelled: false } as const
+      },
+    } as unknown as SessionHandlers
+
+    const session = await bridgeServer.createSession(handlers)
+    baseUrl = session.baseUrl
+    token = session.token
+    sessionId = session.sessionId
+  })
+
+  teardown(() => {
+    bridgeServer.removeSession(sessionId)
+  })
+
+  test("routes saveImage to the session handler", async () => {
+    const response = await requestRoundtrip(baseUrl, token, {
+      type: "saveImage",
+      payload: { url: "https://example.com/image.png", filename: "image.png" },
+    })
+
+    assert.strictEqual(response.status, 204)
+    assert.strictEqual(response.reply.ok, true)
+    assert.deepStrictEqual(response.reply.result, { cancelled: false })
+    assert.deepStrictEqual(calls, [{ url: "https://example.com/image.png", filename: "image.png" }])
+  })
+
+  test("returns an error when saveImage payload is incomplete", async () => {
+    const response = await requestRoundtrip(baseUrl, token, {
+      type: "saveImage",
+      payload: { url: "https://example.com/image.png" },
+    })
+
+    assert.strictEqual(response.status, 204)
+    assert.strictEqual(response.reply.ok, false)
+    assert.strictEqual(response.reply.error, "Missing url or filename")
+    assert.deepStrictEqual(calls, [])
+  })
+
+  test("returns an error when saveImage payload uses blank strings", async () => {
+    const response = await requestRoundtrip(baseUrl, token, {
+      type: "saveImage",
+      payload: { url: "   ", filename: "image.png" },
+    })
+
+    assert.strictEqual(response.status, 204)
+    assert.strictEqual(response.reply.ok, false)
+    assert.strictEqual(response.reply.error, "Missing url or filename")
+    assert.deepStrictEqual(calls, [])
+  })
+
+  test("returns a dedicated error when saveImage has no handler", async () => {
+    bridgeServer.removeSession(sessionId)
+
+    const session = await bridgeServer.createSession({
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+    })
+    baseUrl = session.baseUrl
+    token = session.token
+    sessionId = session.sessionId
+
+    const response = await requestRoundtrip(baseUrl, token, {
+      type: "saveImage",
+      payload: { url: "https://example.com/image.png", filename: "image.png" },
+    })
+
+    assert.strictEqual(response.status, 204)
+    assert.strictEqual(response.reply.ok, false)
+    assert.strictEqual(response.reply.error, "saveImage not supported")
+  })
+
+  test("returns structured cancel state instead of an empty save success", async () => {
+    bridgeServer.removeSession(sessionId)
+
+    const session = await bridgeServer.createSession({
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+      saveImage: async () => ({ cancelled: true } as const),
+    } as unknown as SessionHandlers)
+    baseUrl = session.baseUrl
+    token = session.token
+    sessionId = session.sessionId
+
+    const response = await requestRoundtrip(baseUrl, token, {
+      type: "saveImage",
+      payload: { url: "https://example.com/image.png", filename: "image.png" },
+    })
+
+    assert.strictEqual(response.status, 204)
+    assert.strictEqual(response.reply.ok, true)
+    assert.deepStrictEqual(response.reply.result, { cancelled: true })
+  })
+})
+
 suite("IdeBridgeServer restartHost", () => {
   let baseUrl: string
   let token: string

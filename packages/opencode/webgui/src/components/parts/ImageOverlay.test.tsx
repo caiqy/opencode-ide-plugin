@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { downloadUrl } from "../../lib/fileUtils"
+import * as fileUtils from "../../lib/fileUtils"
 import { ImageOverlay } from "./ImageOverlay"
 
 vi.mock("../../lib/fileUtils", async () => {
@@ -9,8 +9,25 @@ vi.mock("../../lib/fileUtils", async () => {
   return {
     ...actual,
     downloadUrl: vi.fn(),
+    saveImage: vi.fn(),
   }
 })
+
+type FileUtilsWithSaveImage = typeof fileUtils & {
+  saveImage: ReturnType<typeof vi.fn>
+}
+
+function renderOverlay(props?: Partial<{ url: string; alt: string; filename: string; onClose: () => void }>) {
+  return render(
+    <ImageOverlay
+      url="https://example.com/image.png"
+      alt="sample.png"
+      filename="sample.png"
+      onClose={() => {}}
+      {...props}
+    />,
+  )
+}
 
 function setNaturalSize(img: HTMLImageElement, width: number, height: number) {
   Object.defineProperties(img, {
@@ -41,7 +58,7 @@ describe("ImageOverlay", () => {
   })
 
   it("显示保存和缩放控制按钮", () => {
-    render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={() => {}} />)
+    renderOverlay()
 
     expect(screen.getByRole("dialog", { name: "sample.png" })).toBeInTheDocument()
     expect(screen.getByText("sample.png")).toBeInTheDocument()
@@ -55,16 +72,16 @@ describe("ImageOverlay", () => {
   })
 
   it("键盘 + / = / - / 0 调整显示百分比", () => {
-    render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={() => {}} />)
+    renderOverlay()
 
     fireEvent.keyDown(document, { key: "+" })
-    expect(screen.getByText("125%")).toBeInTheDocument()
+    expect(screen.getByText("104%")).toBeInTheDocument()
 
     fireEvent.keyDown(document, { key: "=" })
-    expect(screen.getByText("150%")).toBeInTheDocument()
+    expect(screen.getByText("108%")).toBeInTheDocument()
 
     fireEvent.keyDown(document, { key: "-" })
-    expect(screen.getByText("125%")).toBeInTheDocument()
+    expect(screen.getByText("104%")).toBeInTheDocument()
 
     fireEvent.keyDown(document, { key: "0" })
     expect(screen.getByText("100%")).toBeInTheDocument()
@@ -72,23 +89,37 @@ describe("ImageOverlay", () => {
 
   it("Esc 调用 onClose", () => {
     const onClose = vi.fn()
-    render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={onClose} />)
+    renderOverlay({ onClose })
 
     fireEvent.keyDown(document, { key: "Escape" })
 
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it("点击保存调用 downloadUrl", () => {
-    render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={() => {}} />)
+  it("点击保存使用独立 filename 而不是 alt", () => {
+    renderOverlay({ alt: "展示文本", filename: "saved-name.png" })
 
     fireEvent.click(screen.getByRole("button", { name: "保存图片" }))
 
-    expect(downloadUrl).toHaveBeenCalledWith("https://example.com/image.png", "sample.png")
+    expect((fileUtils as FileUtilsWithSaveImage).saveImage).toHaveBeenCalledWith(
+      "https://example.com/image.png",
+      "saved-name.png",
+    )
+  })
+
+  it("saveImage reject 时记录日志并吞掉异常", async () => {
+    const saveImage = (fileUtils as FileUtilsWithSaveImage).saveImage
+    saveImage.mockRejectedValueOnce(new Error("bridge failed"))
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    renderOverlay()
+
+    fireEvent.click(screen.getByRole("button", { name: "保存图片" }))
+    await waitFor(() => expect(warn).toHaveBeenCalled())
   })
 
   it("双击图片重置缩放", () => {
-    render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={() => {}} />)
+    renderOverlay()
 
     fireEvent.keyDown(document, { key: "+" })
     fireEvent.dblClick(screen.getByRole("img", { name: "sample.png" }))
@@ -97,21 +128,21 @@ describe("ImageOverlay", () => {
   })
 
   it("鼠标滚轮缩放", () => {
-    render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={() => {}} />)
+    renderOverlay()
 
     const img = screen.getByRole("img", { name: "sample.png" })
     const stage = img.parentElement
     if (!stage) throw new Error("stage not found")
 
     fireEvent.wheel(stage, { deltaY: -100 })
-    expect(screen.getByText("125%")).toBeInTheDocument()
+    expect(screen.getByText("104%")).toBeInTheDocument()
 
     fireEvent.wheel(stage, { deltaY: 100 })
     expect(screen.getByText("100%")).toBeInTheDocument()
   })
 
   it("拖拽平移更新图片 transform", () => {
-    render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={() => {}} />)
+    renderOverlay()
 
     const img = screen.getByRole("img", { name: "sample.png" }) as HTMLImageElement
     const stage = img.parentElement
@@ -131,7 +162,7 @@ describe("ImageOverlay", () => {
 
   it("适应窗口后按 + 基于当前 fit 比例放大并退出 fit", () => {
     withViewport(1000, 1000, () => {
-      render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={() => {}} />)
+      renderOverlay()
 
       const img = screen.getByRole("img", { name: "sample.png" }) as HTMLImageElement
       setNaturalSize(img, 1800, 1000)
@@ -140,13 +171,13 @@ describe("ImageOverlay", () => {
       expect(screen.getByText("50%")).toBeInTheDocument()
 
       fireEvent.keyDown(document, { key: "+" })
-      expect(screen.getByText("75%")).toBeInTheDocument()
+      expect(screen.getByText("54%")).toBeInTheDocument()
     })
   })
 
   it("大图打开后默认按适应窗口比例显示", () => {
     withViewport(1000, 1000, () => {
-      render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={() => {}} />)
+      renderOverlay()
 
       const img = screen.getByRole("img", { name: "sample.png" }) as HTMLImageElement
       setNaturalSize(img, 1800, 1000)
@@ -158,7 +189,7 @@ describe("ImageOverlay", () => {
 
   it("适应窗口后点击缩小基于当前 fit 比例缩小", () => {
     withViewport(1000, 1000, () => {
-      render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={() => {}} />)
+      renderOverlay()
 
       const img = screen.getByRole("img", { name: "sample.png" }) as HTMLImageElement
       setNaturalSize(img, 1800, 1000)
@@ -167,13 +198,13 @@ describe("ImageOverlay", () => {
       expect(screen.getByText("50%")).toBeInTheDocument()
 
       fireEvent.click(screen.getByRole("button", { name: "缩小" }))
-      expect(screen.getByText("25%")).toBeInTheDocument()
+      expect(screen.getByText("46%")).toBeInTheDocument()
     })
   })
 
   it("适应窗口后滚轮向下基于当前 fit 比例缩小", () => {
     withViewport(1000, 1000, () => {
-      render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={() => {}} />)
+      renderOverlay()
 
       const img = screen.getByRole("img", { name: "sample.png" }) as HTMLImageElement
       const stage = img.parentElement
@@ -185,13 +216,13 @@ describe("ImageOverlay", () => {
       expect(screen.getByText("50%")).toBeInTheDocument()
 
       fireEvent.wheel(stage, { deltaY: 100 })
-      expect(screen.getByText("25%")).toBeInTheDocument()
+      expect(screen.getByText("46%")).toBeInTheDocument()
     })
   })
 
   it("超大图片适应窗口时可降到 11%", () => {
     withViewport(1000, 1000, () => {
-      render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={() => {}} />)
+      renderOverlay()
 
       const img = screen.getByRole("img", { name: "sample.png" }) as HTMLImageElement
       setNaturalSize(img, 8000, 6000)
@@ -202,12 +233,12 @@ describe("ImageOverlay", () => {
   })
 
   it("缩放不会超过上下限", () => {
-    render(<ImageOverlay url="https://example.com/image.png" alt="sample.png" onClose={() => {}} />)
+    renderOverlay()
 
-    for (let i = 0; i < 20; i++) fireEvent.keyDown(document, { key: "+" })
+    for (let i = 0; i < 120; i++) fireEvent.keyDown(document, { key: "+" })
     expect(screen.getByText("500%")).toBeInTheDocument()
 
-    for (let i = 0; i < 30; i++) fireEvent.keyDown(document, { key: "-" })
+    for (let i = 0; i < 140; i++) fireEvent.keyDown(document, { key: "-" })
     expect(screen.getByText("5%")).toBeInTheDocument()
   })
 })

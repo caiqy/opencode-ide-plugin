@@ -20,9 +20,12 @@ import paviko.opencode.update.MarketplacePluginRelease
 import paviko.opencode.update.MarketplaceVersionSource
 import paviko.opencode.update.PluginUpdateService
 import paviko.opencode.update.PluginVersionSource
+import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.InetSocketAddress
 import java.net.URL
+import java.nio.file.Files
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
@@ -42,6 +45,8 @@ class IdeBridgeUpdateTest {
     fun cleanup() {
         IdeBridge.installStartRunner = null
         IdeBridge.openPluginSettingsHook = null
+        setNullableIdeBridgeField("saveImageTargetHook", null)
+        setNullableIdeBridgeField("readUrlBytesHook", null)
         IdeBridge.stop()
     }
 
@@ -461,10 +466,203 @@ class IdeBridgeUpdateTest {
         }
     }
 
+    @Test
+    fun `saveImage request is handled instead of reporting unsupported type`() {
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("saveImage", JsonObject())
+
+            assertEquals(false, reply.get("ok")?.asBoolean)
+            assertEquals("Missing url or filename", reply.get("error")?.asString)
+        }
+    }
+
+    @Test
+    fun `saveImage writes decoded data url bytes to selected file`() {
+        val target = tempFile("data-url-image.png")
+        setNullableIdeBridgeField("saveImageTargetHook") { _: Project, _: String -> target }
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("saveImage", JsonObject().apply {
+                addProperty("url", "data:image/png;base64,aGVsbG8=")
+                addProperty("filename", "copied-image.png")
+            })
+
+            assertEquals(true, reply.get("ok")?.asBoolean)
+            assertEquals(false, reply.getAsJsonObject("result")?.get("cancelled")?.asBoolean)
+            assertEquals("hello", target.readText())
+        }
+    }
+
+    @Test
+    fun `saveImage fetches remote urls before writing`() {
+        val target = tempFile("remote-image.png")
+        setNullableIdeBridgeField("saveImageTargetHook") { _: Project, _: String -> target }
+        val session = IdeBridge.createSession(project = project())
+
+        withHttpServer(byteArrayOf(1, 2, 3, 4)) { url ->
+            sse(session).use { events ->
+                val reply = events.send("saveImage", JsonObject().apply {
+                    addProperty("url", url)
+                    addProperty("filename", "remote-image.png")
+                })
+
+                assertEquals(true, reply.get("ok")?.asBoolean)
+                assertEquals(false, reply.getAsJsonObject("result")?.get("cancelled")?.asBoolean)
+                assertTrue(target.readBytes().contentEquals(byteArrayOf(1, 2, 3, 4)))
+            }
+        }
+    }
+
+    @Test
+    fun `saveImage resolves generated-image relative urls against session web ui base`() {
+        val target = tempFile("generated-image.png")
+        setNullableIdeBridgeField("saveImageTargetHook") { _: Project, _: String -> target }
+        val session = IdeBridge.createSession(project = project())
+
+        withHttpServer(byteArrayOf(9, 8, 7)) { url ->
+            setSessionWebUiBaseUrl(session.sessionId, "$url/app")
+
+            sse(session).use { events ->
+                val reply = events.send("saveImage", JsonObject().apply {
+                    addProperty("url", "/generated-image?path=.opencode%2Fgenerated-images%2Ffoo.png")
+                    addProperty("filename", "generated-image.png")
+                })
+
+                assertEquals(true, reply.get("ok")?.asBoolean)
+                assertEquals(false, reply.getAsJsonObject("result")?.get("cancelled")?.asBoolean)
+                assertTrue(target.readBytes().contentEquals(byteArrayOf(9, 8, 7)))
+            }
+        }
+    }
+
+    @Test
+    fun `saveImage resolves app generated-image relative urls against session web ui base`() {
+        val target = tempFile("app-generated-image.png")
+        setNullableIdeBridgeField("saveImageTargetHook") { _: Project, _: String -> target }
+        val session = IdeBridge.createSession(project = project())
+
+        withHttpServer(byteArrayOf(6, 5, 4)) { url ->
+            setSessionWebUiBaseUrl(session.sessionId, "$url/app")
+
+            sse(session).use { events ->
+                val reply = events.send("saveImage", JsonObject().apply {
+                    addProperty("url", "/app/generated-image?path=.opencode%2Fgenerated-images%2Fbar.png")
+                    addProperty("filename", "app-generated-image.png")
+                })
+
+                assertEquals(true, reply.get("ok")?.asBoolean)
+                assertEquals(false, reply.getAsJsonObject("result")?.get("cancelled")?.asBoolean)
+                assertTrue(target.readBytes().contentEquals(byteArrayOf(6, 5, 4)))
+            }
+        }
+    }
+
+    @Test
+    fun `saveImage returns cancelled when user skips the save dialog`() {
+        setNullableIdeBridgeField("saveImageTargetHook") { _: Project, _: String -> null }
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("saveImage", JsonObject().apply {
+                addProperty("url", "https://example.com/cancelled-image.png")
+                addProperty("filename", "cancelled-image.png")
+            })
+
+            assertEquals(true, reply.get("ok")?.asBoolean)
+            assertEquals(true, reply.getAsJsonObject("result")?.get("cancelled")?.asBoolean)
+        }
+    }
+
+    @Test
+    fun `saveImage rejects invalid data urls without creating files`() {
+        val target = tempFile("invalid-image.png")
+        target.delete()
+        setNullableIdeBridgeField("saveImageTargetHook") { _: Project, _: String -> target }
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("saveImage", JsonObject().apply {
+                addProperty("url", "data:image/png,hello")
+                addProperty("filename", "invalid-image.png")
+            })
+
+            assertEquals(false, reply.get("ok")?.asBoolean)
+            assertEquals("saveImage failed: Unsupported data URL", reply.get("error")?.asString)
+            assertFalse(target.exists())
+        }
+    }
+
+    @Test
+    fun `saveImage rejects invalid base64 data urls without creating files`() {
+        val target = tempFile("invalid-base64-image.png")
+        target.delete()
+        setNullableIdeBridgeField("saveImageTargetHook") { _: Project, _: String -> target }
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("saveImage", JsonObject().apply {
+                addProperty("url", "data:image/png;base64,%%%")
+                addProperty("filename", "invalid-base64-image.png")
+            })
+
+            assertEquals(false, reply.get("ok")?.asBoolean)
+            assertEquals("saveImage failed: Invalid base64 data URL", reply.get("error")?.asString)
+            assertFalse(target.exists())
+        }
+    }
+
     private fun project(): Project {
         val project = Mockito.mock(Project::class.java)
         Mockito.`when`(project.name).thenReturn("update-test-project")
         return project
+    }
+
+    private fun tempFile(name: String): File {
+        return Files.createTempDirectory("ide-bridge-save-image").resolve(name).toFile()
+    }
+
+    private fun withHttpServer(bytes: ByteArray, block: (String) -> Unit) {
+        val server = com.sun.net.httpserver.HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val responder: (com.sun.net.httpserver.HttpExchange) -> Unit = { exchange ->
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { out -> out.write(bytes) }
+        }
+        server.createContext("/image", responder)
+        server.createContext("/generated-image", responder)
+        server.createContext("/app/generated-image", responder)
+        server.start()
+
+        try {
+            block("http://127.0.0.1:${server.address.port}/image")
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    private fun setNullableIdeBridgeField(name: String, value: Any?) {
+        try {
+            val field = IdeBridge::class.java.getDeclaredField(name)
+            field.isAccessible = true
+            field.set(IdeBridge, value)
+        } catch (e: NoSuchFieldException) {
+            if (value != null) {
+                throw e
+            }
+        }
+    }
+
+    private fun setSessionWebUiBaseUrl(sessionId: String, baseUrl: String) {
+        val field = IdeBridge::class.java.getDeclaredField("sessions")
+        field.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val sessions = field.get(IdeBridge) as MutableMap<String, Any>
+        val session = sessions[sessionId] ?: error("Session $sessionId not found")
+        val sessionField = session.javaClass.getDeclaredField("webUiBaseUrl")
+        sessionField.isAccessible = true
+        sessionField.set(session, baseUrl)
     }
 
     private fun sse(session: SessionInfo): EventStream {

@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback } from "react"
+import { getImageFilename } from "../../lib/fileUtils"
 import type { Part } from "../../state/MessagesContext"
 import { MarkdownRenderer } from "../MarkdownRenderer"
 import { FilePart } from "../parts/FilePart"
@@ -46,7 +47,7 @@ function Thumbnail({ file }: { file: ImageFile }) {
       >
         <img src={file.url} alt={alt} className="max-w-48 max-h-36 object-contain" />
       </div>
-      {preview && <ImageOverlay url={file.url} alt={alt} onClose={toggle} />}
+      {preview && <ImageOverlay url={file.url} alt={alt} filename={getImageFilename(file.filename, file.mime)} onClose={toggle} />}
     </>
   )
 }

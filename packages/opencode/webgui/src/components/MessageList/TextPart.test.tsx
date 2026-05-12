@@ -1,8 +1,23 @@
-import { describe, it, expect } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { TextPart } from "./TextPart"
 
+const overlay = vi.hoisted(() => ({
+  props: [] as Array<Record<string, unknown>>,
+}))
+
+vi.mock("../parts/ImageOverlay", () => ({
+  ImageOverlay: (props: Record<string, unknown>) => {
+    overlay.props.push(props)
+    return <div data-testid="image-overlay" />
+  },
+}))
+
 describe("TextPart", () => {
+  beforeEach(() => {
+    overlay.props = []
+  })
+
   it("用户消息气泡应使用稳定宽度约束并靠右", () => {
     render(<TextPart part={{ id: "p1", type: "text", text: "短句" } as any} isUser={true} />)
 
@@ -42,5 +57,28 @@ describe("TextPart", () => {
     expect(bubble).not.toHaveClass("rounded-xl")
     expect(bubble).not.toHaveClass("bg-blue-50")
     expect(bubble).not.toHaveClass("border-blue-400")
+  })
+
+  it("图片附件缺少 filename 时，预览保存名回退为带扩展名的图片文件名", () => {
+    render(
+      <TextPart
+        part={{ id: "p3", type: "text", text: "图" } as any}
+        isUser={true}
+        attachedParts={[
+          {
+            id: "f1",
+            type: "file",
+            mime: "image/webp",
+            url: "data:image/webp;base64,UklGRg==",
+          } as any,
+        ]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("img", { name: "image" }))
+
+    expect(overlay.props).toHaveLength(1)
+    expect(overlay.props[0]?.filename).toBe("image.webp")
+    expect(overlay.props[0]?.alt).toBe("image")
   })
 })

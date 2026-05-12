@@ -6,6 +6,7 @@ import { FileMonitor } from "../utils/FileMonitor"
 import { errorHandler } from "../utils/ErrorHandler"
 import { PathInserter } from "../utils/PathInserter"
 import { getUpdateService, logger } from "../globals"
+import type { SaveImageResult } from "./IdeBridgeServer"
 import { bridgeServer } from "./IdeBridgeServer"
 
 /**
@@ -34,6 +35,7 @@ export class WebviewController {
     keys: string[],
   ) => Promise<Record<string, string | undefined>>
   private storageSet: (scope: "global" | "workspace" | "mem", key: string, value: string) => Promise<void>
+  private uiBaseUrl?: string
   private disposed = false
 
   constructor(opts: WebviewControllerOptions) {
@@ -143,6 +145,7 @@ export class WebviewController {
           clipboardWrite: async (text) => {
             await vscode.env.clipboard.writeText(text)
           },
+          saveImage: async (url, filename) => this.saveImage(url, filename),
           restartHost: async () => {
             await vscode.commands.executeCommand("workbench.action.reloadWindow").then(
               () => undefined,
@@ -219,6 +222,7 @@ export class WebviewController {
 
       // Use asExternalUri for Remote-SSH compatibility
       const externalUi = await vscode.env.asExternalUri(vscode.Uri.parse(connection.uiBase))
+      this.uiBaseUrl = externalUi.toString()
       this.ensureLoadNotDisposed()
       const externalBridge = await vscode.env.asExternalUri(vscode.Uri.parse(session.baseUrl))
       this.ensureLoadNotDisposed()
@@ -285,6 +289,7 @@ export class WebviewController {
       this.communicationBridge?.dispose()
     } catch {}
     this.communicationBridge = undefined
+    this.uiBaseUrl = undefined
   }
 
   private async handleReadUris(uris: string[]): Promise<void> {
@@ -387,6 +392,81 @@ export class WebviewController {
     }
   }
 
+  private async saveImage(url: string, filename: string): Promise<SaveImageResult> {
+    const name = filename.split(/[\\/]/).filter(Boolean).pop() || filename
+    const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri
+      ? vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, name)
+      : undefined
+    const target = await vscode.window.showSaveDialog({
+      defaultUri,
+      saveLabel: "Save Image",
+    })
+
+    if (!target) {
+      return { cancelled: true }
+    }
+
+    const bytes = url.startsWith("data:") ? this.readDataUrl(url) : await this.fetchBytes(url)
+    await vscode.workspace.fs.writeFile(target, bytes)
+    return { cancelled: false }
+  }
+
+  private readDataUrl(url: string): Uint8Array {
+    const comma = url.indexOf(",")
+    if (comma < 0 || !url.startsWith("data:")) {
+      throw new Error("Unsupported data URL")
+    }
+
+    const meta = url.slice(5, comma).split(";")
+    if (!meta.slice(1).some((part) => part.trim().toLowerCase() === "base64")) {
+      throw new Error("Unsupported data URL")
+    }
+
+    const data = url.slice(comma + 1)
+    if (!this.isValidBase64(data)) {
+      throw new Error("Invalid base64 data URL")
+    }
+
+    return Uint8Array.from(Buffer.from(data, "base64"))
+  }
+
+  private async fetchBytes(url: string): Promise<Uint8Array> {
+    if (typeof globalThis.fetch !== "function") {
+      throw new Error("fetch is not available")
+    }
+
+    const response = await globalThis.fetch(this.resolveImageUrl(url))
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status}`)
+    }
+
+    return new Uint8Array(await response.arrayBuffer())
+  }
+
+  private resolveImageUrl(url: string): string {
+    try {
+      return new URL(url).toString()
+    } catch {}
+
+    if (!this.uiBaseUrl) {
+      return url
+    }
+
+    return new URL(url, this.uiBaseUrl).toString()
+  }
+
+  private isValidBase64(value: string): boolean {
+    if (value.length === 0) {
+      return true
+    }
+
+    if (value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+      return false
+    }
+
+    return Buffer.from(value, "base64").toString("base64") === value
+  }
+
   private buildUiUrlWithMode(base: string): string {
     let uiMode = "Terminal"
     try {
@@ -478,5 +558,6 @@ export class WebviewController {
     this.communicationBridge = undefined
     this.fileMonitor = undefined
     this.connection = undefined
+    this.uiBaseUrl = undefined
   }
 }

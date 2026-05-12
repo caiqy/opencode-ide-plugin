@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { getGeneratedImageUrl } from "../../../lib/fileUtils"
+import { getGeneratedImageUrl, getImageFilename } from "../../../lib/fileUtils"
 import { useProject } from "../../../state/ProjectContext"
 import { ImageOverlay } from "../ImageOverlay"
 
@@ -29,28 +29,17 @@ function isImageAttachment(attachment: Attachment): attachment is ImageAttachmen
   return typeof attachment.mime === "string" && attachment.mime.startsWith("image/") && (hasUrl || hasRelativePath)
 }
 
-function extensionForMime(mime: string) {
-  if (mime === "image/jpeg") return "jpg"
-  if (mime === "image/png") return "png"
-  if (mime === "image/webp") return "webp"
-  if (mime === "image/gif") return "gif"
-
-  const suffix = mime.slice("image/".length).trim().toLowerCase()
-  return suffix.length > 0 ? suffix : "png"
-}
-
 function imageAttachments(attachments: Attachment[] | undefined, directory: string | null) {
   return (attachments ?? [])
     .filter(isImageAttachment)
     .map((attachment, index) => {
       const number = index + 1
-      const extension = extensionForMime(attachment.mime)
       const src = attachment.relativePath ? getGeneratedImageUrl(attachment.relativePath, directory) : attachment.url!
 
       return {
         id: attachment.id ?? `image-${number}`,
         label: `Image #${number}`,
-        filename: attachment.filename || `generated-image-${number}.${extension}`,
+        filename: getImageFilename(attachment.filename, attachment.mime, `generated-image-${number}`),
         relativePath: attachment.relativePath,
         src,
       }
@@ -78,9 +67,9 @@ export function ToolImageAttachments({ attachments }: Props) {
               onClick={() => setActiveImage(index)}
               className="group overflow-hidden rounded-lg border border-gray-200 bg-white text-left shadow-sm transition hover:border-gray-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700 dark:focus:ring-offset-gray-950"
             >
-              <div className="aspect-[4/3] overflow-hidden bg-gray-100 dark:bg-gray-950">
+              <div className="overflow-hidden bg-gray-100 dark:bg-gray-950">
                 {failedImageIds.includes(image.id) ? (
-                  <div className="flex h-full w-full items-center justify-center px-3 text-sm text-gray-500 dark:text-gray-400">
+                  <div className="flex min-h-40 w-full items-center justify-center px-3 text-sm text-gray-500 dark:text-gray-400">
                     预览不可用
                   </div>
                 ) : (
@@ -90,7 +79,7 @@ export function ToolImageAttachments({ attachments }: Props) {
                     onError={() => {
                       setFailedImageIds((value) => (value.includes(image.id) ? value : [...value, image.id]))
                     }}
-                    className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                    className="block h-auto w-full"
                   />
                 )}
               </div>
@@ -112,6 +101,7 @@ export function ToolImageAttachments({ attachments }: Props) {
         <ImageOverlay
           url={preview.src}
           alt={preview.filename}
+          filename={preview.filename}
           onClose={() => setActiveImage(null)}
         />
       ) : null}

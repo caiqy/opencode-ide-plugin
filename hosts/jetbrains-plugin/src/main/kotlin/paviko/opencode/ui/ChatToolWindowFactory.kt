@@ -179,12 +179,12 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                     mainPanel.revalidate()
                     mainPanel.repaint()
 
-                    val session = IdeBridge.createSession(project)
                     val baseUrl = webGuiUrlWithCacheBuster(
                         normalizedAppUrl,
                         pluginVersion(),
                         System.currentTimeMillis().toString(),
                     )
+                    val session = IdeBridge.createSession(project, webUiBaseUrl = normalizedAppUrl)
                     val urlWithBridge = buildString {
                         append(baseUrl)
                         append(if ('?' in baseUrl) '&' else '?')

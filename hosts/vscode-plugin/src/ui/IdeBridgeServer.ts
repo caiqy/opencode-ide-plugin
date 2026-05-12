@@ -10,6 +10,7 @@ export interface SessionHandlers {
   openUrl: (url: string) => Promise<void>
   reloadPath: (path: string) => Promise<void>
   clipboardWrite: (text: string) => Promise<void>
+  saveImage?: (url: string, filename: string) => Promise<SaveImageResult | void>
   restartHost?: () => Promise<void>
   storageGet?: (scope: StorageScope, keys: string[]) => Promise<Record<string, string | undefined>>
   storageSet?: (scope: StorageScope, key: string, value: string) => Promise<void>
@@ -17,6 +18,10 @@ export interface SessionHandlers {
   checkForUpdates?: () => Promise<Record<string, unknown>>
   getUpdateInfo?: () => Promise<Record<string, unknown>>
   installUpdate?: (version: string) => Promise<void>
+}
+
+export interface SaveImageResult {
+  cancelled: boolean
 }
 
 type StorageScope = "global" | "workspace" | "mem"
@@ -276,6 +281,24 @@ class IdeBridgeServer {
           }
           break
 
+        case "saveImage":
+          if (!session.handlers.saveImage) {
+            this.replyError(session, id, "saveImage not supported")
+            break
+          }
+          if (
+            typeof payload?.url !== "string" ||
+            typeof payload?.filename !== "string" ||
+            payload.url.trim().length === 0 ||
+            payload.filename.trim().length === 0
+          ) {
+            this.replyError(session, id, "Missing url or filename")
+            break
+          }
+          const result = (await session.handlers.saveImage(payload.url, payload.filename)) ?? { cancelled: false }
+          this.replyOk(session, id, result)
+          break
+
         case "restartHost":
           if (!session.handlers.restartHost) {
             this.replyError(session, id, "restartHost not supported")
@@ -454,13 +477,14 @@ class IdeBridgeServer {
     res.end()
   }
 
-  private replyOk(session: Session, id?: string): void {
+  private replyOk(session: Session, id?: string, result?: unknown): void {
     if (!id) return
     this.broadcastSSE(
       session,
       JSON.stringify({
         replyTo: id,
         ok: true,
+        ...(result === undefined ? {} : { result }),
         timestamp: Date.now(),
       }),
     )
