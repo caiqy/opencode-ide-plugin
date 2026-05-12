@@ -205,7 +205,7 @@ function optionalTrimmed(value: string | undefined) {
   return trimmed.length > 0 ? trimmed : undefined
 }
 
-function normalizeGenerateImages(images: string[] | undefined) {
+function normalizeGenerateImages(images: readonly string[] | undefined) {
   if (!images) {
     return undefined
   }
