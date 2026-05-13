@@ -3,9 +3,14 @@ import type { UpgradeWebSocket } from "hono/ws"
 import path from "path"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { GlobalBus } from "@/bus/global"
+import { ProjectTable } from "../../src/project/project.sql"
+import { ProjectID } from "../../src/project/schema"
 import { Instance } from "../../src/project/instance"
+import { SessionTable } from "../../src/session/session.sql"
+import { SessionID } from "../../src/session/schema"
 import { InstanceRoutes } from "../../src/server/routes/instance"
 import { InstancePaths } from "../../src/server/routes/instance/httpapi/instance"
+import { Database } from "../../src/storage"
 import { Log } from "../../src/util"
 import { resetDatabase } from "../fixture/db"
 import { tmpdir } from "../fixture/fixture"
@@ -200,6 +205,48 @@ description: Route skill.
     expect(await list.json()).toContainEqual(
       expect.objectContaining({ id: project.id, name: "patched-project", commands: { start: "bun dev" } }),
     )
+  })
+
+  test("does not expose orphaned legacy global project rows through the project list route", async () => {
+    await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
+
+    const now = Date.now()
+    const sessionID = SessionID.make(crypto.randomUUID())
+
+    Database.use((db) => {
+      db
+        .insert(ProjectTable)
+        .values({
+          id: ProjectID.global,
+          worktree: "/",
+          time_created: now,
+          time_updated: now,
+          sandboxes: [],
+        })
+        .onConflictDoNothing()
+        .run()
+
+      db
+        .insert(SessionTable)
+        .values({
+          id: sessionID,
+          project_id: ProjectID.global,
+          slug: sessionID,
+          directory: tmp.path,
+          title: "legacy-route-visible",
+          version: "0.0.0-test",
+          time_created: now,
+          time_updated: now,
+        })
+        .run()
+    })
+
+    const list = await app().request("/project", { headers: { "x-opencode-directory": tmp.path } })
+    expect(list.status).toBe(200)
+
+    const projects = (await list.json()) as Array<{ id: string; worktree: string }>
+    expect(projects.some((project) => project.id === "global")).toBe(false)
+    expect(projects).toContainEqual(expect.objectContaining({ id: ProjectID.nonGit(tmp.path), worktree: tmp.path }))
   })
 
   test("serves instance dispose through Hono bridge", async () => {

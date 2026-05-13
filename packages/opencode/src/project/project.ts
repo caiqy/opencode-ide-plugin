@@ -151,6 +151,20 @@ export const layer: Layer.Layer<
     const db = <T>(fn: (d: Parameters<typeof Database.use>[0] extends (trx: infer D) => any ? D : never) => T) =>
       Effect.sync(() => Database.use(fn))
 
+    const migrateLegacyGlobalSessions = Effect.fn("Project.migrateLegacyGlobalSessions")(function* (input: {
+      directory: string
+      projectID: ProjectID
+    }) {
+      const directory = AppFileSystem.resolve(input.directory)
+      yield* db((d) =>
+        d
+          .update(SessionTable)
+          .set({ project_id: input.projectID })
+          .where(and(eq(SessionTable.project_id, ProjectID.global), eq(SessionTable.directory, directory)))
+          .run(),
+      )
+    })
+
     const emitUpdated = (data: Info) =>
       Effect.sync(() =>
         GlobalBus.emit("event", {
@@ -193,9 +207,9 @@ export const layer: Layer.Layer<
 
         if (!dotgit) {
           return {
-            id: ProjectID.global,
-            worktree: "/",
-            sandbox: "/",
+            id: ProjectID.nonGit(directory),
+            worktree: directory,
+            sandbox: directory,
             vcs: fakeVcs,
           }
         }
@@ -329,6 +343,13 @@ export const layer: Layer.Layer<
           })
           .run(),
       )
+
+      if (ProjectID.isNonGit(result.id)) {
+        yield* migrateLegacyGlobalSessions({
+          directory: data.sandbox,
+          projectID: result.id,
+        })
+      }
 
       if (data.id !== ProjectID.global) {
         yield* db((d) =>

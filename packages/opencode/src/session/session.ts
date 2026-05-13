@@ -25,7 +25,6 @@ import { SessionID, MessageID, PartID } from "./schema"
 
 import type { Provider } from "@/provider"
 import { Permission } from "@/permission"
-import { Global } from "@opencode-ai/core/global"
 import { Effect, Layer, Option, Context, Schema, Types } from "effect"
 import { zod } from "@/util/effect-zod"
 import { withStatics } from "@/util/schema"
@@ -302,9 +301,7 @@ export const Event = {
 }
 
 export function plan(input: { slug: string; time: { created: number } }) {
-  const base = Instance.project.vcs
-    ? path.join(Instance.worktree, ".opencode", "plans")
-    : path.join(Global.Path.data, "plans")
+  const base = path.join(Instance.worktree, ".opencode", "plans")
   return path.join(base, [input.time.created, input.slug].join("-") + ".md")
 }
 

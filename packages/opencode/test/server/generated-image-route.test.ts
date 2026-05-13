@@ -89,6 +89,21 @@ describe("generated image route", () => {
     expect(Buffer.from(await response.arrayBuffer())).toEqual(pngBytes)
   })
 
+  test("serves generated images from the current directory for non-git projects", async () => {
+    await using tmp = await tmpdir()
+    const relativePath = ".opencode/generated-images/generated-image-msg_plain-1.png"
+    const absolutePath = path.join(tmp.path, ".opencode", "generated-images", "generated-image-msg_plain-1.png")
+
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true })
+    await Bun.write(absolutePath, pngBytes)
+
+    const response = await request(tmp.path, relativePath)
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("image/png")
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(pngBytes)
+  })
+
   test("returns 404 when the generated image does not exist", async () => {
     await using tmp = await tmpdir({ git: true })
 

@@ -194,13 +194,13 @@ describe("Instance.containsPath", () => {
     })
   })
 
-  test("non-git project does not allow arbitrary paths via worktree='/'", async () => {
+  test("non-git project uses the directory as its worktree boundary", async () => {
     await using tmp = await tmpdir() // no git: true
 
     await Instance.provide({
       directory: tmp.path,
       fn: () => {
-        // worktree is "/" for non-git projects, but containsPath should NOT allow all paths
+        expect(Instance.directory).toBe(Instance.worktree)
         expect(Instance.containsPath(path.join(tmp.path, "file.txt"))).toBe(true)
         expect(Instance.containsPath("/etc/passwd")).toBe(false)
         expect(Instance.containsPath("/tmp/other")).toBe(false)

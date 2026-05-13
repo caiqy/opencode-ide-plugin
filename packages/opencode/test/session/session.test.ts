@@ -162,6 +162,21 @@ describe("step-finish token propagation via Bus event", () => {
 })
 
 describe("Session", () => {
+  test("stores non-git plans inside the current directory .opencode/plans", async () => {
+    await using tmp = await tmpdir()
+
+    const output = await Instance.provide({
+      directory: tmp.path,
+      fn: async () =>
+        SessionNs.plan({
+          slug: "plain-plan",
+          time: { created: 123 },
+        }),
+    })
+
+    expect(output).toBe(path.join(tmp.path, ".opencode", "plans", "123-plain-plan.md"))
+  })
+
   test("remove works without an instance", async () => {
     await using tmp = await tmpdir({ git: true })
 

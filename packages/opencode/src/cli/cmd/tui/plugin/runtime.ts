@@ -882,7 +882,7 @@ async function installPluginBySpec(
     spec,
     targets: manifest.targets,
     global,
-    vcs: dir.worktree && dir.worktree !== "/" ? "git" : undefined,
+    vcs: dir.vcs === "git" ? "git" : undefined,
     worktree: dir.worktree,
     directory: dir.directory,
   })

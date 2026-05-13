@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import { Project } from "../../src/project"
+import { ProjectTable } from "../../src/project/project.sql"
 import { Log } from "../../src/util"
+import { Database, eq } from "../../src/storage"
+import { SessionTable } from "../../src/session/session.sql"
+import { SessionID } from "../../src/session/schema"
 import { $ } from "bun"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
@@ -68,6 +72,44 @@ function projectLayerWithFailure(failArg: string) {
   )
 }
 
+function ensureGlobalProject() {
+  const now = Date.now()
+  Database.use((db) =>
+    db
+      .insert(ProjectTable)
+      .values({
+        id: ProjectID.global,
+        worktree: "/",
+        time_created: now,
+        time_updated: now,
+        sandboxes: [],
+      })
+      .onConflictDoNothing()
+      .run(),
+  )
+}
+
+function seedLegacyGlobalSession(directory: string) {
+  const now = Date.now()
+  const id = SessionID.make(crypto.randomUUID())
+  Database.use((db) =>
+    db
+      .insert(SessionTable)
+      .values({
+        id,
+        project_id: ProjectID.global,
+        slug: id,
+        directory,
+        title: "legacy non-git",
+        version: "0.0.0-test",
+        time_created: now,
+        time_updated: now,
+      })
+      .run(),
+  )
+  return id
+}
+
 describe("Project.fromDirectory", () => {
   test("should handle git repository with no commits", async () => {
     await using tmp = await tmpdir()
@@ -98,10 +140,51 @@ describe("Project.fromDirectory", () => {
     expect(await Bun.file(opencodeFile).exists()).toBe(true)
   })
 
-  test("returns global for non-git directory", async () => {
+  test("returns a stable non-git project id for plain directories", async () => {
     await using tmp = await tmpdir()
-    const { project } = await run((svc) => svc.fromDirectory(tmp.path))
-    expect(project.id).toBe(ProjectID.global)
+
+    const { project: a, sandbox: sandboxA } = await run((svc) => svc.fromDirectory(tmp.path))
+    const { project: b, sandbox: sandboxB } = await run((svc) => svc.fromDirectory(tmp.path))
+
+    expect(a.id).not.toBe(ProjectID.global)
+    expect(b.id).toBe(a.id)
+    expect(a.worktree).toBe(tmp.path)
+    expect(b.worktree).toBe(tmp.path)
+    expect(sandboxA).toBe(tmp.path)
+    expect(sandboxB).toBe(tmp.path)
+    expect(a.vcs).toBeUndefined()
+  })
+
+  test("assigns different non-git project ids to different directories", async () => {
+    await using first = await tmpdir()
+    await using second = await tmpdir()
+
+    const { project: a } = await run((svc) => svc.fromDirectory(first.path))
+    const { project: b } = await run((svc) => svc.fromDirectory(second.path))
+
+    expect(a.id).not.toBe(ProjectID.global)
+    expect(b.id).not.toBe(ProjectID.global)
+    expect(a.id).not.toBe(b.id)
+  })
+
+  test("migrates legacy global sessions for plain directories at runtime", async () => {
+    await using tmp = await tmpdir()
+    ensureGlobalProject()
+    const sessionID = seedLegacyGlobalSession(tmp.path)
+    const expectedProjectID = ProjectID.nonGit(tmp.path)
+
+    const { project: first } = await run((svc) => svc.fromDirectory(tmp.path))
+    const afterFirst = Database.use((db) => db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get())
+
+    expect(first.id).toBe(expectedProjectID)
+    expect(afterFirst?.project_id).toBe(expectedProjectID)
+
+    const { project: second } = await run((svc) => svc.fromDirectory(tmp.path))
+    const afterSecond = Database.use((db) => db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get())
+
+    expect(second.id).toBe(expectedProjectID)
+    expect(second.id).toBe(first.id)
+    expect(afterSecond?.project_id).toBe(expectedProjectID)
   })
 
   test("derives stable project ID from root commit", async () => {
@@ -452,6 +535,22 @@ describe("Project.list and Project.get", () => {
     const all = Project.list()
     expect(all.length).toBeGreaterThan(0)
     expect(all.find((p) => p.id === project.id)).toBeDefined()
+  })
+
+  test("list drops legacy global project rows once their non-git sessions are migrated", async () => {
+    await using tmp = await tmpdir()
+    ensureGlobalProject()
+    const sessionID = seedLegacyGlobalSession(tmp.path)
+    const expectedProjectID = ProjectID.nonGit(tmp.path)
+
+    await run((svc) => svc.fromDirectory(tmp.path))
+
+    const session = Database.use((db) => db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get())
+    const projects = Project.list()
+
+    expect(session?.project_id).toBe(expectedProjectID)
+    expect(projects.find((project) => project.id === expectedProjectID)?.worktree).toBe(tmp.path)
+    expect(projects.some((project) => project.id === ProjectID.global)).toBe(false)
   })
 
   test("get returns project by id", async () => {
