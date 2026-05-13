@@ -1,25 +1,44 @@
-OpenCode UI (unofficial) brings local OpenCode AI workflows into IDEs with chat, context management, and bundled backend binaries.
+OpenCode UI (unofficial) brings local OpenCode AI workflows into IDEs with chat, context management, image generation, and bundled backend binaries.
 
-## Overview
+## 概览
 
-OpenCode UI (unofficial) is an unofficial IDE plugin that brings local OpenCode workflows into the editor. You can open a chat sidebar, refine prompts in place, and move project context into the conversation without bouncing between the IDE and a terminal.
+OpenCode UI (unofficial) 是一个将本地 OpenCode AI 工作流带入 IDE 的非官方插件。你可以直接在编辑器中处理聊天、上下文整理与图片生成任务，而不必在 IDE、终端和外部工具之间来回切换。
 
-## Core capabilities
+## 核心能力
 
-- Drag and drop files into context
-- Add all opened files to context via command or shortcut
-- Add the current file to context via command or shortcut
-- Add selected line ranges to context via command or shortcut
-- Use a dedicated input area for easier prompt drafting and editing
+- 在 IDE 中直接生成图片，把图片生成工作流放进日常编码环境
+- 基于已有图片继续编辑，便于迭代 UI 草图、素材和设计方案
+- 在聊天界面和插件预览中直接查看生成结果，减少来回切换
+- 将生成结果保存到项目文件，便于继续引用、提交或协作
+- 支持将文件拖拽到上下文中，快速补充任务背景
+- 支持通过命令或快捷操作把当前文件、已打开文件和选中代码加入上下文
+- 提供独立输入区，便于整理、修改和扩展提示词
 
-## Important note
+## 生图配置要点
 
-This is an unofficial plugin. Install only one OpenCode IDE variant to avoid duplicate features or conflicting behavior.
+- 需要先在 OpenCode 中配置支持图片生成的 provider / model，相关能力才会在工作流中可用
+- 图片生成功能是否可用，取决于当前 OpenCode 模型配置是否支持对应能力
+- 如果要基于已有图片继续编辑，需要先提供现有图片作为输入
+- 生成结果会进入当前工作流，并保存到项目中的 `.opencode/generated-images/`，便于后续继续引用
 
-## Standard release
+例如，如果你使用 OpenAI-compatible 图片接口，可以参考下面这组最小示例键值：
 
-The current release track is the standard variant. It bundles the OpenCode backend for supported platforms and launches it locally at runtime.
+- `image_model`: `openai/gpt-image-2`
+- `provider.openai.options.baseURL`: 你的图片接口地址
+- `provider.openai.options.apiKey`: 你的接口密钥
+- `provider.openai.models["gpt-image-2"].limit.context`: `128000`
+- `provider.openai.models["gpt-image-2"].limit.input`: `128000`
+- `provider.openai.models["gpt-image-2"].limit.output`: `32000`
+- `provider.openai.models["gpt-image-2"].options.imageApi`: `openai-compatible`
 
-## Who this is for
+## 重要说明
 
-This plugin is designed for developers already using OpenCode who want to stay inside the IDE for chat, context management, and local AI coding workflows.
+这是非官方插件。请只安装一个 OpenCode IDE 变体，避免重复功能或行为冲突。
+
+## 标准版说明
+
+当前发布的是 standard variant。它会为受支持平台内置 OpenCode backend，并在本地运行时自动启动。
+
+## 适用人群
+
+这个插件面向已经在使用 OpenCode 的开发者，适合希望留在 IDE 内完成聊天、上下文管理、图片生成与本地 AI 编码工作的用户。
