@@ -41,6 +41,28 @@ describe("webgui app route", () => {
     expect(text).toBe(expected)
   })
 
+  test("serves embedded assets without initializing an instance", async () => {
+    const assetPath = embeddedWebGui.find((item) => item.path.endsWith(".js"))?.path
+    if (!assetPath) throw new Error("Missing embedded js asset")
+
+    const original = Instance.provide.bind(Instance)
+    let calls = 0
+    Instance.provide = async (input: Parameters<typeof Instance.provide>[0]) => {
+      calls++
+      return original(input)
+    }
+
+    try {
+      const response = await Server.createApp({}).request(`/app/${assetPath}`)
+      await response.arrayBuffer()
+
+      expect(response.status).toBe(200)
+      expect(calls).toBe(0)
+    } finally {
+      Instance.provide = original
+    }
+  })
+
   test("default /path route exposes resolved configFile", async () => {
     await using tmp = await tmpdir()
 

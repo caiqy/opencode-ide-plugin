@@ -13,9 +13,9 @@ export class ResourceExtractor {
 
   /**
    * Extract the appropriate opencode binary for the current platform.
-   * On the first call per extension host process the entire stable
-   * directory is deleted so the new bundled binary always replaces
-   * the old one.  Subsequent calls return the cached result.
+   * Reuses the stable temp binary when it already matches the bundled
+   * binary size, avoiding unnecessary rewrites and Windows security scans.
+   * Subsequent calls return the cached result.
    * @param extensionPath Path to the extension directory
    * @returns Promise resolving to the path of the extracted binary
    */
@@ -44,17 +44,18 @@ export class ResourceExtractor {
     }
 
     const stableDir = path.join(os.tmpdir(), this.STABLE_DIR)
+    const destPath = path.join(stableDir, binaryName)
 
-    // Wipe the previous directory so a stale binary is never reused
-    console.log(`[ResourceExtractor] Deleting stable directory ${stableDir}`)
-    await this.runBestEffort(`delete stable directory ${stableDir}`, () =>
-      fs.promises.rm(stableDir, { recursive: true, force: true }),
-    )
+    if (await this.canReuse(binaryPath, destPath)) {
+      console.log(`[ResourceExtractor] Reusing extracted binary at ${destPath}`)
+      return destPath
+    }
+
+    console.log(`[ResourceExtractor] Preparing stable directory ${stableDir}`)
     await this.runBestEffort(`create stable directory ${stableDir}`, () =>
       fs.promises.mkdir(stableDir, { recursive: true }),
     )
 
-    const destPath = path.join(stableDir, binaryName)
     const extractedPath = await this.copyWithFallback(binaryPath, destPath)
 
     if (osType !== "windows") {
@@ -97,6 +98,15 @@ export class ResourceExtractor {
 
     console.log(`[ResourceExtractor] Continuing with bundled binary at ${binaryPath}`)
     return binaryPath
+  }
+
+  private static async canReuse(binaryPath: string, destPath: string): Promise<boolean> {
+    const [source, dest] = await Promise.all([
+      fs.promises.stat(binaryPath).catch(() => undefined),
+      fs.promises.stat(destPath).catch(() => undefined),
+    ])
+
+    return Boolean(source?.isFile() && dest?.isFile() && source.size === dest.size)
   }
 
   private static async runBestEffort(label: string, op: () => Promise<unknown>): Promise<void> {

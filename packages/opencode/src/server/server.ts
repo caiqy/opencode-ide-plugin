@@ -60,7 +60,7 @@ function create(opts: { cors?: string[] }) {
   }
 
   const workspaceApp = new Hono()
-  const webguiGeneratedImageApp = new Hono().use(InstanceMiddleware()).route("/", GeneratedImageRoutes())
+  const webguiGeneratedImageApp = new Hono().use("/generated-image", InstanceMiddleware()).route("/", GeneratedImageRoutes())
   const workspaceLegacyApp = new Hono()
     .use(InstanceMiddleware())
     .route("/experimental/workspace", WorkspaceRoutes())

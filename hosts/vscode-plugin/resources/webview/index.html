@@ -200,7 +200,7 @@
           showError("OpenCode UI Load Timeout", "The web interface took too long to load.")
           window.vscode.postMessage({ type: "uiLoaded", success: false, error: "load timeout" })
         }
-      }, 30000)
+      }, 120000)
       window.addEventListener("message", (event) => {
         const message = event.data
 
