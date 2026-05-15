@@ -143,6 +143,41 @@ describe("MessagesContext pagination", () => {
     })
   })
 
+  it("ensureSession 遇到已中止的 pending latest 时会重新发起加载", async () => {
+    ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      if ((sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mock.calls.length === 1) {
+        return Promise.resolve({ error: { message: "aborted" }, data: null })
+      }
+      return Promise.resolve(page([msg("m1", "s1", 1)], null))
+    })
+
+    render(
+      <MessagesProvider>
+        <Capture />
+      </MessagesProvider>,
+    )
+
+    const first = new AbortController()
+    const retry = new AbortController()
+    let restored: Promise<unknown> | undefined
+
+    act(() => {
+      void api!.loadLatest("s1", first.signal)
+      first.abort()
+      restored = api!.ensureSession("s1", retry.signal)
+    })
+
+    expect(sdk.session.messages).toHaveBeenCalledTimes(2)
+    expect((sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mock.calls[1]?.[0].signal).toBe(retry.signal)
+
+    await act(async () => {
+      await restored
+    })
+
+    expect(api?.isSessionLoaded("s1")).toBe(true)
+    expect(api?.isSessionLoadError("s1")).toBe(false)
+  })
+
   it("loadOlder 遇到重叠页时保留当前较新的本地消息版本", async () => {
     const emitter = new EventEmitter()
     ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>)

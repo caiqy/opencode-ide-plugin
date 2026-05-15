@@ -41,6 +41,11 @@ interface SessionPagination {
   complete: boolean
 }
 
+interface LatestLoad {
+  promise: Promise<Message[] | null>
+  signal?: AbortSignal
+}
+
 const emptyPage: SessionPage = {
   complete: false,
   loaded: false,
@@ -160,7 +165,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const sessionLoadToken = useRef<Record<string, number>>({})
   const sessionVersion = useRef<Record<string, number>>({})
   const sessionPageRef = useRef<Record<string, SessionPage>>({})
-  const latestLoadRef = useRef<Record<string, Promise<Message[] | null> | undefined>>({})
+  const latestLoadRef = useRef<Record<string, LatestLoad | undefined>>({})
   const olderLoadRef = useRef<Record<string, Promise<Message[] | null> | undefined>>({})
   const messagesRef = useRef<Message[]>([])
   const session = useSession()
@@ -643,7 +648,8 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const loadLatest = useCallback(
     async (sessionID: string, signal?: AbortSignal) => {
       const pending = latestLoadRef.current[sessionID]
-      if (pending) return pending
+      if (pending && !pending.signal?.aborted) return pending.promise
+      if (pending) delete latestLoadRef.current[sessionID]
 
       console.log("[MessagesContext] Loading latest messages for session:", sessionID)
       const token = (sessionLoadToken.current[sessionID] ?? 0) + 1
@@ -798,12 +804,15 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         }
       })()
 
-      latestLoadRef.current[sessionID] = run
-      return run.finally(() => {
-        if (latestLoadRef.current[sessionID] === run) {
+      let entry: LatestLoad
+      const promise = run.finally(() => {
+        if (latestLoadRef.current[sessionID] === entry) {
           delete latestLoadRef.current[sessionID]
         }
       })
+      entry = { promise, signal }
+      latestLoadRef.current[sessionID] = entry
+      return promise
     },
     [mergeSessionMessages, normalizeMsg, setPage, setSessionIdle, syncSessionReasoningFromMessages],
   )
@@ -814,8 +823,6 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       if (sessionPageRef.current[sessionID]?.loaded) {
         return getMessagesBySession(sessionID)
       }
-      const run = latestLoadRef.current[sessionID]
-      if (run) return run
       return loadLatest(sessionID, signal)
     },
     [getMessagesBySession, loadLatest],
