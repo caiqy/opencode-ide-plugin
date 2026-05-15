@@ -6,18 +6,20 @@ import { ToolImageAttachments } from "./ToolImageAttachments"
 
 const project = vi.hoisted(() => ({
   directory: null as string | null,
+  worktree: null as string | null,
 }))
 
 vi.mock("../../../state/ProjectContext", () => ({
   useProject: () => ({
     directory: project.directory,
-    worktree: project.directory,
+    worktree: project.worktree,
   }),
 }))
 
 describe("ToolImageAttachments", () => {
   beforeEach(() => {
     project.directory = null
+    project.worktree = null
   })
 
   it("前置非图片附件不导致图片编号跳号", () => {
@@ -140,6 +142,29 @@ describe("ToolImageAttachments", () => {
     expect(screen.getByText(relativePath)).toBeInTheDocument()
   })
 
+  it("relativePath 在 directory 未就绪时使用 worktree 作为实例上下文", () => {
+    const relativePath = ".opencode/generated-images/foo.png"
+    project.worktree = "/repo/root"
+
+    render(
+      <ToolImageAttachments
+        attachments={[
+          {
+            id: "image-1",
+            mime: "image/png",
+            filename: "preview.png",
+            relativePath,
+            url: "data:image/png;base64,AA==",
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByRole("img", { name: "preview.png" }).getAttribute("src")).toBe(
+      getGeneratedImageUrl(relativePath, project.worktree),
+    )
+  })
+
   it("点击缩略图打开 ImageOverlay", () => {
     render(
       <ToolImageAttachments
@@ -250,6 +275,8 @@ describe("ToolImageAttachments", () => {
     expect(previewFrame?.className).not.toContain("aspect-[4/3]")
     expect(image.className).toContain("w-full")
     expect(image.className).toContain("h-auto")
+    expect(image.className).toContain("max-h-80")
+    expect(image.className).toContain("object-contain")
     expect(image.className).not.toContain("h-full")
     expect(image.className).not.toContain("group-hover:scale-[1.02]")
   })

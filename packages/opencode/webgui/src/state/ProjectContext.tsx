@@ -30,6 +30,11 @@ export function useProject() {
   return context
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
+export function useProjectOptional() {
+  return useContext(ProjectContext)
+}
+
 interface ProjectProviderProps {
   children: ReactNode
 }
@@ -37,6 +42,7 @@ interface ProjectProviderProps {
 export function ProjectProvider({ children }: ProjectProviderProps) {
   const [project, setProject] = useState<ProjectInfo | null>(null)
   const [directory, setDirectory] = useState<string | null>(null)
+  const [worktree, setWorktree] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
@@ -61,6 +67,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
         const pathResult = await sdk.path.get()
         if (!pathResult.error && pathResult.data) {
           setDirectory(pathResult.data.directory)
+          setWorktree(pathResult.data.worktree)
         }
       } catch (err) {
         setError(err instanceof Error ? err : new Error("Failed to fetch project"))
@@ -76,7 +83,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
   const value: ProjectContextState = {
     project,
     directory,
-    worktree: directory ?? project?.worktree ?? null,
+    worktree: worktree ?? project?.worktree ?? null,
     isLoading,
     error,
   }

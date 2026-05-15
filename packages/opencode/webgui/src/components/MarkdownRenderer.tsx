@@ -1,10 +1,13 @@
 import React from "react"
 import type { ComponentPropsWithoutRef } from "react"
-import ReactMarkdown from "react-markdown"
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import type { Components, ExtraProps } from "react-markdown"
+import type { Components, ExtraProps, UrlTransform } from "react-markdown"
 import { CodeBlock } from "./CodeBlock"
 import { ideBridge } from "../lib/ideBridge"
+import { getGeneratedImageUrl } from "../lib/fileUtils"
+import { useProjectOptional } from "../state/ProjectContext"
+import { ImagePreview, ImagePreviewLinkContext } from "./parts/ImagePreview"
 
 interface MarkdownRendererProps {
   children: string
@@ -29,6 +32,60 @@ const mutedStyles = {
   border: "border-gray-300 dark:border-gray-700",
   bg: "bg-gray-50 dark:bg-gray-800/50",
   bgAlt: "bg-gray-100 dark:bg-gray-800",
+}
+
+const generatedImagesPrefix = ".opencode/generated-images/"
+
+function generatedImagePath(src: string | undefined) {
+  if (!src) return ""
+
+  const decoded = (() => {
+    try {
+      return decodeURIComponent(src)
+    } catch {
+      return src
+    }
+  })()
+  const normalized = decoded.replaceAll("\\", "/")
+  const relative = normalized.startsWith(`./${generatedImagesPrefix}`)
+    ? normalized.slice(2)
+    : normalized.startsWith(`..${generatedImagesPrefix.slice(1)}`)
+      ? normalized.slice(1)
+      : normalized
+  if (relative.startsWith(generatedImagesPrefix)) return relative
+
+  return ""
+}
+
+function resolveImageSrc(src: string | undefined, directory: string | null | undefined) {
+  const relative = generatedImagePath(src)
+  if (relative) return getGeneratedImageUrl(relative, directory)
+
+  return src || ""
+}
+
+function imageName(src: string) {
+  const path = src.split(/[?#]/)[0] ?? ""
+  const segment = path.replaceAll("\\", "/").split("/").filter(Boolean).at(-1)
+  if (!segment) return "image"
+  try {
+    return decodeURIComponent(segment)
+  } catch {
+    return segment
+  }
+}
+
+function createUrlTransform(): UrlTransform {
+  return (url, key) => {
+    if (key === "src") {
+      const relative = generatedImagePath(url)
+      if (relative) return relative
+      if (/^data:image\/[a-z0-9.+-]+(?:[;,]|$)/i.test(url)) return url
+      if (/^blob:/i.test(url)) return url
+    }
+
+    return defaultUrlTransform(url)
+  }
 }
 
 // Custom components for styled markdown elements
@@ -109,7 +166,11 @@ type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> &
     inline?: boolean
   }
 
-function createMarkdownComponents(styles: typeof defaultStyles, tone: "default" | "muted"): Partial<Components> {
+function createMarkdownComponents(
+  styles: typeof defaultStyles,
+  tone: "default" | "muted",
+  directory: string | null | undefined,
+): Partial<Components> {
   return {
     // Headings with proper hierarchy
     h1: ({ children }) => <h1 className={`text-2xl font-bold mb-2 mt-3 ${styles.text}`}>{children}</h1>,
@@ -176,9 +237,16 @@ function createMarkdownComponents(styles: typeof defaultStyles, tone: "default" 
           : "text-blue-600 dark:text-blue-400 hover:underline"
       return (
         <a href={href} target="_blank" rel="noopener noreferrer" className={cls} onClick={handleClick}>
-          {children}
+          <ImagePreviewLinkContext.Provider value>{children}</ImagePreviewLinkContext.Provider>
         </a>
       )
+    },
+
+    img: ({ src, alt }) => {
+      const resolved = resolveImageSrc(src, directory)
+      if (!resolved) return null
+
+      return <ImagePreview src={resolved} alt={alt ?? ""} filename={alt || imageName(src || resolved)} />
     },
 
     // Tables with borders and striped rows
@@ -213,9 +281,13 @@ function createMarkdownComponents(styles: typeof defaultStyles, tone: "default" 
   }
 }
 
-function createInlineComponents(styles: typeof defaultStyles, tone: "default" | "muted"): Partial<Components> {
+function createInlineComponents(
+  styles: typeof defaultStyles,
+  tone: "default" | "muted",
+  directory: string | null | undefined,
+): Partial<Components> {
   return {
-    ...createMarkdownComponents(styles, tone),
+    ...createMarkdownComponents(styles, tone, directory),
     p: ({ children }) => <span>{children}</span>,
     h1: ({ children }) => <span className={`font-bold ${styles.text}`}>{children}</span>,
     h2: ({ children }) => <span className={`font-bold ${styles.text}`}>{children}</span>,
@@ -238,12 +310,15 @@ function createInlineComponents(styles: typeof defaultStyles, tone: "default" | 
 }
 
 export function MarkdownRenderer({ children, inline, tone = "default" }: MarkdownRendererProps) {
+  const project = useProjectOptional()
+  const directory = project?.directory ?? project?.worktree ?? null
   const styles = tone === "muted" ? mutedStyles : defaultStyles
-  const components = inline ? createInlineComponents(styles, tone) : createMarkdownComponents(styles, tone)
+  const components = inline ? createInlineComponents(styles, tone, directory) : createMarkdownComponents(styles, tone, directory)
+  const urlTransform = createUrlTransform()
   if (inline) {
     return (
       <span className="markdown-content inline break-words [overflow-wrap:anywhere]">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={urlTransform}>
           {children}
         </ReactMarkdown>
       </span>
@@ -251,7 +326,7 @@ export function MarkdownRenderer({ children, inline, tone = "default" }: Markdow
   }
   return (
     <div className="markdown-content break-words [overflow-wrap:anywhere]">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={urlTransform}>
         {children}
       </ReactMarkdown>
     </div>
