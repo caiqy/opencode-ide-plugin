@@ -134,16 +134,17 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
   }, [blocks.tail])
   const tailKey = useMemo(() => blocks.tail.map((item) => `${item.kind}:${item.id}`).join(","), [blocks.tail])
   const ids = useMemo(() => visibleMessages.map((item) => item.info.id), [visibleMessages])
-  const { messagesEndRef, messagesContainerRef, showScrollToBottom, scrollToBottom } = useMessageScroll(
-    sessionID,
-    tailMessages,
-    isIdle,
-    isReasoning,
-    settling,
-    box,
-    tailRef,
-    revertBoundaryID ? `${tailKey}:revert:${revertBoundaryID}` : tailKey,
-  )
+  const { messagesEndRef, messagesContainerRef, showScrollToBottom, scrollToBottom, runProgrammaticScroll } =
+    useMessageScroll(
+      sessionID,
+      tailMessages,
+      isIdle,
+      isReasoning,
+      settling,
+      box,
+      tailRef,
+      revertBoundaryID ? `${tailKey}:revert:${revertBoundaryID}` : tailKey,
+    )
 
   const trim = useTopTrim({
     sessionID,
@@ -152,6 +153,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
     loading: page.olderLoading,
     paused: settling,
     ref: messagesContainerRef,
+    runProgrammaticScroll,
   })
 
   useLayoutEffect(() => {
@@ -296,8 +298,14 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
           </div>
         </PartOpenProvider>
 
-        {/* Scroll to bottom button - sticky inside scroll container */}
-        <ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />
+        {showScrollToBottom && (
+          <div
+            data-testid="scroll-to-bottom-layer"
+            className="pointer-events-none sticky bottom-4 z-30 flex justify-end pr-2"
+          >
+            <ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />
+          </div>
+        )}
       </div>
 
       {/* Fork confirmation modal */}

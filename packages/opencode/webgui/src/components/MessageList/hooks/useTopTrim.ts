@@ -5,6 +5,8 @@ import { useHistoryScroll } from "./useHistoryScroll"
 
 type Item = { id: string }
 
+type ProgrammaticScroll = (cause: "history-restore" | "history-trim", fn: (parent: HTMLElement) => void) => void
+
 interface Input<T extends Item> {
   sessionID?: string | null
   items: T[]
@@ -12,6 +14,7 @@ interface Input<T extends Item> {
   paused: boolean
   loading?: boolean
   ref: RefObject<HTMLDivElement | null>
+  runProgrammaticScroll?: ProgrammaticScroll
 }
 
 function version(item: Item) {
@@ -64,7 +67,22 @@ export function useTopTrim<T extends Item>(input: Input<T>) {
   const set = useMemo(() => new Set(input.items.map((item) => item.id)), [input.items])
   const scroll = useHistoryScroll({ ids })
   const pushRef = useRef<(top: number, height?: number) => void>(() => {})
+  const mutateScroll = useCallback(
+    (cause: "history-restore" | "history-trim", parent: HTMLElement, fn: () => void) => {
+      if (input.runProgrammaticScroll) {
+        input.runProgrammaticScroll(cause, () => {
+          void parent
+          fn()
+        })
+        return
+      }
+      fn()
+    },
+    [input.runProgrammaticScroll],
+  )
   const capture = scroll.capture
+  const onHeightChange = scroll.onHeightChange
+  const nextTop = scroll.nextTop
   const apply = scroll.apply
   const restore = scroll.restore
   const clear = scroll.clear
@@ -90,17 +108,23 @@ export function useTopTrim<T extends Item>(input: Input<T>) {
     items: input.items.map((item) => ({ id: item.id, version: version(item) })),
     onChange: (next) => {
       snap()
-      scroll.onHeightChange(next)
+      onHeightChange(next)
       if (input.paused || pending.current) return
       const parent = input.ref.current?.parentElement as HTMLElement | null
       if (!parent) return
-      if (apply(parent)) {
+      const top = nextTop()
+      if (top) {
+        mutateScroll("history-trim", parent, () => {
+          apply(parent)
+        })
         pushRef.current(parent.scrollTop, parent.clientHeight)
         return
       }
       const row = node.current[next.id]
       if (!row || row.getBoundingClientRect().top >= parent.getBoundingClientRect().top) return
-      parent.scrollTop += next.delta
+      mutateScroll("history-trim", parent, () => {
+        parent.scrollTop += next.delta
+      })
       pushRef.current(parent.scrollTop, parent.clientHeight)
     },
   })
@@ -235,19 +259,24 @@ export function useTopTrim<T extends Item>(input: Input<T>) {
     if (last.head && head !== last.head) {
       const index = ids.indexOf(last.head)
       if (index > 0) {
-        restore(parent, node.current, parent.getBoundingClientRect().top)
+        mutateScroll("history-restore", parent, () => {
+          restore(parent, node.current, parent.getBoundingClientRect().top)
+        })
         pending.current = null
         if (!input.paused) push(parent.scrollTop, parent.clientHeight)
         return
       }
     }
     if (last.end) {
-      if (apply(parent)) {
+      if (nextTop()) {
+        mutateScroll("history-restore", parent, () => {
+          apply(parent)
+        })
         pushRef.current(parent.scrollTop, parent.clientHeight)
       }
       pending.current = null
     }
-  }, [apply, head, input.paused, input.ref, len, loading, restore])
+  }, [apply, head, ids, input.paused, input.ref, len, loading, mutateScroll, nextTop, push, restore])
 
   const offset = full ? 0 : top
   const visible = useMemo(() => input.items.slice(full ? 0 : start), [full, input.items, start])

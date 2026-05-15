@@ -53,6 +53,7 @@ vi.mock("../../../hooks/useOpenFile", () => ({
 
 vi.mock("../../../state/ProjectContext", () => ({
   useProject: () => ({ worktree: mocks.directory, directory: mocks.directory }),
+  useProjectOptional: () => ({ worktree: mocks.directory, directory: mocks.directory }),
 }))
 
 import { ToolPart } from "./index"

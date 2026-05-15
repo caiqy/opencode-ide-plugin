@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
@@ -56,7 +56,12 @@ vi.mock("../TypingIndicator", () => ({
 }))
 
 vi.mock("../MessageList/ScrollToBottomButton", () => ({
-  ScrollToBottomButton: () => null,
+  ScrollToBottomButton: ({ visible, onClick }: { visible: boolean; onClick: () => void }) =>
+    visible ? (
+      <button type="button" data-testid="mock-scroll-to-bottom" onClick={onClick}>
+        滚动到底部
+      </button>
+    ) : null,
 }))
 
 import { SubtaskMessageList } from "./SubtaskMessageList"
@@ -126,6 +131,33 @@ describe("SubtaskMessageList", () => {
     expect(sorted.map((m: any) => m.info.id)).toEqual(["m1", "m2"])
     expect(isIdle).toBe(false)
     expect(isReasoning).toBe(true)
+  })
+
+  it("showScrollToBottom=false 时不渲染 sticky layer 与按钮", () => {
+    render(<SubtaskMessageList sessionID="s-child" />)
+
+    expect(screen.queryByTestId("subtask-scroll-to-bottom-layer")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("mock-scroll-to-bottom")).not.toBeInTheDocument()
+  })
+
+  it("showScrollToBottom=true 时渲染 sticky layer 并触发滚动", () => {
+    const scrollToBottom = vi.fn()
+    mocks.useMessageScroll.mockReturnValue({
+      messagesEndRef: { current: null },
+      messagesContainerRef: { current: null },
+      showScrollToBottom: true,
+      scrollToBottom,
+    })
+
+    const { container } = render(<SubtaskMessageList sessionID="s-child" />)
+
+    const shell = container.querySelector(".min-h-full")
+    const layer = screen.getByTestId("subtask-scroll-to-bottom-layer")
+    expect(layer.parentElement).toBe(shell)
+    expect(layer).toHaveClass("sticky", "bottom-4", "z-30", "flex", "justify-end", "pr-2", "pointer-events-none")
+
+    fireEvent.click(screen.getByTestId("mock-scroll-to-bottom"))
+    expect(scrollToBottom).toHaveBeenCalledTimes(1)
   })
 
   it("子任务消息中的多个 task 卡片默认只展开最后一个", () => {

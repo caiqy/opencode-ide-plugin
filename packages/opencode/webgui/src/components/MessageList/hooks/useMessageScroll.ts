@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useCallback, useState, type RefObject } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useCallback, useState, type RefObject } from "react"
 import type { Message } from "../../../state/MessagesContext"
 
 // ─── JCEF helpers ────────────────────────────────────────────────────────────
@@ -34,41 +34,16 @@ function nestedScrollable(container: HTMLElement, target: EventTarget | null) {
   return false
 }
 
-// ─── Auto-scroll helpers (ported from create-auto-scroll) ────────────────────
-
-const AUTO_TTL = 1500
-
-type AutoMark = { top: number; time: number }
-
-function markAuto(
-  container: HTMLElement,
-  ref: { current: AutoMark | null },
-  timer: { current: ReturnType<typeof setTimeout> | null },
-) {
-  ref.current = {
-    top: Math.max(0, container.scrollHeight - container.clientHeight),
-    time: Date.now(),
-  }
-  if (timer.current) clearTimeout(timer.current)
-  timer.current = setTimeout(() => {
-    ref.current = null
-    timer.current = null
-  }, AUTO_TTL)
-}
-
-function isAuto(container: HTMLElement, ref: { current: AutoMark | null }): boolean {
-  const a = ref.current
-  if (!a) return false
-  if (Date.now() - a.time > AUTO_TTL) {
-    ref.current = null
-    return false
-  }
-  return Math.abs(container.scrollTop - a.top) < 2
-}
-
 function distanceFromBottom(container: HTMLElement): number {
   return container.scrollHeight - container.clientHeight - container.scrollTop
 }
+
+const BOTTOM_THRESHOLD = 24
+const PROGRAM_TTL = 800
+
+type FollowMode = "following" | "detached" | "seeking"
+type ScrollCause = "auto-follow" | "button-seek" | "send-message" | "history-restore" | "history-trim" | "jcef-wheel"
+type ProgramMark = { cause: ScrollCause; top: number; target: number | null; time: number }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
@@ -86,48 +61,169 @@ export function useMessageScroll(
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = box ?? innerRef
+  const [containerNode, setContainerNode] = useState<HTMLDivElement | null>(messagesContainerRef.current)
 
-  // ── core state (2 refs replacing the previous 6) ──────────────────────────
-  const userScrolled = useRef(false)
-  const autoMark = useRef<AutoMark | null>(null)
-  const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // True while a smooth programmatic scroll is in flight (manual button click).
-  // isAuto() can't cover this case because smooth scrollTop moves gradually.
-  const smoothing = useRef(false)
-  const smoothTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // ── "scroll to bottom" button ─────────────────────────────────────────────
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const mode = useRef<FollowMode>("following")
+  const program = useRef<ProgramMark | null>(null)
+  const programTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const seekTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastTop = useRef(0)
+  const lastHeight = useRef(0)
+  const lastClient = useRef(0)
+  const allowNextTailFollow = useRef(false)
+  // following + !isAtBottom is a deliberate transient: content growth and
+  // in-flight programmatic scrolls can move the bottom away for a frame while
+  // we still intend to auto-follow on the next layout tick.
+  const [view, setView] = useState({ mode: "following" as FollowMode, isAtBottom: true })
+  const viewRef = useRef(view)
 
   // ── helpers ───────────────────────────────────────────────────────────────
 
-  const container = useCallback(
-    () => messagesContainerRef.current?.parentElement as HTMLElement | null,
-    [messagesContainerRef],
-  )
+  useLayoutEffect(() => {
+    const node = messagesContainerRef.current
+    if (node !== containerNode) setContainerNode(node)
+  })
+
+  const container = useCallback(() => containerNode?.parentElement ?? null, [containerNode])
+
+  const syncLast = useCallback((el: HTMLElement) => {
+    lastTop.current = el.scrollTop
+    lastHeight.current = el.scrollHeight
+    lastClient.current = el.clientHeight
+  }, [])
+
+  const commitView = useCallback((nextMode: FollowMode, isAtBottom: boolean) => {
+    mode.current = nextMode
+    const prev = viewRef.current
+    if (prev.mode === nextMode && prev.isAtBottom === isAtBottom) return
+    const next = { mode: nextMode, isAtBottom }
+    viewRef.current = next
+    setView(next)
+  }, [])
+
+  const clearProgram = useCallback(() => {
+    program.current = null
+    if (programTimer.current) {
+      clearTimeout(programTimer.current)
+      programTimer.current = null
+    }
+  }, [])
+
+  const update = useCallback((el: HTMLElement, nextMode = mode.current) => {
+    const at = distanceFromBottom(el) <= BOTTOM_THRESHOLD
+    syncLast(el)
+    commitView(at ? "following" : nextMode, at)
+  }, [commitView, syncLast])
+
+  const markProgram = useCallback((cause: ScrollCause, top: number, target: number | null) => {
+    program.current = { cause, top, target, time: Date.now() }
+    if (programTimer.current) clearTimeout(programTimer.current)
+    programTimer.current = setTimeout(() => {
+      program.current = null
+      programTimer.current = null
+    }, PROGRAM_TTL)
+  }, [])
+
+  const updateProgramTarget = useCallback((target: number) => {
+    const item = program.current
+    if (!item) return
+    program.current = { ...item, target }
+  }, [])
+
+  const getProgram = useCallback(() => {
+    const item = program.current
+    if (!item) return null
+    if (Date.now() - item.time > PROGRAM_TTL) {
+      clearProgram()
+      return null
+    }
+    return item
+  }, [clearProgram])
+
+  const clearSeek = useCallback(() => {
+    if (seekTimer.current) {
+      clearTimeout(seekTimer.current)
+      seekTimer.current = null
+    }
+  }, [])
+
+  const isTowardProgramTarget = useCallback((item: ProgramMark, prevTop: number, currentTop: number) => {
+    if (item.target === null) return true
+    const prevDistance = Math.abs(item.target - prevTop)
+    const nextDistance = Math.abs(item.target - currentTop)
+    return nextDistance <= prevDistance + 1
+  }, [])
 
   // Immediately pin to bottom (no animation).
   // ResizeObserver fires after layout, before paint — instant assignment avoids
   // the visible "catch-up" animation you get with scrollIntoView smooth.
   const pinBottom = useCallback(
-    (behavior: ScrollBehavior = "auto") => {
+    (cause: ScrollCause = "auto-follow", behavior: ScrollBehavior = "auto") => {
       const el = container()
       if (!el) return
-      markAuto(el, autoMark, autoTimer)
-      if (behavior === "smooth") {
-        smoothing.current = true
-        if (smoothTimer.current) clearTimeout(smoothTimer.current)
-        smoothTimer.current = setTimeout(() => {
-          smoothing.current = false
-          smoothTimer.current = null
-        }, 600)
-        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
-      } else {
-        el.scrollTop = el.scrollHeight
+      const targetTop = Math.max(0, el.scrollHeight - el.clientHeight)
+      markProgram(cause, el.scrollTop, targetTop)
+      if (cause === "button-seek") {
+        commitView("seeking", false)
+        clearSeek()
+        seekTimer.current = setTimeout(() => {
+          const current = container()
+          if (!current) return
+          if (distanceFromBottom(current) <= BOTTOM_THRESHOLD) {
+            clearProgram()
+            commitView("following", true)
+          }
+          seekTimer.current = null
+        }, 700)
+        el.scrollTo({ top: el.scrollHeight, behavior })
+        return
       }
-      setShowScrollToBottom(false)
+      commitView("following", true)
+      if (behavior === "smooth") el.scrollTo({ top: el.scrollHeight, behavior })
+      else el.scrollTop = targetTop
+      syncLast(el)
     },
-    [container],
+    [clearProgram, clearSeek, commitView, container, markProgram, syncLast],
+  )
+
+  const followTail = useCallback(
+    (el: HTMLElement) => {
+      if (mode.current === "following") {
+        const hadBottomAnchor =
+          allowNextTailFollow.current ||
+          lastHeight.current <= 0 ||
+          lastClient.current <= 0 ||
+          lastHeight.current - lastClient.current - lastTop.current <= BOTTOM_THRESHOLD
+        if (!hadBottomAnchor) {
+          allowNextTailFollow.current = false
+          syncLast(el)
+          clearProgram()
+          clearSeek()
+          commitView("detached", false)
+          return
+        }
+        allowNextTailFollow.current = false
+        pinBottom("auto-follow")
+        return
+      }
+      if (mode.current === "seeking") {
+        pinBottom("button-seek", "smooth")
+      }
+    },
+    [clearProgram, clearSeek, commitView, pinBottom, syncLast],
+  )
+
+  const runProgrammaticScroll = useCallback(
+    (cause: ScrollCause, fn: (el: HTMLElement) => void) => {
+      const el = container()
+      if (!el) return
+      const startTop = el.scrollTop
+      markProgram(cause, startTop, null)
+      fn(el)
+      updateProgramTarget(el.scrollTop)
+      update(el, mode.current)
+    },
+    [container, markProgram, update, updateProgramTarget],
   )
 
   // ── scroll event handler ──────────────────────────────────────────────────
@@ -135,42 +231,55 @@ export function useMessageScroll(
   const handleScroll = useCallback(() => {
     const el = container()
     if (!el) return
+    const prevTop = lastTop.current
+    const prevHeight = lastHeight.current
+    const prevClient = lastClient.current
+    lastTop.current = el.scrollTop
+    lastHeight.current = el.scrollHeight
+    lastClient.current = el.clientHeight
 
-    const dist = distanceFromBottom(el)
-    const canScroll = el.scrollHeight - el.clientHeight > 1
+    const at = distanceFromBottom(el) <= BOTTOM_THRESHOLD
 
-    // Button visibility: show when more than 8 px from bottom
-    // Suppress button during smooth programmatic scroll
-    setShowScrollToBottom(!smoothing.current && dist > 8)
-
-    if (!canScroll) {
-      userScrolled.current = false
+    if (at) {
+      allowNextTailFollow.current = false
+      clearProgram()
+      clearSeek()
+      commitView("following", true)
       return
     }
 
-    if (dist < 10) {
-      // Arrived at bottom — resume auto-follow
-      userScrolled.current = false
-      smoothing.current = false
-      if (smoothTimer.current) {
-        clearTimeout(smoothTimer.current)
-        smoothTimer.current = null
+    const dimensionsChanged = el.scrollHeight !== prevHeight || el.clientHeight !== prevClient
+    const item = getProgram()
+    if (item && !dimensionsChanged) {
+      // button-seek, history restore/trim and jcef wheel can all overlap with a
+      // user's immediate scrollbar/keyboard intervention. While target is pending
+      // (the write happened but we have not committed the final target yet), or
+      // while the position is still moving toward that target, treat the scroll as
+      // programmatic. Once it deviates away, let normal detached handling win.
+      if (isTowardProgramTarget(item, prevTop, el.scrollTop)) {
+        commitView(mode.current, false)
+        return
       }
+      clearProgram()
+    }
+
+    const wasAtBottom = prevHeight - prevClient - prevTop <= BOTTOM_THRESHOLD
+    if (
+      mode.current === "following" &&
+      wasAtBottom &&
+      prevHeight > 0 &&
+      prevClient > 0 &&
+      dimensionsChanged &&
+      el.scrollTop >= prevTop
+    ) {
+      allowNextTailFollow.current = true
+      commitView("following", false)
       return
     }
 
-    // Ignore scroll events that WE triggered (auto pinBottom or smooth in flight)
-    if (!userScrolled.current && (isAuto(el, autoMark) || smoothing.current)) {
-      return
-    }
-
-    userScrolled.current = true
-    smoothing.current = false
-    if (smoothTimer.current) {
-      clearTimeout(smoothTimer.current)
-      smoothTimer.current = null
-    }
-  }, [container])
+    clearSeek()
+    commitView("detached", false)
+  }, [clearProgram, clearSeek, commitView, container, getProgram, isTowardProgramTarget])
 
   // ── wheel / touch handlers ────────────────────────────────────────────────
 
@@ -185,7 +294,9 @@ export function useMessageScroll(
       // regions (code blocks, tool output) — this is the real fix for root
       // cause #5, not just lowering the threshold.
       if (e.deltaY < -2 && !nestedScrollable(el, e.target)) {
-        userScrolled.current = true
+        clearSeek()
+        clearProgram()
+        commitView("detached", distanceFromBottom(el) <= BOTTOM_THRESHOLD)
       }
 
       // JCEF wheel multiplier
@@ -194,7 +305,9 @@ export function useMessageScroll(
       const delta = normalizeDelta(e, el)
       if (!delta) return
       e.preventDefault()
-      el.scrollBy({ top: delta * multiplier, behavior: "auto" })
+      runProgrammaticScroll("jcef-wheel", (node) => {
+        node.scrollBy({ top: delta * multiplier, behavior: "auto" })
+      })
     }
 
     let lastTouchY: number | undefined
@@ -204,7 +317,9 @@ export function useMessageScroll(
     const handleTouchMove = (e: TouchEvent) => {
       const y = e.touches[0]?.clientY
       if (y !== undefined && lastTouchY !== undefined && y > lastTouchY) {
-        userScrolled.current = true
+        clearSeek()
+        clearProgram()
+        commitView("detached", distanceFromBottom(el) <= BOTTOM_THRESHOLD)
       }
       lastTouchY = y
     }
@@ -218,7 +333,7 @@ export function useMessageScroll(
       el.removeEventListener("touchstart", handleTouchStart)
       el.removeEventListener("touchmove", handleTouchMove)
     }
-  }, [sessionID, multiplier, container])
+  }, [sessionID, multiplier, clearProgram, clearSeek, commitView, container, runProgrammaticScroll])
 
   // ── scroll event binding ──────────────────────────────────────────────────
 
@@ -252,31 +367,34 @@ export function useMessageScroll(
     if (typeof ResizeObserver === "undefined") return
 
     const obs = new ResizeObserver(() => {
-      if (settling || userScrolled.current) return
-      pinBottom()
+      if (settling) return
+      followTail(el)
     })
 
     obs.observe(content)
     obs.observe(el)
     return () => obs.disconnect()
-  }, [sessionID, settling, tail, container, messagesContainerRef, pinBottom])
+  }, [sessionID, settling, tail, container, messagesContainerRef, followTail])
 
   // ── Session reset ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-    userScrolled.current = false
-    autoMark.current = null
-    smoothing.current = false
-    if (autoTimer.current) {
-      clearTimeout(autoTimer.current)
-      autoTimer.current = null
+    mode.current = "following"
+    allowNextTailFollow.current = false
+    clearProgram()
+    lastTop.current = 0
+    lastHeight.current = 0
+    lastClient.current = 0
+    clearSeek()
+    commitView("following", true)
+  }, [sessionID, clearProgram, clearSeek, commitView])
+
+  useEffect(() => {
+    return () => {
+      clearProgram()
+      clearSeek()
     }
-    if (smoothTimer.current) {
-      clearTimeout(smoothTimer.current)
-      smoothTimer.current = null
-    }
-    setShowScrollToBottom(false)
-  }, [sessionID])
+  }, [clearProgram, clearSeek])
 
   // ── User sends new message → force scroll back to bottom ─────────────────
 
@@ -287,8 +405,8 @@ export function useMessageScroll(
     const last = sortedMessages.at(-1)
     const changed = prevMsg.current.count < messageCount || prevMsg.current.id !== last?.info.id
     if (changed && last?.info.role === "user") {
-      userScrolled.current = false
-      pinBottom()
+      mode.current = "following"
+      pinBottom("send-message")
     }
     prevMsg.current = { count: messageCount, id: last?.info.id }
   }, [messageCount, sortedMessages, pinBottom])
@@ -315,17 +433,25 @@ export function useMessageScroll(
   }, [sortedMessages, isIdle, isReasoning, tailKey])
 
   useEffect(() => {
+    const el = container()
+    if (!el) return
     if (settling) return
-    if (userScrolled.current) return
-    pinBottom()
-  }, [scrollSignature, settling, sessionID, pinBottom])
+    followTail(el)
+  }, [scrollSignature, settling, sessionID, container, followTail])
 
   // ── Manual scroll-to-bottom (button) ─────────────────────────────────────
 
   const scrollToBottom = useCallback(() => {
-    userScrolled.current = false
-    pinBottom("smooth")
+    pinBottom("button-seek", "smooth")
   }, [pinBottom])
 
-  return { messagesEndRef, messagesContainerRef, showScrollToBottom, scrollToBottom }
+  return {
+    messagesEndRef,
+    messagesContainerRef,
+    mode: view.mode,
+    isAtBottom: view.isAtBottom,
+    showScrollToBottom: view.mode === "detached" && !view.isAtBottom,
+    scrollToBottom,
+    runProgrammaticScroll,
+  }
 }

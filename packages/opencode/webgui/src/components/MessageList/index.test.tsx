@@ -264,6 +264,33 @@ describe("MessageList", () => {
     expect(root).not.toHaveClass("space-y-4")
   })
 
+  it("showScrollToBottom=false 时不渲染 sticky layer 与按钮", () => {
+    render(<MessageList sessionID="s1" onUndoToInput={vi.fn()} />)
+
+    expect(screen.queryByTestId("scroll-to-bottom-layer")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "滚动到底部" })).not.toBeInTheDocument()
+  })
+
+  it("showScrollToBottom=true 时渲染 sticky layer 并触发滚动", () => {
+    const scrollToBottom = vi.fn()
+    mocks.useMessageScroll.mockReturnValue({
+      messagesEndRef: { current: null },
+      messagesContainerRef: { current: null },
+      showScrollToBottom: true,
+      scrollToBottom,
+    })
+
+    render(<MessageList sessionID="s1" onUndoToInput={vi.fn()} />)
+
+    const shell = screen.getByTestId("message-scroll-shell")
+    const layer = screen.getByTestId("scroll-to-bottom-layer")
+    expect(layer.parentElement).toBe(shell)
+    expect(layer).toHaveClass("sticky", "bottom-4", "z-30", "flex", "justify-end", "pr-2", "pointer-events-none")
+
+    fireEvent.click(screen.getByRole("button", { name: "滚动到底部" }))
+    expect(scrollToBottom).toHaveBeenCalledTimes(1)
+  })
+
   it("history 与 tail 各自的消息行容器使用与单条消息内部一致的 12px 间距", () => {
     mocks.useMessages.mockReturnValue({
       getMessagesBySession: () => [msg("m1", 1), msg("m2", 2)],

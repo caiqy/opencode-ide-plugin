@@ -12,6 +12,7 @@ function Harness(props: {
   settling?: boolean
   tailKey?: string
   controls?: boolean
+  showContainer?: boolean
 }) {
   const tailRef = useRef<HTMLDivElement>(null)
   const hook = useMessageScroll(
@@ -24,17 +25,55 @@ function Harness(props: {
     tailRef,
     props.tailKey,
   )
+  const controls = hook as typeof hook & {
+    runProgrammaticScroll: (source: string, fn: (parent: HTMLElement) => void) => void
+  }
 
   return (
     <div data-testid="scroll-parent">
-      <div ref={hook.messagesContainerRef} data-testid="message-scroll-container">
-        <div data-testid="history-box" style={{ height: 200 }} />
-        <div ref={tailRef} data-testid="tail-box">
-          <div ref={hook.messagesEndRef} data-testid="scroll-anchor" />
+      {props.showContainer === false ? null : (
+        <div ref={hook.messagesContainerRef} data-testid="message-scroll-container">
+          <div data-testid="history-box" style={{ height: 200 }} />
+          <div ref={tailRef} data-testid="tail-box">
+            <div ref={hook.messagesEndRef} data-testid="scroll-anchor" />
+          </div>
+          {props.controls ? <button data-testid="scroll-button" onClick={hook.scrollToBottom} /> : null}
+          {props.controls ? <div data-testid="scroll-button-visible">{hook.showScrollToBottom ? "1" : "0"}</div> : null}
+          {props.controls ? <div data-testid="scroll-mode">{hook.mode}</div> : null}
+          {props.controls ? <div data-testid="scroll-at-bottom">{hook.isAtBottom ? "1" : "0"}</div> : null}
+          {props.controls ? (
+            <button
+              data-testid="history-programmatic-scroll"
+              onClick={() => {
+                controls.runProgrammaticScroll("history-restore", (parent) => {
+                  parent.scrollTop -= 100
+                })
+              }}
+            />
+          ) : null}
+          {props.controls ? (
+            <button
+              data-testid="history-programmatic-scroll-sync"
+              onClick={() => {
+                controls.runProgrammaticScroll("history-restore", (parent) => {
+                  parent.scrollTop -= 100
+                  parent.dispatchEvent(new Event("scroll"))
+                })
+              }}
+            />
+          ) : null}
+          {props.controls ? (
+            <button
+              data-testid="history-programmatic-trim"
+              onClick={() => {
+                controls.runProgrammaticScroll("history-trim", (parent) => {
+                  parent.scrollTop += 100
+                })
+              }}
+            />
+          ) : null}
         </div>
-        {props.controls ? <button data-testid="scroll-button" onClick={hook.scrollToBottom} /> : null}
-        {props.controls ? <div data-testid="scroll-button-visible">{hook.showScrollToBottom ? "1" : "0"}</div> : null}
-      </div>
+      )}
     </div>
   )
 }
@@ -69,9 +108,19 @@ function makeScrollTracker(el: HTMLElement) {
     count++
   })
 
+  const scrollBy = vi.fn((opts?: ScrollToOptions) => {
+    if (opts?.top !== undefined) top = clamp(top + opts.top)
+    count++
+  })
+
   Object.defineProperty(el, "scrollTo", {
     configurable: true,
     value: scrollTo,
+  })
+
+  Object.defineProperty(el, "scrollBy", {
+    configurable: true,
+    value: scrollBy,
   })
 
   return {
@@ -81,11 +130,17 @@ function makeScrollTracker(el: HTMLElement) {
       count = 0
     },
     scrollTo,
+    scrollBy,
     setMetrics: (nextHeight: number, nextClient: number, nextTop: number) => {
       setting = true
       height = nextHeight
       client = nextClient
       top = nextTop
+      setting = false
+    },
+    growHeight: (nextHeight: number) => {
+      setting = true
+      height = nextHeight
       setting = false
     },
   }
@@ -120,10 +175,11 @@ function userMessage(text: string): Message[] {
 
 describe("useMessageScroll", () => {
   const originalResizeObserver = (globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver
-  let observers: Array<{ callback: ResizeObserverCallback; nodes: Set<Element> }> = []
+  let observers: Array<{ callback: ResizeObserverCallback; nodes: Set<Element>; active: boolean }> = []
 
   const triggerResize = (node: Element) => {
     for (const item of observers) {
+      if (!item.active) continue
       if (!item.nodes.has(node)) continue
       act(() => {
         item.callback([{ target: node } as ResizeObserverEntry], {} as ResizeObserver)
@@ -134,14 +190,17 @@ describe("useMessageScroll", () => {
   beforeEach(() => {
     observers = []
     ;(globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver = class ResizeObserver {
-      item: { callback: ResizeObserverCallback; nodes: Set<Element> }
+      item: { callback: ResizeObserverCallback; nodes: Set<Element>; active: boolean }
 
       constructor(callback: ResizeObserverCallback) {
-        this.item = { callback, nodes: new Set<Element>() }
+        this.item = { callback, nodes: new Set<Element>(), active: true }
         observers.push(this.item)
       }
 
-      disconnect() {}
+      disconnect() {
+        this.item.active = false
+        this.item.nodes.clear()
+      }
 
       observe(node: Element) {
         this.item.nodes.add(node)
@@ -181,6 +240,32 @@ describe("useMessageScroll", () => {
     fireEvent.scroll(parent)
     triggerResize(tail)
     expect(tracker.getCount()).toBe(1)
+  })
+
+  it("滚动容器延迟挂载后仍会绑定滚动与自动跟随监听", () => {
+    const { rerender, getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls showContainer={false} />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tracker = makeScrollTracker(parent)
+
+    rerender(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls showContainer />,
+    )
+
+    const tail = getByTestId("tail-box")
+    tracker.setMetrics(1000, 500, 500)
+    fireEvent.scroll(parent)
+    triggerResize(tail)
+    expect(tracker.getCount()).toBe(1)
+
+    tracker.reset()
+    tracker.setMetrics(1000, 500, 200)
+    fireEvent.scroll(parent)
+    triggerResize(tail)
+    expect(tracker.getCount()).toBe(0)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
   })
 
   it("工具状态变化时，底部状态应继续触发自动滚动", () => {
@@ -245,6 +330,167 @@ describe("useMessageScroll", () => {
     triggerResize(tail)
 
     expect(tracker.getCount()).toBe(0)
+  })
+
+  it("seeking 期间用户用滚动条或键盘离底后不会被 button-seek 反弹到底部", () => {
+    vi.useFakeTimers()
+
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tail = getByTestId("tail-box")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 400)
+    fireEvent.scroll(parent)
+    fireEvent.click(getByTestId("scroll-button"))
+    tracker.reset()
+
+    tracker.setMetrics(1000, 500, 200)
+    fireEvent.scroll(parent)
+    tracker.growHeight(1400)
+    triggerResize(tail)
+
+    expect(tracker.getCount()).toBe(0)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
+  })
+
+  it("button-seek 在 tail 持续增长时会继续追到底部并最终恢复 following", () => {
+    vi.useFakeTimers()
+
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tail = getByTestId("tail-box")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 200)
+    fireEvent.scroll(parent)
+    expect(getByTestId("scroll-mode").textContent).toBe("detached")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
+
+    fireEvent.click(getByTestId("scroll-button"))
+    expect(getByTestId("scroll-mode").textContent).toBe("seeking")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+    expect(tracker.scrollTo).toHaveBeenLastCalledWith({ top: 1000, behavior: "smooth" })
+
+    tracker.growHeight(1400)
+    triggerResize(tail)
+
+    expect(tracker.scrollTo).toHaveBeenLastCalledWith({ top: 1400, behavior: "smooth" })
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+
+    tracker.setMetrics(1400, 500, 900)
+    fireEvent.scroll(parent)
+
+    expect(getByTestId("scroll-at-bottom").textContent).toBe("1")
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+
+    tracker.reset()
+    tracker.growHeight(1600)
+    triggerResize(tail)
+
+    expect(tracker.getCount()).toBeGreaterThan(0)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+  })
+
+  it("history restore 后用户立即通过普通 scroll 离底不会反弹到底部", () => {
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tail = getByTestId("tail-box")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 500)
+    fireEvent.scroll(parent)
+    fireEvent.click(getByTestId("history-programmatic-scroll"))
+    tracker.reset()
+
+    tracker.setMetrics(1000, 500, 200)
+    fireEvent.scroll(parent)
+    triggerResize(tail)
+
+    expect(tracker.getCount()).toBe(0)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
+  })
+
+  it("runProgrammaticScroll 回调内同步触发 scroll 也不会误判 detached", () => {
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tail = getByTestId("tail-box")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 500)
+    fireEvent.scroll(parent)
+
+    fireEvent.click(getByTestId("history-programmatic-scroll-sync"))
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+
+    tracker.reset()
+    tracker.setMetrics(1000, 500, 200)
+    fireEvent.scroll(parent)
+    triggerResize(tail)
+
+    expect(tracker.getCount()).toBe(0)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
+    expect(getByTestId("scroll-mode").textContent).toBe("detached")
+  })
+
+  it("history trim 后用户立即通过普通 scroll 离底不会反弹到底部", () => {
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tail = getByTestId("tail-box")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 400)
+    fireEvent.scroll(parent)
+    fireEvent.click(getByTestId("history-programmatic-trim"))
+    tracker.reset()
+
+    tracker.setMetrics(1000, 500, 150)
+    fireEvent.scroll(parent)
+    triggerResize(tail)
+
+    expect(tracker.getCount()).toBe(0)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
+  })
+
+  it("jcef-wheel 后用户立即通过普通 scroll 离底不会反弹到底部", () => {
+    window.history.replaceState({}, "", "?jcefScrollMultiplier=4")
+
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tail = getByTestId("tail-box")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 476)
+    fireEvent.scroll(parent)
+    fireEvent.wheel(parent, { deltaY: 10, deltaMode: 0 })
+    tracker.reset()
+
+    tracker.setMetrics(1000, 500, 200)
+    fireEvent.scroll(parent)
+    triggerResize(tail)
+
+    expect(tracker.scrollBy).toHaveBeenCalledWith({ top: 40, behavior: "auto" })
+    expect(tracker.getCount()).toBe(0)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
   })
 
   it("scrollbar 拖拽或键盘滚动离开底部后停止自动滚动", () => {
@@ -354,7 +600,7 @@ describe("useMessageScroll", () => {
     fireEvent.scroll(parent)
     expect(getByTestId("scroll-button-visible").textContent).toBe("0")
 
-    tracker.setMetrics(1000, 500, 480)
+    tracker.setMetrics(1000, 500, 470)
     fireEvent.scroll(parent)
     expect(getByTestId("scroll-button-visible").textContent).toBe("1")
   })
@@ -376,6 +622,170 @@ describe("useMessageScroll", () => {
     fireEvent.scroll(parent)
     triggerResize(tail)
     expect(tracker.getCount()).toBe(1)
+  })
+
+  it("AI 一次返回大块内容时，following 不会被误判为 detached，按钮不闪现", () => {
+    const { rerender, getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tail = getByTestId("tail-box")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 500)
+    fireEvent.scroll(parent)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+
+    tracker.reset()
+    tracker.growHeight(1800)
+    rerender(
+      <Harness
+        sessionID="s1"
+        sortedMessages={textMessage("a".repeat(4000))}
+        isIdle={false}
+        isReasoning={false}
+        controls
+      />,
+    )
+    triggerResize(tail)
+
+    expect(tracker.getCount()).toBeGreaterThan(0)
+    expect(tracker.getTop()).toBe(1300)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+  })
+
+  it("AI 输出过程中用户离底后，后续输出不会反弹到底部", () => {
+    const { rerender, getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("streaming")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tail = getByTestId("tail-box")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1200, 500, 700)
+    fireEvent.scroll(parent)
+    tracker.reset()
+
+    tracker.setMetrics(1200, 500, 300)
+    fireEvent.scroll(parent)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
+
+    tracker.growHeight(1800)
+    rerender(
+      <Harness
+        sessionID="s1"
+        sortedMessages={textMessage("streaming".repeat(500))}
+        isIdle={false}
+        isReasoning={false}
+        controls
+      />,
+    )
+    triggerResize(tail)
+
+    expect(tracker.getCount()).toBe(0)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
+  })
+
+  it("此前视口已不在底部时，后续内容增长不应继续保留 following 并拉回底部", () => {
+    vi.useFakeTimers()
+
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("streaming")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tail = getByTestId("tail-box")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 500)
+    fireEvent.scroll(parent)
+
+    fireEvent.click(getByTestId("history-programmatic-scroll"))
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+    expect(getByTestId("scroll-at-bottom").textContent).toBe("0")
+
+    act(() => {
+      vi.advanceTimersByTime(900)
+    })
+    tracker.reset()
+
+    tracker.growHeight(1300)
+    fireEvent.scroll(parent)
+    triggerResize(tail)
+
+    expect(tracker.getCount()).toBe(0)
+    expect(getByTestId("scroll-mode").textContent).toBe("detached")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
+  })
+
+  it("此前视口已不在底部时，纯 ResizeObserver 内容增长不应拉回底部", () => {
+    vi.useFakeTimers()
+
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("streaming")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tail = getByTestId("tail-box")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 500)
+    fireEvent.scroll(parent)
+    fireEvent.click(getByTestId("history-programmatic-scroll"))
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+    expect(getByTestId("scroll-at-bottom").textContent).toBe("0")
+
+    act(() => {
+      vi.advanceTimersByTime(900)
+    })
+    tracker.reset()
+
+    tracker.growHeight(1300)
+    triggerResize(tail)
+
+    expect(tracker.getCount()).toBe(0)
+    expect(getByTestId("scroll-mode").textContent).toBe("detached")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
+  })
+
+  it("此前视口已不在底部时，没有 ResizeObserver 的 fallback 内容增长不应拉回底部", () => {
+    vi.useFakeTimers()
+    ;(globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver = undefined
+
+    const { rerender, getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("streaming")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 500)
+    fireEvent.scroll(parent)
+    fireEvent.click(getByTestId("history-programmatic-scroll"))
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+    expect(getByTestId("scroll-at-bottom").textContent).toBe("0")
+
+    act(() => {
+      vi.advanceTimersByTime(900)
+    })
+    tracker.reset()
+
+    tracker.growHeight(1300)
+    rerender(
+      <Harness
+        sessionID="s1"
+        sortedMessages={textMessage("streaming".repeat(50))}
+        isIdle={false}
+        isReasoning={false}
+        controls
+      />,
+    )
+
+    expect(tracker.getCount()).toBe(0)
+    expect(getByTestId("scroll-mode").textContent).toBe("detached")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
   })
 
   it("history 区高度变化不触发自动滚动，但 tail 区变化会触发", () => {
@@ -417,7 +827,7 @@ describe("useMessageScroll", () => {
     expect(tracker.getCount()).toBe(1)
   })
 
-  it("贴底判定基于 scrollHeight-clientHeight-scrollTop，dist<=8 认为在底部", () => {
+  it("贴底判定基于 scrollHeight-clientHeight-scrollTop，dist<=24 认为在底部", () => {
     const { getByTestId } = render(
       <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
     )
@@ -425,11 +835,11 @@ describe("useMessageScroll", () => {
     const parent = getByTestId("scroll-parent")
     const tracker = makeScrollTracker(parent)
 
-    tracker.setMetrics(1000, 500, 492)
+    tracker.setMetrics(1000, 500, 476)
     fireEvent.scroll(parent)
     expect(getByTestId("scroll-button-visible").textContent).toBe("0")
 
-    tracker.setMetrics(1000, 500, 490)
+    tracker.setMetrics(1000, 500, 475)
     fireEvent.scroll(parent)
     expect(getByTestId("scroll-button-visible").textContent).toBe("1")
   })
@@ -523,6 +933,24 @@ describe("useMessageScroll", () => {
     )
 
     expect(tracker.getCount()).toBeGreaterThan(0)
+  })
+
+  it("history restore 的程序滚动本身不会立即让 following 误入 detached", () => {
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 500)
+    fireEvent.scroll(parent)
+    fireEvent.click(getByTestId("history-programmatic-scroll"))
+    fireEvent.scroll(parent)
+
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+    expect(getByTestId("scroll-at-bottom").textContent).toBe("0")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
   })
 
   it("嵌套可滚动区域内的 wheel 上滑不标记主消息区 userScrolled", () => {

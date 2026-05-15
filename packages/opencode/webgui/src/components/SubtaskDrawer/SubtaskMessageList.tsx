@@ -91,7 +91,14 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
           </div>
         </PartOpenProvider>
 
-        <ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />
+        {showScrollToBottom && (
+          <div
+            data-testid="subtask-scroll-to-bottom-layer"
+            className="pointer-events-none sticky bottom-4 z-30 flex justify-end pr-2"
+          >
+            <ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />
+          </div>
+        )}
       </div>
     </>
   )

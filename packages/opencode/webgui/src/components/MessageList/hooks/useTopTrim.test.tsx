@@ -22,6 +22,7 @@ function Harness(props: {
   box?: Record<string, { top: number; height: number }>
   paused?: boolean
   loading?: boolean
+  runProgrammaticScroll?: (cause: "history-restore" | "history-trim", fn: (parent: HTMLElement) => void) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const top = useTopTrim({
@@ -31,6 +32,7 @@ function Harness(props: {
     paused: props.paused ?? false,
     ref,
     loading: props.loading,
+    runProgrammaticScroll: props.runProgrammaticScroll,
   } as any)
   const api = top as typeof top & { preparePrepend?: () => void; cancelPrepend?: () => void }
 
@@ -155,6 +157,49 @@ describe("useTopTrim", () => {
 
     await waitFor(() => {
       expect(parent.scrollTop).toBe(220)
+    })
+  })
+
+  it("prepend restore 通过 history-restore programmatic scroll 包裹", async () => {
+    let parent: HTMLElement | null = null
+    const runProgrammaticScroll = vi.fn((_cause: "history-restore" | "history-trim", fn: (node: HTMLElement) => void) => {
+      if (!parent) throw new Error("missing scroll parent")
+      fn(parent)
+    })
+    const view = render(
+      <Harness
+        sessionID="s1"
+        ids={["m3", "m4"]}
+        runProgrammaticScroll={runProgrammaticScroll}
+        box={{
+          m3: { top: 50, height: 100 },
+          m4: { top: 150, height: 100 },
+        }}
+      />,
+    )
+    parent = view.getByTestId("scroll-parent")
+    setScroll(parent, { top: 20, height: 200, client: 100 })
+
+    fireEvent.click(view.getByTestId("prepare-prepend"))
+
+    setScroll(parent, { top: 20, height: 450, client: 100 })
+    view.rerender(
+      <Harness
+        sessionID="s1"
+        ids={["m1", "m2", "m3", "m4"]}
+        runProgrammaticScroll={runProgrammaticScroll}
+        box={{
+          m1: { top: 50, height: 100 },
+          m2: { top: 150, height: 100 },
+          m3: { top: 250, height: 100 },
+          m4: { top: 350, height: 100 },
+        }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(parent?.scrollTop).toBe(220)
+      expect(runProgrammaticScroll).toHaveBeenCalledWith("history-restore", expect.any(Function))
     })
   })
 
@@ -558,6 +603,57 @@ describe("useTopTrim", () => {
 
     await waitFor(() => {
       expect(parent.scrollTop).toBe(120)
+    })
+  })
+
+  it("顶部高度补偿通过 history-trim programmatic scroll 包裹", async () => {
+    let parent: HTMLElement | null = null
+    const runProgrammaticScroll = vi.fn((_cause: "history-restore" | "history-trim", fn: (node: HTMLElement) => void) => {
+      if (!parent) throw new Error("missing scroll parent")
+      fn(parent)
+    })
+    const view = render(
+      <Harness
+        sessionID="s1"
+        ids={["m1", "m2", "m3"]}
+        runProgrammaticScroll={runProgrammaticScroll}
+        box={{
+          m1: { top: -150, height: 100 },
+          m2: { top: -50, height: 100 },
+          m3: { top: 50, height: 100 },
+        }}
+      />,
+    )
+    parent = view.getByTestId("scroll-parent")
+    parent.getBoundingClientRect = vi.fn(() => ({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 100,
+      width: 0,
+      height: 100,
+      toJSON: () => ({}),
+    }))
+    setScroll(parent, { top: 20, height: 300, client: 100 })
+
+    view.rerender(
+      <Harness
+        sessionID="s1"
+        ids={["m1", "m2", "m3"]}
+        runProgrammaticScroll={runProgrammaticScroll}
+        box={{
+          m1: { top: -250, height: 200 },
+          m2: { top: -50, height: 100 },
+          m3: { top: 50, height: 100 },
+        }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(parent?.scrollTop).toBe(120)
+      expect(runProgrammaticScroll).toHaveBeenCalledWith("history-trim", expect.any(Function))
     })
   })
 
