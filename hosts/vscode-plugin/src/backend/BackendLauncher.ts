@@ -18,13 +18,26 @@ export interface BackendConnection {
   process: ChildProcess
 }
 
+export interface BackendLauncherOptions {
+  extensionPath?: string
+  extensionVersion?: string
+}
+
 export class BackendLauncher {
   private currentProcess?: ChildProcess
   private currentConnection?: Omit<BackendConnection, "process">
   private extensionPath?: string
+  private extensionVersion?: string
 
-  constructor(extensionPath?: string) {
-    this.extensionPath = extensionPath
+  constructor(options?: string | BackendLauncherOptions) {
+    if (typeof options === "string") {
+      this.extensionPath = options
+      return
+    }
+
+    this.extensionPath = options?.extensionPath
+    const version = options?.extensionVersion?.trim()
+    this.extensionVersion = version || undefined
   }
 
   /**
@@ -286,6 +299,16 @@ export class BackendLauncher {
     return args
   }
 
+  private buildEnvironment(): NodeJS.ProcessEnv {
+    const env = { ...process.env }
+    if (this.extensionVersion) {
+      env.OPENCODE_UI_VERSION = this.extensionVersion
+    } else {
+      delete env.OPENCODE_UI_VERSION
+    }
+    return env
+  }
+
   private spawnBackend(args: string[], cwd: string): ChildProcess {
     const shell = this.shouldUseWindowsShell(args[0])
     if (shell) {
@@ -295,7 +318,7 @@ export class BackendLauncher {
     return spawn(args[0], args.slice(1), {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env },
+      env: this.buildEnvironment(),
       shell,
       windowsHide: true,
     })

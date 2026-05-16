@@ -21,6 +21,55 @@ suite("BackendLauncher Test Suite", () => {
     assert.ok(launcher instanceof BackendLauncher)
   })
 
+  test("should keep string extension path constructor compatibility", () => {
+    const scoped = new BackendLauncher("/tmp/opencode-extension")
+
+    assert.ok(scoped instanceof BackendLauncher)
+  })
+
+  test("should inject extension version into backend environment", () => {
+    const scoped = new BackendLauncher({ extensionVersion: "26.5.1602" })
+    const env = (scoped as unknown as { buildEnvironment(): NodeJS.ProcessEnv }).buildEnvironment()
+
+    assert.strictEqual(env.OPENCODE_UI_VERSION, "26.5.1602")
+  })
+
+  test("should not inject blank extension version into backend environment", () => {
+    const previous = process.env.OPENCODE_UI_VERSION
+    delete process.env.OPENCODE_UI_VERSION
+
+    try {
+      const scoped = new BackendLauncher({ extensionVersion: "   " })
+      const env = (scoped as unknown as { buildEnvironment(): NodeJS.ProcessEnv }).buildEnvironment()
+
+      assert.strictEqual(Object.prototype.hasOwnProperty.call(env, "OPENCODE_UI_VERSION"), false)
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENCODE_UI_VERSION
+      } else {
+        process.env.OPENCODE_UI_VERSION = previous
+      }
+    }
+  })
+
+  test("should remove inherited UI version when extension version is blank", () => {
+    const previous = process.env.OPENCODE_UI_VERSION
+    process.env.OPENCODE_UI_VERSION = "stale"
+
+    try {
+      const scoped = new BackendLauncher({ extensionVersion: "   " })
+      const env = (scoped as unknown as { buildEnvironment(): NodeJS.ProcessEnv }).buildEnvironment()
+
+      assert.strictEqual(Object.prototype.hasOwnProperty.call(env, "OPENCODE_UI_VERSION"), false)
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENCODE_UI_VERSION
+      } else {
+        process.env.OPENCODE_UI_VERSION = previous
+      }
+    }
+  })
+
   test("should not be running initially", () => {
     assert.strictEqual(launcher.isRunning(), false)
   })

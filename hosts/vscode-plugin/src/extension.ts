@@ -99,10 +99,13 @@ class OpenCodeExtension {
     const settingsDisposable = this.settingsManager.initialize()
     this.context?.subscriptions.push(settingsDisposable)
 
-    // Initialize backend launcher (pass extension path for binary resolution)
-    this.backendLauncher = new BackendLauncher(this.context!.extensionUri.fsPath)
-
     const currentVersion = this.context!.extension.packageJSON.version
+    // Initialize backend launcher (pass extension path for binary resolution and extension version for backend UA)
+    this.backendLauncher = new BackendLauncher({
+      extensionPath: this.context!.extensionUri.fsPath,
+      extensionVersion: currentVersion,
+    })
+
     this.updateService = new UpdateService({
       currentVersion,
       checker: new ReleaseChecker({ owner: "caiqy", name: "opencode-ide-plugin" }, extensionFetch),

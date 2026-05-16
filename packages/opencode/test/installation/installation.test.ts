@@ -9,6 +9,47 @@ import { Flag } from "@opencode-ai/core/flag/flag"
 
 const encoder = new TextEncoder()
 
+function withUiVersion<T>(version: string | undefined, run: () => T): T {
+  const previous = process.env.OPENCODE_UI_VERSION
+  if (version === undefined) {
+    delete process.env.OPENCODE_UI_VERSION
+  } else {
+    process.env.OPENCODE_UI_VERSION = version
+  }
+
+  try {
+    return run()
+  } finally {
+    if (previous === undefined) {
+      delete process.env.OPENCODE_UI_VERSION
+    } else {
+      process.env.OPENCODE_UI_VERSION = previous
+    }
+  }
+}
+
+function withNpmRegistry<T>(run: () => T): T {
+  const lower = process.env.npm_config_registry
+  const upper = process.env.NPM_CONFIG_REGISTRY
+  process.env.npm_config_registry = "https://registry.npmjs.org/"
+  process.env.NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
+
+  try {
+    return run()
+  } finally {
+    if (lower === undefined) {
+      delete process.env.npm_config_registry
+    } else {
+      process.env.npm_config_registry = lower
+    }
+    if (upper === undefined) {
+      delete process.env.NPM_CONFIG_REGISTRY
+    } else {
+      process.env.NPM_CONFIG_REGISTRY = upper
+    }
+  }
+}
+
 function mockHttpClient(handler: (request: HttpClientRequest.HttpClientRequest) => Response) {
   const client = HttpClient.make((request) => Effect.succeed(HttpClientResponse.fromWeb(request, handler(request))))
   return Layer.succeed(HttpClient.HttpClient, client)
@@ -59,16 +100,46 @@ describe("installation", () => {
       )
     })
 
+    test("uses injected UI version for the default opencode UI user agent", () => {
+      withUiVersion("26.5.1602", () => {
+        expect(Installation.userAgent()).toBe(`opencode/${InstallationVersion} opencode-ui/26.5.1602 (codex app)`)
+      })
+    })
+
+    test("falls back to installation version when injected UI version is blank", () => {
+      withUiVersion("   ", () => {
+        expect(Installation.userAgent()).toBe(
+          `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (codex app)`,
+        )
+      })
+    })
+
     test("builds the installation-scoped user agent", () => {
       expect(Installation.USER_AGENT).toBe(
         `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/${InstallationVersion} (codex app)`,
       )
     })
 
+    test("uses injected UI version for installation-scoped user agent", () => {
+      withUiVersion("26.5.1602", () => {
+        expect(Installation.userAgent({ base: "installation" })).toBe(
+          `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/26.5.1602 (codex app)`,
+        )
+      })
+    })
+
     test("keeps provider integration products before the UI product", () => {
       expect(Installation.userAgent({ products: ["gitlab-ai-provider/1.2.3"] })).toBe(
         `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/${InstallationVersion} (codex app)`,
       )
+    })
+
+    test("keeps provider products before injected UI product", () => {
+      withUiVersion("26.5.1602", () => {
+        expect(Installation.userAgent({ products: ["gitlab-ai-provider/1.2.3"] })).toBe(
+          `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/26.5.1602 (codex app)`,
+        )
+      })
     })
 
     test("adds system details to the comment", () => {
@@ -119,8 +190,8 @@ describe("installation", () => {
         return jsonResponse({ version: "1.5.0" })
       })
 
-      const result = await Effect.runPromise(
-        Installation.Service.use((svc) => svc.latest("npm")).pipe(Effect.provide(layer)),
+      const result = await withNpmRegistry(() =>
+        Effect.runPromise(Installation.Service.use((svc) => svc.latest("npm")).pipe(Effect.provide(layer))),
       )
       expect(result).toBe("1.5.0")
       expect(calls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
@@ -133,8 +204,8 @@ describe("installation", () => {
         return jsonResponse({ version: "1.6.0" })
       })
 
-      const result = await Effect.runPromise(
-        Installation.Service.use((svc) => svc.latest("bun")).pipe(Effect.provide(layer)),
+      const result = await withNpmRegistry(() =>
+        Effect.runPromise(Installation.Service.use((svc) => svc.latest("bun")).pipe(Effect.provide(layer))),
       )
       expect(result).toBe("1.6.0")
       expect(calls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
@@ -147,8 +218,8 @@ describe("installation", () => {
         return jsonResponse({ version: "1.7.0" })
       })
 
-      const result = await Effect.runPromise(
-        Installation.Service.use((svc) => svc.latest("pnpm")).pipe(Effect.provide(layer)),
+      const result = await withNpmRegistry(() =>
+        Effect.runPromise(Installation.Service.use((svc) => svc.latest("pnpm")).pipe(Effect.provide(layer))),
       )
       expect(result).toBe("1.7.0")
       expect(calls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)

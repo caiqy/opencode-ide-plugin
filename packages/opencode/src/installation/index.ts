@@ -59,12 +59,16 @@ export type Info = z.infer<typeof Info>
 const OPENCODE_USER_AGENT_PRODUCT = `opencode/${InstallationVersion}`
 // Keep the legacy channel/version/client shape for installation and model-list requests.
 const INSTALLATION_USER_AGENT_PRODUCT = `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT}`
-const UI_USER_AGENT_PRODUCT = `opencode-ui/${InstallationVersion}`
 const USER_AGENT_COMMENT = "codex app"
+
+function uiUserAgentProduct() {
+  const version = process.env.OPENCODE_UI_VERSION?.trim() || InstallationVersion
+  return `opencode-ui/${version}`
+}
 
 export function userAgent(options?: { base?: "default" | "installation"; products?: string[]; system?: boolean }) {
   const base = options?.base === "installation" ? INSTALLATION_USER_AGENT_PRODUCT : OPENCODE_USER_AGENT_PRODUCT
-  const products = [base, ...(options?.products ?? []), UI_USER_AGENT_PRODUCT]
+  const products = [base, ...(options?.products ?? []), uiUserAgentProduct()]
   const comments = [
     USER_AGENT_COMMENT,
     ...(options?.system ? [`${os.platform()} ${os.release()}`, os.arch()] : []),
