@@ -30,6 +30,7 @@ interface MessageInputProps {
   sessionID: string | null
   blocked?: boolean
   onMessageSent?: () => void
+  onSendIntent?: () => void
   onError?: (error: Error) => void
 }
 
@@ -41,7 +42,7 @@ export const MessageInput = forwardRef<
     insertPlainWithMentions: (value: string) => void
   },
   MessageInputProps
->(({ sessionID, blocked = false, onMessageSent, onError }, ref) => {
+>(({ sessionID, blocked = false, onMessageSent, onSendIntent, onError }, ref) => {
   const initialConfig = createEditorConfig()
 
   return (
@@ -51,6 +52,7 @@ export const MessageInput = forwardRef<
         sessionID={sessionID}
         blocked={blocked}
         onMessageSent={onMessageSent}
+        onSendIntent={onSendIntent}
         onError={onError}
       />
     </LexicalComposer>
@@ -67,7 +69,7 @@ const MessageInputInner = forwardRef<
     insertPlainWithMentions: (value: string) => void
   },
   MessageInputProps
->(({ sessionID, blocked = false, onMessageSent, onError }, ref) => {
+>(({ sessionID, blocked = false, onMessageSent, onSendIntent, onError }, ref) => {
   const [editor] = useLexicalComposerContext()
   const [isEmpty, setIsEmpty] = useState(true)
   const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
@@ -429,11 +431,17 @@ const MessageInputInner = forwardRef<
   const sendPhrase = useCallback(
     (body: string) => {
       if (!body.trim()) return
+      if (!sessionID) return
       if (isDisabled) return
+      onSendIntent?.()
       void submitQuickPhrase(body)
     },
-    [isDisabled, submitQuickPhrase],
+    [isDisabled, onSendIntent, sessionID, submitQuickPhrase],
   )
+
+  useEffect(() => {
+    setPhraseConfirm(null)
+  }, [sessionID])
 
   const onActivatePhrase = useCallback(
     (item: { id: string; title: string; body: string }) => {

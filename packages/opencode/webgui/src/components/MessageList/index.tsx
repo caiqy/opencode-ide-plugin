@@ -19,6 +19,7 @@ import { ScrollToBottomButton } from "./ScrollToBottomButton"
 interface MessageListProps {
   sessionID?: string | null
   onUndoToInput?: (value: string) => void
+  sendRequestKey?: number
 }
 
 function useSettle(id: string | null | undefined, ref: RefObject<HTMLDivElement | null>, count: number) {
@@ -69,7 +70,7 @@ function useSettle(id: string | null | undefined, ref: RefObject<HTMLDivElement 
   return changed || state
 }
 
-export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
+export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: MessageListProps) {
   const {
     getMessagesBySession,
     getQuestionsBySession,
@@ -144,6 +145,7 @@ export function MessageList({ sessionID, onUndoToInput }: MessageListProps) {
       box,
       tailRef,
       revertBoundaryID ? `${tailKey}:revert:${revertBoundaryID}` : tailKey,
+      sendRequestKey,
     )
 
   const trim = useTopTrim({

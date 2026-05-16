@@ -148,6 +148,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [sendRequestKey, setSendRequestKey] = useState(0)
 
   const creating = useRef(false)
 
@@ -396,6 +397,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
           <MessageList
             sessionID={currentSession?.id}
             onUndoToInput={(value) => messageInputRef.current?.insertPlainWithMentions(value)}
+            sendRequestKey={sendRequestKey}
           />
         </main>
 
@@ -407,6 +409,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
           onMessageSent={() => {
             console.log("[App] Message sent successfully")
           }}
+          onSendIntent={() => setSendRequestKey((value) => value + 1)}
           onError={(error) => {
             console.error("[App] Message send error:", error)
           }}

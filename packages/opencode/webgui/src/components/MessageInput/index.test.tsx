@@ -319,6 +319,7 @@ describe("MessageInput compact confirm", () => {
   })
 
   it("double_send 模式双击会直接发送", async () => {
+    const onSendIntent = vi.fn()
     mocks.loadQuickPhraseState.mockResolvedValue({
       mode: "double_send",
       preset_version: 1,
@@ -336,7 +337,7 @@ describe("MessageInput compact confirm", () => {
       },
     })
 
-    render(<MessageInput sessionID="s1" />)
+    render(<MessageInput sessionID="s1" onSendIntent={onSendIntent} />)
     await waitFor(() => {
       expect(lastQuickPhraseBarProps).toBeTruthy()
     })
@@ -352,6 +353,7 @@ describe("MessageInput compact confirm", () => {
     await waitFor(() => {
       expect(mocks.submitQuickPhrase).toHaveBeenCalledWith("请总结改动")
     })
+    expect(onSendIntent).toHaveBeenCalledTimes(1)
   })
 
   it("double_send 模式发送不应回填输入框", async () => {
@@ -389,6 +391,7 @@ describe("MessageInput compact confirm", () => {
   })
 
   it("double_send 模式遇到空正文时不应发送", async () => {
+    const onSendIntent = vi.fn()
     mocks.loadQuickPhraseState.mockResolvedValue({
       mode: "double_send",
       preset_version: 1,
@@ -406,7 +409,7 @@ describe("MessageInput compact confirm", () => {
       },
     } as any)
 
-    render(<MessageInput sessionID="s1" />)
+    render(<MessageInput sessionID="s1" onSendIntent={onSendIntent} />)
     await waitFor(() => {
       expect(lastQuickPhraseBarProps).toBeTruthy()
     })
@@ -420,9 +423,12 @@ describe("MessageInput compact confirm", () => {
     })
 
     expect(mocks.handleSubmit).not.toHaveBeenCalled()
+    expect(mocks.submitQuickPhrase).not.toHaveBeenCalled()
+    expect(onSendIntent).not.toHaveBeenCalled()
   })
 
   it("confirm_send 模式双击需确认后发送", async () => {
+    const onSendIntent = vi.fn()
     mocks.loadQuickPhraseState.mockResolvedValue({
       mode: "confirm_send",
       preset_version: 1,
@@ -440,7 +446,7 @@ describe("MessageInput compact confirm", () => {
       },
     })
 
-    render(<MessageInput sessionID="s1" />)
+    render(<MessageInput sessionID="s1" onSendIntent={onSendIntent} />)
     await waitFor(() => {
       expect(lastQuickPhraseBarProps).toBeTruthy()
     })
@@ -464,6 +470,89 @@ describe("MessageInput compact confirm", () => {
     await waitFor(() => {
       expect(mocks.submitQuickPhrase).toHaveBeenCalledWith("请总结改动")
     })
+    expect(onSendIntent).toHaveBeenCalledTimes(1)
+  })
+
+  it("没有 session 时 double_send 不应触发发送意图", async () => {
+    const onSendIntent = vi.fn()
+    mocks.loadQuickPhraseState.mockResolvedValue({
+      mode: "double_send",
+      preset_version: 1,
+      order: ["preset:commit"],
+      items: {
+        "preset:commit": {
+          id: "preset:commit",
+          title: "提交总结",
+          body: "请总结改动",
+          source: "preset",
+          hidden: false,
+          order: 0,
+          updated_at: 1,
+        },
+      },
+    })
+
+    render(<MessageInput sessionID={null} onSendIntent={onSendIntent} />)
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
+
+    act(() => {
+      lastQuickPhraseBarProps.onActivate({
+        id: "preset:commit",
+        title: "提交总结",
+        body: "请总结改动",
+      })
+    })
+
+    expect(onSendIntent).not.toHaveBeenCalled()
+    expect(mocks.submitQuickPhrase).not.toHaveBeenCalled()
+  })
+
+  it("confirm_send 弹窗切换会话后会关闭且不会发送旧会话短语", async () => {
+    const onSendIntent = vi.fn()
+    mocks.loadQuickPhraseState.mockResolvedValue({
+      mode: "confirm_send",
+      preset_version: 1,
+      order: ["preset:commit"],
+      items: {
+        "preset:commit": {
+          id: "preset:commit",
+          title: "提交总结",
+          body: "请总结改动",
+          source: "preset",
+          hidden: false,
+          order: 0,
+          updated_at: 1,
+        },
+      },
+    })
+
+    const { rerender } = render(<MessageInput sessionID="s1" onSendIntent={onSendIntent} />)
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
+
+    act(() => {
+      lastQuickPhraseBarProps.onActivate({
+        id: "preset:commit",
+        title: "提交总结",
+        body: "请总结改动",
+      })
+    })
+    expect(confirmModalMap["确认发送快捷短语"]?.isOpen).toBe(true)
+
+    rerender(<MessageInput sessionID="s2" onSendIntent={onSendIntent} />)
+
+    await waitFor(() => {
+      expect(confirmModalMap["确认发送快捷短语"]?.isOpen).toBe(false)
+    })
+    act(() => {
+      confirmModalMap["确认发送快捷短语"].onConfirm()
+    })
+
+    expect(onSendIntent).not.toHaveBeenCalled()
+    expect(mocks.submitQuickPhrase).not.toHaveBeenCalled()
   })
 
   it("confirm_send 模式遇到空正文时不应弹确认也不发送", async () => {
@@ -748,6 +837,7 @@ describe("MessageInput compact confirm", () => {
   })
 
   it("生成中状态下快捷短语触发应无效", async () => {
+    const onSendIntent = vi.fn()
     sessionIdle = false
     mocks.loadQuickPhraseState.mockResolvedValue({
       mode: "double_send",
@@ -766,7 +856,7 @@ describe("MessageInput compact confirm", () => {
       },
     })
 
-    render(<MessageInput sessionID="s1" />)
+    render(<MessageInput sessionID="s1" onSendIntent={onSendIntent} />)
     await waitFor(() => {
       expect(lastQuickPhraseBarProps).toBeTruthy()
     })
@@ -780,6 +870,8 @@ describe("MessageInput compact confirm", () => {
     })
 
     expect(mocks.handleSubmit).not.toHaveBeenCalled()
+    expect(mocks.submitQuickPhrase).not.toHaveBeenCalled()
+    expect(onSendIntent).not.toHaveBeenCalled()
   })
 
   it("再次进入会话时会读取最新的 scoped 草稿", async () => {

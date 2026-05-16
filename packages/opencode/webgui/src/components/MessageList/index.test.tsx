@@ -291,6 +291,24 @@ describe("MessageList", () => {
     expect(scrollToBottom).toHaveBeenCalledTimes(1)
   })
 
+  it("发送意图 key 会传给滚动 Hook", () => {
+    const { rerender } = render(<MessageList sessionID="s1" onUndoToInput={vi.fn()} sendRequestKey={0} />)
+
+    rerender(<MessageList sessionID="s1" onUndoToInput={vi.fn()} sendRequestKey={1} />)
+
+    expect(mocks.useMessageScroll).toHaveBeenLastCalledWith(
+      "s1",
+      expect.any(Array),
+      true,
+      false,
+      expect.any(Boolean),
+      expect.any(Object),
+      expect.any(Object),
+      expect.any(String),
+      1,
+    )
+  })
+
   it("history 与 tail 各自的消息行容器使用与单条消息内部一致的 12px 间距", () => {
     mocks.useMessages.mockReturnValue({
       getMessagesBySession: () => [msg("m1", 1), msg("m2", 2)],

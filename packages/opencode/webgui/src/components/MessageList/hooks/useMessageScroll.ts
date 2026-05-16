@@ -38,8 +38,27 @@ function distanceFromBottom(container: HTMLElement): number {
   return container.scrollHeight - container.clientHeight - container.scrollTop
 }
 
+function editableTarget(target: EventTarget | null) {
+  const node = target instanceof HTMLElement ? target : null
+  if (!node) return false
+  const tag = node.tagName.toLowerCase()
+  return tag === "input" || tag === "textarea" || tag === "select" || node.isContentEditable
+}
+
+function keyboardScrollIntent(e: KeyboardEvent) {
+  if (editableTarget(e.target)) return false
+  return e.key === "ArrowUp" || e.key === "PageUp" || e.key === "Home" || (e.key === " " && e.shiftKey)
+}
+
+function scrollbarPointerIntent(container: HTMLElement, e: PointerEvent) {
+  if (container.scrollHeight <= container.clientHeight + 1) return false
+  const rect = container.getBoundingClientRect()
+  return e.clientX >= rect.right - 16 && e.clientX <= rect.right + 2
+}
+
 const BOTTOM_THRESHOLD = 24
 const PROGRAM_TTL = 800
+const USER_INTENT_TTL = 800
 
 type FollowMode = "following" | "detached" | "seeking"
 type ScrollCause = "auto-follow" | "button-seek" | "send-message" | "history-restore" | "history-trim" | "jcef-wheel"
@@ -56,6 +75,7 @@ export function useMessageScroll(
   box?: RefObject<HTMLDivElement | null>,
   tail?: RefObject<HTMLDivElement | null>,
   tailKey = "",
+  sendRequestKey = 0,
 ) {
   const multiplier = useMemo(() => readJcefScrollMultiplier(), [])
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -70,6 +90,12 @@ export function useMessageScroll(
   const lastTop = useRef(0)
   const lastHeight = useRef(0)
   const lastClient = useRef(0)
+  const lastUserIntent = useRef(0)
+  const lastSendRequestKey = useRef(sendRequestKey)
+  const lastSessionID = useRef(sessionID)
+  // Session changes can temporarily render without the scroll container while
+  // MessageList settles; keep one pending pin so the new tab still lands at bottom.
+  const pendingSessionPin = useRef(false)
   const allowNextTailFollow = useRef(false)
   // following + !isAtBottom is a deliberate transient: content growth and
   // in-flight programmatic scrolls can move the bottom away for a frame while
@@ -108,6 +134,12 @@ export function useMessageScroll(
       programTimer.current = null
     }
   }, [])
+
+  const markUserIntent = useCallback(() => {
+    lastUserIntent.current = Date.now()
+  }, [])
+
+  const hasUserIntent = useCallback(() => Date.now() - lastUserIntent.current <= USER_INTENT_TTL, [])
 
   const update = useCallback((el: HTMLElement, nextMode = mode.current) => {
     const at = distanceFromBottom(el) <= BOTTOM_THRESHOLD
@@ -270,7 +302,7 @@ export function useMessageScroll(
       prevHeight > 0 &&
       prevClient > 0 &&
       dimensionsChanged &&
-      el.scrollTop >= prevTop
+      !hasUserIntent()
     ) {
       allowNextTailFollow.current = true
       commitView("following", false)
@@ -279,7 +311,7 @@ export function useMessageScroll(
 
     clearSeek()
     commitView("detached", false)
-  }, [clearProgram, clearSeek, commitView, container, getProgram, isTowardProgramTarget])
+  }, [clearProgram, clearSeek, commitView, container, getProgram, hasUserIntent, isTowardProgramTarget])
 
   // ── wheel / touch handlers ────────────────────────────────────────────────
 
@@ -294,6 +326,7 @@ export function useMessageScroll(
       // regions (code blocks, tool output) — this is the real fix for root
       // cause #5, not just lowering the threshold.
       if (e.deltaY < -2 && !nestedScrollable(el, e.target)) {
+        markUserIntent()
         clearSeek()
         clearProgram()
         commitView("detached", distanceFromBottom(el) <= BOTTOM_THRESHOLD)
@@ -317,6 +350,7 @@ export function useMessageScroll(
     const handleTouchMove = (e: TouchEvent) => {
       const y = e.touches[0]?.clientY
       if (y !== undefined && lastTouchY !== undefined && y > lastTouchY) {
+        markUserIntent()
         clearSeek()
         clearProgram()
         commitView("detached", distanceFromBottom(el) <= BOTTOM_THRESHOLD)
@@ -324,16 +358,28 @@ export function useMessageScroll(
       lastTouchY = y
     }
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (keyboardScrollIntent(e)) markUserIntent()
+    }
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if (scrollbarPointerIntent(el, e)) markUserIntent()
+    }
+
     const opts: AddEventListenerOptions = { passive: !multiplier }
     el.addEventListener("wheel", handleWheel, opts)
     el.addEventListener("touchstart", handleTouchStart, { passive: true })
     el.addEventListener("touchmove", handleTouchMove, { passive: true })
+    el.addEventListener("pointerdown", handlePointerDown, { passive: true })
+    window.addEventListener("keydown", handleKeyDown, { capture: true })
     return () => {
       el.removeEventListener("wheel", handleWheel, opts)
       el.removeEventListener("touchstart", handleTouchStart)
       el.removeEventListener("touchmove", handleTouchMove)
+      el.removeEventListener("pointerdown", handlePointerDown)
+      window.removeEventListener("keydown", handleKeyDown, { capture: true })
     }
-  }, [sessionID, multiplier, clearProgram, clearSeek, commitView, container, runProgrammaticScroll])
+  }, [sessionID, multiplier, clearProgram, clearSeek, commitView, container, markUserIntent, runProgrammaticScroll])
 
   // ── scroll event binding ──────────────────────────────────────────────────
 
@@ -379,15 +425,38 @@ export function useMessageScroll(
   // ── Session reset ─────────────────────────────────────────────────────────
 
   useEffect(() => {
+    const changed = lastSessionID.current !== sessionID
+    if (!changed) return
+    lastSessionID.current = sessionID
     mode.current = "following"
     allowNextTailFollow.current = false
     clearProgram()
     lastTop.current = 0
     lastHeight.current = 0
     lastClient.current = 0
+    lastUserIntent.current = 0
     clearSeek()
-    commitView("following", true)
-  }, [sessionID, clearProgram, clearSeek, commitView])
+    if (!sessionID) {
+      pendingSessionPin.current = false
+      commitView("following", true)
+      return
+    }
+    const el = container()
+    if (!el) {
+      pendingSessionPin.current = true
+      commitView("following", true)
+      return
+    }
+    pendingSessionPin.current = false
+    pinBottom("history-restore")
+  }, [sessionID, clearProgram, clearSeek, commitView, container, pinBottom])
+
+  useEffect(() => {
+    if (!pendingSessionPin.current || !sessionID) return
+    if (!container()) return
+    pendingSessionPin.current = false
+    pinBottom("history-restore")
+  }, [sessionID, container, pinBottom])
 
   useEffect(() => {
     return () => {
@@ -410,6 +479,13 @@ export function useMessageScroll(
     }
     prevMsg.current = { count: messageCount, id: last?.info.id }
   }, [messageCount, sortedMessages, pinBottom])
+
+  useEffect(() => {
+    if (lastSendRequestKey.current === sendRequestKey) return
+    lastSendRequestKey.current = sendRequestKey
+    mode.current = "following"
+    pinBottom("send-message")
+  }, [pinBottom, sendRequestKey])
 
   // ── Fallback effect: for environments without ResizeObserver, or when
   //    settling ends — uses scrollSignature as a secondary trigger ─────────
