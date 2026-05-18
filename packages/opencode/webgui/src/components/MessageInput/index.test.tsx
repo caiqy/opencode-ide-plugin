@@ -540,7 +540,9 @@ describe("MessageInput compact confirm", () => {
         body: "请总结改动",
       })
     })
-    expect(confirmModalMap["确认发送快捷短语"]?.isOpen).toBe(true)
+    await waitFor(() => {
+      expect(confirmModalMap["确认发送快捷短语"]?.isOpen).toBe(true)
+    })
 
     rerender(<MessageInput sessionID="s2" onSendIntent={onSendIntent} />)
 

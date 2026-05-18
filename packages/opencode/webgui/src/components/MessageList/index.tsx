@@ -135,7 +135,7 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
   }, [blocks.tail])
   const tailKey = useMemo(() => blocks.tail.map((item) => `${item.kind}:${item.id}`).join(","), [blocks.tail])
   const ids = useMemo(() => visibleMessages.map((item) => item.info.id), [visibleMessages])
-  const { messagesEndRef, messagesContainerRef, showScrollToBottom, scrollToBottom, runProgrammaticScroll } =
+  const { messagesEndRef, messagesContainerRef, mode, showScrollToBottom, scrollToBottom, runProgrammaticScroll } =
     useMessageScroll(
       sessionID,
       tailMessages,
@@ -154,6 +154,7 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
     ids,
     loading: page.olderLoading,
     paused: settling,
+    preserveScrollAnchor: mode === "detached",
     ref: messagesContainerRef,
     runProgrammaticScroll,
   })

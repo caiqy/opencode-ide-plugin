@@ -281,7 +281,9 @@ export function useMessageScroll(
     }
 
     const dimensionsChanged = el.scrollHeight !== prevHeight || el.clientHeight !== prevClient
+    const wasAtBottom = prevHeight - prevClient - prevTop <= BOTTOM_THRESHOLD
     const item = getProgram()
+    const keepsBottomAnchor = item?.cause === "send-message" || item?.cause === "auto-follow" || item?.cause === "button-seek"
     if (item && !dimensionsChanged) {
       // button-seek, history restore/trim and jcef wheel can all overlap with a
       // user's immediate scrollbar/keyboard intervention. While target is pending
@@ -292,10 +294,35 @@ export function useMessageScroll(
         commitView(mode.current, false)
         return
       }
+      if (
+        (item.cause === "send-message" || item.cause === "auto-follow") &&
+        mode.current === "following" &&
+        wasAtBottom &&
+        !hasUserIntent()
+      ) {
+        allowNextTailFollow.current = true
+        pinBottom(item.cause)
+        return
+      }
       clearProgram()
     }
 
-    const wasAtBottom = prevHeight - prevClient - prevTop <= BOTTOM_THRESHOLD
+    if (item && dimensionsChanged && !keepsBottomAnchor) {
+      clearSeek()
+      commitView("detached", false)
+      return
+    }
+
+    if (item?.cause === "button-seek" && dimensionsChanged) {
+      if (hasUserIntent()) {
+        clearSeek()
+        commitView("detached", false)
+        return
+      }
+      pinBottom("button-seek", "smooth")
+      return
+    }
+
     if (
       mode.current === "following" &&
       wasAtBottom &&
@@ -304,14 +331,14 @@ export function useMessageScroll(
       dimensionsChanged &&
       !hasUserIntent()
     ) {
-      allowNextTailFollow.current = true
-      commitView("following", false)
+      allowNextTailFollow.current = false
+      pinBottom("auto-follow")
       return
     }
 
     clearSeek()
     commitView("detached", false)
-  }, [clearProgram, clearSeek, commitView, container, getProgram, hasUserIntent, isTowardProgramTarget])
+  }, [clearProgram, clearSeek, commitView, container, getProgram, hasUserIntent, isTowardProgramTarget, pinBottom])
 
   // ── wheel / touch handlers ────────────────────────────────────────────────
 

@@ -498,3 +498,8 @@
 - **VSCode 插件：** `hosts/scripts/build_vscode.sh` - 编译 TS，可选打包 opencode 二进制文件，打包 `.vsix`
 - **JetBrains 插件：** Gradle 配合 `org.jetbrains.intellij.platform` 插件 → `.zip`
 <!-- GSD:architecture-end -->
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->

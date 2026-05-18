@@ -1,4 +1,4 @@
-import { defineConfig, type UserConfig } from "vite"
+import { defineConfig, type UserConfig, type ProxyOptions } from "vite"
 import react from "@vitejs/plugin-react"
 import { readFileSync } from "fs"
 import { resolve } from "path"
@@ -29,6 +29,28 @@ const proxyRoots = [
   "/auth",
   "/vcs",
 ]
+
+function devDirectoryOverride() {
+  const value = process.env.OPENCODE_DEV_DIRECTORY_OVERRIDE?.trim()
+  return value ? value : null
+}
+
+function proxyEntry(root: string, backendUrl: string, directoryOverride: string | null): readonly [string, ProxyOptions] {
+  return [
+    root,
+    {
+      target: backendUrl,
+      changeOrigin: true,
+      ws: root === "/event" || root === "/pty",
+      configure(proxy) {
+        if (!directoryOverride) return
+        proxy.on("proxyReq", (proxyReq) => {
+          proxyReq.setHeader("x-opencode-directory", directoryOverride)
+        })
+      },
+    },
+  ] as const
+}
 
 function formatDiscoveryError(error: BackendDiscoveryError) {
   return [
@@ -78,6 +100,7 @@ let config: UserConfig = shared
 if (command === "serve") {
   try {
     const backend = await discoverBackend()
+    const directoryOverride = devDirectoryOverride()
     console.log(`[webgui] Using opencode backend ${backend.url}`)
 
     config = {
@@ -87,16 +110,7 @@ if (command === "serve") {
         __OPENCODE_BACKEND_URL__: JSON.stringify(backend.url),
       },
       server: {
-        proxy: Object.fromEntries(
-          proxyRoots.map((root) => [
-            root,
-            {
-              target: backend.url,
-              changeOrigin: true,
-              ws: root === "/event" || root === "/pty",
-            },
-          ]),
-        ),
+        proxy: Object.fromEntries(proxyRoots.map((root) => proxyEntry(root, backend.url, directoryOverride))),
       },
     }
   } catch (error) {

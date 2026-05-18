@@ -41,6 +41,9 @@ target
 .classpath
 .project
 .superpowers/
+.opencode/commands/
+.specify
+.playwright-mcp
 
 # ---- Java/Kotlin/Gradle ----
 .gradle/

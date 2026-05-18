@@ -22,6 +22,7 @@ function Harness(props: {
   box?: Record<string, { top: number; height: number }>
   paused?: boolean
   loading?: boolean
+  preserveScrollAnchor?: boolean
   runProgrammaticScroll?: (cause: "history-restore" | "history-trim", fn: (parent: HTMLElement) => void) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -32,6 +33,7 @@ function Harness(props: {
     paused: props.paused ?? false,
     ref,
     loading: props.loading,
+    preserveScrollAnchor: props.preserveScrollAnchor,
     runProgrammaticScroll: props.runProgrammaticScroll,
   } as any)
   const api = top as typeof top & { preparePrepend?: () => void; cancelPrepend?: () => void }
@@ -654,6 +656,104 @@ describe("useTopTrim", () => {
     await waitFor(() => {
       expect(parent?.scrollTop).toBe(120)
       expect(runProgrammaticScroll).toHaveBeenCalledWith("history-trim", expect.any(Function))
+    })
+  })
+
+  it("底部跟随模式下历史区高度变化不应再补偿 scrollTop", async () => {
+    const view = render(
+      <Harness
+        sessionID="s1"
+        ids={["m1", "m2", "m3"]}
+        preserveScrollAnchor={false}
+        box={{
+          m1: { top: -150, height: 100 },
+          m2: { top: -50, height: 100 },
+          m3: { top: 50, height: 100 },
+        }}
+      />,
+    )
+    const parent = view.getByTestId("scroll-parent")
+    parent.getBoundingClientRect = vi.fn(() => ({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 100,
+      width: 0,
+      height: 100,
+      toJSON: () => ({}),
+    }))
+    setScroll(parent, { top: 200, height: 300, client: 100 })
+
+    view.rerender(
+      <Harness
+        sessionID="s1"
+        ids={["m1", "m2", "m3"]}
+        preserveScrollAnchor={false}
+        box={{
+          m1: { top: -250, height: 200 },
+          m2: { top: -50, height: 100 },
+          m3: { top: 50, height: 100 },
+        }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(parent.scrollTop).toBe(200)
+    })
+  })
+
+  it("手动压缩删掉视口上方历史后，detached 锚点位置仍应保持", async () => {
+    const view = render(
+      <Harness
+        sessionID="s1"
+        ids={["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9", "m10"]}
+        box={{
+          m1: { top: -650, height: 100 },
+          m2: { top: -550, height: 100 },
+          m3: { top: -450, height: 100 },
+          m4: { top: -350, height: 100 },
+          m5: { top: -250, height: 100 },
+          m6: { top: -150, height: 100 },
+          m7: { top: -50, height: 100 },
+          m8: { top: 50, height: 100 },
+          m9: { top: 150, height: 100 },
+          m10: { top: 250, height: 100 },
+        }}
+      />,
+    )
+    const parent = view.getByTestId("scroll-parent")
+    parent.getBoundingClientRect = vi.fn(() => ({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 200,
+      width: 0,
+      height: 200,
+      toJSON: () => ({}),
+    }))
+    setScroll(parent, { top: 620, height: 1000, client: 200 })
+
+    fireEvent.scroll(parent)
+
+    view.rerender(
+      <Harness
+        sessionID="s1"
+        ids={["m7", "m8", "m9", "m10"]}
+        box={{
+          m7: { top: -620, height: 100 },
+          m8: { top: -520, height: 100 },
+          m9: { top: -420, height: 100 },
+          m10: { top: -320, height: 100 },
+        }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(parent.scrollTop).toBe(50)
     })
   })
 

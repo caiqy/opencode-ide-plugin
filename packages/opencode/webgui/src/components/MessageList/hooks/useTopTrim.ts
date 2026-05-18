@@ -12,6 +12,7 @@ interface Input<T extends Item> {
   items: T[]
   ids?: string[]
   paused: boolean
+  preserveScrollAnchor?: boolean
   loading?: boolean
   ref: RefObject<HTMLDivElement | null>
   runProgrammaticScroll?: ProgrammaticScroll
@@ -56,6 +57,7 @@ export function useTopTrim<T extends Item>(input: Input<T>) {
   const topRef = useRef<HTMLDivElement>(null)
   const node = useRef<Record<string, HTMLDivElement | null>>({})
   const pending = useRef<{ first?: string; head?: string; end?: boolean } | null>(null)
+  const prevIds = useRef<string[]>([])
   const load = useRef<boolean | null>(null)
   const startRef = useRef(0)
   const width = useRef<number | null>(null)
@@ -109,6 +111,7 @@ export function useTopTrim<T extends Item>(input: Input<T>) {
     onChange: (next) => {
       snap()
       onHeightChange(next)
+      if (input.preserveScrollAnchor === false) return
       if (input.paused || pending.current) return
       const parent = input.ref.current?.parentElement as HTMLElement | null
       if (!parent) return
@@ -142,6 +145,7 @@ export function useTopTrim<T extends Item>(input: Input<T>) {
   useLayoutEffect(() => {
     pending.current = null
     width.current = null
+    prevIds.current = ids
     setFull(false)
     clear()
   }, [clear, input.sessionID])
@@ -152,6 +156,23 @@ export function useTopTrim<T extends Item>(input: Input<T>) {
     setFull(false)
     clear()
   }, [clear, input.paused])
+
+  useLayoutEffect(() => {
+    const prev = prevIds.current
+    prevIds.current = ids
+    if (input.preserveScrollAnchor === false) return
+    if (input.paused || pending.current) return
+    if (!prev.length || ids.length >= prev.length) return
+    if (prev[0] === head) return
+    const parent = input.ref.current?.parentElement as HTMLElement | null
+    if (!parent) return
+    let moved: number | null = null
+    mutateScroll("history-trim", parent, () => {
+      moved = restore(parent, node.current, parent.getBoundingClientRect().top)
+    })
+    if (moved === null) return
+    pushRef.current(parent.scrollTop, parent.clientHeight)
+  }, [head, ids, input.paused, input.preserveScrollAnchor, input.ref, mutateScroll, restore])
 
   const row = useCallback(
     (id: string) => (el: HTMLDivElement | null) => {
@@ -175,7 +196,7 @@ export function useTopTrim<T extends Item>(input: Input<T>) {
       setFull(true)
       return true
     },
-    [clear, measure, reset],
+    [clear, input.preserveScrollAnchor, measure, reset],
   )
 
   const preparePrepend = useCallback(() => {

@@ -1,16 +1,30 @@
 {
   "version": "0.2.0",
+  "inputs": [
+    {
+      "id": "opencodeDevDirectoryOverride",
+      "type": "promptString",
+      "description": "WebGUI 测试环境项目路径覆盖（留空则使用当前工作区根目录）",
+      "default": "${workspaceFolder}"
+    }
+  ],
   "configurations": [
     {
       "type": "node-terminal",
       "request": "launch",
       "name": "WebGUI: dev",
+      "env": {
+        "OPENCODE_DEV_DIRECTORY_OVERRIDE": "${input:opencodeDevDirectoryOverride}"
+      },
       "command": "bun run --cwd packages/opencode/webgui dev"
     },
     {
       "type": "node-terminal",
       "request": "launch",
       "name": "Backend: source web 4300",
+      "env": {
+        "OPENCODE_DISABLE_CHANNEL_DB": "1"
+      },
       "command": "bun run --cwd packages/opencode --conditions=browser src/index.ts web --hostname 127.0.0.1 --port 4300 --print-logs"
     }
   ]
