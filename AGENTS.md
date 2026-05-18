@@ -17,6 +17,7 @@
 | 打包最新版 Windows IDEA 插件 | 按版本规则用当前日期计算版本号，并通过 `./gradlew.bat buildPlugin "-Pplugin.version=<版本号>" --no-daemon --console=plain` 打包 JetBrains/IDEA Windows 测试包；不要使用 `build.gradle.kts` 里可能过期的 fallback 版本；同时遵守通用 `gradlew.bat` 命令规则 | 见 `memory/context/versioning.md` 与 `memory/context/gradle.md` |
 | 发布下一个版本 | 直接执行基于 tag 的正式发版流程：提交本次实现、推送分支、按版本规则创建并推送下一个 `v` 标签、跟进 `release.yml` 结果 | 见 `memory/context/release-publishing.md` |
 | 版本规则 | `YY.M.DDNN`：`YY`=年份后两位，`M`=月份不补零，`DDNN`=日期×100 + 当天序号；跨天后日期部分必须更新，当天序号重置为 `00` | 仓库通用版本规则，见 `memory/context/versioning.md` |
+| Speckit 文档语言 | 后续新增或更新 Spec Kit 相关文档时，模板骨架标题可保留官方英文；项目特定正文、需求、计划、任务、检查项和验证说明使用简体中文；技术专有名词、命令、文件路径、标识符和协议名按原文保留 | 见 `.specify/memory/constitution.md` 的 Documentation Language Policy |
 
 后续新增、修改或删除记忆时，必须持续维护 `memory/glossary.md`；其中高频或会影响日常解码的 Term 也要同步更新到 `AGENTS.md` 的 `Terms` 表。
 
