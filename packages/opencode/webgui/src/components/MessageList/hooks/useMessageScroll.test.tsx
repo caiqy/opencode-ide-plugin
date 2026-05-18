@@ -553,6 +553,30 @@ describe("useMessageScroll", () => {
     expect(getByTestId("scroll-button-visible").textContent).toBe("1")
   })
 
+  it("稳定优先模式下 following 即使上次快照已离底，非用户尺寸变化仍拉到底部", () => {
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tail = getByTestId("tail-box")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 500)
+    fireEvent.scroll(parent)
+    fireEvent.click(getByTestId("history-programmatic-scroll-sync"))
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+    expect(getByTestId("scroll-at-bottom").textContent).toBe("0")
+    tracker.reset()
+
+    tracker.growHeight(1200)
+    triggerResize(tail)
+
+    expect(tracker.getTop()).toBe(700)
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+  })
+
   it("runProgrammaticScroll 回调内同步触发 scroll 也不会误判 detached", () => {
     const { getByTestId } = render(
       <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
@@ -1099,7 +1123,7 @@ describe("useMessageScroll", () => {
     expect(getByTestId("scroll-button-visible").textContent).toBe("1")
   })
 
-  it("此前视口已不在底部时，纯 ResizeObserver 内容增长不应拉回底部", () => {
+  it("稳定优先模式下，此前非用户程序滚动造成的离底会在 ResizeObserver 内容增长时拉回底部", () => {
     vi.useFakeTimers()
 
     const { getByTestId } = render(
@@ -1124,12 +1148,12 @@ describe("useMessageScroll", () => {
     tracker.growHeight(1300)
     triggerResize(tail)
 
-    expect(tracker.getCount()).toBe(0)
-    expect(getByTestId("scroll-mode").textContent).toBe("detached")
-    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
+    expect(tracker.getTop()).toBe(800)
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
   })
 
-  it("此前视口已不在底部时，没有 ResizeObserver 的 fallback 内容增长不应拉回底部", () => {
+  it("稳定优先模式下，此前非用户程序滚动造成的离底会在 fallback 内容增长时拉回底部", () => {
     vi.useFakeTimers()
     ;(globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver = undefined
 
@@ -1162,9 +1186,9 @@ describe("useMessageScroll", () => {
       />,
     )
 
-    expect(tracker.getCount()).toBe(0)
-    expect(getByTestId("scroll-mode").textContent).toBe("detached")
-    expect(getByTestId("scroll-button-visible").textContent).toBe("1")
+    expect(tracker.getTop()).toBe(800)
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
   })
 
   it("history 区高度变化不触发自动滚动，但 tail 区变化会触发", () => {

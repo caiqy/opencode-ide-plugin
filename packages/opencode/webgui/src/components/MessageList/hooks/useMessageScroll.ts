@@ -226,7 +226,7 @@ export function useMessageScroll(
           lastHeight.current <= 0 ||
           lastClient.current <= 0 ||
           lastHeight.current - lastClient.current - lastTop.current <= BOTTOM_THRESHOLD
-        if (!hadBottomAnchor) {
+        if (!hadBottomAnchor && hasUserIntent()) {
           allowNextTailFollow.current = false
           syncLast(el)
           clearProgram()
@@ -242,7 +242,7 @@ export function useMessageScroll(
         pinBottom("button-seek", "smooth")
       }
     },
-    [clearProgram, clearSeek, commitView, pinBottom, syncLast],
+    [clearProgram, clearSeek, commitView, hasUserIntent, pinBottom, syncLast],
   )
 
   const runProgrammaticScroll = useCallback(
