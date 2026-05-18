@@ -1,6 +1,7 @@
 import * as vscode from "vscode"
 import * as path from "path"
 import { RecoveryUtils } from "./RecoveryUtils"
+import { getExtension } from "./extensionIdentity"
 import { logger } from "../globals"
 
 /**
@@ -463,7 +464,7 @@ export class ErrorHandler {
    * @returns Comprehensive diagnostic information
    */
   async generateDiagnosticInfo(): Promise<DiagnosticInfo> {
-    const extension = vscode.extensions.getExtension("opencode.opencode")
+    const extension = getExtension()
     const config = vscode.workspace.getConfiguration("opencode")
 
     return {
@@ -842,13 +843,6 @@ export class ErrorHandler {
       return s.includes(dir) || s.includes(parent)
     }
 
-    const isIgnorableGlobalRejection = (err: unknown): boolean => {
-      const { message, stack } = getErrorStrings(err)
-      // Known benign errors from other extensions (e.g., Windsurf acknowledgeCascadeCodeEdit)
-      const patterns = ["no unacknowledged steps for file", "acknowledgeCascadeCodeEdit", "windsurf/dist/extension.js"]
-      return patterns.some((p) => message.includes(p) || stack.includes(p))
-    }
-
     const shouldSuppressLanguageServerInitError = (err: unknown): boolean => {
       const { message } = getErrorStrings(err)
       if (!message) {
@@ -865,38 +859,6 @@ export class ErrorHandler {
       logger.appendLine(`[IGNORED] ${source}: ${message} (waiting for language server initialization)`)
       return true
     }
-
-    // Handle unhandled promise rejections
-    process.on("unhandledRejection", (reason, promise) => {
-      // Preserve original message/stack for attribution. Creating a new Error() here would
-      // point the stack at *this* handler and falsely attribute external errors to OpenCode.
-      const { message, stack } = getErrorStrings(reason)
-      const error = reason instanceof Error ? reason : new Error(message)
-      if (!(reason instanceof Error) && stack) {
-        error.stack = stack
-      }
-
-      // Suppress known benign global rejections from other extensions
-      if (isIgnorableGlobalRejection(error)) {
-        logger.appendLine(`[IGNORED] Unhandled rejection suppressed: ${error.message}`)
-        return
-      }
-      if (suppressLanguageServerError(error, "Unhandled rejection suppressed")) {
-        return
-      }
-
-      // Don't surface errors coming from other extensions running in the same extension host.
-      if (!isFromThisExtension(reason)) {
-        logger.appendLine(`[IGNORED] External unhandled rejection: ${message}`)
-        return
-      }
-
-      this.handleError(
-        this.createErrorContext(ErrorCategory.VALIDATION, ErrorSeverity.ERROR, "Global", "unhandledRejection", error, {
-          promise: promise.toString(),
-        }),
-      )
-    })
 
     // Handle uncaught exceptions
     process.on("uncaughtException", (error) => {

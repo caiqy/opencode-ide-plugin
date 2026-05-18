@@ -2,6 +2,7 @@ import * as assert from "assert"
 import * as vscode from "vscode"
 import * as path from "path"
 import * as sinon from "sinon"
+import { extensionId } from "../../utils/extensionIdentity"
 
 suite("Integration Test Suite", () => {
   let extension: vscode.Extension<any> | undefined
@@ -9,7 +10,7 @@ suite("Integration Test Suite", () => {
 
   suiteSetup(async () => {
     // Get the extension
-    extension = vscode.extensions.getExtension("opencode.opencode")
+    extension = vscode.extensions.getExtension(extensionId)
     assert.ok(extension, "Extension should be available")
 
     // Activate the extension

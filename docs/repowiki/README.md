@@ -28,6 +28,15 @@
 - **写适配点，不写所有源码：** 例如 `config overlay`、MCP enable/tool-enable、Anthropic SSE patch 是同步风险点，应在适配边界中记录。
 - **写维护入口：** 每个页面都列出关键文件，方便后续定位。
 
+## 近期高风险主题索引
+
+近半个月新增或收口的本地 fork 逻辑，后续同步上游时优先检查：
+
+- **图片生成 / 预览 / 保存链路：** 见 [01](./01-webgui-architecture.md)、[02](./02-ide-bridge.md)、[04](./04-session-chat.md)、[05](./05-subtasks-tools-mcp.md)、[08](./08-upstream-adaptations.md)。重点是 `generate_image`、`.opencode/generated-images`、generated-image 路由、Markdown/tool attachment 预览、ImageOverlay 与 host `saveImage`。
+- **宿主版本 / 更新 / bridge 能力：** 见 [02](./02-ide-bridge.md)、[06](./06-settings-update-localization.md)、[07](./07-host-plugins.md)、[08](./08-upstream-adaptations.md)。重点是 `getExtensionVersion`、`OPENCODE_UI_VERSION`、JetBrains public Marketplace 查询、空 Marketplace 结果和 plugin identity 对齐。
+- **non-git 项目隔离与 dev 路径覆盖：** 见 [01](./01-webgui-architecture.md)、[03](./03-state-storage.md)、[07](./07-host-plugins.md)、[08](./08-upstream-adaptations.md)。重点是 non-git project id 按目录派生，workspace 状态不再坍缩到 global project。
+- **WebGUI 稳定性补丁：** 见 [04](./04-session-chat.md)、[05](./05-subtasks-tools-mcp.md)。重点是 scroll follow / anchoring、aborted message load retry、assistant completed time、bash running title、StatusPopover backend 地址和 overlay 阴影点击关闭。
+
 ## 核心代码入口
 
 - WebGUI：`packages/opencode/webgui/src/`

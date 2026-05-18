@@ -21,7 +21,7 @@ suite("ErrorHandler Test Suite", () => {
       .map((h) => h.toString())
       .join("\n")
     assert.ok(
-      !handlers.includes("Unhandled rejection suppressed") && !handlers.includes('"Global", "unhandledRejection"'),
+      !handlers.includes('"Global", "unhandledRejection"'),
       "ErrorHandler should not register a process-level unhandledRejection listener",
     )
   })

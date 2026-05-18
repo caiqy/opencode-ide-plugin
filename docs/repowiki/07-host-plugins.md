@@ -23,6 +23,12 @@ VSCode 与 JetBrains 插件负责把 opencode 后端和 WebGUI 连接到 IDE 中
 - 创建 IDE bridge session，并把 session 参数注入 `/app` URL。
 - 处理文件打开、URL 打开、剪贴板、reloadPath、storage、更新、重启。
 
+版本与 user agent 约定：
+
+- VSCode backend 启动时通过 `BackendLauncher` 注入 `OPENCODE_UI_VERSION=<extension.version>`。
+- 空白 extension version 不注入，并会移除继承环境中的 stale `OPENCODE_UI_VERSION`。
+- opencode 后端用该值生成 `opencode-ui/<version>` user agent，供安装/更新/API 请求识别插件 UI 来源。
+
 VSCode 稳定性补丁：
 
 - Service Worker InvalidState 双层 retry。
@@ -47,6 +53,7 @@ VSCode 稳定性补丁：
 - 两个入口职责分离，不自动互相带起。
 - backend 调试入口固定使用开发端口 `4300`，避免与维护者常用的默认 `4096` 冲突。
 - 本地开发应优先运行当前工作区源码，而不是历史构建产物或全局安装二进制。
+- `WebGUI: dev` 可提示输入 `OPENCODE_DEV_DIRECTORY_OVERRIDE`，默认是 `${workspaceFolder}`；该值只影响 Vite dev proxy 的 `x-opencode-directory`，不进入正式 build。
 
 ## JetBrains 插件
 
@@ -69,6 +76,12 @@ VSCode 稳定性补丁：
 - 处理 JetBrains 原生拖拽，向 WebGUI 推送 `insertPaths` / `pastePath`。
 - 后端通过 JetBrains Terminal 插件启动，而不是直接起独立控制台进程。
 - backend binary 选择优先级为：`OPENCODE_BIN` 环境变量 > 插件内嵌 binary > 系统 PATH 中的 `opencode`。
+
+版本与更新约定：
+
+- `getExtensionVersion` 通过 `PluginVersionSource` 返回当前安装插件版本，并与 `getUpdateInfo.currentVersion` 共用同一来源。
+- JetBrains 更新服务只以 public Marketplace release 查询判断是否有新版本；newer release 返回 `manualUpdate=true`，由用户在 IDE Plugins 页面完成更新。
+- 空 Marketplace 结果必须清理 cached update 并返回不可用/手动检查语义，不能继续显示旧的可更新版本。
 
 ### JetBrains backend 连接建立依赖
 
@@ -179,7 +192,7 @@ Marketplace 规则：
 | Remote 支持   | `asExternalUri()`                | 本地 IDE 语义                       |
 | 存储          | `globalState/workspaceState/Map` | `PropertiesComponent/Session.mem`   |
 | 重启          | reload window                    | restart IDE                         |
-| 更新          | 支持 GitHub Release `.vsix` 更新 | JetBrains Marketplace 安装版支持站内更新；本地 ZIP / 开发版返回 `unsupported` |
+| 更新          | 支持 GitHub Release `.vsix` 更新 | Marketplace 安装版支持 public Marketplace 检查并打开 Plugins 页面手动更新；本地 ZIP / 开发版不执行自动安装 |
 | 打开文件列表  | `FileMonitor`                    | `IdeOpenFilesUpdater`               |
 
 ## URL 注入
@@ -204,9 +217,9 @@ JetBrains 还会在 IDE bridge 的 `connected` 事件里下发 `minVersion`；�
 ## 维护注意点
 
 - WebGUI 新增宿主能力时，必须明确 VSCode 和 JetBrains 是否都支持。
-- `getUpdateInfo` / `checkForUpdates` / `installUpdate` 现已由 VSCode 与 JetBrains 共同支持，但 JetBrains 只对 Marketplace 安装版开放站内更新。
+- `getUpdateInfo` / `checkForUpdates` / `installUpdate` 现已由 VSCode 与 JetBrains 共同支持，但 JetBrains Marketplace 安装版以 public Marketplace 检查和手动更新入口为主。
 - 不要删除 VSCode 的 SW/CSP/Remote 兼容代码；这些看似“包装细节”，实际是插件可用性的关键。
 - 调整 JetBrains backend 启动 UI 时，不要把“日志面板懒显示”改回默认常驻，也不要移除监听地址解析所需的日志采集链路。
-- JetBrains 站内更新只对 Marketplace 包生效；调整构建链路时不要移除 `distribution.channel=marketplace` 注入。
+- JetBrains Marketplace 更新判断依赖 Marketplace 包元数据；调整构建链路时不要移除 `distribution.channel=marketplace` 注入。
 - 调整 JetBrains 发布或更新逻辑时，不要把运行时 plugin ID 改回 `qtkj.opencode-ui`；若需提及旧 ID，只能放在迁移说明中。
 - 修改发布流程时，要同时检查共享内容真源、release workflow 职责边界，以及 VSCode / JetBrains Marketplace 是否仍消费已有 artifact。

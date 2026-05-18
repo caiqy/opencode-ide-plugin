@@ -2,12 +2,13 @@ import * as assert from "assert"
 import * as vscode from "vscode"
 import * as path from "path"
 import * as sinon from "sinon"
+import { extensionId } from "../../utils/extensionIdentity"
 
 suite("Backend Integration Test Suite", () => {
   let extension: vscode.Extension<any> | undefined
 
   suiteSetup(async () => {
-    extension = vscode.extensions.getExtension("opencode.opencode")
+    extension = vscode.extensions.getExtension(extensionId)
     assert.ok(extension, "Extension should be available")
     await extension.activate()
   })

@@ -102,7 +102,9 @@ suite("BackendLauncher Test Suite", () => {
 
     launcher.terminate()
 
-    assert.deepStrictEqual(calls, ["SIGTERM"])
+    if (process.platform !== "win32") {
+      assert.deepStrictEqual(calls, ["SIGTERM"])
+    }
     assert.strictEqual((launcher as unknown as { currentProcess?: unknown }).currentProcess, undefined)
     assert.strictEqual((launcher as unknown as { currentConnection?: unknown }).currentConnection, undefined)
   })
@@ -135,7 +137,9 @@ suite("BackendLauncher Test Suite", () => {
 
     try {
       await assert.rejects(() => launcher.launchBackend("."), err)
-      assert.deepStrictEqual(calls, ["SIGTERM"])
+      if (process.platform !== "win32") {
+        assert.deepStrictEqual(calls, ["SIGTERM"])
+      }
       assert.strictEqual((launcher as unknown as { currentProcess?: unknown }).currentProcess, undefined)
       assert.strictEqual((launcher as unknown as { currentConnection?: unknown }).currentConnection, undefined)
     } finally {

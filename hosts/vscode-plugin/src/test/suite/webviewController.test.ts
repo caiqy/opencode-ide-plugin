@@ -14,6 +14,7 @@ suite("WebviewController Test Suite", () => {
 
   async function loadController(options: { uiBase?: string } = {}) {
     let handlers: unknown
+    const writeFile = sinon.stub().resolves()
 
     sinon.stub(globals, "getUpdateService").returns(undefined)
     sinon.stub(bridgeServer, "createSession").callsFake(async (input) => {
@@ -27,8 +28,6 @@ suite("WebviewController Test Suite", () => {
     sinon.stub(FileMonitor.prototype, "startMonitoring").callsFake(() => undefined)
     sinon.stub(FileMonitor.prototype, "stopMonitoring").callsFake(() => undefined)
     sinon.stub(vscode.env, "asExternalUri").callsFake(async (uri: vscode.Uri) => uri)
-    sinon.stub(vscode.workspace.fs, "readFile").resolves(Buffer.from("<html>${uiUrl}${cspSource}${cspOrigins}</html>"))
-
     const webview = {
       html: "",
       cspSource: "vscode-webview:",
@@ -47,6 +46,8 @@ suite("WebviewController Test Suite", () => {
       context,
       storageGet: async () => ({}),
       storageSet: async () => undefined,
+      readFile: async () => Buffer.from("<html>${uiUrl}${cspSource}${cspOrigins}</html>"),
+      writeFile,
     })
 
     await controller.load({
@@ -55,6 +56,7 @@ suite("WebviewController Test Suite", () => {
 
     return {
       controller,
+      writeFile,
       saveImage: (handlers as { saveImage?: (url: string, filename: string) => Promise<{ cancelled: boolean }> }).saveImage,
     }
   }
@@ -187,9 +189,8 @@ suite("WebviewController Test Suite", () => {
   test("load wires a saveImage handler that decodes data URLs and writes the selected file", async () => {
     const target = vscode.Uri.file("D:/tmp/opencode-data-url.png")
     const showSaveDialog = sinon.stub(vscode.window, "showSaveDialog").resolves(target)
-    const writeFile = sinon.stub(vscode.workspace.fs, "writeFile").resolves()
 
-    const { controller, saveImage } = await loadController()
+    const { controller, saveImage, writeFile } = await loadController()
 
     assert.ok(saveImage)
 
@@ -208,14 +209,13 @@ suite("WebviewController Test Suite", () => {
     const target = vscode.Uri.file("D:/tmp/opencode-remote-url.png")
     const originalFetch = globalThis.fetch
     const showSaveDialog = sinon.stub(vscode.window, "showSaveDialog").resolves(target)
-    const writeFile = sinon.stub(vscode.workspace.fs, "writeFile").resolves()
     globalThis.fetch = (async (input) => {
       assert.strictEqual(String(input), "https://example.com/image.png")
       return new Response(Buffer.from("remote-image"), { status: 200 })
     }) as typeof fetch
 
     try {
-      const { controller, saveImage } = await loadController()
+      const { controller, saveImage, writeFile } = await loadController()
 
       assert.ok(saveImage)
 
@@ -237,7 +237,6 @@ suite("WebviewController Test Suite", () => {
     const target = vscode.Uri.file("D:/tmp/opencode-relative-url.png")
     const originalFetch = globalThis.fetch
     const showSaveDialog = sinon.stub(vscode.window, "showSaveDialog").resolves(target)
-    const writeFile = sinon.stub(vscode.workspace.fs, "writeFile").resolves()
     globalThis.fetch = (async (input) => {
       assert.strictEqual(
         String(input),
@@ -247,7 +246,7 @@ suite("WebviewController Test Suite", () => {
     }) as typeof fetch
 
     try {
-      const { controller, saveImage } = await loadController()
+      const { controller, saveImage, writeFile } = await loadController()
 
       assert.ok(saveImage)
 
@@ -267,9 +266,8 @@ suite("WebviewController Test Suite", () => {
   test("saveImage rejects non-base64 data URLs and does not write a file", async () => {
     const target = vscode.Uri.file("D:/tmp/opencode-invalid-data-url.png")
     sinon.stub(vscode.window, "showSaveDialog").resolves(target)
-    const writeFile = sinon.stub(vscode.workspace.fs, "writeFile").resolves()
 
-    const { controller, saveImage } = await loadController()
+    const { controller, saveImage, writeFile } = await loadController()
 
     await assert.rejects(() => saveImage!("data:image/png,hello", "invalid-data-url.png"), /Unsupported data URL/)
     assert.ok(writeFile.notCalled)
@@ -280,9 +278,8 @@ suite("WebviewController Test Suite", () => {
   test("saveImage rejects invalid base64 data URLs and does not write a file", async () => {
     const target = vscode.Uri.file("D:/tmp/opencode-invalid-base64.png")
     sinon.stub(vscode.window, "showSaveDialog").resolves(target)
-    const writeFile = sinon.stub(vscode.workspace.fs, "writeFile").resolves()
 
-    const { controller, saveImage } = await loadController()
+    const { controller, saveImage, writeFile } = await loadController()
 
     await assert.rejects(() => saveImage!("data:image/png;base64,%%%", "invalid-base64.png"), /Invalid base64 data URL/)
     assert.ok(writeFile.notCalled)
@@ -298,10 +295,9 @@ suite("WebviewController Test Suite", () => {
       return new Response(Buffer.from("unexpected"), { status: 200 })
     }) as typeof fetch
     sinon.stub(vscode.window, "showSaveDialog").resolves(undefined)
-    const writeFile = sinon.stub(vscode.workspace.fs, "writeFile").resolves()
 
     try {
-      const { controller, saveImage } = await loadController()
+      const { controller, saveImage, writeFile } = await loadController()
 
       assert.ok(saveImage)
 

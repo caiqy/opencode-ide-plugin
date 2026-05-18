@@ -104,10 +104,11 @@ Host 推送：
 
 JetBrains 现已补齐同名更新 API，但有明确边界：
 
-- 只以 JetBrains Marketplace 为版本来源
-- Marketplace 安装版支持站内更新
-- 本地 ZIP / 开发版返回 `unsupported`
-- 更新成功后的生效方式以 IDE 原生提示为准
+- 使用公开 JetBrains Marketplace release 查询，不依赖内部下载 API。
+- Marketplace 安装版可以检查到 newer release，并返回带 `manualUpdate` 的结构化结果。
+- 空 Marketplace 结果视为当前没有可安装更新，同时清理 cached update，不能继续提示旧版本。
+- 本地 ZIP / 开发版不执行站内自动安装；需要用户安装新 ZIP 或通过 IDE Plugins 页面处理。
+- 更新成功后的生效方式以 IDE 原生提示为准。
 
 ## 重启入口
 
@@ -139,5 +140,5 @@ WebGUI 固定中文，不引入 i18n，也不提供语言切换。
 
 - 新增设置项时先判断是真 opencode config，还是 WebGUI scoped storage。
 - 新增更新相关 UI 时，不要绕过 `UpdateContext` 新建第二套状态机。
-- 维护 JetBrains 发布链路时，不要移除 `distribution.channel=marketplace` 注入，否则站内更新能力判断会失真。
+- 维护 JetBrains 发布链路时，不要移除 `distribution.channel=marketplace` 注入；维护更新链路时，不要把 public Marketplace 查询改回内部下载 API 或保留空结果前的旧 cached update。
 - 新增文案时保持中文风格一致，避免中英混杂但保留必要专有名词。

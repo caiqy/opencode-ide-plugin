@@ -5,6 +5,7 @@ import * as vscode from "vscode"
 import { ResourceExtractor } from "./ResourceExtractor"
 import { killTree } from "./kill"
 import { ErrorCategory, errorHandler, ErrorSeverity } from "../utils/ErrorHandler"
+import { getExtension } from "../utils/extensionIdentity"
 import { logger } from "../globals"
 
 /**
@@ -199,7 +200,7 @@ export class BackendLauncher {
     }
 
     // Resolve extension path dynamically (works for any extension ID)
-    const extPath = this.extensionPath || vscode.extensions.getExtension("qtkj.opencode-ui")?.extensionPath
+    const extPath = this.extensionPath || getExtension()?.extensionPath
 
     // Try bundled binary first
     if (extPath) {

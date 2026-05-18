@@ -83,6 +83,12 @@ WebGUI 的核心体验是“IDE 内多会话聊天”。本项目在上游 openc
 
 关键文件：`packages/opencode/webgui/src/types/messages.ts`、`packages/opencode/webgui/src/lib/messagesStore.ts`。
 
+加载失败和 abort 的收口规则：
+
+- latest / older 请求如果因为 abort 结束，不应误标为已加载或错误状态。
+- `ensureSession` 遇到已中止的 pending latest 时，应使用新的 AbortSignal 重新发起加载。
+- 这条链路由 `MessagesContext.pagination.test.tsx` 直接锁定，避免会话切换或卸载时留下不可恢复的 loading/error 状态。
+
 重要事件：
 
 - `message.updated`
@@ -102,6 +108,12 @@ WebGUI 避免全量 virtualization，采用更保守的聊天滚动模型：
 - 更早历史加载只影响顶部。
 - 历史加载后保持锚点，减少跳动。
 - SSE 新消息只在用户贴底时自动滚到底。
+
+近期稳定化约束：
+
+- tail 区域 resize、工具输出展开、思考块展开和容器高度变化时，如果用户仍贴底，必须继续保持自动跟随。
+- 用户通过滚轮、scrollbar 或键盘主动离开底部后，tail resize 不能把用户强行拉回底部。
+- history 区高度变化只维护历史 anchor，不触发 tail 自动滚动；tail 区变化才驱动自动跟随。
 
 相关代码主要在 `MessageList` 和滚动 hook 中。
 
@@ -172,6 +184,12 @@ WebGUI 避免全量 virtualization，采用更保守的聊天滚动模型：
 - session error、revert banner、revert summary。
 - 文本 part 中 mention 的显示与复制保真。
 - 图片预览和常规附件展示。
+
+近期展示契约：
+
+- assistant meta 在存在 `completedAt` 时追加完整结束时间；`completedAt` 与 `interrupted` 可同时显示，非法时间戳不展示。
+- `stream_timeout` 属于可重试的上游流内错误，后端会进入 retry 状态并通过 TypingIndicator 显示重试提示，而不是立即固化成最终错误卡片。
+- 图片可以来自普通附件、Markdown generated image 路径或 tool result attachments；生成图片的模型上下文以 tool attachment 为准，保存到本地文件不改变模型上下文。
 
 ## 顶部会话工作台
 

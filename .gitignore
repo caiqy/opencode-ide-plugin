@@ -77,6 +77,7 @@ backend/rovo-*
 *.test
 *.out
 coverage/
+!docs/superpowers/coverage/
 coverage.*
 .scripts
 .direnv/

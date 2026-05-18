@@ -110,6 +110,17 @@ class OpenCodeExtension {
       currentVersion,
       checker: new ReleaseChecker({ owner: "caiqy", name: "opencode-ide-plugin" }, extensionFetch),
       installer: new UpdateInstaller(extensionFetch),
+      onScheduledError: (error) => {
+        void errorHandler.handleError(
+          errorHandler.createErrorContext(
+            ErrorCategory.NETWORK,
+            ErrorSeverity.WARNING,
+            "UpdateService",
+            "scheduledCheck",
+            error instanceof Error ? error : new Error(String(error)),
+          ),
+        )
+      },
     })
     this.updateService.start()
     setUpdateService(this.updateService)

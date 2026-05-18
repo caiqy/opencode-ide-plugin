@@ -14,6 +14,7 @@ type UpdateServiceOptions = {
   checker: Pick<ReleaseChecker, "getLatest">
   installer: Pick<UpdateInstaller, "install">
   scheduler?: UpdateScheduler
+  onScheduledError?: (error: unknown) => void
 }
 
 type TimerHandle = unknown
@@ -163,7 +164,9 @@ export class UpdateService {
   }
 
   private runScheduledCheck(): void {
-    void this.checkNow().catch(() => undefined)
+    void this.checkNow().catch((error) => {
+      this.options.onScheduledError?.(error)
+    })
   }
 }
 

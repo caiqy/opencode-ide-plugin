@@ -88,6 +88,46 @@ suite("UpdateService Test Suite", () => {
     assert.deepStrictEqual(cleared, ["timeout", "interval"])
   })
 
+  test("scheduled check failure 会通过本地错误处理上报", async () => {
+    let task: (() => void) | undefined
+    const reports: string[] = []
+    const scheduler = {
+      setTimeout(input: () => void) {
+        task = input
+        return { type: "timeout" as const }
+      },
+      clearTimeout() {},
+      setInterval() {
+        return { type: "interval" as const }
+      },
+      clearInterval() {},
+    }
+    const service = new UpdateService({
+      currentVersion: "26.4.1404",
+      checker: {
+        async getLatest() {
+          throw new Error("scheduled check failed")
+        },
+      },
+      installer: {
+        async install() {
+          return ""
+        },
+      },
+      scheduler,
+      onScheduledError(error) {
+        reports.push(error instanceof Error ? error.message : String(error))
+      },
+    })
+
+    service.start()
+    task?.()
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    assert.deepStrictEqual(reports, ["scheduled check failed"])
+  })
+
   test("发现新版本时只广播一次 updateAvailable", async () => {
     const events: EventRecord[] = []
     const latest: ReleaseInfo = {

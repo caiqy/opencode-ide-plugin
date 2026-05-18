@@ -54,10 +54,8 @@ WebGUI 在 `ideBridge.ts` 中解析这些元数据，供版本门禁、重启按
 - `restartHost`：重启或重载宿主。
 - `ensureAndOpenFile`：确保文件存在并打开。
 - `storageGet` / `storageSet`：读写 `global | workspace | mem` scoped storage。
-
-VSCode 额外支持更新能力：
-
-- `getExtensionVersion`
+- `saveImage`：保存 WebGUI 图片预览中的 data URL、remote URL 或 generated-image relative URL。取消保存返回 `{ cancelled: true }`，不支持时返回明确错误。
+- `getExtensionVersion`：返回宿主插件真实版本，供 WebGUI 更新 UI 和 user agent 相关展示使用。
 
 VSCode 与 JetBrains 共同支持的更新请求：
 
@@ -67,9 +65,10 @@ VSCode 与 JetBrains 共同支持的更新请求：
 
 JetBrains 更新限制：
 
-- 只对 JetBrains Marketplace 安装版开放站内更新
-- 本地 ZIP / 开发版返回 `unsupported`
-- 更新成功后的生效方式以 IDE 原生提示为准
+- 只使用公开 JetBrains Marketplace release 查询作为远端版本来源。
+- Marketplace 安装版可检查更新，但安装动作以打开 IDE Plugins 页面并由用户手动更新为主。
+- 本地 ZIP / 开发版返回 `unsupported` 或仅支持手动检查提示。
+- 空 Marketplace 结果视为当前没有可安装更新，不能保留旧 cached update。
 
 ## Host → UI 推送
 

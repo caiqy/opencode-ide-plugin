@@ -48,6 +48,28 @@ ToolPart 负责将 opencode 工具 part 转成 IDE 友好 UI：
 - `grep` 标题除 `pattern` 外还要补 `include`。
 - `plan_enter` / `plan_exit` / `batch` / `question` / `websearch` / `codesearch` / `lsp` / `invalid` 等工具都有固定中文名。
 
+## 图片生成工具与预览
+
+`generate_image` 是本 fork 为 IDE/WebGUI 场景保留的关键工具能力。它的展示链路不是普通文本 output，而是：
+
+```text
+generate_image provider result
+  -> .opencode/generated-images project file
+  -> ToolStateCompleted.attachments[]
+  -> ToolImageAttachments 缩略图网格
+  -> ImageOverlay 预览 / 保存
+```
+
+当前契约：
+
+- 工具名 `image_generation` / `generate_image` 在 UI 中显示为“图片生成”。
+- 工具 output 保留 `已生成 N 张图片：` 摘要，不把 `Image #N filename` 拼成重复标题。
+- 图片编号只按图片附件计数，前置 text attachment 不导致跳号。
+- attachment 存在 `relativePath` 时，预览和缩略图都使用 generated-image 专用路由；旧 data URL 图片仍可显示。
+- `ImageOverlay` 支持保存、缩放、重置、适应窗口、滚轮缩放、拖拽平移、Esc 关闭；点击图片外阴影/空白区域关闭，点击图片本体或工具栏不关闭。
+
+保存链路通过 WebGUI `saveImage()` 分流：插件环境走 IDE bridge `saveImage`，普通浏览器环境回退到下载链接。
+
 ## Diff、patch 与文件变更浏览
 
 关键文件：
@@ -81,6 +103,7 @@ Server tab 是状态面板的基础分区，用来快速判断 WebGUI 是否处�
 - `SSE 连接`：展示 WebGUI 到 opencode `/event` 事件流的连接状态，例如 `connected`、`connecting`、`disconnected`。
 - `IDE bridge`：展示 WebGUI 到宿主插件本地 bridge 的状态，例如 `ready` 或未连接。
 - `路径`：展示当前 opencode 实例 / 项目的工作目录，来自 path/project 状态。
+- `后端地址`：优先展示 Vite dev 注入的 `__OPENCODE_BACKEND_URL__`，未注入时回退当前 origin。这个字段用于区分“WebGUI 当前页面地址”和“实际 opencode backend 目标”，本地多端口联调时尤其重要。
 
 它的定位是“环境健康检查”，不是具体业务功能。用户遇到消息不刷新、文件无法打开、路径不对、MCP/LSP 状态异常时，应先看 Server 分区判断是哪条链路断了。
 

@@ -10,6 +10,16 @@ WebGUI 的状态分为两类：opencode 服务端配置/会话数据，以及插
 - `workspace`：当前项目可恢复状态，例如标签页、草稿、最近选择。
 - `mem`：Host session 内瞬态状态，随 IDE 会话结束清空。
 
+## non-git 项目目录隔离
+
+non-git 普通目录现在会按目录派生稳定 project id，不再坍缩到 `ProjectID.global` / `worktree = "/"`。这会影响 workspace 级 scoped storage 的真实边界：
+
+- 同一个 non-git 目录重复打开，应恢复同一组 workspace tabs、drafts、selection。
+- 不同 non-git 目录即使都没有 Git，也不能共享 workspace tabs、drafts、selection。
+- 历史 global project session 会在运行时迁移到目录派生的 non-git project id。
+
+维护时如果调整 project identity、path normalize 或 session list 逻辑，必须同时跑 `packages/opencode/test/project/project.test.ts`，确认 non-git 目录隔离没有退回 global。
+
 关键文件：
 
 - `packages/opencode/webgui/src/state/scopedStorage.ts`

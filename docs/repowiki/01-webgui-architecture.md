@@ -79,6 +79,8 @@ WebGUI 有两条独立链路：
 - 后端识别不能只看 `/app` 是否可访问，必须通过 `/global/config` 做结构化校验。
 - 如果所有候选端口都失败，Vite dev 应直接启动失败，而不是进入半可用状态。
 - dev 模式还会注入 `__OPENCODE_BACKEND_URL__` 常量，供前端感知已发现的 backend 地址；浏览器侧 API/SSE 入口仍以当前 origin + proxy 为准。
+- `WebGUI: dev` 可通过 `OPENCODE_DEV_DIRECTORY_OVERRIDE` 覆盖测试项目路径；Vite 只在 `serve` 模式把该值注入为 `x-opencode-directory`，正式 `vite build` 和 embedded `/app` 不读取这个变量。
+- generated image 预览在 dev proxy 中也要转发 `/generated-image` 与 `/app/generated-image`，否则 WebGUI dev 无法预览项目内 `.opencode/generated-images` 文件。
 
 ## 与 opencode API 的关系
 
@@ -110,6 +112,15 @@ WebGUI 通过 `sdkClient` 访问 opencode 核心 API。迁移目标是优先使�
 `ProjectContext` 通过 opencode API 获取当前项目和 worktree 信息，是路径展示、相对路径计算、文件打开和 opened files 映射的基础。`IdeBridgeContext` 接收宿主推送的 `updateOpenedFiles`，再结合 worktree 将 IDE 中打开的文件转换为 WebGUI 可读的相对路径。
 
 维护时要注意：WebGUI 中的文件路径通常服务于 IDE 场景，既要能传给 opencode 后端作为上下文，也要能回传给宿主打开文件。路径归一化和 worktree 计算不能只按浏览器环境理解。
+
+## Generated image 预览入口
+
+图片生成链路会把生成文件落到当前项目的 `.opencode/generated-images/`，WebGUI 中有两个主要消费入口：
+
+- Markdown 图片：`MarkdownRenderer` 识别 `.opencode/generated-images` 相对路径，并通过 `getGeneratedImageUrl(relativePath, directoryOrWorktree)` 生成带实例目录上下文的专用路由。
+- Tool attachment 图片：`ToolImageAttachments` 优先使用 attachment 的 `relativePath`，同样通过 generated-image 路由加载；缺少 `relativePath` 的旧 data URL attachment 仍按原 URL 展示。
+
+维护时要保证 ProjectContext 的 `directory/worktree` 与 generated-image 路由一起演进。只改图片组件而忘记实例目录上下文，会导致多项目或 non-git 目录下预览串项目。
 
 ## 应用入口职责
 

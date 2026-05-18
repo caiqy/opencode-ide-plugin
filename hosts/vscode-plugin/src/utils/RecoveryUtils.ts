@@ -1,6 +1,7 @@
 import * as vscode from "vscode"
 import * as fs from "fs"
 import * as path from "path"
+import { getExtension } from "./extensionIdentity"
 import { logger } from "../globals"
 
 /**
@@ -23,7 +24,7 @@ export class RecoveryUtils {
     try {
       if (!binaryPath) {
         // Try to determine binary path
-        const extension = vscode.extensions.getExtension("opencode.opencode")
+        const extension = getExtension()
         if (!extension) {
           return { exists: false, executable: false, error: "Extension not found" }
         }
@@ -168,7 +169,7 @@ export class RecoveryUtils {
     issues: string[]
   } {
     const issues: string[] = []
-    const extension = vscode.extensions.getExtension("opencode.opencode")
+    const extension = getExtension()
 
     if (!extension) {
       issues.push("Extension not found in VSCode")
@@ -269,7 +270,7 @@ export class RecoveryUtils {
    */
   static async clearExtensionCache(): Promise<boolean> {
     try {
-      const extension = vscode.extensions.getExtension("opencode.opencode")
+      const extension = getExtension()
       if (!extension) {
         return false
       }

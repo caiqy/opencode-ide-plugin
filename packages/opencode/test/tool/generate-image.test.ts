@@ -1265,4 +1265,62 @@ describe("generate_image tool", () => {
       },
     ),
   )
+
+  it.live("accepts readonly edit image inputs without mutating the caller array", () =>
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          let imageFieldNames: string[] = []
+          const readonlyImages = Object.freeze(["input.png"] as string[])
+          yield* Effect.promise(() => Bun.write(path.join(Instance.worktree, "input.png"), Buffer.from(pngBase64, "base64")))
+
+          using server = Bun.serve({
+            port: 0,
+            fetch: async (request) => {
+              const form = await request.formData()
+              imageFieldNames = form.getAll("image[]").map((value) => {
+                if (value instanceof File) {
+                  return value.name
+                }
+                return String(value)
+              })
+
+              return Response.json({
+                data: [
+                  {
+                    b64_json: Buffer.from(pngBytes).toString("base64"),
+                  },
+                ],
+              })
+            },
+          })
+
+          const tool = yield* initTool(providerLayer(String(server.url)))
+          const result = yield* tool.execute(
+            {
+              action: "edit",
+              prompt: "make the image darker",
+              provider: "openai",
+              model: "gpt-image-2",
+              images: readonlyImages as unknown as string[],
+            },
+            {
+              ...toolCtx,
+              messageID: MessageID.make("msg_readonly-edit-image"),
+              ask: () => Effect.void,
+            },
+          )
+
+          expect(readonlyImages).toEqual(["input.png"])
+          expect(imageFieldNames).toEqual(["input.png"])
+          expect(result.output).toBe("已生成 1 张图片：")
+          expect(result.attachments).toHaveLength(1)
+        }),
+      {
+        config: {
+          image_model: "openai/gpt-image-2",
+        },
+      },
+    ),
+  )
 })

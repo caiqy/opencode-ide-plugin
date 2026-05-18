@@ -19,6 +19,8 @@ export interface WebviewControllerOptions {
   settingsManager?: SettingsManager
   storageGet: (scope: "global" | "workspace" | "mem", keys: string[]) => Promise<Record<string, string | undefined>>
   storageSet: (scope: "global" | "workspace" | "mem", key: string, value: string) => Promise<void>
+  readFile?: (uri: vscode.Uri) => Thenable<Uint8Array>
+  writeFile?: (uri: vscode.Uri, content: Uint8Array) => Thenable<void>
 }
 
 export class WebviewController {
@@ -35,6 +37,8 @@ export class WebviewController {
     keys: string[],
   ) => Promise<Record<string, string | undefined>>
   private storageSet: (scope: "global" | "workspace" | "mem", key: string, value: string) => Promise<void>
+  private readFile: (uri: vscode.Uri) => Thenable<Uint8Array>
+  private writeFile: (uri: vscode.Uri, content: Uint8Array) => Thenable<void>
   private uiBaseUrl?: string
   private disposed = false
 
@@ -44,6 +48,8 @@ export class WebviewController {
     this.settingsManager = opts.settingsManager
     this.storageGet = opts.storageGet
     this.storageSet = opts.storageSet
+    this.readFile = opts.readFile ?? ((uri) => vscode.workspace.fs.readFile(uri))
+    this.writeFile = opts.writeFile ?? ((uri, content) => vscode.workspace.fs.writeFile(uri, content))
   }
 
   getCommunicationBridge(): CommunicationBridge | undefined {
@@ -407,7 +413,7 @@ export class WebviewController {
     }
 
     const bytes = url.startsWith("data:") ? this.readDataUrl(url) : await this.fetchBytes(url)
-    await vscode.workspace.fs.writeFile(target, bytes)
+    await this.writeFile(target, bytes)
     return { cancelled: false }
   }
 
@@ -481,7 +487,7 @@ export class WebviewController {
     origins: { uiOrigin: string; bridgeOrigin: string },
   ): Promise<string> {
     const htmlUri = vscode.Uri.joinPath(this.context.extensionUri, "resources", "webview", "index.html")
-    const bytes = await vscode.workspace.fs.readFile(htmlUri)
+    const bytes = await this.readFile(htmlUri)
     let html = Buffer.from(bytes).toString("utf8")
 
     // Build dynamic CSP origins - include both specific origins and localhost fallbacks

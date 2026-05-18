@@ -6,6 +6,7 @@ import { getUpdateService } from "../../globals"
 import { ActivityBarProvider } from "../../ui/ActivityBarProvider"
 import { bridgeServer } from "../../ui/IdeBridgeServer"
 import { WebviewManager } from "../../ui/WebviewManager"
+import { extensionId } from "../../utils/extensionIdentity"
 
 function getExtension() {
   return vscode.extensions.all.find((item) => item.packageJSON?.name === "opencode-ui")
@@ -93,6 +94,13 @@ suite("Extension Test Suite", () => {
 
   test("Extension should be present", () => {
     assert.ok(getExtension())
+  })
+
+  test("extension identity helper matches manifest publisher and name", () => {
+    const ext = getExtension()
+
+    assert.ok(ext)
+    assert.strictEqual(extensionId, `${ext.packageJSON.publisher}.${ext.packageJSON.name}`)
   })
 
   test("extension instance dispose should be idempotent", async () => {
