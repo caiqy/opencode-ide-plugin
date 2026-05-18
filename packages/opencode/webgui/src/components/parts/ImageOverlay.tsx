@@ -24,6 +24,7 @@ export function ImageOverlay({ url, alt, filename, onClose }: Props) {
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const drag = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number } | null>(null)
+  const click = useRef<{ startedOnStage: boolean; moved: boolean } | null>(null)
   const naturalSize = useRef({ width: 0, height: 0 })
 
   const resetView = () => {
@@ -102,15 +103,17 @@ export function ImageOverlay({ url, alt, filename, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="flex h-full flex-col"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between gap-4 border-b border-white/10 bg-black/50 px-4 py-3">
+    <div
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <div className="flex h-full flex-col" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <div
+          className="flex items-center justify-between gap-4 border-b border-white/10 bg-black/50 px-4 py-3"
+          onClick={(event) => event.stopPropagation()}
+        >
           <span id={titleId} className="min-w-0 flex-1 truncate font-mono text-sm text-white/80">
             {alt}
           </span>
@@ -175,6 +178,7 @@ export function ImageOverlay({ url, alt, filename, onClose }: Props) {
             if (event.button !== 0) return
 
             event.currentTarget.setPointerCapture(event.pointerId)
+            click.current = { startedOnStage: event.target === event.currentTarget, moved: false }
             drag.current = {
               pointerId: event.pointerId,
               x: event.clientX,
@@ -187,6 +191,10 @@ export function ImageOverlay({ url, alt, filename, onClose }: Props) {
           onPointerMove={(event) => {
             if (!drag.current || drag.current.pointerId !== event.pointerId) return
 
+            if (Math.abs(event.clientX - drag.current.x) > 3 || Math.abs(event.clientY - drag.current.y) > 3) {
+              if (click.current) click.current.moved = true
+            }
+
             setOffset({
               x: drag.current.offsetX + event.clientX - drag.current.x,
               y: drag.current.offsetY + event.clientY - drag.current.y,
@@ -198,7 +206,18 @@ export function ImageOverlay({ url, alt, filename, onClose }: Props) {
           }}
           onPointerCancel={(event) => {
             if (!drag.current || drag.current.pointerId !== event.pointerId) return
+            click.current = null
             stopDragging(event.currentTarget, event.pointerId)
+          }}
+          onClick={(event) => {
+            event.stopPropagation()
+            const next = click.current
+            click.current = null
+
+            if (event.target !== event.currentTarget) return
+            if (next && (!next.startedOnStage || next.moved)) return
+
+            onClose()
           }}
           onWheel={(event) => {
             event.preventDefault()
@@ -217,6 +236,7 @@ export function ImageOverlay({ url, alt, filename, onClose }: Props) {
 
               if (isFit) applyFit()
             }}
+            onClick={(event) => event.stopPropagation()}
             onDoubleClick={resetView}
             className="select-none rounded shadow-2xl"
             style={{

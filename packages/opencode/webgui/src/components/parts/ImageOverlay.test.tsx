@@ -96,6 +96,77 @@ describe("ImageOverlay", () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  it("点击图片舞台空白区域调用 onClose", () => {
+    const onClose = vi.fn()
+    renderOverlay({ onClose })
+
+    const img = screen.getByRole("img", { name: "sample.png" })
+    const stage = img.parentElement
+    if (!stage) throw new Error("stage not found")
+
+    fireEvent.click(stage)
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("点击图片本体不会调用 onClose", () => {
+    const onClose = vi.fn()
+    renderOverlay({ onClose })
+
+    fireEvent.click(screen.getByRole("img", { name: "sample.png" }))
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("图片指针捕获导致 click 回到舞台时不会调用 onClose", () => {
+    const onClose = vi.fn()
+    renderOverlay({ onClose })
+
+    const img = screen.getByRole("img", { name: "sample.png" })
+    const stage = img.parentElement
+    if (!stage) throw new Error("stage not found")
+
+    stage.setPointerCapture = vi.fn()
+    stage.releasePointerCapture = vi.fn()
+
+    fireEvent.pointerDown(img, { button: 0, clientX: 10, clientY: 20, pointerId: 1 })
+    fireEvent.pointerUp(stage, { pointerId: 1 })
+    fireEvent.click(stage)
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("拖拽图片释放后不会调用 onClose", () => {
+    const onClose = vi.fn()
+    renderOverlay({ onClose })
+
+    const img = screen.getByRole("img", { name: "sample.png" })
+    const stage = img.parentElement
+    if (!stage) throw new Error("stage not found")
+
+    stage.setPointerCapture = vi.fn()
+    stage.releasePointerCapture = vi.fn()
+
+    fireEvent.pointerDown(img, { button: 0, clientX: 10, clientY: 20, pointerId: 1 })
+    fireEvent.pointerMove(stage, { clientX: 35, clientY: 50, pointerId: 1 })
+    fireEvent.pointerUp(stage, { pointerId: 1 })
+    fireEvent.click(stage)
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("点击顶部工具栏不会调用 onClose", () => {
+    const onClose = vi.fn()
+    renderOverlay({ onClose })
+
+    const toolbar = screen.getByText("sample.png").parentElement
+    if (!toolbar) throw new Error("toolbar not found")
+
+    fireEvent.click(toolbar)
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it("点击保存使用独立 filename 而不是 alt", () => {
     renderOverlay({ alt: "展示文本", filename: "saved-name.png" })
 
