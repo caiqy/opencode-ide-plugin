@@ -45,12 +45,13 @@ describe("webgui app route", () => {
     const assetPath = embeddedWebGui.find((item) => item.path.endsWith(".js"))?.path
     if (!assetPath) throw new Error("Missing embedded js asset")
 
-    const original = Instance.provide.bind(Instance)
+    const original: typeof Instance.provide = Instance.provide.bind(Instance)
     let calls = 0
-    Instance.provide = async (input: Parameters<typeof Instance.provide>[0]) => {
+    const patched: typeof Instance.provide = (input) => {
       calls++
       return original(input)
     }
+    Instance.provide = patched
 
     try {
       const response = await Server.createApp({}).request(`/app/${assetPath}`)

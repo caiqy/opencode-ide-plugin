@@ -213,8 +213,8 @@ describe("ToolPart", () => {
 
     render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
 
-    expect(screen.getByText("图片生成")).toBeInTheDocument()
-    expect(screen.queryByText("图片生成：image_generation")).not.toBeInTheDocument()
+    expect(screen.getByText("模型内置生图")).toBeInTheDocument()
+    expect(screen.queryByText("模型内置生图：image_generation")).not.toBeInTheDocument()
     expect(screen.getByText("已生成 1 张图片：")).toBeInTheDocument()
     expect(screen.queryByText("Image #1 generated-image-1.png")).not.toBeInTheDocument()
     expect(screen.getByText("Image #1")).toBeInTheDocument()

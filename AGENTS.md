@@ -7,6 +7,17 @@
 - `memory/projects/`：项目、功能线、长期任务资料
 - `memory/context/`：团队、流程、工具、协作背景等上下文资料
 
+### Working Style
+
+- Keep things in one function unless composable or reusable
+- Do not extract single-use helpers preemptively. Inline the logic at the call site unless the helper is reused, hides a genuinely complex boundary, or has a clear independent name that improves the caller.
+- Avoid `try`/`catch` where possible
+- Avoid using the `any` type
+- Use Bun APIs when possible, like `Bun.file()`
+- Rely on type inference when possible; avoid explicit type annotations or interfaces unless necessary for exports or clarity
+- Prefer functional array methods (`flatMap`, `filter`, `map`) over `for` loops; use type guards on `filter` to maintain type inference downstream
+- In `src/config`, follow the existing self-export pattern at the top of the file (for example `export * as ConfigAgent from "./agent"`) when adding a new config module.
+
 ### Terms
 
 | Term | Meaning | Context |
@@ -17,6 +28,7 @@
 | 打包最新版 Windows IDEA 插件 | 按版本规则用当前日期计算版本号，并通过 `./gradlew.bat buildPlugin "-Pplugin.version=<版本号>" --no-daemon --console=plain` 打包 JetBrains/IDEA Windows 测试包；不要使用 `build.gradle.kts` 里可能过期的 fallback 版本；同时遵守通用 `gradlew.bat` 命令规则 | 见 `memory/context/versioning.md` 与 `memory/context/gradle.md` |
 | 发布下一个版本 | 直接执行基于 tag 的正式发版流程：提交本次实现、推送分支、按版本规则创建并推送下一个 `v` 标签、跟进 `release.yml` 结果 | 见 `memory/context/release-publishing.md` |
 | 版本规则 | `YY.M.DDNN`：`YY`=年份后两位，`M`=月份不补零，`DDNN`=日期×100 + 当天序号；跨天后日期部分必须更新，当天序号重置为 `00` | 仓库通用版本规则，见 `memory/context/versioning.md` |
+| 启动长驻服务命令 | 不要用可能卡住当前工具终端的方式启动长驻服务；需要验证本地服务时优先复用已运行进程，或使用仓库既有后台/tmux/明确可停止的方式，并先说明与记录 PID/停止方式 | 用户明确指出该类启动方式会卡住终端 |
 
 后续新增、修改或删除记忆时，必须持续维护 `memory/glossary.md`；其中高频或会影响日常解码的 Term 也要同步更新到 `AGENTS.md` 的 `Terms` 表。
 
@@ -370,6 +382,31 @@
 ## 数据流
 
 ### 聊天消息流
+
+### Complex Logic
+
+When a function has several validation branches or supporting details, make the main function read as the happy path and move supporting details into small helpers below it.
+
+```ts
+// Good
+export function loadThing(input: unknown) {
+  const config = requireConfig(input)
+  const metadata = readMetadata(input)
+  return createThing({ config, metadata })
+}
+
+function requireConfig(input: unknown) {
+  ...
+}
+```
+
+- Keep helpers close to the code they support, below the main export when that improves readability.
+- Do not over-abstract simple expressions into many single-use helpers; extract only when it names a real concept like `requireConfig` or `readMetadata`.
+- Do not return `Effect` from helpers unless they actually perform effectful work. Synchronous parsing, validation, and option building should stay synchronous.
+- Prefer Effect schema helpers such as `Schema.UnknownFromJsonString` and `Schema.decodeUnknownOption` over manual `JSON.parse` wrapped in `Effect.try` when parsing untrusted JSON strings.
+- Add comments for non-obvious constraints and surprising behavior, not for obvious assignments or control flow.
+
+### Schema Definitions (Drizzle)
 
 ### IDE 插件生命周期（VSCode）
 

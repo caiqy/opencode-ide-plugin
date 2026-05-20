@@ -410,6 +410,7 @@ describe("CompactHeader/useStatusPopoverData", () => {
     await waitFor(() => {
       expect(view.result.current.mcp.state).toBe("ready")
     })
+    expect(mocks.mcpStatus).toHaveBeenCalledTimes(1)
 
     mocks.mcpStatus.mockResolvedValueOnce(ok({ alpha: { status: "disabled" } }))
 
@@ -538,6 +539,7 @@ describe("CompactHeader/useStatusPopoverData", () => {
     await waitFor(() => {
       expect(view.result.current.mcp.data.alpha?.tools?.[0]?.enabled).toBe(true)
     })
+    expect(mocks.mcpStatus).toHaveBeenCalledTimes(1)
 
     let res = false
     await act(async () => {
@@ -550,6 +552,7 @@ describe("CompactHeader/useStatusPopoverData", () => {
       body: { enabled: false },
     })
     expect(mocks.configUpdate).not.toHaveBeenCalled()
+    expect(mocks.mcpStatus).toHaveBeenCalledTimes(2)
     expect(mocks.mcpTools).toHaveBeenCalledTimes(2)
     expect(view.result.current.mcp.data.alpha?.tools?.[0]?.enabled).toBe(false)
   })

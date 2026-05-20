@@ -114,10 +114,13 @@ export function EditorToolbar({
             />
             <input
               ref={fileInputRef}
+              id="opencode-file-input"
+              name="opencode-file-input"
               type="file"
               accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,application/pdf,text/*"
               multiple
               onChange={onFileChange}
+              aria-label="添加文件"
               className="hidden"
             />
           </>

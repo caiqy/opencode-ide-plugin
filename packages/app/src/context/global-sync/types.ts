@@ -16,6 +16,7 @@ import type {
   Todo,
   VcsInfo,
 } from "@opencode-ai/sdk/v2/client"
+import type { PathKey } from "@/utils/path-key"
 import type { Accessor } from "solid-js"
 import type { SetStoreFunction, Store } from "solid-js/store"
 
@@ -46,6 +47,7 @@ export type State = {
   session_status: {
     [sessionID: string]: SessionStatus
   }
+  session_working(id: string): boolean
   session_diff: {
     [sessionID: string]: SnapshotFileDiff[]
   }
@@ -72,6 +74,9 @@ export type State = {
   part: {
     [messageID: string]: Part[]
   }
+  part_text_accum_delta: {
+    [partID: string]: string
+  }
 }
 
 export type VcsCache = {
@@ -94,6 +99,23 @@ export type IconCache = {
 
 export type ChildOptions = {
   bootstrap?: boolean
+}
+
+export type GlobalProviderSource = {
+  provider: () => ProviderListResponse
+}
+
+export type QueryOptionsApi = {
+  globalConfig: () => ReturnType<typeof import("./bootstrap").loadGlobalConfigQuery>
+  projects: () => ReturnType<typeof import("./bootstrap").loadProjectsQuery>
+  providers: (directory: PathKey | null) => ReturnType<typeof import("./bootstrap").loadProvidersQuery>
+  path: (directory: PathKey | null) => ReturnType<typeof import("./bootstrap").loadPathQuery>
+  agents: (directory: PathKey) => ReturnType<typeof import("./bootstrap").loadAgentsQuery>
+  mcp: (directory: PathKey) => ReturnType<typeof import("./bootstrap").loadMcpQuery>
+  lsp: (directory: PathKey) => ReturnType<typeof import("./bootstrap").loadLspQuery>
+  sessions: (directory: PathKey) => {
+    queryKey: readonly [PathKey, "loadSessions"]
+  }
 }
 
 export type DirState = {

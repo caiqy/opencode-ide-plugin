@@ -1,9 +1,8 @@
 import { Effect, Layer, Context, Schema } from "effect"
 import { Bus } from "@/bus"
 import { Snapshot } from "@/snapshot"
-import { Storage } from "@/storage"
-import { zod } from "@/util/effect-zod"
-import { withStatics } from "@/util/schema"
+import { NotFoundError } from "@/storage/storage"
+import { Storage } from "@/storage/storage"
 import * as Session from "./session"
 import { MessageV2 } from "./message-v2"
 import { SessionID, MessageID } from "./schema"
@@ -109,34 +108,36 @@ export const layer = Layer.effect(
       messageID: MessageID
       canWrite?: () => Effect.Effect<boolean>
     }) {
-      const canWrite = () => (input.canWrite ? input.canWrite() : Effect.succeed(true))
-      const all = yield* sessions.messages({ sessionID: input.sessionID })
-      if (!all.length) return
+      yield* Effect.gen(function* () {
+        const canWrite = () => (input.canWrite ? input.canWrite() : Effect.succeed(true))
+        const all = yield* sessions.messages({ sessionID: input.sessionID })
+        if (!all.length) return
 
-      const diffs = yield* computeDiff({ messages: all })
-      if (!(yield* canWrite())) return
-      yield* sessions.setSummary({
-        sessionID: input.sessionID,
-        summary: {
-          additions: diffs.reduce((sum, x) => sum + x.additions, 0),
-          deletions: diffs.reduce((sum, x) => sum + x.deletions, 0),
-          files: diffs.length,
-        },
-      })
-      if (!(yield* canWrite())) return
-      yield* storage.write(["session_diff", input.sessionID], diffs).pipe(Effect.ignore)
-      if (!(yield* canWrite())) return
-      yield* bus.publish(Session.Event.Diff, { sessionID: input.sessionID, diff: diffs })
+        const diffs = yield* computeDiff({ messages: all })
+        if (!(yield* canWrite())) return
+        yield* sessions.setSummary({
+          sessionID: input.sessionID,
+          summary: {
+            additions: diffs.reduce((sum, x) => sum + x.additions, 0),
+            deletions: diffs.reduce((sum, x) => sum + x.deletions, 0),
+            files: diffs.length,
+          },
+        })
+        if (!(yield* canWrite())) return
+        yield* storage.write(["session_diff", input.sessionID], diffs).pipe(Effect.ignore)
+        if (!(yield* canWrite())) return
+        yield* bus.publish(Session.Event.Diff, { sessionID: input.sessionID, diff: diffs })
 
-      const messages = all.filter(
-        (m) => m.info.id === input.messageID || (m.info.role === "assistant" && m.info.parentID === input.messageID),
-      )
-      const target = messages.find((m) => m.info.id === input.messageID)
-      if (!target || target.info.role !== "user") return
-      const msgDiffs = yield* computeDiff({ messages })
-      if (!(yield* canWrite())) return
-      target.info.summary = { ...target.info.summary, diffs: msgDiffs }
-      yield* sessions.updateMessage(target.info)
+        const messages = all.filter(
+          (m) => m.info.id === input.messageID || (m.info.role === "assistant" && m.info.parentID === input.messageID),
+        )
+        const target = messages.find((m) => m.info.id === input.messageID)
+        if (!target || target.info.role !== "user") return
+        const msgDiffs = yield* computeDiff({ messages })
+        if (!(yield* canWrite())) return
+        target.info.summary = { ...target.info.summary, diffs: msgDiffs }
+        yield* sessions.updateMessage(target.info)
+      }).pipe(Effect.catchIf(NotFoundError.isInstance, () => Effect.void))
     })
 
     const diff = Effect.fn("SessionSummary.diff")(function* (input: { sessionID: SessionID; messageID?: MessageID }) {
@@ -144,6 +145,7 @@ export const layer = Layer.effect(
         .read<Snapshot.FileDiff[]>(["session_diff", input.sessionID])
         .pipe(Effect.catch(() => Effect.succeed([] as Snapshot.FileDiff[])))
       const next = diffs.map((item) => {
+        if (item.file === undefined) return item
         const file = unquoteGitPath(item.file)
         if (file === item.file) return item
         return { ...item, file }
@@ -169,7 +171,7 @@ export const defaultLayer = Layer.suspend(() =>
 export const DiffInput = Schema.Struct({
   sessionID: SessionID,
   messageID: Schema.optional(MessageID),
-}).pipe(withStatics((s) => ({ zod: zod(s) })))
+})
 export type DiffInput = Schema.Schema.Type<typeof DiffInput>
 
 export * as SessionSummary from "./summary"

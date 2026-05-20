@@ -6,8 +6,8 @@ import { persistGeneratedImageAttachments } from "../../src/session/generated-im
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { tmpdir } from "../fixture/fixture"
 
-const sessionID = SessionID.zod.parse("ses_01J5Y5H0AH4Q4NXJ6P4C3P5V2K")
-const messageID = MessageID.zod.parse("msg_01J5Y5H0AH4Q4NXJ6P4C3P5V2M")
+const sessionID = SessionID.make("ses_01J5Y5H0AH4Q4NXJ6P4C3P5V2K")
+const messageID = MessageID.make("msg_01J5Y5H0AH4Q4NXJ6P4C3P5V2M")
 const pngDataUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAF/gL+ee1vNwAAAABJRU5ErkJggg=="
 

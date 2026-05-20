@@ -3,15 +3,16 @@ import { Effect, Exit, Layer, Option, Schema, Scope, Context, Stream } from "eff
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { Account } from "@/account/account"
 import { Bus } from "@/bus"
-import { InstanceState } from "@/effect"
-import { Provider } from "@/provider"
+import { InstanceState } from "@/effect/instance-state"
+import { Provider } from "@/provider/provider"
 import { ModelID, ProviderID } from "@/provider/schema"
-import { Session } from "@/session"
+import { Session } from "@/session/session"
 import { MessageV2 } from "@/session/message-v2"
 import type { SessionID } from "@/session/schema"
-import { Database, eq } from "@/storage"
-import { Config } from "@/config"
-import { Log } from "@/util"
+import { Database } from "@/storage/db"
+import { eq } from "drizzle-orm"
+import { Config } from "@/config/config"
+import * as Log from "@opencode-ai/core/util/log"
 import { SessionShareTable } from "./share.sql"
 
 const log = Log.create({ service: "share-next" })
@@ -84,6 +85,68 @@ function api(resource: string): Api {
     sync: (shareID) => `/api/${resource}/${shareID}/sync`,
     remove: (shareID) => `/api/${resource}/${shareID}`,
     data: (shareID) => `/api/${resource}/${shareID}/data`,
+  }
+}
+
+function toSDKSnapshotFileDiffs(
+  diffs: ReadonlyArray<{
+    additions: number
+    deletions: number
+    file?: string
+    patch?: string
+    status?: SDK.SnapshotFileDiff["status"]
+  }>,
+): SDK.SnapshotFileDiff[] {
+  return diffs.flatMap((diff) =>
+    diff.file === undefined || diff.patch === undefined
+      ? []
+      : [
+          {
+            additions: diff.additions,
+            deletions: diff.deletions,
+            file: diff.file,
+            patch: diff.patch,
+            ...(diff.status ? { status: diff.status } : {}),
+          },
+        ],
+  )
+}
+
+function toSDKSession(info: Session.Info): SDK.Session {
+  const { summary, ...rest } = info
+  if (!summary) return rest
+  if (!summary.diffs) {
+    return {
+      ...rest,
+      summary: {
+        additions: summary.additions,
+        deletions: summary.deletions,
+        files: summary.files,
+      },
+    }
+  }
+  return {
+    ...rest,
+    summary: {
+      additions: summary.additions,
+      deletions: summary.deletions,
+      files: summary.files,
+      diffs: toSDKSnapshotFileDiffs(summary.diffs),
+    },
+  }
+}
+
+function toSDKMessage(info: MessageV2.Info): SDK.Message {
+  if (info.role !== "user") return info
+  const { summary, ...rest } = info
+  if (!summary) return rest
+  return {
+    ...rest,
+    summary: {
+      title: summary.title,
+      body: summary.body,
+      diffs: toSDKSnapshotFileDiffs(summary.diffs),
+    },
   }
 }
 
@@ -167,28 +230,32 @@ export const layer = Layer.effect(
           fn: (evt: { properties: any }) => Effect.Effect<void, unknown>,
         ) =>
           bus.subscribe(def as never).pipe(
-            Stream.runForEach((evt) =>
-              fn(evt).pipe(
-                Effect.catchCause((cause) =>
-                  Effect.sync(() => {
-                    log.error("share subscriber failed", { type: def.type, cause })
-                  }),
+            Effect.flatMap((stream) =>
+              stream.pipe(
+                Stream.runForEach((evt) =>
+                  fn(evt).pipe(
+                    Effect.catchCause((cause) =>
+                      Effect.sync(() => {
+                        log.error("share subscriber failed", { type: def.type, cause })
+                      }),
+                    ),
+                  ),
                 ),
+                Effect.forkScoped,
               ),
             ),
-            Effect.forkScoped,
           )
 
         yield* watch(Session.Event.Updated, (evt) =>
           Effect.gen(function* () {
             const info = evt.properties.info
-            yield* sync(info.id, [{ type: "session", data: info }])
+            yield* sync(info.id, [{ type: "session", data: toSDKSession(info) }])
           }),
         )
         yield* watch(MessageV2.Event.Updated, (evt) =>
           Effect.gen(function* () {
             const info = evt.properties.info
-            yield* sync(info.sessionID, [{ type: "message", data: info }])
+            yield* sync(info.sessionID, [{ type: "message", data: toSDKMessage(info) }])
             if (info.role !== "user") return
             const model = yield* provider.getModel(info.model.providerID, info.model.modelID)
             yield* sync(info.sessionID, [{ type: "model", data: [model] }])
@@ -198,7 +265,7 @@ export const layer = Layer.effect(
           sync(evt.properties.part.sessionID, [{ type: "part", data: evt.properties.part }]),
         )
         yield* watch(Session.Event.Diff, (evt) =>
-          sync(evt.properties.sessionID, [{ type: "session_diff", data: evt.properties.diff }]),
+          sync(evt.properties.sessionID, [{ type: "session_diff", data: toSDKSnapshotFileDiffs(evt.properties.diff) }]),
         )
         yield* watch(Session.Event.Deleted, (evt) => remove(evt.properties.sessionID))
 
@@ -271,7 +338,7 @@ export const layer = Layer.effect(
       log.info("full sync", { sessionID })
       const info = yield* session.get(sessionID)
       const diffs = yield* session.diff(sessionID)
-      const messages = yield* Effect.sync(() => Array.from(MessageV2.stream(sessionID)))
+      const messages = yield* session.messages({ sessionID })
       const models = yield* Effect.forEach(
         Array.from(
           new Map(
@@ -286,10 +353,10 @@ export const layer = Layer.effect(
       )
 
       yield* sync(sessionID, [
-        { type: "session", data: info },
-        ...messages.map((item) => ({ type: "message" as const, data: item.info })),
+        { type: "session", data: toSDKSession(info) },
+        ...messages.map((item) => ({ type: "message" as const, data: toSDKMessage(item.info) })),
         ...messages.flatMap((item) => item.parts.map((part) => ({ type: "part" as const, data: part }))),
-        { type: "session_diff", data: diffs },
+        { type: "session_diff", data: toSDKSnapshotFileDiffs(diffs) },
         { type: "model", data: models },
       ])
     })
@@ -363,11 +430,15 @@ export const layer = Layer.effect(
   }),
 )
 
-export const defaultLayer = layer.pipe(
-  Layer.provide(Bus.layer),
-  Layer.provide(Account.defaultLayer),
-  Layer.provide(Config.defaultLayer),
-  Layer.provide(FetchHttpClient.layer),
-  Layer.provide(Provider.defaultLayer),
-  Layer.provide(Session.defaultLayer),
+export const defaultLayer = Layer.suspend(() =>
+  layer.pipe(
+    Layer.provide(Bus.layer),
+    Layer.provide(Account.defaultLayer),
+    Layer.provide(Config.defaultLayer),
+    Layer.provide(FetchHttpClient.layer),
+    Layer.provide(Provider.defaultLayer),
+    Layer.provide(Session.defaultLayer),
+  ),
 )
+
+export * as ShareNext from "./share-next"

@@ -804,7 +804,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
           setCurrentSession(session)
           return
         }
-        console.warn("[SessionContext] Session not found in local list, fetching...")
+        console.log("[SessionContext] Session not found in local list, fetching...")
         // If not in local list, fetch it
         const response = await sdk.session.get({ path: { id: sessionId } })
         if (token !== switchTokenRef.current) {

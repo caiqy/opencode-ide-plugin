@@ -104,4 +104,47 @@ describe("vite config", () => {
 
     expect(handlers.has("proxyReq")).toBe(false)
   })
+
+  it("在 serve 模式下会统一代理 lsp、formatter、mcp、skill 路由到后端", async () => {
+    process.argv = ["node", "vite"]
+
+    vi.doMock("./dev/discoverBackend", () => ({
+      BackendDiscoveryError: class BackendDiscoveryError extends Error {
+        attempts = []
+      },
+      discoverBackend: vi.fn(async () => ({
+        url: "http://127.0.0.1:4300",
+        port: 4300,
+        probe: "http://127.0.0.1:4300/global/config",
+      })),
+    }))
+
+    const { default: config } = await import("./vite.config")
+    const proxy = config.server?.proxy as Record<string, { target?: string }>
+
+    expect(proxy["/mcp"]?.target).toBe("http://127.0.0.1:4300")
+    expect(proxy["/skill"]?.target).toBe("http://127.0.0.1:4300")
+    expect(proxy["/lsp"]?.target).toBe("http://127.0.0.1:4300")
+    expect(proxy["/formatter"]?.target).toBe("http://127.0.0.1:4300")
+  })
+
+  it("关键状态接口都来自同一 proxyRoots 白名单", async () => {
+    process.argv = ["node", "vite"]
+
+    vi.doMock("./dev/discoverBackend", () => ({
+      BackendDiscoveryError: class BackendDiscoveryError extends Error {
+        attempts = []
+      },
+      discoverBackend: vi.fn(async () => ({
+        url: "http://127.0.0.1:4300",
+        port: 4300,
+        probe: "http://127.0.0.1:4300/global/config",
+      })),
+    }))
+
+    const { default: config } = await import("./vite.config")
+    const proxy = config.server?.proxy as Record<string, unknown>
+
+    expect(Object.keys(proxy)).toEqual(expect.arrayContaining(["/mcp", "/skill", "/lsp", "/formatter"]))
+  })
 })

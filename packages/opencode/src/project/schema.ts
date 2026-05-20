@@ -2,8 +2,8 @@ import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { Hash } from "@opencode-ai/core/util/hash"
 import { Schema } from "effect"
 
+import { withStatics } from "@opencode-ai/core/schema"
 import { zod } from "@/util/effect-zod"
-import { withStatics } from "@/util/schema"
 
 const projectIdSchema = Schema.String.pipe(Schema.brand("ProjectID"))
 const NON_GIT_PREFIX = "local_"

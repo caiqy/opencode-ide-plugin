@@ -1,6 +1,20 @@
 import { describe, expect, test } from "bun:test"
 import { canDisposeDirectory, pickDirectoriesToEvict } from "./global-sync/eviction"
 import { estimateRootSessionTotal, loadRootSessionsWithFallback } from "./global-sync/session-load"
+import { emptyPath } from "./global-sync/utils"
+
+describe("emptyPath", () => {
+  test("includes configFile for SDK v2 Path shape", () => {
+    expect(emptyPath()).toEqual({
+      state: "",
+      config: "",
+      configFile: "",
+      worktree: "",
+      directory: "",
+      home: "",
+    })
+  })
+})
 
 describe("pickDirectoriesToEvict", () => {
   test("keeps pinned stores and evicts idle stores", () => {

@@ -36,6 +36,17 @@ function requestViaApp(directory: string, imagePath: string) {
   })
 }
 
+async function requestViaListener(listener: { url: URL }, directory: string, imagePath: string, route = "/generated-image") {
+  const url = new URL(route, listener.url)
+  url.searchParams.set("path", imagePath)
+
+  return fetch(url, {
+    headers: {
+      "x-opencode-directory": directory,
+    },
+  })
+}
+
 afterEach(async () => {
   await Instance.disposeAll()
   await resetDatabase()
@@ -70,6 +81,48 @@ describe("generated image route", () => {
     expect(response.status).toBe(200)
     expect(response.headers.get("content-type")).toContain("image/png")
     expect(Buffer.from(await response.arrayBuffer())).toEqual(pngBytes)
+  })
+
+  test("serves generated images through Server.listen on /generated-image", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const relativePath = ".opencode/generated-images/generated-image-msg_123-1.png"
+    const absolutePath = path.join(tmp.path, ".opencode", "generated-images", "generated-image-msg_123-1.png")
+
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true })
+    await Bun.write(absolutePath, pngBytes)
+
+    const listener = await Server.listen({ hostname: "127.0.0.1", port: 0 })
+    try {
+      const response = await requestViaListener(listener, tmp.path, relativePath)
+
+      if (response.status !== 200) throw new Error(await response.text())
+      expect(response.status).toBe(200)
+      expect(response.headers.get("content-type")).toContain("image/png")
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(pngBytes)
+    } finally {
+      await listener.stop(true)
+    }
+  })
+
+  test("serves generated images through Server.listen on /app/generated-image", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const relativePath = ".opencode/generated-images/generated-image-msg_123-1.png"
+    const absolutePath = path.join(tmp.path, ".opencode", "generated-images", "generated-image-msg_123-1.png")
+
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true })
+    await Bun.write(absolutePath, pngBytes)
+
+    const listener = await Server.listen({ hostname: "127.0.0.1", port: 0 })
+    try {
+      const response = await requestViaListener(listener, tmp.path, relativePath, "/app/generated-image")
+
+      if (response.status !== 200) throw new Error(await response.text())
+      expect(response.status).toBe(200)
+      expect(response.headers.get("content-type")).toContain("image/png")
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(pngBytes)
+    } finally {
+      await listener.stop(true)
+    }
   })
 
   test("serves generated images from the worktree root when instance directory is a project subdirectory", async () => {

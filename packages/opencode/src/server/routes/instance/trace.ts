@@ -1,6 +1,7 @@
 import type { Context } from "hono"
 import { Effect } from "effect"
 import { AppRuntime } from "@/effect/app-runtime"
+import { HttpServerResponse } from "effect/unstable/http"
 
 type AppEnv = Parameters<typeof AppRuntime.runPromise>[0] extends Effect.Effect<any, any, infer R> ? R : never
 
@@ -57,4 +58,8 @@ export async function jsonRequest<C extends Context, A, E>(
       Effect.gen(() => effect(c)),
     ),
   )
+}
+
+export async function effectRequest<A, E>(name: string, c: Context, effect: Effect.Effect<HttpServerResponse.HttpServerResponse, E, AppEnv>) {
+  return HttpServerResponse.toWeb(await runRequest(name, c, effect))
 }

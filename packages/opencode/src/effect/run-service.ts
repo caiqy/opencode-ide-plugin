@@ -1,11 +1,9 @@
-import { Effect, Layer, ManagedRuntime } from "effect"
+import { Effect, Fiber, Layer, ManagedRuntime } from "effect"
 import * as Context from "effect/Context"
-import { Instance } from "@/project/instance"
-import { LocalContext } from "@/util"
 import { InstanceRef, WorkspaceRef } from "./instance-ref"
 import * as Observability from "@opencode-ai/core/effect/observability"
 import { WorkspaceContext } from "@/control-plane/workspace-context"
-import type { InstanceContext } from "@/project/instance"
+import { context as instanceContext, type InstanceContext } from "@/project/instance-context"
 import { memoMap } from "@opencode-ai/core/effect/memo-map"
 
 type Refs = {
@@ -24,15 +22,21 @@ export function attachWith<A, E, R>(effect: Effect.Effect<A, E, R>, refs: Refs):
 }
 
 export function attach<A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> {
+  const workspace = WorkspaceContext.workspaceID
+  const fiber = Fiber.getCurrent()
+  const instance = fiber ? Context.getReferenceUnsafe(fiber.context, InstanceRef) : currentInstanceContext()
+  return attachWith(effect, {
+    instance,
+    workspace: workspace ?? (fiber ? Context.getReferenceUnsafe(fiber.context, WorkspaceRef) : undefined),
+  })
+}
+
+function currentInstanceContext() {
   try {
-    return attachWith(effect, {
-      instance: Instance.current,
-      workspace: WorkspaceContext.workspaceID,
-    })
-  } catch (err) {
-    if (!(err instanceof LocalContext.NotFound)) throw err
+    return instanceContext.use()
+  } catch {
+    return undefined
   }
-  return effect
 }
 
 export function makeRuntime<I, S, E>(service: Context.Service<I, S>, layer: Layer.Layer<I, E>) {

@@ -3,12 +3,64 @@ import path from "node:path"
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import { Effect } from "effect"
+import { HttpServerResponse } from "effect/unstable/http"
 import z from "zod"
 import { Instance } from "@/project/instance"
 import { classifyAttachment } from "@/util/media"
 import { runRequest } from "./trace"
 
 const generatedImagesPrefix = ".opencode/generated-images/"
+
+export async function readGeneratedImage(pathname: string) {
+  const relativePath = path.posix.normalize(pathname.replaceAll("\\", "/"))
+  if (!relativePath.startsWith(generatedImagesPrefix)) {
+    return HttpServerResponse.jsonUnsafe({ error: "Forbidden" }, { status: 403 })
+  }
+
+  const filePath = path.resolve(Instance.worktree, relativePath)
+  const generatedImagesDir = path.resolve(Instance.worktree, ".opencode", "generated-images")
+  const relativeToGeneratedImages = path.relative(generatedImagesDir, filePath)
+  if (relativeToGeneratedImages.startsWith("..") || path.isAbsolute(relativeToGeneratedImages)) {
+    return HttpServerResponse.jsonUnsafe({ error: "Forbidden" }, { status: 403 })
+  }
+
+  let realWorktree: string
+  let realGeneratedImagesDir: string
+  let realFilePath: string
+  try {
+    ;[realWorktree, realGeneratedImagesDir, realFilePath] = await Promise.all([
+      fs.realpath(Instance.worktree),
+      fs.realpath(generatedImagesDir),
+      fs.realpath(filePath),
+    ])
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return HttpServerResponse.jsonUnsafe({ error: "Not Found" }, { status: 404 })
+    }
+    throw error
+  }
+  const relativeToRealWorktree = path.relative(realWorktree, realGeneratedImagesDir)
+  if (relativeToRealWorktree.startsWith("..") || path.isAbsolute(relativeToRealWorktree)) {
+    return HttpServerResponse.jsonUnsafe({ error: "Forbidden" }, { status: 403 })
+  }
+
+  const relativeToRealGeneratedImages = path.relative(realGeneratedImagesDir, realFilePath)
+  if (relativeToRealGeneratedImages.startsWith("..") || path.isAbsolute(relativeToRealGeneratedImages)) {
+    return HttpServerResponse.jsonUnsafe({ error: "Forbidden" }, { status: 403 })
+  }
+
+  const file = Bun.file(realFilePath)
+  const bytes = await file.bytes()
+  const classified = classifyAttachment(filePath, bytes, "application/octet-stream")
+  if (classified.kind !== "image") {
+    return HttpServerResponse.jsonUnsafe({ error: "Forbidden" }, { status: 403 })
+  }
+
+  return HttpServerResponse.raw(bytes, {
+    status: 200,
+    headers: { "content-type": classified.mime },
+  })
+}
 
 export const GeneratedImageRoutes = () =>
   new Hono().get(
@@ -35,56 +87,11 @@ export const GeneratedImageRoutes = () =>
       }),
     ),
     async (c) =>
-      runRequest(
-        "GeneratedImageRoutes.read",
-        c,
-        Effect.promise(async () => {
-          const relativePath = path.posix.normalize(c.req.valid("query").path.replaceAll("\\", "/"))
-          if (!relativePath.startsWith(generatedImagesPrefix)) {
-            return c.json({ error: "Forbidden" }, 403)
-          }
-
-          const filePath = path.resolve(Instance.worktree, relativePath)
-          const generatedImagesDir = path.resolve(Instance.worktree, ".opencode", "generated-images")
-          const relativeToGeneratedImages = path.relative(generatedImagesDir, filePath)
-          if (relativeToGeneratedImages.startsWith("..") || path.isAbsolute(relativeToGeneratedImages)) {
-            return c.json({ error: "Forbidden" }, 403)
-          }
-
-          let realWorktree: string
-          let realGeneratedImagesDir: string
-          let realFilePath: string
-          try {
-            ;[realWorktree, realGeneratedImagesDir, realFilePath] = await Promise.all([
-              fs.realpath(Instance.worktree),
-              fs.realpath(generatedImagesDir),
-              fs.realpath(filePath),
-            ])
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-              return c.json({ error: "Not Found" }, 404)
-            }
-            throw error
-          }
-          const relativeToRealWorktree = path.relative(realWorktree, realGeneratedImagesDir)
-          if (relativeToRealWorktree.startsWith("..") || path.isAbsolute(relativeToRealWorktree)) {
-            return c.json({ error: "Forbidden" }, 403)
-          }
-
-          const relativeToRealGeneratedImages = path.relative(realGeneratedImagesDir, realFilePath)
-          if (relativeToRealGeneratedImages.startsWith("..") || path.isAbsolute(relativeToRealGeneratedImages)) {
-            return c.json({ error: "Forbidden" }, 403)
-          }
-
-          const file = Bun.file(realFilePath)
-          const bytes = await file.bytes()
-          const classified = classifyAttachment(filePath, bytes, "application/octet-stream")
-          if (classified.kind !== "image") {
-            return c.json({ error: "Forbidden" }, 403)
-          }
-
-          c.header("Content-Type", classified.mime)
-          return c.body(bytes)
-        }),
+      HttpServerResponse.toWeb(
+        await runRequest(
+          "GeneratedImageRoutes.read",
+          c,
+          Effect.promise(() => readGeneratedImage(c.req.valid("query").path)),
+        ),
       ),
   )
