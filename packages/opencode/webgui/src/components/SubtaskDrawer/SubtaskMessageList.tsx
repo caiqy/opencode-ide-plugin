@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useEffect, useMemo } from "react"
 import { useMessages } from "../../state/MessagesContext"
 import { useSession } from "../../state/SessionContext"
 import { computeAllTurnMetas } from "../MessageList/turnMeta"
@@ -33,6 +33,13 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
     isIdle,
     isReasoning,
   )
+
+  // Scroll to bottom when the component mounts (belt-and-suspenders on top of
+  // the scroll-signature effect in useMessageScroll).  The effect fires once
+  // scrollToBottom stabilises (after containerNode is set by useLayoutEffect).
+  useEffect(() => {
+    scrollToBottom()
+  }, [scrollToBottom])
 
   const turnMetas = useMemo(() => computeAllTurnMetas(sortedMessages), [sortedMessages])
 
