@@ -457,7 +457,7 @@ describe("SessionSummaryScheduler", () => {
 
         expect(state.calls).toEqual([{ sessionID: session.id, messageID }])
         expect(state.writes).toEqual([])
-        expect(statuses).toEqual(["scheduled", "running"])
+        expect(statuses).toEqual(["scheduled", "running", "deleted"])
       }),
     ),
   )

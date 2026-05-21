@@ -8,7 +8,7 @@ describe("session tool permission payload", () => {
     const ruleset = Permission.fromConfig({ glob: "ask" })
     const payload = buildToolPermissionAsk({
       sessionID: SessionID.make("session_1"),
-      messageID: MessageID.make("message_1"),
+      messageID: MessageID.make("msg_1"),
       callID: "call_1",
       ruleset,
       req: {
@@ -20,7 +20,7 @@ describe("session tool permission payload", () => {
     })
 
     expect(payload.tool).toEqual({
-      messageID: MessageID.make("message_1"),
+      messageID: MessageID.make("msg_1"),
       callID: "call_1",
     })
   })
@@ -29,7 +29,7 @@ describe("session tool permission payload", () => {
     const ruleset = Permission.fromConfig({ edit: "ask" })
     const payload = buildToolPermissionAsk({
       sessionID: SessionID.make("session_2"),
-      messageID: MessageID.make("message_2"),
+      messageID: MessageID.make("msg_2"),
       callID: "call_2",
       ruleset,
       req: {
@@ -53,7 +53,7 @@ describe("session tool permission payload", () => {
     const overlayRuleset = Permission.fromConfig({ skill: { brainstorming: "deny" } })
     const payload = buildToolPermissionAsk({
       sessionID: SessionID.make("session_3"),
-      messageID: MessageID.make("message_3"),
+      messageID: MessageID.make("msg_3"),
       callID: "call_3",
       ruleset,
       overlayRuleset,

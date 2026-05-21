@@ -102,7 +102,7 @@ function ensureGlobalProject() {
 
 function seedLegacyGlobalSession(directory: string) {
   const now = Date.now()
-  const id = SessionID.make(crypto.randomUUID())
+  const id = crypto.randomUUID() as SessionID
   Database.use((db) =>
     db
       .insert(SessionTable)
@@ -181,11 +181,13 @@ describe("Project.fromDirectory", () => {
     }),
   )
 
-  it.live("returns global for non-git directory", () =>
+  it.live("returns stable non-git project for non-git directory", () =>
     Effect.gen(function* () {
       const tmp = yield* tmpdirScoped()
       const { project } = yield* run((svc) => svc.fromDirectory(tmp))
-      expect(project.id).toBe(ProjectID.global)
+      expect(project.id).toBe(ProjectID.nonGit(tmp))
+      expect(project.worktree).toBe(tmp)
+      expect(project.vcs).toBeUndefined()
     }),
   )
 
@@ -661,7 +663,7 @@ describe("Project.list and Project.get", () => {
 
     expect(session?.project_id).toBe(expectedProjectID)
     expect(projects.find((project) => project.id === expectedProjectID)?.worktree).toBe(tmp.path)
-    expect(projects.some((project) => project.id === ProjectID.global)).toBe(false)
+    expect(projects.some((project) => project.id === ProjectID.global && project.worktree === "/")).toBe(false)
   })
 
   it.live("get returns project by id", () =>

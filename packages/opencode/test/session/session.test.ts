@@ -14,6 +14,7 @@ import { Storage } from "@/storage/storage"
 import { SyncEvent } from "@/sync"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { BackgroundJob } from "@/background/job"
+import { InstanceRef } from "@/effect/instance-ref"
 
 void Log.init({ print: false })
 
@@ -176,12 +177,16 @@ describe("Session", () => {
     Effect.gen(function* () {
       const dir = yield* tmpdirScoped()
       const output = yield* provideInstance(dir)(
-        Effect.sync(() =>
-          SessionNs.plan({
-            slug: "plain-plan",
-            time: { created: 123 },
-          }),
-        ),
+        Effect.gen(function* () {
+          const ctx = yield* InstanceRef
+          return SessionNs.plan(
+            {
+              slug: "plain-plan",
+              time: { created: 123 },
+            },
+            ctx,
+          )
+        }),
       )
 
       expect(output).toBe(path.join(dir, ".opencode", "plans", "123-plain-plan.md"))

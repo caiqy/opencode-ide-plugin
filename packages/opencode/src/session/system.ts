@@ -63,7 +63,8 @@ export const layer = Layer.effect(
       }),
 
       skills: Effect.fn("SystemPrompt.skills")(function* (agent: Agent.Info) {
-        const overlay = Config.getSkillPermissionOverlay((yield* InstanceState.context).directory)
+        const directory = yield* InstanceState.directory.pipe(Effect.catchCause(() => Effect.succeed(undefined)))
+        const overlay = directory ? Config.getSkillPermissionOverlay(directory) : {}
         const hasOverlayAllow = Object.values(overlay).some((action) => action !== "deny")
         if (Permission.disabled(["skill"], agent.permission).has("skill") && !hasOverlayAllow) return
 

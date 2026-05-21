@@ -1116,7 +1116,7 @@ describe("generate_image tool", () => {
         Effect.gen(function* () {
           let requestBody: Record<string, unknown> | undefined
           const asks: unknown[] = []
-          const worktree = Instance.worktree
+          const worktree = dir
 
           using server = Bun.serve({
             port: 0,
@@ -1268,11 +1268,11 @@ describe("generate_image tool", () => {
 
   it.live("accepts readonly edit image inputs without mutating the caller array", () =>
     provideTmpdirInstance(
-      () =>
+      (dir) =>
         Effect.gen(function* () {
           let imageFieldNames: string[] = []
           const readonlyImages = Object.freeze(["input.png"] as string[])
-          yield* Effect.promise(() => Bun.write(path.join(Instance.worktree, "input.png"), Buffer.from(pngBase64, "base64")))
+          yield* Effect.promise(() => Bun.write(path.join(dir, "input.png"), Buffer.from(pngBase64, "base64")))
 
           using server = Bun.serve({
             port: 0,

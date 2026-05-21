@@ -300,7 +300,7 @@ describe("instance HttpApi", () => {
     await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
 
     const now = Date.now()
-    const sessionID = SessionID.make(crypto.randomUUID())
+    const sessionID = crypto.randomUUID() as SessionID
 
     Database.use((db) => {
       db

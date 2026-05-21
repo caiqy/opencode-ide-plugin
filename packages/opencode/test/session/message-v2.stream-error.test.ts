@@ -75,7 +75,7 @@ describe("session.message-v2 stream error recovery", () => {
         responseBody: JSON.stringify(input),
       },
     })
-    expect(SessionRetry.retryable(result, retryProvider)).toBe("stream_timeout")
+    expect(SessionRetry.retryable(result, retryProvider)).toEqual({ message: "stream_timeout" })
   })
 
   test("marks recovered stream_read_error as retryable", () => {
@@ -86,6 +86,6 @@ describe("session.message-v2 stream error recovery", () => {
     const result = MessageV2.fromError(err, { providerID })
 
     expect(MessageV2.APIError.isInstance(result)).toBe(true)
-    expect(SessionRetry.retryable(result, retryProvider)).toBe("stream_read_error")
+    expect(SessionRetry.retryable(result, retryProvider)).toEqual({ message: "stream_read_error" })
   })
 })

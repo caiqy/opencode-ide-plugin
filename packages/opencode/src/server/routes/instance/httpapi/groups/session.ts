@@ -83,6 +83,7 @@ export const SessionPaths = {
   create: root,
   remove: `${root}/:sessionID`,
   update: `${root}/:sessionID`,
+  regenerateTitle: `${root}/:sessionID/title/regenerate`,
   fork: `${root}/:sessionID/fork`,
   abort: `${root}/:sessionID/abort`,
   share: `${root}/:sessionID/share`,
@@ -231,6 +232,18 @@ export const SessionApi = HttpApi.make("session")
             identifier: "session.update",
             summary: "Update session",
             description: "Update properties of an existing session, such as title or other metadata.",
+          }),
+        ),
+        HttpApiEndpoint.post("regenerateTitle", SessionPaths.regenerateTitle, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: described(Session.Info, "Session with regenerated title"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.regenerateTitle",
+            summary: "Regenerate session title",
+            description: "Regenerate the title for an existing session.",
           }),
         ),
         HttpApiEndpoint.post("fork", SessionPaths.fork, {

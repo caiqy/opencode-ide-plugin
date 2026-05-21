@@ -23,7 +23,7 @@ export const assertExternalDirectoryEffect = Effect.fn("Tool.assertExternalDirec
   if (options?.bypass) return
 
   const ins = yield* InstanceState.context
-  const full = process.platform === "win32" ? AppFileSystem.normalizePath(target) : target
+  const full = process.platform === "win32" ? normalizeWindowsTarget(target, ins) : target
   if (containsPath(full, ins)) return
 
   const kind = options?.kind ?? "file"
@@ -46,4 +46,11 @@ export const assertExternalDirectoryEffect = Effect.fn("Tool.assertExternalDirec
 
 export async function assertExternalDirectory(ctx: Tool.Context, target?: string, options?: Options) {
   return Effect.runPromise(assertExternalDirectoryEffect(ctx, target, options).pipe(Effect.provide(EffectLogger.layer)))
+}
+
+function normalizeWindowsTarget(target: string, ins: { directory: string; worktree: string }) {
+  const root = path.parse(ins.worktree || ins.directory).root
+  const drive = root.match(/^[A-Za-z]:/)?.[0]
+  const fixed = drive && /^[\/](?![\/])/.test(target) ? `${drive}${target}` : target
+  return AppFileSystem.normalizePath(fixed)
 }

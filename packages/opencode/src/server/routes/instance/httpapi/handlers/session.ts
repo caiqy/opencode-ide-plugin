@@ -201,6 +201,13 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       return yield* requireSession(ctx.params.sessionID)
     })
 
+    const regenerateTitle = Effect.fn("SessionHttpApi.regenerateTitle")(function* (ctx: {
+      params: { sessionID: SessionID }
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      return yield* promptSvc.regenerateTitle({ sessionID: ctx.params.sessionID })
+    })
+
     const fork = Effect.fn("SessionHttpApi.fork")(function* (ctx: {
       params: { sessionID: SessionID }
       payload?: typeof ForkPayload.Type
@@ -410,6 +417,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handleRaw("create", createRaw)
       .handle("remove", remove)
       .handle("update", update)
+      .handle("regenerateTitle", regenerateTitle)
       .handleRaw("fork", forkRaw)
       .handle("abort", abort)
       .handle("init", init)

@@ -759,7 +759,7 @@ export const RunCommand = effectCmd({
 
         if (!args.interactive) {
           const events = await client.event.subscribe()
-          loop(client, events).catch((e) => {
+          const stream = loop(client, events).catch((e) => {
             console.error(e)
             process.exit(1)
           })
@@ -776,7 +776,9 @@ export const RunCommand = effectCmd({
             if (result.error) {
               if (!emit("error", { error: result.error })) UI.error(formatRunError(result.error))
               process.exitCode = 1
+              return
             }
+            await stream
             return
           }
 
@@ -791,7 +793,9 @@ export const RunCommand = effectCmd({
           if (result.error) {
             if (!emit("error", { error: result.error })) UI.error(formatRunError(result.error))
             process.exitCode = 1
+            return
           }
+          await stream
           return
         }
 

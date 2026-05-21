@@ -264,7 +264,7 @@ export const ReadTool = Tool.define(
       const sample = yield* readSample(filepath, Number(stat.size), SAMPLE_BYTES)
 
       const classified = classifyAttachment(filepath, sample, AppFileSystem.mimeType(filepath))
-      if (classified.kind === "image" || classified.kind === "pdf") {
+      if (classified.kind === "pdf" || (classified.kind === "image" && SUPPORTED_IMAGE_MIMES.has(classified.mime))) {
         const bytes = yield* fs.readFile(filepath)
         const msg = classified.kind === "pdf" ? "PDF read successfully" : "Image read successfully"
         return {

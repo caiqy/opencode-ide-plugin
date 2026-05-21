@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect"
 import { Config } from "../config"
 import { Provider } from "../provider"
 import { ModelID, ProviderID } from "../provider/schema"
-import { Instance } from "../project/instance"
+import { InstanceState } from "@/effect/instance-state"
 import * as Tool from "./tool"
 import DESCRIPTION from "./generate-image.txt"
 import { callOpenAICompatible } from "./generate-image/openai-compatible"
@@ -139,14 +139,15 @@ export const GenerateImageTool = Tool.define(
             metadata,
           })
 
+          const instance = yield* InstanceState.context
           const images =
             editImages
               ? yield* Effect.promise(() =>
-                  Promise.all(editImages.map((input) => decodeImageInput({ root: Instance.worktree, input }))),
+                  Promise.all(editImages.map((input) => decodeImageInput({ root: instance.worktree, input }))),
                 )
               : undefined
           const decodedMask = mask !== undefined
-            ? yield* Effect.promise(() => decodeImageInput({ root: Instance.worktree, input: mask }))
+            ? yield* Effect.promise(() => decodeImageInput({ root: instance.worktree, input: mask }))
             : undefined
 
           if (action === "edit" && images) {
@@ -177,7 +178,7 @@ export const GenerateImageTool = Tool.define(
 
           const attachments = yield* Effect.promise(() =>
             persistImages({
-              root: Instance.worktree,
+              root: instance.worktree,
               messageID: ctx.messageID,
               filename,
               images: generated,

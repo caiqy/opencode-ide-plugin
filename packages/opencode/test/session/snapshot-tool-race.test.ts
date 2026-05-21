@@ -172,6 +172,7 @@ function makeHttp() {
   )
   return Layer.mergeAll(
     TestLLMServer.layer,
+    summary,
     SessionPrompt.layer.pipe(
       Layer.provide(SessionRevert.defaultLayer),
       Layer.provide(summaryScheduler),

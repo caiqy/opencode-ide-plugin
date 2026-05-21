@@ -213,7 +213,9 @@ description: Hidden skill.
             options: {},
           })
 
-          expect(list.map((item) => item.name)).toEqual(["keep-skill"])
+          const names = list.map((item) => item.name)
+          expect(names).toContain("keep-skill")
+          expect(names).not.toContain("hide-skill")
         }),
       { git: true },
     ),

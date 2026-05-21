@@ -7,11 +7,13 @@ import * as Log from "@opencode-ai/core/util/log"
 import { provideInstance, TestInstance, tmpdir, tmpdirScoped } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import path from "path"
+import { pathToFileURL } from "url"
 import { ProjectID } from "../../src/project/schema"
 
 void Log.init({ print: false })
 
 const it = testEffect(Layer.mergeAll(SessionNs.defaultLayer, Project.defaultLayer, CrossSpawnSpawner.defaultLayer))
+const modulePath = (file: string) => JSON.stringify(pathToFileURL(file).href)
 
 const withSession = (input?: Parameters<SessionNs.Interface["create"]>[0]) =>
   Effect.acquireRelease(
@@ -137,15 +139,15 @@ describe("session.listGlobal", () => {
       await Bun.write(
         seedScript,
         `
-import { AppRuntime } from ${JSON.stringify(path.join(import.meta.dir, "../../src/effect/app-runtime.ts"))}
-import { initProjectors } from ${JSON.stringify(path.join(import.meta.dir, "../../src/server/projectors.ts"))}
-import { Instance } from ${JSON.stringify(path.join(import.meta.dir, "../../src/project/instance.ts"))}
-import { Session } from ${JSON.stringify(path.join(import.meta.dir, "../../src/session/index.ts"))}
-import { ProjectTable } from ${JSON.stringify(path.join(import.meta.dir, "../../src/project/project.sql.ts"))}
-import { ProjectID } from ${JSON.stringify(path.join(import.meta.dir, "../../src/project/schema.ts"))}
-import { SessionTable } from ${JSON.stringify(path.join(import.meta.dir, "../../src/session/session.sql.ts"))}
-import { Database, eq } from ${JSON.stringify(path.join(import.meta.dir, "../../src/storage/index.ts"))}
-import { Log } from ${JSON.stringify(path.join(import.meta.dir, "../../src/util/index.ts"))}
+import { AppRuntime } from ${modulePath(path.join(import.meta.dir, "../../src/effect/app-runtime.ts"))}
+import { initProjectors } from ${modulePath(path.join(import.meta.dir, "../../src/server/projectors.ts"))}
+import { Instance } from ${modulePath(path.join(import.meta.dir, "../../src/project/instance.ts"))}
+import { Session } from ${modulePath(path.join(import.meta.dir, "../../src/session/index.ts"))}
+import { ProjectTable } from ${modulePath(path.join(import.meta.dir, "../../src/project/project.sql.ts"))}
+import { ProjectID } from ${modulePath(path.join(import.meta.dir, "../../src/project/schema.ts"))}
+import { SessionTable } from ${modulePath(path.join(import.meta.dir, "../../src/session/session.sql.ts"))}
+import { Database, eq } from ${modulePath(path.join(import.meta.dir, "../../src/storage/index.ts"))}
+import * as Log from ${modulePath(path.join(import.meta.dir, "../../../core/src/util/log.ts"))}
 
 void Log.init({ print: false, dev: true, level: "DEBUG" })
 initProjectors()
@@ -183,9 +185,9 @@ process.exit(0)
       await Bun.write(
         verifyScript,
         `
-import { initProjectors } from ${JSON.stringify(path.join(import.meta.dir, "../../src/server/projectors.ts"))}
-import { Session } from ${JSON.stringify(path.join(import.meta.dir, "../../src/session/index.ts"))}
-import { Log } from ${JSON.stringify(path.join(import.meta.dir, "../../src/util/index.ts"))}
+import { initProjectors } from ${modulePath(path.join(import.meta.dir, "../../src/server/projectors.ts"))}
+import { Session } from ${modulePath(path.join(import.meta.dir, "../../src/session/index.ts"))}
+import * as Log from ${modulePath(path.join(import.meta.dir, "../../../core/src/util/log.ts"))}
 
 void Log.init({ print: false, dev: true, level: "DEBUG" })
 initProjectors()
@@ -233,7 +235,7 @@ process.exit(0)
       }
 
       const seeded = await runScript(seedScript)
-      expect(seeded.code).toBe(0)
+      expect(seeded.code, seeded.stderr).toBe(0)
 
       const seededInfo = JSON.parse(seeded.stdout.trim()) as { sessionID: string; projectID: string }
 
@@ -243,7 +245,7 @@ process.exit(0)
       )
 
       const verified = await runScript(verifyScript)
-      expect(verified.code).toBe(0)
+      expect(verified.code, verified.stderr).toBe(0)
 
       const result = JSON.parse(verified.stdout.trim()) as {
         projectID: string | null

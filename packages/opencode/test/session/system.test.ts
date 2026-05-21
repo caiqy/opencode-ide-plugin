@@ -7,7 +7,8 @@ import { Permission } from "../../src/permission"
 import path from "path"
 import { Config } from "../../src/config/config"
 import { SystemPrompt } from "../../src/session/system"
-import { tmpdir } from "../fixture/fixture"
+import { InstanceRef } from "@/effect/instance-ref"
+import { provideTestInstance, tmpdir } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 
 const skills: Skill.Info[] = [
@@ -97,15 +98,22 @@ describe("session.system", () => {
     process.env.OPENCODE_TEST_HOME = tmp.path
 
     try {
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          Config.setSkillPermissionOverlay(tmp.path, "hidden-skill", "deny")
-          const output = yield* SystemPrompt.Service.use((svc) => svc.skills(build)).pipe(Effect.provide(SystemPrompt.defaultLayer))
+      await provideTestInstance({
+        directory: tmp.path,
+        fn: (ctx) =>
+          Effect.runPromise(
+            Effect.gen(function* () {
+              Config.setSkillPermissionOverlay(tmp.path, "hidden-skill", "deny")
+              const output = yield* SystemPrompt.Service.use((svc) => svc.skills(build)).pipe(
+                Effect.provide(SystemPrompt.defaultLayer),
+                Effect.provideService(InstanceRef, ctx),
+              )
 
-          expect(output).toContain("<name>visible-skill</name>")
-          expect(output).not.toContain("<name>hidden-skill</name>")
-        }),
-      )
+              expect(output).toContain("<name>visible-skill</name>")
+              expect(output).not.toContain("<name>hidden-skill</name>")
+            }),
+          ),
+      })
     } finally {
       Config.clearSkillPermissionOverlay(tmp.path)
       process.env.OPENCODE_TEST_HOME = home
@@ -127,24 +135,29 @@ describe("session.system", () => {
     process.env.OPENCODE_TEST_HOME = tmp.path
 
     try {
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          Config.setSkillPermissionOverlay(tmp.path, "restored-skill", "allow")
-          const agent: Agent.Info = {
-            name: "cached-agent",
-            mode: "primary",
-            native: true,
-            options: {},
-            permission: Permission.fromConfig({ skill: "deny" }),
-          }
+      await provideTestInstance({
+        directory: tmp.path,
+        fn: (ctx) =>
+          Effect.runPromise(
+            Effect.gen(function* () {
+              Config.setSkillPermissionOverlay(tmp.path, "restored-skill", "allow")
+              const agent: Agent.Info = {
+                name: "cached-agent",
+                mode: "primary",
+                native: true,
+                options: {},
+                permission: Permission.fromConfig({ skill: "deny" }),
+              }
 
-          const output = yield* SystemPrompt.Service.use((svc) => svc.skills(agent)).pipe(
-            Effect.provide(SystemPrompt.defaultLayer),
-          )
+              const output = yield* SystemPrompt.Service.use((svc) => svc.skills(agent)).pipe(
+                Effect.provide(SystemPrompt.defaultLayer),
+                Effect.provideService(InstanceRef, ctx),
+              )
 
-          expect(output).toContain("<name>restored-skill</name>")
-        }),
-      )
+              expect(output).toContain("<name>restored-skill</name>")
+            }),
+          ),
+      })
     } finally {
       Config.clearSkillPermissionOverlay(tmp.path)
       process.env.OPENCODE_TEST_HOME = home

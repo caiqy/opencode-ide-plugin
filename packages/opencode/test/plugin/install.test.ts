@@ -47,14 +47,6 @@ function ctxDir(dir: string, worktree: string): PlugCtx {
   }
 }
 
-function ctxRoot(dir: string): PlugCtx {
-  return {
-    vcs: "git",
-    worktree: "/",
-    directory: dir,
-  }
-}
-
 async function plugin(
   dir: string,
   kinds?: Array<"server" | "tui">,
@@ -390,7 +382,7 @@ describe("plugin.install.task", () => {
     expect(await Filesystem.exists(path.join(worktree, ".opencode", "opencode.jsonc"))).toBe(false)
   })
 
-  test("writes local scope under directory when worktree is root slash", async () => {
+  test("writes non-git local scope under directory when worktree is root slash", async () => {
     await using tmp = await tmpdir()
     const target = await plugin(tmp.path, ["server"])
     const directory = path.join(tmp.path, "dir")
@@ -402,12 +394,12 @@ describe("plugin.install.task", () => {
       deps(path.join(tmp.path, "global"), target),
     )
 
-    const ok = await run(ctxRoot(directory))
+    const ok = await run(ctxDir(directory, "/"))
     expect(ok).toBe(true)
     expect(await Filesystem.exists(path.join(directory, ".opencode", "opencode.jsonc"))).toBe(true)
   })
 
-  test("writes tui local scope under directory when worktree is root slash", async () => {
+  test("writes tui non-git local scope under directory when worktree is root slash", async () => {
     await using tmp = await tmpdir()
     const target = await plugin(tmp.path, ["tui"])
     const directory = path.join(tmp.path, "dir")
@@ -419,7 +411,7 @@ describe("plugin.install.task", () => {
       deps(path.join(tmp.path, "global"), target),
     )
 
-    const ok = await run(ctxRoot(directory))
+    const ok = await run(ctxDir(directory, "/"))
     expect(ok).toBe(true)
     expect(await Filesystem.exists(path.join(directory, ".opencode", "tui.jsonc"))).toBe(true)
   })

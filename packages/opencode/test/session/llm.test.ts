@@ -795,7 +795,7 @@ describe("session.llm.stream", () => {
         expect(body.stream).toBe(true)
 
         const maxTokens = (body.max_tokens as number | undefined) ?? (body.max_output_tokens as number | undefined)
-        const expectedMaxTokens = ProviderTransform.maxOutputTokens(resolved)
+        const expectedMaxTokens = resolved.limit.output
         expect(maxTokens).toBe(expectedMaxTokens)
 
         const reasoning = (body.reasoningEffort as string | undefined) ?? (body.reasoning_effort as string | undefined)
@@ -1754,7 +1754,13 @@ describe("session.llm.stream", () => {
 
         expect(capture.url.pathname.endsWith("/messages")).toBe(true)
         expect(body.model).toBe(resolved.api.id)
-        expect(body.max_tokens).toBe(ProviderTransform.maxOutputTokens(resolved))
+        const outputTokenMax = Number(process.env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX)
+        expect(body.max_tokens).toBe(
+          ProviderTransform.maxOutputTokens(
+            resolved,
+            Number.isInteger(outputTokenMax) && outputTokenMax > 0 ? outputTokenMax : undefined,
+          ),
+        )
         expect(body.temperature).toBe(0.4)
         expect(body.top_p).toBe(0.9)
       },
@@ -2123,7 +2129,7 @@ describe("session.llm.stream", () => {
         expect(capture.url.pathname).toBe(pathSuffix)
         expect(config?.temperature).toBe(0.3)
         expect(config?.topP).toBe(0.8)
-        expect(config?.maxOutputTokens).toBe(ProviderTransform.maxOutputTokens(resolved))
+        expect(config?.maxOutputTokens).toBe(resolved.limit.output)
       },
     })
   })

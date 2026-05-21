@@ -183,7 +183,7 @@ async function run(rule: (typeof rules)[number]) {
       } satisfies Agent.Info
 
       const user = {
-        id: MessageID.make(`user-mutation-${rule}`),
+        id: MessageID.make(`msg-mutation-${rule}`),
         sessionID,
         role: "user",
         time: { created: Date.now() },

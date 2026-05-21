@@ -1147,12 +1147,8 @@ test("resolves scoped npm plugins in config", async () => {
 })
 
 test("merges plugin arrays from global and local configs", async () => {
-  await using tmp = await tmpdir({
+  await using global = await tmpdir({
     init: async (dir) => {
-      const projectDir = path.join(dir, "project")
-      const opencodeDir = path.join(projectDir, ".opencode")
-      await fs.mkdir(opencodeDir, { recursive: true })
-
       await Filesystem.write(
         path.join(dir, "opencode.json"),
         JSON.stringify({
@@ -1160,6 +1156,13 @@ test("merges plugin arrays from global and local configs", async () => {
           plugin: ["global-plugin-1", "global-plugin-2"],
         }),
       )
+    },
+  })
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      const projectDir = path.join(dir, "project")
+      const opencodeDir = path.join(projectDir, ".opencode")
+      await fs.mkdir(opencodeDir, { recursive: true })
 
       // Local .opencode config with different plugins
       await Filesystem.write(
@@ -1172,11 +1175,12 @@ test("merges plugin arrays from global and local configs", async () => {
     },
   })
 
-  await provideTestInstance({
-    directory: path.join(tmp.path, "project"),
-    fn: async (ctx) => {
-      const config = await load(ctx)
-      const plugins = config.plugin ?? []
+  await withGlobalConfigDir(global.path, () =>
+    provideTestInstance({
+      directory: path.join(tmp.path, "project"),
+      fn: async (ctx) => {
+        const config = await load(ctx)
+        const plugins = config.plugin ?? []
 
         expect(plugins.some((p) => p.includes("global-plugin-1"))).toBe(true)
         expect(plugins.some((p) => p.includes("global-plugin-2"))).toBe(true)
@@ -1185,7 +1189,8 @@ test("merges plugin arrays from global and local configs", async () => {
         const pluginNames = plugins.filter((p) => p.includes("global-plugin") || p.includes("local-plugin"))
         expect(pluginNames.length).toBeGreaterThanOrEqual(3)
       },
-  })
+    }),
+  )
 })
 
 test("does not error when only custom agent is a subagent", async () => {
@@ -1221,12 +1226,8 @@ Helper subagent prompt`,
 })
 
 test("merges instructions arrays from global and local configs", async () => {
-  await using tmp = await tmpdir({
+  await using global = await tmpdir({
     init: async (dir) => {
-      const projectDir = path.join(dir, "project")
-      const opencodeDir = path.join(projectDir, ".opencode")
-      await fs.mkdir(opencodeDir, { recursive: true })
-
       await Filesystem.write(
         path.join(dir, "opencode.json"),
         JSON.stringify({
@@ -1234,6 +1235,13 @@ test("merges instructions arrays from global and local configs", async () => {
           instructions: ["global-instructions.md", "shared-rules.md"],
         }),
       )
+    },
+  })
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      const projectDir = path.join(dir, "project")
+      const opencodeDir = path.join(projectDir, ".opencode")
+      await fs.mkdir(opencodeDir, { recursive: true })
 
       await Filesystem.write(
         path.join(opencodeDir, "opencode.json"),
@@ -1245,27 +1253,25 @@ test("merges instructions arrays from global and local configs", async () => {
     },
   })
 
-  await withTestInstance({
-    directory: path.join(tmp.path, "project"),
-    fn: async (ctx) => {
-      const config = await load(ctx)
-      const instructions = config.instructions ?? []
+  await withGlobalConfigDir(global.path, () =>
+    withTestInstance({
+      directory: path.join(tmp.path, "project"),
+      fn: async (ctx) => {
+        const config = await load(ctx)
+        const instructions = config.instructions ?? []
 
         expect(instructions).toContain("global-instructions.md")
         expect(instructions).toContain("shared-rules.md")
         expect(instructions).toContain("local-instructions.md")
         expect(instructions.length).toBe(3)
       },
-  })
+    }),
+  )
 })
 
 test("deduplicates duplicate instructions from global and local configs", async () => {
-  await using tmp = await tmpdir({
+  await using global = await tmpdir({
     init: async (dir) => {
-      const projectDir = path.join(dir, "project")
-      const opencodeDir = path.join(projectDir, ".opencode")
-      await fs.mkdir(opencodeDir, { recursive: true })
-
       await Filesystem.write(
         path.join(dir, "opencode.json"),
         JSON.stringify({
@@ -1273,6 +1279,13 @@ test("deduplicates duplicate instructions from global and local configs", async 
           instructions: ["duplicate.md", "global-only.md"],
         }),
       )
+    },
+  })
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      const projectDir = path.join(dir, "project")
+      const opencodeDir = path.join(projectDir, ".opencode")
+      await fs.mkdir(opencodeDir, { recursive: true })
 
       await Filesystem.write(
         path.join(opencodeDir, "opencode.json"),
@@ -1284,11 +1297,12 @@ test("deduplicates duplicate instructions from global and local configs", async 
     },
   })
 
-  await withTestInstance({
-    directory: path.join(tmp.path, "project"),
-    fn: async (ctx) => {
-      const config = await load(ctx)
-      const instructions = config.instructions ?? []
+  await withGlobalConfigDir(global.path, () =>
+    withTestInstance({
+      directory: path.join(tmp.path, "project"),
+      fn: async (ctx) => {
+        const config = await load(ctx)
+        const instructions = config.instructions ?? []
 
         expect(instructions).toContain("global-only.md")
         expect(instructions).toContain("local-only.md")
@@ -1298,16 +1312,13 @@ test("deduplicates duplicate instructions from global and local configs", async 
         expect(duplicates.length).toBe(1)
         expect(instructions.length).toBe(3)
       },
-  })
+    }),
+  )
 })
 
 test("deduplicates duplicate plugins from global and local configs", async () => {
-  await using tmp = await tmpdir({
+  await using global = await tmpdir({
     init: async (dir) => {
-      const projectDir = path.join(dir, "project")
-      const opencodeDir = path.join(projectDir, ".opencode")
-      await fs.mkdir(opencodeDir, { recursive: true })
-
       await Filesystem.write(
         path.join(dir, "opencode.json"),
         JSON.stringify({
@@ -1315,6 +1326,13 @@ test("deduplicates duplicate plugins from global and local configs", async () =>
           plugin: ["duplicate-plugin", "global-plugin-1"],
         }),
       )
+    },
+  })
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      const projectDir = path.join(dir, "project")
+      const opencodeDir = path.join(projectDir, ".opencode")
+      await fs.mkdir(opencodeDir, { recursive: true })
 
       // Local .opencode config with some overlapping plugins
       await Filesystem.write(
@@ -1327,11 +1345,12 @@ test("deduplicates duplicate plugins from global and local configs", async () =>
     },
   })
 
-  await provideTestInstance({
-    directory: path.join(tmp.path, "project"),
-    fn: async (ctx) => {
-      const config = await load(ctx)
-      const plugins = config.plugin ?? []
+  await withGlobalConfigDir(global.path, () =>
+    provideTestInstance({
+      directory: path.join(tmp.path, "project"),
+      fn: async (ctx) => {
+        const config = await load(ctx)
+        const plugins = config.plugin ?? []
 
         expect(plugins.some((p) => p.includes("global-plugin-1"))).toBe(true)
         expect(plugins.some((p) => p.includes("local-plugin-1"))).toBe(true)
@@ -1345,16 +1364,13 @@ test("deduplicates duplicate plugins from global and local configs", async () =>
         )
         expect(pluginNames.length).toBe(3)
       },
-  })
+    }),
+  )
 })
 
 test("keeps plugin origins aligned with merged plugin list", async () => {
-  await using tmp = await tmpdir({
+  await using global = await tmpdir({
     init: async (dir) => {
-      const project = path.join(dir, "project")
-      const local = path.join(project, ".opencode")
-      await fs.mkdir(local, { recursive: true })
-
       await Filesystem.write(
         path.join(dir, "opencode.json"),
         JSON.stringify({
@@ -1362,6 +1378,13 @@ test("keeps plugin origins aligned with merged plugin list", async () => {
           plugin: [["shared-plugin@1.0.0", { source: "global" }], "global-only@1.0.0"],
         }),
       )
+    },
+  })
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      const project = path.join(dir, "project")
+      const local = path.join(project, ".opencode")
+      await fs.mkdir(local, { recursive: true })
 
       await Filesystem.write(
         path.join(local, "opencode.json"),
@@ -1373,13 +1396,14 @@ test("keeps plugin origins aligned with merged plugin list", async () => {
     },
   })
 
-  await provideTestInstance({
-    directory: path.join(tmp.path, "project"),
-    fn: async (ctx) => {
-      const cfg = await load(ctx)
-      const plugins = cfg.plugin ?? []
-      const origins = cfg.plugin_origins ?? []
-      const names = plugins.map((item) => ConfigPlugin.pluginSpecifier(item))
+  await withGlobalConfigDir(global.path, () =>
+    provideTestInstance({
+      directory: path.join(tmp.path, "project"),
+      fn: async (ctx) => {
+        const cfg = await load(ctx)
+        const plugins = cfg.plugin ?? []
+        const origins = cfg.plugin_origins ?? []
+        const names = plugins.map((item) => ConfigPlugin.pluginSpecifier(item))
 
         expect(names).toContain("shared-plugin@2.0.0")
         expect(names).not.toContain("shared-plugin@1.0.0")
@@ -1390,7 +1414,8 @@ test("keeps plugin origins aligned with merged plugin list", async () => {
         const hit = origins.find((item) => ConfigPlugin.pluginSpecifier(item.spec) === "shared-plugin@2.0.0")
         expect(hit?.scope).toBe("local")
       },
-  })
+    }),
+  )
 })
 
 // Legacy tools migration tests

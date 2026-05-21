@@ -382,7 +382,7 @@ export const Event = {
 
 export function plan(input: { slug: string; time: { created: number } }, instance?: InstanceContext) {
   const ctx = instance ?? Instance.current
-  const root = ctx.project.vcs ? path.join(ctx.worktree, ".opencode", "plans") : path.join(Global.Path.data, "plans")
+  const root = path.join(ctx.project.vcs ? ctx.worktree : ctx.directory, ".opencode", "plans")
   return path.join(root, [input.time.created, input.slug].join("-") + ".md")
 }
 

@@ -88,6 +88,7 @@ export class RunScrollbackStream {
   private tail: StreamCommit | undefined
   private rendered: StreamCommit | undefined
   private active: ActiveEntry | undefined
+  private finished: ScrollbackSurface[] = []
   private diffStyle: RunDiffStyle | undefined
   private sessionID?: () => string | undefined
   private treeSitterClient: TreeSitterClient | undefined
@@ -227,6 +228,11 @@ export class RunScrollbackStream {
       renderable.streaming = !done
       await active.surface.settle()
       const targetRows = done ? active.surface.height : Math.max(active.committedRows, active.surface.height - 1)
+      if (done && active.rendered) {
+        active.surface.commitRows(0, targetRows, { trailingNewline })
+        active.committedRows = targetRows
+        return true
+      }
       if (targetRows <= active.committedRows) {
         return false
       }
@@ -249,6 +255,20 @@ export class RunScrollbackStream {
     renderable.streaming = !done
     await active.surface.settle()
     const targetBlockCount = done ? renderable._blockStates.length : renderable._stableBlockCount
+    if (done && active.rendered) {
+      if (
+        commitMarkdownBlocks({
+          surface: active.surface,
+          renderable,
+          startBlock: 0,
+          endBlockExclusive: targetBlockCount,
+          trailingNewline,
+        })
+      ) {
+        active.committedBlocks = targetBlockCount
+        return true
+      }
+    }
     if (targetBlockCount <= active.committedBlocks) {
       return false
     }
@@ -285,7 +305,9 @@ export class RunScrollbackStream {
         this.active = undefined
       }
 
-      if (!active.surface.isDestroyed) {
+      if (active.rendered && !active.surface.isDestroyed) {
+        this.finished.push(active.surface)
+      } else if (!active.surface.isDestroyed) {
         active.surface.destroy()
       }
     }
@@ -360,11 +382,22 @@ export class RunScrollbackStream {
 
   private resetActive(): void {
     if (!this.active) {
+      for (const surface of this.finished.splice(0)) {
+        if (!surface.isDestroyed) {
+          surface.destroy()
+        }
+      }
       return
     }
 
     if (!this.active.surface.isDestroyed) {
       this.active.surface.destroy()
+    }
+
+    for (const surface of this.finished.splice(0)) {
+      if (!surface.isDestroyed) {
+        surface.destroy()
+      }
     }
 
     this.active = undefined
