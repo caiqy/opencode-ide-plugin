@@ -30,26 +30,30 @@ function withUiVersion<T>(version: string | undefined, run: () => T): T {
   }
 }
 
-function withNpmRegistry<T>(run: () => T): T {
-  const lower = process.env.npm_config_registry
-  const upper = process.env.NPM_CONFIG_REGISTRY
-  process.env.npm_config_registry = "https://registry.npmjs.org/"
-  process.env.NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
-
-  try {
-    return run()
-  } finally {
-    if (lower === undefined) {
-      delete process.env.npm_config_registry
-    } else {
-      process.env.npm_config_registry = lower
-    }
-    if (upper === undefined) {
-      delete process.env.NPM_CONFIG_REGISTRY
-    } else {
-      process.env.NPM_CONFIG_REGISTRY = upper
-    }
-  }
+function withNpmRegistryEffect<A, E, R>(effect: Effect.Effect<A, E, R>) {
+  return Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const lower = process.env.npm_config_registry
+      const upper = process.env.NPM_CONFIG_REGISTRY
+      process.env.npm_config_registry = "https://registry.npmjs.org/"
+      process.env.NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
+      return { lower, upper }
+    }),
+    () => effect,
+    ({ lower, upper }) =>
+      Effect.sync(() => {
+        if (lower === undefined) {
+          delete process.env.npm_config_registry
+        } else {
+          process.env.npm_config_registry = lower
+        }
+        if (upper === undefined) {
+          delete process.env.NPM_CONFIG_REGISTRY
+        } else {
+          process.env.NPM_CONFIG_REGISTRY = upper
+        }
+      }),
+  )
 }
 
 function mockHttpClient(handler: (request: HttpClientRequest.HttpClientRequest) => Response) {
@@ -98,57 +102,61 @@ function testLayer(
 describe("installation", () => {
   describe("userAgent", () => {
     test("builds the default opencode UI user agent", () => {
-      expect(Installation.userAgent()).toBe(
-        `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (codex app)`,
-      )
+      withUiVersion(undefined, () => {
+        expect(Installation.userAgent()).toBe(`opencode/${InstallationVersion} opencode-ui/${InstallationVersion}`)
+      })
     })
 
     test("uses injected UI version for the default opencode UI user agent", () => {
       withUiVersion("26.5.1602", () => {
-        expect(Installation.userAgent()).toBe(`opencode/${InstallationVersion} opencode-ui/26.5.1602 (codex app)`)
+        expect(Installation.userAgent()).toBe(`opencode/${InstallationVersion} opencode-ui/26.5.1602`)
       })
     })
 
     test("falls back to installation version when injected UI version is blank", () => {
       withUiVersion("   ", () => {
-        expect(Installation.userAgent()).toBe(
-          `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (codex app)`,
-        )
+        expect(Installation.userAgent()).toBe(`opencode/${InstallationVersion} opencode-ui/${InstallationVersion}`)
       })
     })
 
     test("builds the installation-scoped user agent", () => {
-      expect(Installation.USER_AGENT).toBe(
-        `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/${InstallationVersion} (codex app)`,
-      )
+      withUiVersion(undefined, () => {
+        expect(Installation.userAgent({ base: "installation" })).toBe(
+          `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/${InstallationVersion}`,
+        )
+      })
     })
 
     test("uses injected UI version for installation-scoped user agent", () => {
       withUiVersion("26.5.1602", () => {
         expect(Installation.userAgent({ base: "installation" })).toBe(
-          `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/26.5.1602 (codex app)`,
+          `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/26.5.1602`,
         )
       })
     })
 
     test("keeps provider integration products before the UI product", () => {
-      expect(Installation.userAgent({ products: ["gitlab-ai-provider/1.2.3"] })).toBe(
-        `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/${InstallationVersion} (codex app)`,
-      )
+      withUiVersion(undefined, () => {
+        expect(Installation.userAgent({ products: ["gitlab-ai-provider/1.2.3"] })).toBe(
+          `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/${InstallationVersion}`,
+        )
+      })
     })
 
     test("keeps provider products before injected UI product", () => {
       withUiVersion("26.5.1602", () => {
         expect(Installation.userAgent({ products: ["gitlab-ai-provider/1.2.3"] })).toBe(
-          `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/26.5.1602 (codex app)`,
+          `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/26.5.1602`,
         )
       })
     })
 
     test("adds system details to the comment", () => {
-      expect(Installation.userAgent({ system: true })).toBe(
-        `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (codex app; ${os.platform()} ${os.release()}; ${os.arch()})`,
-      )
+      withUiVersion(undefined, () => {
+        expect(Installation.userAgent({ system: true })).toBe(
+          `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (${os.platform()} ${os.release()}; ${os.arch()})`,
+        )
+      })
     })
   })
 
@@ -193,11 +201,11 @@ describe("installation", () => {
         return jsonResponse({ version: "1.5.0" })
       }),
     ).effect("reads npm versions via registry", () =>
-      Effect.gen(function* () {
+      withNpmRegistryEffect(Effect.gen(function* () {
         const result = yield* Installation.Service.use((svc) => svc.latest("npm"))
         expect(result).toBe("1.5.0")
         expect(npmCalls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
-      }),
+      })),
     )
 
     const bunCalls: string[] = []
@@ -207,11 +215,11 @@ describe("installation", () => {
         return jsonResponse({ version: "1.6.0" })
       }),
     ).effect("reads bun versions via registry", () =>
-      Effect.gen(function* () {
+      withNpmRegistryEffect(Effect.gen(function* () {
         const result = yield* Installation.Service.use((svc) => svc.latest("bun"))
         expect(result).toBe("1.6.0")
         expect(bunCalls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
-      }),
+      })),
     )
 
     const pnpmCalls: string[] = []
@@ -221,11 +229,11 @@ describe("installation", () => {
         return jsonResponse({ version: "1.7.0" })
       }),
     ).effect("reads pnpm versions via registry", () =>
-      Effect.gen(function* () {
+      withNpmRegistryEffect(Effect.gen(function* () {
         const result = yield* Installation.Service.use((svc) => svc.latest("pnpm"))
         expect(result).toBe("1.7.0")
         expect(pnpmCalls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
-      }),
+      })),
     )
 
     testEffect(testLayer(() => jsonResponse({ version: "2.3.4" }))).effect("reads scoop manifest versions", () =>

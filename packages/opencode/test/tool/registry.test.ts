@@ -131,6 +131,28 @@ describe("tool.registry", () => {
     }),
   )
 
+  it.instance("exposes generate_image count parameter in the model schema", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const agent = yield* Agent.Service
+      const build = yield* agent.get("build")
+      if (!build) throw new Error("build agent not found")
+      const generateImage = (yield* registry.tools({
+        providerID: ProviderID.opencode,
+        modelID: ModelID.make("test"),
+        agent: build,
+      })).find((tool) => tool.id === "generate_image")
+
+      if (!generateImage) throw new Error("generate_image tool not found")
+
+      const schema = ToolJsonSchema.fromTool(generateImage)
+
+      expect((schema.properties as Record<string, { description?: string }> | undefined)?.n?.description).toBe(
+        "Number of images to generate (1-10)",
+      )
+    }),
+  )
+
   background.instance("shows task_status when experimental background subagents are enabled", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service

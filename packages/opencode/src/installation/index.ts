@@ -55,7 +55,6 @@ export type Info = Schema.Schema.Type<typeof Info>
 const OPENCODE_USER_AGENT_PRODUCT = `opencode/${InstallationVersion}`
 // Keep the legacy channel/version/client shape for installation and model-list requests.
 const INSTALLATION_USER_AGENT_PRODUCT = `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT}`
-const USER_AGENT_COMMENT = "codex app"
 
 function uiUserAgentProduct() {
   const version = process.env.OPENCODE_UI_VERSION?.trim() || InstallationVersion
@@ -65,12 +64,9 @@ function uiUserAgentProduct() {
 export function userAgent(options?: { base?: "default" | "installation"; products?: string[]; system?: boolean }) {
   const base = options?.base === "installation" ? INSTALLATION_USER_AGENT_PRODUCT : OPENCODE_USER_AGENT_PRODUCT
   const products = [base, ...(options?.products ?? []), uiUserAgentProduct()]
-  const comments = [
-    USER_AGENT_COMMENT,
-    ...(options?.system ? [`${os.platform()} ${os.release()}`, os.arch()] : []),
-  ]
+  const comments = options?.system ? [`${os.platform()} ${os.release()}`, os.arch()] : []
 
-  return `${products.join(" ")} (${comments.join("; ")})`
+  return comments.length > 0 ? `${products.join(" ")} (${comments.join("; ")})` : products.join(" ")
 }
 
 export const USER_AGENT = userAgent({ base: "installation" })
@@ -269,6 +265,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
         const response = yield* httpOk.execute(
           HttpClientRequest.get("https://api.github.com/repos/anomalyco/opencode/releases/latest").pipe(
             HttpClientRequest.acceptJson,
+            HttpClientRequest.setHeaders({ "User-Agent": USER_AGENT }),
           ),
         )
         const data = yield* HttpClientResponse.schemaBodyJson(GitHubRelease)(response)

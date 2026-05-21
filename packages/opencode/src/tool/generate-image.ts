@@ -22,29 +22,31 @@ const Prompt = Schema.String.check(Schema.isPattern(/^[\s\S]{1,4000}$/)).annotat
 
 export const Parameters = Schema.Struct({
   action: Schema.Literals(["generate", "edit"])
-    .pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("generate" as const)))
-    .annotate({ description: "Whether to generate a new image or edit existing images" }),
+    .annotate({ description: "Whether to generate a new image or edit existing images" })
+    .pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("generate" as const))),
   prompt: Prompt.annotate({ description: "Text prompt describing the desired image result" }),
   provider: Schema.optional(Schema.String).annotate({ description: "Optional provider override" }),
-  model: Schema.optional(Schema.String).annotate({ description: "Optional model override" }),
+  model: Schema.optional(Schema.String).annotate({
+    description: "Optional model override; omit to use configured image_model.",
+  }),
   images: Schema.optional(Schema.Array(Schema.String)).annotate({
     description: "Project-relative image paths or data URLs for edit inputs",
   }),
   mask: Schema.optional(Schema.String).annotate({ description: "Optional mask path or data URL for image edits" }),
   filename: Schema.optional(Schema.String).annotate({ description: "Optional filename prefix for persisted outputs" }),
-  size: Schema.String.pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("auto"))).annotate({
+  size: Schema.String.annotate({
     description:
       "Requested output size. Use auto or WIDTHxHEIGHT. For gpt-image-* models, 1024x1024 is the recommended minimum starting size. Smaller sizes may still work if they satisfy the model constraints: width and height must be multiples of 16, the longest edge must be <= 3840, aspect ratio must be <= 3:1, and total pixels must be between 655360 and 8294400.",
-  }),
+  }).pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("auto"))),
   quality: Schema.Literals(["auto", "low", "medium", "high"])
-    .pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("high" as const)))
-    .annotate({ description: "Requested image quality" }),
+    .annotate({ description: "Requested image quality" })
+    .pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("high" as const))),
   format: Schema.Literals(["png", "jpeg", "webp"])
-    .pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("png" as const)))
-    .annotate({ description: "Requested output image format" }),
+    .annotate({ description: "Requested output image format" })
+    .pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("png" as const))),
   n: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).check(Schema.isLessThanOrEqualTo(10))
-    .pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed(1)))
-    .annotate({ description: "Number of images to generate (1-10)" }),
+    .annotate({ description: "Number of images to generate (1-10)" })
+    .pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed(1))),
 })
 
 export const GenerateImageTool = Tool.define(

@@ -96,7 +96,6 @@ exports[`tool parameters JSON Schema (wire shape) generate_image 1`] = `
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "action": {
-      "default": "generate",
       "description": "Whether to generate a new image or edit existing images",
       "enum": [
         "generate",
@@ -109,7 +108,6 @@ exports[`tool parameters JSON Schema (wire shape) generate_image 1`] = `
       "type": "string",
     },
     "format": {
-      "default": "png",
       "description": "Requested output image format",
       "enum": [
         "png",
@@ -130,11 +128,10 @@ exports[`tool parameters JSON Schema (wire shape) generate_image 1`] = `
       "type": "string",
     },
     "model": {
-      "description": "Optional model override",
+      "description": "Optional model override; omit to use configured image_model.",
       "type": "string",
     },
     "n": {
-      "default": 1,
       "description": "Number of images to generate (1-10)",
       "maximum": 10,
       "minimum": 1,
@@ -150,7 +147,6 @@ exports[`tool parameters JSON Schema (wire shape) generate_image 1`] = `
       "type": "string",
     },
     "quality": {
-      "default": "high",
       "description": "Requested image quality",
       "enum": [
         "auto",
@@ -161,7 +157,6 @@ exports[`tool parameters JSON Schema (wire shape) generate_image 1`] = `
       "type": "string",
     },
     "size": {
-      "default": "auto",
       "description": "Requested output size. Use auto or WIDTHxHEIGHT. For gpt-image-* models, 1024x1024 is the recommended minimum starting size. Smaller sizes may still work if they satisfy the model constraints: width and height must be multiples of 16, the longest edge must be <= 3840, aspect ratio must be <= 3:1, and total pixels must be between 655360 and 8294400.",
       "type": "string",
     },
@@ -478,21 +473,14 @@ exports[`tool parameters JSON Schema (wire shape) webfetch 1`] = `
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "format": {
-      "anyOf": [
-        {
-          "default": "markdown",
-          "description": "The format to return the content in (text, markdown, or html). Defaults to markdown.",
-          "enum": [
-            "text",
-            "markdown",
-            "html",
-          ],
-          "type": "string",
-        },
-        {
-          "type": "null",
-        },
+      "default": "markdown",
+      "description": "The format to return the content in (text, markdown, or html). Defaults to markdown.",
+      "enum": [
+        "text",
+        "markdown",
+        "html",
       ],
+      "type": "string",
     },
     "timeout": {
       "description": "Optional timeout in seconds (max 120)",

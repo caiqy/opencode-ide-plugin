@@ -26,7 +26,7 @@ export function fromTool(tool: Tool.Def): JSONSchema7 {
 }
 
 function normalize(value: unknown, options: { stripNull?: boolean } = {}): unknown {
-  if (Array.isArray(value)) return value.map((item) => normalize(item))
+  if (Array.isArray(value)) return value.map((item) => normalize(item, options))
   if (!isRecord(value)) return value
 
   const required = Array.isArray(value.required)
@@ -50,7 +50,7 @@ function normalize(value: unknown, options: { stripNull?: boolean } = {}): unkno
 
   if (options.stripNull && Array.isArray(schema.anyOf)) {
     const withoutNull = schema.anyOf.filter((item) => !isRecord(item) || item.type !== "null")
-    if (withoutNull.length !== schema.anyOf.length) return normalize({ ...schema, anyOf: withoutNull })
+    if (withoutNull.length !== schema.anyOf.length) return normalize({ ...schema, anyOf: withoutNull }, options)
   }
 
   if (Array.isArray(schema.anyOf)) {
@@ -71,7 +71,7 @@ function normalize(value: unknown, options: { stripNull?: boolean } = {}): unkno
 
     if (withoutNull.length === 1 && isRecord(withoutNull[0])) {
       const { anyOf: _, ...rest } = schema
-      return normalize({ ...withoutNull[0], ...rest })
+      return normalize({ ...withoutNull[0], ...rest }, options)
     }
   }
 

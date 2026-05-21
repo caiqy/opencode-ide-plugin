@@ -4,10 +4,9 @@ import { ToolJsonSchema } from "../../src/tool/json-schema"
 
 // Each tool exports its parameters schema at module scope so this test can
 // import them without running the tool's Effect-based init. The JSON Schema
-// snapshot captures what the LLM sees; the parse assertions pin down the
-// accepts/rejects contract. `ToolJsonSchema.fromSchema` is the same helper `session/
-// prompt.ts` uses to emit tool schemas to the LLM, so the snapshots stay
-// provider-compatible while tools use Effect Schema internally.
+// snapshot captures the raw parameter schema; some tools may provide a narrower
+// model-facing jsonSchema override. The parse assertions pin down the
+// accepts/rejects contract.
 
 import { Parameters as ApplyPatch } from "../../src/tool/apply_patch"
 import { Parameters as Edit } from "../../src/tool/edit"
@@ -166,6 +165,16 @@ describe("tool parameters", () => {
 
       expect(schema.properties?.size?.description).toBe(
         "Requested output size. Use auto or WIDTHxHEIGHT. For gpt-image-* models, 1024x1024 is the recommended minimum starting size. Smaller sizes may still work if they satisfy the model constraints: width and height must be multiples of 16, the longest edge must be <= 3840, aspect ratio must be <= 3:1, and total pixels must be between 655360 and 8294400.",
+      )
+    })
+
+    test("documents image model fallback concisely", () => {
+      const schema = toJsonSchema(GenerateImage) as {
+        properties?: Record<string, { description?: string }>
+      }
+
+      expect(schema.properties?.model?.description).toBe(
+        "Optional model override; omit to use configured image_model.",
       )
     })
 
