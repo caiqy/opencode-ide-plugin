@@ -138,7 +138,7 @@ exports[`tool parameters JSON Schema (wire shape) generate_image 1`] = `
       "type": "integer",
     },
     "prompt": {
-      "description": "Text prompt describing the desired image result",
+      "description": "Text prompt for a single image (use n for count)",
       "pattern": "^[\\s\\S]{1,4000}$",
       "type": "string",
     },

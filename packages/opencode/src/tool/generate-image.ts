@@ -24,7 +24,7 @@ export const Parameters = Schema.Struct({
   action: Schema.Literals(["generate", "edit"])
     .annotate({ description: "Whether to generate a new image or edit existing images" })
     .pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("generate" as const))),
-  prompt: Prompt.annotate({ description: "Text prompt describing the desired image result" }),
+  prompt: Prompt.annotate({ description: "Text prompt for a single image (use n for count)" }),
   provider: Schema.optional(Schema.String).annotate({ description: "Optional provider override" }),
   model: Schema.optional(Schema.String).annotate({
     description: "Optional model override; omit to use configured image_model.",
