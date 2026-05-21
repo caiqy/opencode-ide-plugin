@@ -62,6 +62,7 @@ import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@/server/cors
 import { serveUIEffect } from "@/server/shared/ui"
 import { ServerAuth } from "@/server/auth"
 import { readGeneratedImage } from "@/server/routes/instance/generated-image"
+import { serveWebGuiPath } from "@/webgui/server/app"
 import { InstanceHttpApi, RootHttpApi } from "./api"
 import { PublicApi } from "./public"
 import { authorizationLayer, authorizationRouterMiddleware } from "./middleware/authorization"
@@ -109,7 +110,7 @@ const cors = (corsOptions?: CorsOptions) =>
 // - rootApiRoutes: typed /global/* and control routes; auth is declared by RootHttpApi.
 // - eventApiRoutes/rawInstanceRoutes: raw instance routes; auth and workspace routing happen as router middleware.
 // - instanceApiRoutes: schema routes; auth is declared on each group and workspace context is provided below.
-// - uiRoute: raw catch-all fallback; auth is router middleware so public static assets can bypass it.
+// - uiRoute: raw catch-all fallback; /app serves local IDE WebGUI before the upstream official UI fallback.
 const authOnlyRouterLayer = authorizationRouterMiddleware.layer.pipe(Layer.provide(ServerAuth.Config.defaultLayer))
 const httpApiAuthLayer = authorizationLayer.pipe(Layer.provide(ServerAuth.Config.defaultLayer))
 const rootApiRoutes = HttpApiBuilder.layer(RootHttpApi).pipe(
@@ -192,9 +193,22 @@ const uiRoute = HttpRouter.use((router) =>
     const fs = yield* AppFileSystem.Service
     const client = yield* HttpClient.HttpClient
     const flags = yield* RuntimeFlags.Service
-    yield* router.add("*", "/*", (request) =>
-      serveUIEffect(request, { fs, client, disableEmbeddedWebUi: flags.disableEmbeddedWebUi }),
-    )
+    yield* router.add("*", "/*", (request) => {
+      const pathname = new URL(request.url, "http://localhost").pathname
+      if (pathname === "/app" || pathname.startsWith("/app/")) {
+        const path = pathname.replace(/^\/app\/?/, "")
+        const response = serveWebGuiPath(path)
+        if (!response) return Effect.succeed(HttpServerResponse.empty({ status: 404 }))
+        return Effect.promise(async () =>
+          HttpServerResponse.raw(new Uint8Array(await response.arrayBuffer()), {
+            status: response.status,
+            headers: Object.fromEntries(response.headers.entries()),
+          }),
+        )
+      }
+
+      return serveUIEffect(request, { fs, client, disableEmbeddedWebUi: flags.disableEmbeddedWebUi })
+    })
   }),
 ).pipe(Layer.provide(authOnlyRouterLayer))
 

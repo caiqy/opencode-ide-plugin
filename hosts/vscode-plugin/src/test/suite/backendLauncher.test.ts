@@ -109,6 +109,28 @@ suite("BackendLauncher Test Suite", () => {
     assert.strictEqual((launcher as unknown as { currentConnection?: unknown }).currentConnection, undefined)
   })
 
+  test("should point parsed backend UI base at /app", async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+    })
+
+    global.setTimeout = ((callback: (...args: unknown[]) => void) => {
+      return timeout(callback, 1000)
+    }) as typeof global.setTimeout
+
+    const promise = (launcher as unknown as {
+      parseConnectionInfo(process: typeof child): Promise<{ port: number; uiBase: string }>
+    }).parseConnectionInfo(child)
+
+    child.stdout.emit("data", Buffer.from("opencode server listening on http://127.0.0.1:4096\n"))
+
+    const connection = await promise
+
+    assert.strictEqual(connection.port, 4096)
+    assert.strictEqual(connection.uiBase, "http://127.0.0.1:4096/app")
+  })
+
   test("should clean up failed shared process when connection parsing fails", async () => {
     const err = new Error("parse failed")
     const calls: string[] = []

@@ -28,6 +28,56 @@ describe("webgui app route", () => {
     expect(text).toBe(expected)
   }, 20_000)
 
+  test("serve listener serves embedded index from /app", async () => {
+    const server = await Server.listen({ port: 0, hostname: "127.0.0.1" })
+    try {
+      const response = await fetch(new URL("/app", server.url))
+      const text = await response.text()
+      const expected = decoded("index.html").toString("utf8")
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get("content-type")).toContain("text/html")
+      expect(text).toContain("OpenCode Web GUI")
+      expect(text).toBe(expected)
+    } finally {
+      await server.stop(true)
+    }
+  }, 20_000)
+
+  test("serve listener serves embedded assets from /app/assets", async () => {
+    const assetPath = embeddedWebGui.find((item) => item.path.endsWith(".js"))?.path
+    if (!assetPath) throw new Error("Missing embedded js asset")
+
+    const server = await Server.listen({ port: 0, hostname: "127.0.0.1" })
+    try {
+      const response = await fetch(new URL(`/app/${assetPath}`, server.url))
+      const text = await response.text()
+      const expected = decoded(assetPath).toString("utf8")
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get("content-type")).toContain("javascript")
+      expect(text).toBe(expected)
+    } finally {
+      await server.stop(true)
+    }
+  }, 20_000)
+
+  test("serve listener falls back to embedded index for /app deep links", async () => {
+    const server = await Server.listen({ port: 0, hostname: "127.0.0.1" })
+    try {
+      const response = await fetch(new URL("/app/session/example", server.url))
+      const text = await response.text()
+      const expected = decoded("index.html").toString("utf8")
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get("content-type")).toContain("text/html")
+      expect(text).toContain("OpenCode Web GUI")
+      expect(text).toBe(expected)
+    } finally {
+      await server.stop(true)
+    }
+  }, 20_000)
+
   test("serves embedded assets from /app/assets", async () => {
     const assetPath = embeddedWebGui.find((item) => item.path.endsWith(".js"))?.path
     if (!assetPath) throw new Error("Missing embedded js asset")
