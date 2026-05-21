@@ -120,4 +120,41 @@ describe("Image", () => {
       }
     }),
   )
+
+  it.effect("passes through non-data URLs unchanged (generate_image attachments)", () =>
+    Effect.gen(function* () {
+      const image = yield* Image.Service
+      const input = {
+        id: PartID.ascending(),
+        messageID: MessageID.ascending(),
+        sessionID: SessionID.make("ses_test"),
+        type: "file" as const,
+        mime: "image/png",
+        url: "/generated-image?path=.opencode%2Fgenerated-images%2Fcartoon-kitten.png",
+      }
+
+      const result = yield* image.normalize(input)
+      expect(result).toEqual(input)
+    }),
+  )
+
+  it.effect("passes through file-path URLs without throwing", () =>
+    Effect.gen(function* () {
+      const image = yield* Image.Service
+      const input = {
+        id: PartID.ascending(),
+        messageID: MessageID.ascending(),
+        sessionID: SessionID.make("ses_test"),
+        type: "file" as const,
+        mime: "image/jpeg",
+        url: "/generated-image?path=.opencode%2Fgenerated-images%2Fphoto-1-e9ef9d9d.png",
+      }
+
+      const exit = yield* image.normalize(input).pipe(Effect.exit)
+      expect(Exit.isSuccess(exit)).toBe(true)
+      if (Exit.isSuccess(exit)) {
+        expect(exit.value).toEqual(input)
+      }
+    }),
+  )
 })

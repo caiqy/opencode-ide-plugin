@@ -82,7 +82,7 @@ export const layer = Layer.effect(
         maxBase64Bytes: image?.max_base64_bytes ?? MAX_BASE64_BYTES,
       }
       if (!input.url.startsWith("data:") || !input.url.includes(";base64,"))
-        return yield* new InvalidDataUrlError({ url: input.url })
+        return input
 
       const base64 = input.url.slice(input.url.indexOf(";base64,") + ";base64,".length)
       const bytes = Buffer.byteLength(base64, "utf8")
