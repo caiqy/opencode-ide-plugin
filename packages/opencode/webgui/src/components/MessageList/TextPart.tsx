@@ -5,6 +5,7 @@ import { MarkdownRenderer } from "../MarkdownRenderer"
 import { FilePart } from "../parts/FilePart"
 import { AgentPart } from "../parts/AgentPart"
 import { ImageOverlay } from "../parts/ImageOverlay"
+import { getUserTextCopySelection } from "./messageCopy"
 
 interface ImageFile {
   id: string
@@ -170,116 +171,12 @@ export function TextPart({ part, isUser, attachedParts }: TextPartProps) {
       const wrapper = ref.current
       if (!selection || !wrapper || selection.rangeCount === 0) return
 
-      const range = selection.getRangeAt(0)
-      if (!wrapper.contains(range.commonAncestorContainer)) return
-
-      if (range.collapsed) {
-        e.preventDefault()
-        e.stopPropagation()
-        e.clipboardData.setData("text/plain", text)
-        return
-      }
+      const value = getUserTextCopySelection({ text, wrapper, selection })
+      if (!value) return
 
       e.preventDefault()
       e.stopPropagation()
-
-      const parts = Array.from(wrapper.querySelectorAll<HTMLElement>("[data-rawpart]"))
-
-      // No mention wrappers — plain text, use selection directly
-      if (parts.length === 0) {
-        e.clipboardData.setData("text/plain", selection.toString())
-        return
-      }
-
-      const containsNode = (needle: Node, element: HTMLElement): boolean => {
-        return needle === element || element.contains(needle)
-      }
-
-      // Find start part and offset
-      let startPartIndex = parts.findIndex((p) => containsNode(range.startContainer, p))
-      if (startPartIndex === -1 && range.startContainer === wrapper) {
-        startPartIndex = Math.min(range.startOffset, parts.length - 1)
-      }
-
-      // Find end part - use focusNode for accurate end detection (fixes Firefox)
-      // In Firefox, when selection ends inside non-text elements (like SVG in mentions),
-      // range.endContainer points to the SVG but focusNode points to actual selection end
-      const focusNode = selection.focusNode
-      const focusOffset = selection.focusOffset
-      let endPartIndex = focusNode ? parts.findIndex((p) => containsNode(focusNode, p)) : -1
-
-      // Fallback to range.endContainer if focusNode didn't match
-      if (endPartIndex === -1) {
-        endPartIndex = parts.findIndex((p) => containsNode(range.endContainer, p))
-      }
-      if (endPartIndex === -1 && range.endContainer === wrapper) {
-        endPartIndex = Math.min(range.endOffset, parts.length) - 1
-      }
-
-      // Calculate start offset within first part
-      let startOffset = 0
-      if (startPartIndex >= 0 && !parts[startPartIndex].hasAttribute("data-raw-mention")) {
-        const partEl = parts[startPartIndex]
-        if (containsNode(range.startContainer, partEl)) {
-          const tempRange = document.createRange()
-          tempRange.selectNodeContents(partEl)
-          tempRange.setEnd(range.startContainer, range.startOffset)
-          startOffset = tempRange.toString().length
-        }
-      }
-
-      // Calculate end offset within last part
-      let endOffset = 0
-      if (endPartIndex >= 0) {
-        const partEl = parts[endPartIndex]
-        if (partEl.hasAttribute("data-raw-mention")) {
-          endOffset = partEl.textContent?.length || 0
-        } else if (focusNode && containsNode(focusNode, partEl) && focusNode.nodeType === Node.TEXT_NODE) {
-          const tempRange = document.createRange()
-          tempRange.selectNodeContents(partEl)
-          tempRange.setEnd(focusNode, focusOffset)
-          endOffset = tempRange.toString().length
-        } else if (containsNode(range.endContainer, partEl)) {
-          const tempRange = document.createRange()
-          tempRange.selectNodeContents(partEl)
-          tempRange.setEnd(range.endContainer, range.endOffset)
-          endOffset = tempRange.toString().length
-        } else {
-          endOffset = partEl.textContent?.length || 0
-        }
-      }
-
-      // Map to raw text indices
-      let rawStart = text.length
-      let rawEnd = 0
-
-      for (let i = startPartIndex; i <= endPartIndex && i >= 0 && i < parts.length; i++) {
-        const partEl = parts[i]
-        const partStart = Number(partEl.getAttribute("data-raw-start"))
-        const partEnd = Number(partEl.getAttribute("data-raw-end"))
-        if (Number.isNaN(partStart) || Number.isNaN(partEnd)) continue
-
-        if (partEl.hasAttribute("data-raw-mention")) {
-          rawStart = Math.min(rawStart, partStart)
-          rawEnd = Math.max(rawEnd, partEnd)
-          continue
-        }
-
-        let localStart = i === startPartIndex ? startOffset : 0
-        let localEnd = i === endPartIndex ? endOffset : partEnd - partStart
-
-        localStart = Math.max(0, Math.min(localStart, partEnd - partStart))
-        localEnd = Math.max(0, Math.min(localEnd, partEnd - partStart))
-
-        if (localEnd > localStart) {
-          rawStart = Math.min(rawStart, partStart + localStart)
-          rawEnd = Math.max(rawEnd, partStart + localEnd)
-        }
-      }
-
-      if (rawEnd > rawStart) {
-        e.clipboardData.setData("text/plain", text.slice(rawStart, rawEnd))
-      }
+      e.clipboardData.setData("text/plain", value)
     }
 
     return (

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 
 const assistantMetaSpy = vi.fn((_props: Record<string, unknown>) => <div data-testid="assistant-meta" />)
+const actionButtonsSpy = vi.fn((_props: Record<string, unknown>) => <div data-testid="action-buttons" />)
 
 vi.mock("./MessagePart", () => ({
   MessagePart: ({ part }: { part: { id: string } }) => <div data-testid={`part-${part.id}`} />,
@@ -12,7 +13,7 @@ vi.mock("./SessionErrorPart", () => ({
 }))
 
 vi.mock("./ActionButtons", () => ({
-  ActionButtons: () => <div data-testid="action-buttons" />,
+  ActionButtons: (props: Record<string, unknown>) => actionButtonsSpy(props),
 }))
 
 vi.mock("./AssistantMeta", () => ({
@@ -93,5 +94,26 @@ describe("MessageRow", () => {
         interrupted: true,
       }),
     )
+  })
+
+  it("用户消息复制按钮应接收 canonical copyText", () => {
+    const message = {
+      info: {
+        id: "u-copy",
+        sessionID: "s1",
+        role: "user",
+        time: { created: 1 },
+      },
+      parts: [
+        { id: "p1", type: "text", text: "  第一段" },
+        { id: "p2", type: "text", text: "忽略", synthetic: true },
+        { id: "p3", type: "text", text: "第二段  " },
+      ],
+    }
+
+    const { container } = render(<MessageRow message={message as never} isLast />)
+    fireEvent.mouseEnter(container.firstElementChild!)
+
+    expect(actionButtonsSpy).toHaveBeenCalledWith(expect.objectContaining({ copyText: "第一段\n第二段" }))
   })
 })

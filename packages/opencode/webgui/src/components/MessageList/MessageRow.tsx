@@ -8,6 +8,7 @@ import { AssistantMeta } from "./AssistantMeta"
 import { getPartStart, getPartEnd, sortParts } from "./utils"
 import { cn } from "../../utils/classNames"
 import { useProviderStore } from "../../hooks/useProviderStore"
+import { getMessageCopyText } from "./messageCopy"
 
 interface MessageRowProps {
   message: Message
@@ -36,15 +37,7 @@ export function MessageRow({
   const skipPartIds = new Set<string>()
   const { resolveModelName } = useProviderStore()
 
-  const copyText = message.parts
-    .flatMap((p) => {
-      if (p.type !== "text") return []
-      const synthetic = (p as { synthetic?: boolean }).synthetic
-      if (synthetic) return []
-      const text = p.text || ""
-      return text.length > 0 ? [text] : []
-    })
-    .join("")
+  const copyText = getMessageCopyText(message) ?? ""
 
   const canCopy = copyText.length > 0
 

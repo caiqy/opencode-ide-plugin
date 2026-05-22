@@ -13,6 +13,10 @@ vi.mock("../parts/ImageOverlay", () => ({
   },
 }))
 
+vi.mock("../../hooks/useOpenFile", () => ({
+  useOpenFile: () => vi.fn(),
+}))
+
 describe("TextPart", () => {
   beforeEach(() => {
     overlay.props = []
@@ -80,5 +84,183 @@ describe("TextPart", () => {
     expect(overlay.props).toHaveLength(1)
     expect(overlay.props[0]?.filename).toBe("image.webp")
     expect(overlay.props[0]?.alt).toBe("image")
+  })
+
+  it("用户消息普通选区复制应写入选区文本", () => {
+    render(<TextPart part={{ id: "p4", type: "text", text: "hello world" } as any} isUser={true} />)
+
+    const content = screen.getByText("hello world")
+    const text = content.firstChild!
+    const range = document.createRange()
+    range.setStart(text, 6)
+    range.setEnd(text, 11)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const setData = vi.fn()
+    fireEvent.copy(content, {
+      clipboardData: { setData },
+    })
+
+    expect(setData).toHaveBeenCalledWith("text/plain", "world")
+    selection.removeAllRanges()
+  })
+
+  it("用户消息折叠选区复制应写入整条消息", () => {
+    render(<TextPart part={{ id: "p5", type: "text", text: "hello world" } as any} isUser={true} />)
+
+    const content = screen.getByText("hello world")
+    const text = content.firstChild!
+    const range = document.createRange()
+    range.setStart(text, 3)
+    range.collapse(true)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const setData = vi.fn()
+    fireEvent.copy(content, {
+      clipboardData: { setData },
+    })
+
+    expect(setData).toHaveBeenCalledWith("text/plain", "hello world")
+    selection.removeAllRanges()
+  })
+
+  it("用户消息 mention 选区复制应写入 raw mention 文本", () => {
+    render(
+      <TextPart
+        part={{ id: "p6", type: "text", text: "open @file.txt" } as any}
+        isUser={true}
+        attachedParts={[
+          {
+            id: "f1",
+            type: "file",
+            mime: "text/plain",
+            url: "file:///tmp/file.txt",
+            filename: "file.txt",
+            source: { text: { start: 5, end: 14 } },
+          } as any,
+        ]}
+      />,
+    )
+
+    const content = document.querySelector<HTMLElement>("[data-rawpart]")!.parentElement!
+    const range = document.createRange()
+    range.setStart(content.firstChild!.firstChild!, 0)
+    range.setEnd(content.lastChild!, 1)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const setData = vi.fn()
+    fireEvent.copy(content, {
+      clipboardData: { setData },
+    })
+
+    expect(setData).toHaveBeenCalledWith("text/plain", "open @file.txt")
+    selection.removeAllRanges()
+  })
+
+  it("用户消息选区映射失败时应 fallback 写入可见选区文本", () => {
+    render(
+      <TextPart
+        part={{ id: "p7", type: "text", text: "open @file.txt" } as any}
+        isUser={true}
+        attachedParts={[
+          {
+            id: "f1",
+            type: "file",
+            mime: "text/plain",
+            url: "file:///tmp/file.txt",
+            filename: "file.txt",
+            source: { text: { start: 5, end: 14 } },
+          } as any,
+        ]}
+      />,
+    )
+
+    const content = document.querySelector<HTMLElement>("[data-rawpart]")!.parentElement!
+    Array.from(content.querySelectorAll<HTMLElement>("[data-rawpart]")).forEach((part) => {
+      part.setAttribute("data-raw-start", "x")
+      part.setAttribute("data-raw-end", "y")
+    })
+    const range = document.createRange()
+    range.selectNodeContents(content)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const setData = vi.fn()
+    fireEvent.copy(content, {
+      clipboardData: { setData },
+    })
+
+    expect(setData).toHaveBeenCalledWith("text/plain", expect.stringContaining("open"))
+    selection.removeAllRanges()
+  })
+
+  it("用户消息选区不在当前 wrapper 内时不应阻止默认复制", () => {
+    render(<TextPart part={{ id: "p8", type: "text", text: "inside" } as any} isUser={true} />)
+
+    const content = screen.getByText("inside")
+    const outside = document.createElement("div")
+    outside.textContent = "outside"
+    document.body.appendChild(outside)
+    const range = document.createRange()
+    range.selectNodeContents(outside)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const setData = vi.fn()
+    const event = new Event("copy", { bubbles: true, cancelable: true }) as ClipboardEvent
+    Object.defineProperty(event, "clipboardData", {
+      value: { setData },
+    })
+    content.dispatchEvent(event)
+
+    expect(setData).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+    outside.remove()
+    selection.removeAllRanges()
+  })
+
+  it("用户消息跨普通文本、mention 与后续文本复制应写入 raw 原文", () => {
+    render(
+      <TextPart
+        part={{ id: "p9", type: "text", text: "open @file.txt now" } as any}
+        isUser={true}
+        attachedParts={[
+          {
+            id: "f1",
+            type: "file",
+            mime: "text/plain",
+            url: "file:///tmp/file.txt",
+            filename: "file.txt",
+            source: { text: { start: 5, end: 14 } },
+          } as any,
+        ]}
+      />,
+    )
+
+    const content = document.querySelector<HTMLElement>("[data-rawpart]")!.parentElement!
+    const first = content.querySelector<HTMLElement>('[data-raw-start="0"]')!.firstChild!
+    const last = content.querySelector<HTMLElement>('[data-raw-start="14"]')!.firstChild!
+    const range = document.createRange()
+    range.setStart(first, 0)
+    range.setEnd(last, 4)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const setData = vi.fn()
+    fireEvent.copy(content, {
+      clipboardData: { setData },
+    })
+
+    expect(setData).toHaveBeenCalledWith("text/plain", "open @file.txt now")
+    selection.removeAllRanges()
   })
 })
