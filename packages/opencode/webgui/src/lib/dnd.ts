@@ -73,10 +73,10 @@ export function extractPathsFromDrop(ev: DragEvent): string[] {
     }
   } catch {}
 
-  // VSCode explorer tree
+  // VSCode explorer tree (skip if uri-list already found paths to avoid duplicates)
   try {
     const explorerType = "application/vnd.code.tree.explorer"
-    if (types.includes(explorerType)) {
+    if (paths.length === 0 && types.includes(explorerType)) {
       const explorerData = dt.getData(explorerType)
       if (explorerData) {
         try {
