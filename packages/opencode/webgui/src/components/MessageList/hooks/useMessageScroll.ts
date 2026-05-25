@@ -87,7 +87,6 @@ export function useMessageScroll(
   const mode = useRef<FollowMode>("following")
   const program = useRef<ProgramMark | null>(null)
   const programTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const seekTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastTop = useRef(0)
   const lastHeight = useRef(0)
   const lastClient = useRef(0)
@@ -173,13 +172,6 @@ export function useMessageScroll(
     return item
   }, [clearProgram])
 
-  const clearSeek = useCallback(() => {
-    if (seekTimer.current) {
-      clearTimeout(seekTimer.current)
-      seekTimer.current = null
-    }
-  }, [])
-
   const isTowardProgramTarget = useCallback((item: ProgramMark, prevTop: number, currentTop: number) => {
     if (item.target === null) return true
     const prevDistance = Math.abs(item.target - prevTop)
@@ -211,20 +203,8 @@ export function useMessageScroll(
       markProgram(cause, el.scrollTop, targetTop)
       if (cause === "button-seek") {
         commitView("seeking", false)
-        clearSeek()
-        seekTimer.current = setTimeout(() => {
-          const current = container()
-          if (!current) return
-          if (distanceFromBottom(current) <= BOTTOM_THRESHOLD) {
-            const targetTop = Math.max(0, current.scrollHeight - current.clientHeight)
-            if (targetTop - current.scrollTop > 0.5) current.scrollTop = targetTop
-            clearProgram()
-            syncLast(current)
-            commitView("following", true)
-          }
-          seekTimer.current = null
-        }, 700)
         el.scrollTo({ top: el.scrollHeight, behavior })
+        syncLast(el)
         return
       }
       commitView("following", true)
@@ -232,7 +212,7 @@ export function useMessageScroll(
       else el.scrollTop = targetTop
       syncLast(el)
     },
-    [clearProgram, clearSeek, commitView, container, markProgram, syncLast],
+    [commitView, container, markProgram, syncLast],
   )
 
   const followTail = useCallback(
@@ -247,7 +227,6 @@ export function useMessageScroll(
           allowNextTailFollow.current = false
           syncLast(el)
           clearProgram()
-          clearSeek()
           commitView("detached", false)
           return
         }
@@ -259,7 +238,7 @@ export function useMessageScroll(
         pinBottom("button-seek", "auto")
       }
     },
-    [clearProgram, clearSeek, commitView, hasUserIntent, pinBottom, syncLast],
+    [clearProgram, commitView, hasUserIntent, pinBottom, syncLast],
   )
 
   const runProgrammaticScroll = useCallback(
@@ -293,7 +272,6 @@ export function useMessageScroll(
     if (at) {
       allowNextTailFollow.current = false
       clearProgram()
-      if (item?.cause !== "button-seek" && !seekTimer.current) clearSeek()
       settleAtBottom(el)
       return
     }
@@ -301,6 +279,10 @@ export function useMessageScroll(
     const dimensionsChanged = el.scrollHeight !== prevHeight || el.clientHeight !== prevClient
     const wasAtBottom = prevHeight - prevClient - prevTop <= BOTTOM_THRESHOLD
     const keepsBottomAnchor = item?.cause === "send-message" || item?.cause === "auto-follow" || item?.cause === "button-seek"
+    if (item?.cause === "button-seek" && !dimensionsChanged && !hasUserIntent()) {
+      pinBottom("button-seek", "auto")
+      return
+    }
     if (item && !dimensionsChanged) {
       // button-seek, history restore/trim and jcef wheel can all overlap with a
       // user's immediate scrollbar/keyboard intervention. While target is pending
@@ -325,14 +307,12 @@ export function useMessageScroll(
     }
 
     if (item && dimensionsChanged && !keepsBottomAnchor) {
-      clearSeek()
       commitView("detached", false)
       return
     }
 
     if (item?.cause === "button-seek" && dimensionsChanged) {
       if (hasUserIntent()) {
-        clearSeek()
         commitView("detached", false)
         return
       }
@@ -353,9 +333,8 @@ export function useMessageScroll(
       return
     }
 
-    clearSeek()
     commitView("detached", false)
-  }, [clearProgram, clearSeek, commitView, container, getProgram, hasUserIntent, isTowardProgramTarget, pinBottom, settleAtBottom])
+  }, [clearProgram, commitView, container, getProgram, hasUserIntent, isTowardProgramTarget, pinBottom, settleAtBottom])
 
   // ── wheel / touch handlers ────────────────────────────────────────────────
 
@@ -371,7 +350,6 @@ export function useMessageScroll(
       // cause #5, not just lowering the threshold.
       if (e.deltaY < -2 && !nestedScrollable(el, e.target)) {
         markUserIntent()
-        clearSeek()
         clearProgram()
         commitView("detached", distanceFromBottom(el) <= BOTTOM_THRESHOLD)
       }
@@ -395,7 +373,6 @@ export function useMessageScroll(
       const y = e.touches[0]?.clientY
       if (y !== undefined && lastTouchY !== undefined && y > lastTouchY) {
         markUserIntent()
-        clearSeek()
         clearProgram()
         commitView("detached", distanceFromBottom(el) <= BOTTOM_THRESHOLD)
       }
@@ -423,7 +400,7 @@ export function useMessageScroll(
       el.removeEventListener("pointerdown", handlePointerDown)
       window.removeEventListener("keydown", handleKeyDown, { capture: true })
     }
-  }, [sessionID, multiplier, clearProgram, clearSeek, commitView, container, markUserIntent, runProgrammaticScroll])
+  }, [sessionID, multiplier, clearProgram, commitView, container, markUserIntent, runProgrammaticScroll])
 
   // ── scroll event binding ──────────────────────────────────────────────────
 
@@ -452,8 +429,9 @@ export function useMessageScroll(
 
   useEffect(() => {
     const el = container()
-    const content = tail?.current ?? messagesContainerRef.current
-    if (!el || !content) return
+    const shell = messagesContainerRef.current
+    const tailNode = tail?.current
+    if (!el || !shell) return
     if (typeof ResizeObserver === "undefined") return
 
     const obs = new ResizeObserver(() => {
@@ -461,8 +439,9 @@ export function useMessageScroll(
       followTail(el)
     })
 
-    obs.observe(content)
     obs.observe(el)
+    obs.observe(shell)
+    if (tailNode && tailNode !== shell) obs.observe(tailNode)
     return () => obs.disconnect()
   }, [sessionID, settling, tail, container, messagesContainerRef, followTail])
 
@@ -479,7 +458,6 @@ export function useMessageScroll(
     lastHeight.current = 0
     lastClient.current = 0
     lastUserIntent.current = 0
-    clearSeek()
     if (!sessionID) {
       pendingSessionPin.current = false
       commitView("following", true)
@@ -493,7 +471,7 @@ export function useMessageScroll(
     }
     pendingSessionPin.current = false
     pinBottom("history-restore")
-  }, [sessionID, clearProgram, clearSeek, commitView, container, pinBottom])
+  }, [sessionID, clearProgram, commitView, container, pinBottom])
 
   useEffect(() => {
     if (!pendingSessionPin.current || !sessionID) return
@@ -505,9 +483,8 @@ export function useMessageScroll(
   useEffect(() => {
     return () => {
       clearProgram()
-      clearSeek()
     }
-  }, [clearProgram, clearSeek])
+  }, [clearProgram])
 
   // ── User sends new message → force scroll back to bottom ─────────────────
 

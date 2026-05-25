@@ -2,55 +2,108 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 修复 WebGUI 对话区滚动到底部后偶发回弹 1-5px、且不再精确贴到底部的问题。
+**Goal:** 彻底修复 WebGUI 主消息列表“实际未到底但按钮隐藏/不自动跟随”的滚动状态机问题。
 
-**Architecture:** 保留现有 `useMessageScroll` 状态机，但把“接近底部可视为 following”和“需要物理校准到最底部”分开。把滚动到底按钮从 `message-scroll-shell` 的文档流中移到 shell 外的零高度 sticky overlay，避免按钮显示/隐藏改变 shell 高度或破坏滚动宿主绑定。
+**Architecture:** 保留 `useMessageScroll` 对外 API 和 `messagesContainerRef.current.parentElement` 作为真实滚动宿主的约定。把自动跟随从“只观察 tail + 固定 seek timer”改为“同时观察真实滚动宿主、整体内容 shell 和 tail，并用物理底部检测驱动即时 pin”，确保深层 history/tail/tool 输出导致的 `scrollHeight` 变化都能被捕获；用户明确上滚、键盘上滚或拖滚动条时立即退出自动吸底。
 
-**Tech Stack:** React 19、TypeScript、Vitest、Testing Library、Tailwind CSS。
+**Tech Stack:** React 19、TypeScript、Vitest、Testing Library、Chrome DevTools 实机验证。
 
 ---
+
+## Feasibility Evidence
+
+- 当前真实页面中，消息内容最深子元素到 `main` 约 16 层，存在内部独立滚动区。
+- 临时注入深层 history 高度增长 60px 后，`main.distance` 从 `0` 变成 `60`，当前 hook 不会补底。
+- 同一实验中，`message-scroll-shell` / `message-scroll-root` 的 `ResizeObserver` 能捕获该深层增长。
+- 临时原型在 `shell/root` 的 `ResizeObserver` 回调中按 `scrollHeight - clientHeight` 物理 pin，可把 history 深层增长 90px 后的 `distance=90` 立即修正为 `0`。
 
 ## File Structure
 
 - Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.ts`
-  - 新增/调整接近底部时的精确贴底逻辑，避免 1-5px 残留距离被永久接受。
-- Modify: `packages/opencode/webgui/src/components/MessageList/index.tsx`
-  - 把 `scroll-to-bottom-layer` 放到 `message-scroll-shell` 外的零高度 sticky overlay，同时保持 `message-scroll-shell.parentElement` 是外部滚动宿主。
+  - ResizeObserver 同时观察真实滚动宿主、`messagesContainerRef.current`（整体 shell）和 `tailRef.current`（尾部），不再只在 tail 存在时忽略 shell。
+  - button-seek、send-message、auto-follow 统一依赖物理底部检测和即时 pin。
+  - 移除 button-seek 的额外 700ms 固定延迟收尾 timer，避免视觉上的迟滞补跳。
 - Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.test.tsx`
-  - 新增回归测试：接近底部的 scroll 事件会被校准到物理最底部。
-- Modify: `packages/opencode/webgui/src/components/MessageList/index.test.tsx`
-  - 调整/新增测试：滚动按钮层不再位于 `message-scroll-shell` 内部，避免参与滚动内容高度。
+  - 新增 history 深层内容增长回归测试。
+  - 新增 following 状态物理 distance 漏洞回归测试。
+  - 更新 button-seek 测试，不再依赖 700ms 固定 timer 作为主要修复机制。
+- Verify only: `packages/opencode/webgui/src/components/MessageList/index.tsx`
+  - 保持已提交的 overlay 结构不变。
+- Verify only: `packages/opencode/webgui/src/components/MessageList/index.test.tsx`
+  - 确认 overlay 测试继续通过。
 
-## Task 1: 精确贴底回归测试与 hook 修复
+## Task 1: 先写 history 深层增长失败测试
 
 **Files:**
 - Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.test.tsx`
-- Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.ts`
 
 - [ ] **Step 1: Write the failing test**
 
-Add this test near the existing bottom-threshold tests in `useMessageScroll.test.tsx`:
+Add this test after `工具展开后的布局抖动导致 scrollTop 瞬间变小时仍保持自动跟随`:
 
 ```ts
-it("接近底部时会校准到物理最底部，避免残留 1-5px 距离", () => {
+it("following 时 history 区深层内容增长也会继续贴到底部", () => {
   const { getByTestId } = render(
     <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
   )
 
   const parent = getByTestId("scroll-parent")
+  const shell = getByTestId("message-scroll-container")
   const tracker = makeScrollTracker(parent)
 
-  tracker.setMetrics(1000, 500, 496)
+  tracker.setMetrics(1000, 500, 500)
   fireEvent.scroll(parent)
+  tracker.reset()
 
-  expect(tracker.getTop()).toBe(500)
+  tracker.growHeight(1060)
+  triggerResize(shell)
+
+  expect(tracker.getTop()).toBe(560)
   expect(getByTestId("scroll-mode").textContent).toBe("following")
-  expect(getByTestId("scroll-at-bottom").textContent).toBe("1")
   expect(getByTestId("scroll-button-visible").textContent).toBe("0")
 })
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
+
+Run from `packages/opencode/webgui`:
+
+```powershell
+bun run test:run src/components/MessageList/hooks/useMessageScroll.test.tsx
+```
+
+Expected: the new test fails because current ResizeObserver observes `tail-box` and `scroll-parent`, not `message-scroll-container`; triggering shell resize does not pin to `560`.
+
+## Task 2: 让 ResizeObserver 覆盖整体内容边界
+
+**Files:**
+- Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.ts`
+- Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.test.tsx`
+
+- [ ] **Step 1: Implement shell observation**
+
+In `useMessageScroll.ts`, replace the ResizeObserver effect body with logic that observes both shell and tail when available:
+
+```ts
+useEffect(() => {
+  const el = container()
+  const shell = messagesContainerRef.current
+  const tailNode = tail?.current
+  if (!el || !shell) return
+  if (typeof ResizeObserver === "undefined") return
+
+  const obs = new ResizeObserver(() => {
+    if (settling) return
+    followTail(el)
+  })
+
+  obs.observe(shell)
+  if (tailNode && tailNode !== shell) obs.observe(tailNode)
+  return () => obs.disconnect()
+}, [sessionID, settling, tail, container, messagesContainerRef, followTail])
+```
+
+- [ ] **Step 2: Run hook tests**
 
 Run:
 
@@ -58,40 +111,90 @@ Run:
 bun run test:run src/components/MessageList/hooks/useMessageScroll.test.tsx
 ```
 
-Expected: the new test fails because `tracker.getTop()` remains `496` instead of `500`.
+Expected: the new history-growth test passes and existing tests still pass.
 
-- [ ] **Step 3: Implement minimal hook fix**
+## Task 3: 移除 fixed seek timer，改为 shell resize 即时追底
 
-In `useMessageScroll.ts`, add a small helper near `pinBottom`:
+**Files:**
+- Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.ts`
+- Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.test.tsx`
+
+- [ ] **Step 1: Add failing test that button-seek no longer creates a fixed seek timer**
+
+Add this test near existing button-seek tests:
 
 ```ts
-const settleAtBottom = useCallback(
-  (el: HTMLElement) => {
-    const targetTop = Math.max(0, el.scrollHeight - el.clientHeight)
-    const gap = targetTop - el.scrollTop
-    if (gap > 0.5 && gap <= 6) {
-      el.scrollTop = targetTop
-    }
-    syncLast(el)
-    commitView("following", true)
-  },
-  [commitView, syncLast],
-)
+it("button-seek 不再创建额外的固定延迟收尾 timer", () => {
+  vi.useFakeTimers()
+
+  const { getByTestId } = render(
+    <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+  )
+
+  const parent = getByTestId("scroll-parent")
+  const tracker = makeScrollTracker(parent)
+
+  tracker.setMetrics(1000, 500, 400)
+  fireEvent.scroll(parent)
+  fireEvent.click(getByTestId("scroll-button"))
+
+  expect(vi.getTimerCount()).toBe(1)
+})
 ```
 
-Then replace the `if (at)` branch in `handleScroll` with:
+Expected before implementation: fails with timer count `2` because button-seek creates both the existing program TTL timer and the extra seek timer.
+
+- [ ] **Step 2: Add coverage for repeated layout growth without waiting 700ms**
+
+Add this test near existing button-seek tests:
 
 ```ts
-if (at) {
-  allowNextTailFollow.current = false
-  clearProgram()
-  clearSeek()
-  settleAtBottom(el)
+it("button-seek 后多次整体布局增长会通过 shell resize 立即追到底部", () => {
+  const { getByTestId } = render(
+    <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+  )
+
+  const parent = getByTestId("scroll-parent")
+  const shell = getByTestId("message-scroll-container")
+  const tracker = makeScrollTracker(parent)
+
+  tracker.setMetrics(1000, 500, 200)
+  fireEvent.scroll(parent)
+  fireEvent.click(getByTestId("scroll-button"))
+  expect(getByTestId("scroll-mode").textContent).toBe("seeking")
+
+  tracker.growHeight(1060)
+  triggerResize(shell)
+  expect(tracker.scrollTo).toHaveBeenLastCalledWith({ top: 1060, behavior: "auto" })
+
+  tracker.setMetrics(1060, 500, 560)
+  fireEvent.scroll(parent)
+  tracker.scrollTo.mockClear()
+
+  tracker.growHeight(1120)
+  triggerResize(shell)
+  expect(tracker.scrollTo).toHaveBeenLastCalledWith({ top: 1120, behavior: "auto" })
+  expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+})
+```
+
+- [ ] **Step 3: Remove fixed seek timer and keep button-seek protected during non-user jitter**
+
+In `useMessageScroll.ts`:
+
+1. Remove `seekTimer` and the `setTimeout(..., 700)` block from `pinBottom("button-seek")`.
+2. After the button-seek `scrollTo`, call `syncLast(el)` so the next physical scroll comparison starts from the programmatic target.
+3. Remove the now-unused `clearSeek` helper and its call sites.
+4. In `handleScroll`, before the generic programmatic-scroll branch, keep button-seek attached during non-user scroll jitter:
+
+```ts
+if (item?.cause === "button-seek" && !dimensionsChanged && !hasUserIntent()) {
+  pinBottom("button-seek", "auto")
   return
 }
 ```
 
-Include `settleAtBottom` in the `handleScroll` dependency array.
+This preserves the old protection against layout/scroll jitter without relying on a delayed timer.
 
 - [ ] **Step 4: Run hook tests**
 
@@ -101,101 +204,24 @@ Run:
 bun run test:run src/components/MessageList/hooks/useMessageScroll.test.tsx
 ```
 
-Expected: all hook tests pass.
+Expected: all hook tests pass. Tests that previously advanced `700ms` now assert shell resize / immediate pin behavior instead of fixed timeout behavior.
 
-## Task 2: 把滚动到底按钮改成 overlay
-
-**Files:**
-- Modify: `packages/opencode/webgui/src/components/MessageList/index.tsx`
-- Modify: `packages/opencode/webgui/src/components/MessageList/index.test.tsx`
-
-- [ ] **Step 1: Write the failing component test**
-
-Add or update the scroll button layout test in `index.test.tsx` to assert the layer is not inside `message-scroll-shell`:
-
-```ts
-it("scroll-to-bottom-layer 作为 overlay 渲染，不参与 message-scroll-shell 文档流", () => {
-  mocks.useMessageScroll.mockReturnValue({
-    messagesEndRef: { current: null },
-    messagesContainerRef: { current: null },
-    mode: "detached",
-    showScrollToBottom: true,
-    scrollToBottom: vi.fn(),
-    runProgrammaticScroll: vi.fn(),
-  })
-
-  render(<MessageList sessionID="s1" />)
-
-  const shell = screen.getByTestId("message-scroll-shell")
-  const layer = screen.getByTestId("scroll-to-bottom-layer")
-
-  expect(shell).not.toContainElement(layer)
-  expect(layer).toHaveClass("sticky", "bottom-0", "z-30", "flex", "h-0", "justify-end", "pr-2", "pointer-events-none")
-  expect(screen.getByTestId("scroll-to-bottom-offset")).toHaveClass("-translate-y-[calc(100%+2rem)]")
-})
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run:
-
-```powershell
-bun run test:run src/components/MessageList/index.test.tsx
-```
-
-Expected: test fails because `scroll-to-bottom-layer` is currently inside `message-scroll-shell` and participates in the shell layout.
-
-- [ ] **Step 3: Implement overlay layout**
-
-In `index.tsx`, render the zero-height sticky overlay as a sibling after the scroll shell:
-
-```tsx
-<div data-testid="message-scroll-shell" ref={messagesContainerRef} className="min-h-full">
-  ...existing message content...
-</div>
-
-{showScrollToBottom && (
-  <div
-    data-testid="scroll-to-bottom-layer"
-    className="pointer-events-none sticky bottom-0 z-30 flex h-0 justify-end pr-2"
-  >
-    <div data-testid="scroll-to-bottom-offset" className="-translate-y-[calc(100%+2rem)]">
-      <ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />
-    </div>
-  </div>
-)}
-```
-
-Do not move `messagesContainerRef`; it must remain on `message-scroll-shell` so `useMessageScroll` still resolves the scroll parent as `<main>`.
-
-Implementation note: the final implementation must not insert a wrapper between `message-scroll-shell` and the external scroll host. The zero-height sticky overlay stays outside `message-scroll-shell`, remains visible in the scrollport, and avoids adding button height to the shell.
-
-- [ ] **Step 4: Run component tests**
-
-Run:
-
-```powershell
-bun run test:run src/components/MessageList/index.test.tsx
-```
-
-Expected: all `MessageList` component tests pass.
-
-## Task 3: Full verification
+## Task 4: Full verification and browser proof
 
 **Files:**
 - Verify only.
 
-- [ ] **Step 1: Run focused scroll tests**
+- [ ] **Step 1: Run focused tests**
 
-Run:
+Run from `packages/opencode/webgui`:
 
 ```powershell
 bun run test:run src/components/MessageList/hooks/useMessageScroll.test.tsx src/components/MessageList/index.test.tsx
 ```
 
-Expected: both test files pass.
+Expected: 2 files pass, 77+ tests pass.
 
-- [ ] **Step 2: Run WebGUI build for typecheck and bundling**
+- [ ] **Step 2: Run WebGUI build**
 
 Run:
 
@@ -203,10 +229,25 @@ Run:
 bun run build
 ```
 
-Expected: `tsc -b` and `vite build` pass. The existing Vite chunk-size warning is acceptable.
+Expected: `tsc -b && vite build` passes. Existing Vite chunk-size warning is acceptable.
+
+- [ ] **Step 3: Browser verify on `http://localhost:5173/app`**
+
+Use Chrome DevTools to verify:
+
+```js
+const main = document.querySelector('main')
+main.scrollHeight - main.clientHeight - main.scrollTop
+```
+
+Scenarios:
+
+1. Scroll to top, click “滚动到底部”, wait for content/layout to settle: final distance must be `0` or `<= 0.5`.
+2. While already at bottom, deep history/tool layout grows: final distance must return to `0` without showing stale hidden-button state.
+3. User manually wheel-up during seeking/following: mode becomes detached and button appears; no automatic吸底.
 
 ## Self-Review
 
-- Spec coverage: Task 1 covers exact bottom calibration; Task 2 covers removing button layer from scroll content flow; Task 3 covers verification.
-- Placeholder scan: no TBD/TODO placeholders.
-- Type consistency: new helper uses existing scroll metrics and view state helpers; tests use existing harness and mocked hook shape.
+- Spec coverage: Task 1 covers the verified root cause: deep history growth is missed by tail-only observation. Task 2 observes the content boundary that Chrome proved catches deep nested growth. Task 3 removes fixed seek timer and preserves non-user button-seek jitter protection. Task 4 covers automated and real-browser verification.
+- Placeholder scan: no TBD/TODO placeholders; every code-changing step names exact files and expected commands.
+- Type consistency: helper names and refs match existing `useMessageScroll.ts` concepts (`container`, `syncLast`, `commitView`, `clearProgram`, `mode`, `ScrollCause`).
