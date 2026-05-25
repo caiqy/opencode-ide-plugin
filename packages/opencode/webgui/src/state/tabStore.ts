@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react"
 import { openWithPolicy } from "./tabPolicy"
-import { activateTab as activateTabRepo, loadTabs, saveOpenTabs } from "./repo/tabsRepo"
+import { activateTab as activateTabRepo, loadTabs, saveTabs } from "./repo/tabsRepo"
 
 const delay = 500
 
@@ -24,12 +24,7 @@ const empty: TabState = {
 }
 
 function persist(next: TabState) {
-  void saveOpenTabs(next.openTabs)
-    .then((value) => {
-      if (!next.activeTab || value.active_tab === next.activeTab) return
-      return activateTabRepo(next.activeTab)
-    })
-    .catch(() => {})
+  void saveTabs({ open_tabs: next.openTabs, active_tab: next.activeTab }).catch(() => {})
 }
 
 function sameTabs(a: string[], b: string[]) {

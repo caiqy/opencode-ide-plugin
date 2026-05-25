@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react"
+import type { Session } from "@opencode-ai/sdk/client"
 import { useEventStream, useEventHandler, eventEmitter, type ServerEvent, type ConnectionState } from "./lib/api/events"
 import { useSessionEvents } from "./lib/api/useSessionEvents"
 import { useSession } from "./state/SessionContext"
@@ -74,11 +75,101 @@ export function handleSessionUiEvent(input: {
   })
 }
 
+export type ReuseCheck = "reusable" | "not_reusable" | "unknown"
+type SessionCandidate = { id: string }
+type DefaultSessionInput = Pick<Session, "id" | "title" | "parentID"> & {
+  time: Session["time"] & { archived?: number }
+}
+
+function normalizeReuseCheck(value: unknown): ReuseCheck {
+  if (value === true) return "reusable"
+  if (value === false) return "not_reusable"
+  if (value === "reusable" || value === "not_reusable" || value === "unknown") return value
+  return "unknown"
+}
+
+function isNotFoundError(error: unknown) {
+  const record = typeof error === "object" && error !== null ? (error as Record<string, unknown>) : null
+  const data = typeof record?.data === "object" && record.data !== null ? (record.data as Record<string, unknown>) : null
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : record?.message
+  const dataMessage = data?.message
+  const text = [message, dataMessage]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase()
+
+  return (
+    record?.name === "NotFoundError" ||
+    text.includes("404") ||
+    text.includes("not found") ||
+    text.includes("not_found") ||
+    text.includes("not-found") ||
+    text.includes("session not found") ||
+    record?.status === 404 ||
+    record?.status === "404" ||
+    record?.statusCode === 404 ||
+    record?.statusCode === "404"
+  )
+}
+
+export function reuseCheckFromResponses(input: {
+  exists: boolean | "unknown"
+  messages: unknown[] | "unknown"
+}): ReuseCheck {
+  if (input.exists === false) return "not_reusable"
+  if (input.exists === "unknown" || input.messages === "unknown") return "unknown"
+  return input.messages.length === 0 ? "reusable" : "not_reusable"
+}
+
+export async function findReusableDefaultSession(
+  sessions: DefaultSessionInput[],
+  messages: (id: string) => Promise<unknown[]> | unknown[],
+): Promise<SessionCandidate | null> {
+  return [...sessions]
+    .filter(
+      (session) =>
+        !session.parentID &&
+        session.time.archived === undefined &&
+        /^New session - \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(session.title || ""),
+    )
+    .sort((a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created))
+    .reduce<Promise<SessionCandidate | null>>(async (result, session) => {
+      const found = await result
+      if (found) return found
+      const list = await Promise.resolve(messages(session.id)).catch(() => null)
+      return list?.length === 0 ? { id: session.id } : null
+    }, Promise.resolve(null))
+}
+
+export async function findReusableDefaultSessionFallback(input: {
+  sessions: DefaultSessionInput[]
+  list: () => Promise<DefaultSessionInput[]>
+  messages: (id: string) => Promise<unknown[]> | unknown[]
+}) {
+  const loaded = input.sessions.length > 0 ? input.sessions : await input.list()
+  return findReusableDefaultSession(loaded, input.messages)
+}
+
+export async function checkDraftSessionReusable(id: string): Promise<ReuseCheck> {
+  const session = await sdk.session.get({ path: { id } }).catch((error: unknown) => error)
+  if (isNotFoundError(session)) return "not_reusable"
+  const response = typeof session === "object" && session !== null ? (session as { data?: unknown; error?: unknown }) : null
+  if (!response || session instanceof Error) return "unknown"
+  if (isNotFoundError(response.error)) return "not_reusable"
+  if (response.error) return "unknown"
+  if (!response.data) return reuseCheckFromResponses({ exists: false, messages: "unknown" })
+  const messages = await sdk.session.messages({ path: { id } }).catch(() => null)
+  if (!messages || messages.error) return "unknown"
+  if (!messages.data) return "unknown"
+  return reuseCheckFromResponses({ exists: true, messages: messages.data })
+}
+
 export async function prepareSession(input: {
   draft: string | null
   restore?: () => Promise<string | null>
-  reusable: (id: string) => Promise<boolean>
-  create: () => Promise<{ id: string } | null>
+  reusable: (id: string) => Promise<ReuseCheck | boolean>
+  fallback?: () => Promise<SessionCandidate | null>
+  create: () => Promise<SessionCandidate | null>
   open: (id: string) => void
   switchTo: (id: string) => Promise<void>
   setDraft: (id: string | null) => void
@@ -86,8 +177,11 @@ export async function prepareSession(input: {
 }) {
   const draft = input.draft ?? (input.restore ? await input.restore().catch(() => null) : null)
   if (draft) {
-    const ok = await input.reusable(draft).catch(() => false)
-    if (ok) {
+    const reuse = await input
+      .reusable(draft)
+      .then(normalizeReuseCheck)
+      .catch((): ReuseCheck => "unknown")
+    if (reuse === "reusable") {
       input.open(draft)
       const restored = await input
         .switchTo(draft)
@@ -95,10 +189,23 @@ export async function prepareSession(input: {
         .catch(() => false)
       if (restored) return
     }
-    input.setDraft(null)
+    if (reuse === "not_reusable") input.setDraft(null)
   }
 
-  const next = await input.create()
+  const fallback = input.fallback ? await input.fallback().catch(() => null) : null
+  if (fallback) {
+    input.open(fallback.id)
+    const switched = await input
+      .switchTo(fallback.id)
+      .then(() => true)
+      .catch(() => false)
+    if (switched) {
+      input.setDraft(fallback.id)
+      return
+    }
+  }
+
+  const next = await input.create().catch(() => null)
   if (!next) {
     input.fail()
     return
@@ -178,13 +285,35 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     void prepareSession({
       draft: null,
       restore: loadDraftSession,
-      reusable: async (id) => {
-        const session = await sdk.session.get({ path: { id } })
-        if (!session.data) return false
-        const messages = await sdk.session.messages({ path: { id } })
-        if (messages.error) return false
-        return (messages.data ?? []).length === 0
-      },
+      reusable: checkDraftSessionReusable,
+      fallback: () =>
+        findReusableDefaultSessionFallback({
+          sessions,
+          list: () =>
+            sdk.session.list({ limit: 50, roots: true }).then((response) => {
+              if (response.error) {
+                throw new Error(
+                  typeof response.error === "object" && "message" in response.error
+                    ? String(response.error.message)
+                    : "Failed to load sessions",
+                )
+              }
+              if (!Array.isArray(response.data)) throw new Error("sessions missing")
+              return response.data
+            }),
+          messages: async (id) => {
+            const messages = await sdk.session.messages({ path: { id } })
+            if (messages.error) {
+              throw new Error(
+                typeof messages.error === "object" && "message" in messages.error
+                  ? String(messages.error.message)
+                  : "Failed to load messages",
+              )
+            }
+            if (!Array.isArray(messages.data)) throw new Error("messages missing")
+            return messages.data
+          },
+        }),
       create: createSession,
       open: tabStore.openTab,
       switchTo: switchSession,
@@ -197,7 +326,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     }).finally(() => {
       creating.current = false
     })
-  }, [createSession, switchSession, tabStore.openTab, showToast])
+  }, [createSession, sessions, switchSession, tabStore.openTab, showToast])
 
   const handleToggleSessionList = useCallback(() => {
     compactHeaderRef.current?.toggleSessionDropdown()

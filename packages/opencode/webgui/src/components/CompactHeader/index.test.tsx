@@ -886,7 +886,7 @@ describe("CompactHeader", () => {
       isLoading: false,
     })
     mocks.useTabStore.mockReturnValue({
-      openTabs: ["s1"],
+      openTabs: [],
       activeTab: "",
       loaded: true,
       openTab: vi.fn(),
@@ -913,6 +913,61 @@ describe("CompactHeader", () => {
       expect(onNewSession).toHaveBeenCalled()
     })
     expect(switchSession).not.toHaveBeenCalled()
+  })
+
+  it("activeTab 为空但 openTabs 非空时恢复最后一个标签而不是创建新会话", async () => {
+    const switchSession = vi.fn().mockResolvedValue(undefined)
+    const activateTab = vi.fn()
+    const onNewSession = vi.fn()
+
+    mocks.useSession.mockReturnValue({
+      currentSession: null,
+      setCurrentSession: vi.fn(),
+      sessions: [
+        { id: "s1", title: "会话 1" },
+        { id: "s2", title: "会话 2" },
+      ],
+      setSessions: vi.fn(),
+      switchSession,
+      regenerateSessionTitle: vi.fn(),
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      hasMore: false,
+      isLoading: false,
+      isLoadingMore: false,
+      loadMoreSessions: vi.fn(),
+    })
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["s1", "s2"],
+      activeTab: "",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      activateTab,
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={onNewSession}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(switchSession).toHaveBeenCalledWith("s2")
+    })
+    await waitFor(() => {
+      expect(activateTab).toHaveBeenCalledWith("s2")
+    })
+    expect(onNewSession).not.toHaveBeenCalled()
   })
 
   it("close other tabs 会尝试切换到保留会话", async () => {
@@ -1128,6 +1183,82 @@ describe("CompactHeader", () => {
     await waitFor(() => {
       expect(switchSession).toHaveBeenCalledWith("s2")
     })
+  })
+
+  it("旧恢复切换失败时 activeTab 已改变不会创建新会话", async () => {
+    let rejectFirst = () => {}
+    const switchSession = vi.fn((id: string) => {
+      if (id === "s1") {
+        return new Promise<void>((_, reject) => {
+          rejectFirst = () => reject(new Error("boom"))
+        })
+      }
+      return Promise.resolve()
+    })
+    const onNewSession = vi.fn()
+    const state = {
+      openTabs: ["s1", "s2"],
+      activeTab: "s1",
+    }
+
+    mocks.useSession.mockReturnValue({
+      currentSession: null,
+      setCurrentSession: vi.fn(),
+      sessions: [
+        { id: "s1", title: "会话 1" },
+        { id: "s2", title: "会话 2" },
+      ],
+      setSessions: vi.fn(),
+      switchSession,
+      regenerateSessionTitle: vi.fn(),
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading: false,
+    })
+    mocks.useTabStore.mockImplementation(() => ({
+      openTabs: state.openTabs,
+      activeTab: state.activeTab,
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      activateTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    }))
+
+    const view = render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={onNewSession}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(switchSession).toHaveBeenCalledWith("s1")
+    })
+
+    state.activeTab = "s2"
+    view.rerender(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={onNewSession}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    rejectFirst()
+
+    await waitFor(() => {
+      expect(switchSession).toHaveBeenCalledWith("s2")
+    })
+    expect(onNewSession).not.toHaveBeenCalled()
   })
 
   it("adds left gap between tab area and right status/actions area", () => {
