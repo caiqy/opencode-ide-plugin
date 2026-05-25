@@ -1,6 +1,5 @@
 import assert from "node:assert/strict"
 import { EventEmitter } from "node:events"
-import test from "node:test"
 import { killTree } from "./kill"
 
 test("killTree 在 win32 会使用 taskkill 杀掉整个进程树", async () => {

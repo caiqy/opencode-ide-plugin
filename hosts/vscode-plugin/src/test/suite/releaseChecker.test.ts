@@ -6,6 +6,7 @@ import {
   pickVsixAsset,
   ReleaseChecker,
 } from "../../update/ReleaseChecker"
+import { testResponse } from "./fetchResponse"
 
 suite("ReleaseChecker Test Suite", () => {
   test("normalizeVersion 会去掉 v 前缀", () => {
@@ -135,7 +136,7 @@ suite("ReleaseChecker Test Suite", () => {
       async (input: string | URL | Request, init?: RequestInit) => {
         calls.push(String(input))
         assert.strictEqual(init?.headers instanceof Object, true)
-        return new Response(
+        return testResponse(
           JSON.stringify({
             tag_name: "v26.4.1401",
             html_url: "https://github.com/qtkj/opencode-ui/releases/tag/v26.4.1401",
@@ -172,7 +173,7 @@ suite("ReleaseChecker Test Suite", () => {
     const checker = new ReleaseChecker(
       { owner: "qtkj", name: "opencode-ui" },
       async () =>
-        new Response("rate limited", {
+        testResponse("rate limited", {
           status: 503,
           headers: { "Content-Type": "text/plain" },
         }),

@@ -6,6 +6,7 @@ import { bridgeServer } from "../../ui/IdeBridgeServer"
 import { WebviewController } from "../../ui/WebviewController"
 import { errorHandler } from "../../utils/ErrorHandler"
 import { FileMonitor } from "../../utils/FileMonitor"
+import { testResponse } from "./fetchResponse"
 
 suite("WebviewController Test Suite", () => {
   teardown(() => {
@@ -211,7 +212,7 @@ suite("WebviewController Test Suite", () => {
     const showSaveDialog = sinon.stub(vscode.window, "showSaveDialog").resolves(target)
     globalThis.fetch = (async (input) => {
       assert.strictEqual(String(input), "https://example.com/image.png")
-      return new Response(Buffer.from("remote-image"), { status: 200 })
+      return testResponse(Buffer.from("remote-image"), { status: 200 })
     }) as typeof fetch
 
     try {
@@ -242,7 +243,7 @@ suite("WebviewController Test Suite", () => {
         String(input),
         "http://127.0.0.1:4096/generated-image?path=.opencode%2Fgenerated-images%2Ffoo.png",
       )
-      return new Response(Buffer.from("relative-image"), { status: 200 })
+      return testResponse(Buffer.from("relative-image"), { status: 200 })
     }) as typeof fetch
 
     try {

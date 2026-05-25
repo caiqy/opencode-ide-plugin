@@ -1,5 +1,4 @@
 import assert from "node:assert/strict"
-import test from "node:test"
 import { loading } from "./loading"
 
 test("loading 会返回不含 iframe 的静态壳页面", () => {

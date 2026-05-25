@@ -937,6 +937,17 @@ const scenarios: Scenario[] = [
     }))
     .status(400),
   http.protected
+    .post("/session/{sessionID}/title/regenerate", "session.regenerateTitle")
+    .seeded((ctx) => ctx.session({ title: "Regenerate title" }))
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/title/regenerate", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, (body, ctx) => {
+      object(body)
+      check(body.id === ctx.state.id, "regenerate title should return the session")
+    }),
+  http.protected
     .delete("/session/{sessionID}", "session.delete")
     .seeded((ctx) => ctx.session({ title: "Delete me" }))
     .at((ctx) => ({ path: route("/session/{sessionID}", { sessionID: ctx.state.id }), headers: ctx.headers() }))

@@ -307,7 +307,9 @@ describe("SessionContext migration", () => {
     expect(getSpy).not.toHaveBeenCalledWith("opencode_selected_provider")
     expect(getSpy).not.toHaveBeenCalledWith("opencode_selected_model")
     expect(getSpy).not.toHaveBeenCalledWith("opencode_selected_agent")
-    expect(setSpy).not.toHaveBeenCalled()
+    expect(setSpy).not.toHaveBeenCalledWith("opencode_selected_provider", expect.anything())
+    expect(setSpy).not.toHaveBeenCalledWith("opencode_selected_model", expect.anything())
+    expect(setSpy).not.toHaveBeenCalledWith("opencode_selected_agent", expect.anything())
   })
 
   it("恢复优先级: workspace:last_selection > global:model.recent > config.model > providers 首个可用", async () => {

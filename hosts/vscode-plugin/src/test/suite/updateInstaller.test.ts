@@ -3,6 +3,7 @@ import * as os from "os"
 import * as path from "path"
 import { promises as fs } from "fs"
 import { UpdateInstaller } from "../../update/UpdateInstaller"
+import { testResponse } from "./fetchResponse"
 
 suite("UpdateInstaller Test Suite", () => {
   test("会下载 VSIX 并调用 installExtension", async () => {
@@ -12,7 +13,7 @@ suite("UpdateInstaller Test Suite", () => {
     try {
       const installer = new UpdateInstaller(
         async () =>
-          new Response(Uint8Array.from([1, 2, 3, 4]), {
+          testResponse(Uint8Array.from([1, 2, 3, 4]), {
             status: 200,
             headers: { "Content-Type": "application/octet-stream" },
           }),
@@ -47,7 +48,7 @@ suite("UpdateInstaller Test Suite", () => {
     try {
       const installer = new UpdateInstaller(
         async () =>
-          new Response(Uint8Array.from([5, 6, 7]), {
+          testResponse(Uint8Array.from([5, 6, 7]), {
             status: 200,
             headers: { "Content-Type": "application/octet-stream" },
           }),
@@ -81,7 +82,7 @@ suite("UpdateInstaller Test Suite", () => {
   test("下载返回非 2xx 时会 reject", async () => {
     const installer = new UpdateInstaller(
       async () =>
-        new Response("bad gateway", {
+        testResponse("bad gateway", {
           status: 502,
           headers: { "Content-Type": "text/plain" },
         }),
@@ -106,7 +107,7 @@ suite("UpdateInstaller Test Suite", () => {
     const expectedPath = path.join(expectedRoot, `opencode-ui-${version}.vsix`)
     const installer = new UpdateInstaller(
       async () =>
-        new Response(Uint8Array.from([9, 8, 7]), {
+        testResponse(Uint8Array.from([9, 8, 7]), {
           status: 200,
           headers: { "Content-Type": "application/octet-stream" },
         }),
