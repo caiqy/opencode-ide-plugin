@@ -57,6 +57,7 @@ function scrollbarPointerIntent(container: HTMLElement, e: PointerEvent) {
 }
 
 const BOTTOM_THRESHOLD = 24
+const BOTTOM_SETTLE_THRESHOLD = 6
 const PROGRAM_TTL = 800
 const USER_INTENT_TTL = 800
 
@@ -186,6 +187,19 @@ export function useMessageScroll(
     return nextDistance <= prevDistance + 1
   }, [])
 
+  const settleAtBottom = useCallback(
+    (el: HTMLElement) => {
+      const targetTop = Math.max(0, el.scrollHeight - el.clientHeight)
+      const gap = targetTop - el.scrollTop
+      if (gap > 0.5 && gap <= BOTTOM_SETTLE_THRESHOLD) {
+        el.scrollTop = targetTop
+      }
+      syncLast(el)
+      commitView("following", true)
+    },
+    [commitView, syncLast],
+  )
+
   // Immediately pin to bottom (no animation).
   // ResizeObserver fires after layout, before paint — instant assignment avoids
   // the visible "catch-up" animation you get with scrollIntoView smooth.
@@ -202,7 +216,10 @@ export function useMessageScroll(
           const current = container()
           if (!current) return
           if (distanceFromBottom(current) <= BOTTOM_THRESHOLD) {
+            const targetTop = Math.max(0, current.scrollHeight - current.clientHeight)
+            if (targetTop - current.scrollTop > 0.5) current.scrollTop = targetTop
             clearProgram()
+            syncLast(current)
             commitView("following", true)
           }
           seekTimer.current = null
@@ -239,7 +256,7 @@ export function useMessageScroll(
         return
       }
       if (mode.current === "seeking") {
-        pinBottom("button-seek", "smooth")
+        pinBottom("button-seek", "auto")
       }
     },
     [clearProgram, clearSeek, commitView, hasUserIntent, pinBottom, syncLast],
@@ -271,18 +288,18 @@ export function useMessageScroll(
     lastClient.current = el.clientHeight
 
     const at = distanceFromBottom(el) <= BOTTOM_THRESHOLD
+    const item = getProgram()
 
     if (at) {
       allowNextTailFollow.current = false
       clearProgram()
-      clearSeek()
-      commitView("following", true)
+      if (item?.cause !== "button-seek" && !seekTimer.current) clearSeek()
+      settleAtBottom(el)
       return
     }
 
     const dimensionsChanged = el.scrollHeight !== prevHeight || el.clientHeight !== prevClient
     const wasAtBottom = prevHeight - prevClient - prevTop <= BOTTOM_THRESHOLD
-    const item = getProgram()
     const keepsBottomAnchor = item?.cause === "send-message" || item?.cause === "auto-follow" || item?.cause === "button-seek"
     if (item && !dimensionsChanged) {
       // button-seek, history restore/trim and jcef wheel can all overlap with a
@@ -319,7 +336,7 @@ export function useMessageScroll(
         commitView("detached", false)
         return
       }
-      pinBottom("button-seek", "smooth")
+      pinBottom("button-seek", "auto")
       return
     }
 
@@ -338,7 +355,7 @@ export function useMessageScroll(
 
     clearSeek()
     commitView("detached", false)
-  }, [clearProgram, clearSeek, commitView, container, getProgram, hasUserIntent, isTowardProgramTarget, pinBottom])
+  }, [clearProgram, clearSeek, commitView, container, getProgram, hasUserIntent, isTowardProgramTarget, pinBottom, settleAtBottom])
 
   // ── wheel / touch handlers ────────────────────────────────────────────────
 
@@ -545,7 +562,7 @@ export function useMessageScroll(
   // ── Manual scroll-to-bottom (button) ─────────────────────────────────────
 
   const scrollToBottom = useCallback(() => {
-    pinBottom("button-seek", "smooth")
+    pinBottom("button-seek", "auto")
   }, [pinBottom])
 
   return {
