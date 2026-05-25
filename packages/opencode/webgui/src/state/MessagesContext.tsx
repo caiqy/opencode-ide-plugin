@@ -610,6 +610,12 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     [addSessionError],
   )
 
+  const handleSessionCompacted = useCallback((event: ServerEvent) => {
+    if (event.type !== "session.compacted") return
+    const { sessionID } = event.properties
+    removeSessionErrors(sessionID)
+  }, [removeSessionErrors])
+
   // Listen to message.removed events
   const handleMessageRemoved = useCallback(
     (event: ServerEvent) => {
@@ -1125,6 +1131,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   useEventHandler(emitter ?? null, "message.part.updated", handlePartUpdated)
   useEventHandler(emitter ?? null, "message.part.delta", handlePartDelta)
   useEventHandler(emitter ?? null, "session.error", handleSessionError)
+  useEventHandler(emitter ?? null, "session.compacted", handleSessionCompacted)
   useEventHandler(emitter ?? null, "message.removed", handleMessageRemoved)
   useEventHandler(emitter ?? null, "message.part.removed", handlePartRemoved)
   useEventHandler(emitter ?? null, "permission.asked", handlePermissionAsked)
