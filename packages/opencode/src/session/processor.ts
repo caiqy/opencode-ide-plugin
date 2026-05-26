@@ -20,6 +20,7 @@ import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
 import { SessionSummaryScheduler } from "./summary-scheduler"
 import { SessionSummary } from "./summary"
+import { STREAMABLE_TOOLS } from "./streamable-tools"
 import type { Provider } from "@/provider/provider"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
@@ -374,10 +375,18 @@ export const layer = Layer.effect(
             yield* ensureToolCall(value)
             return
 
-          case "tool-input-delta":
-            // AI SDK emits a final `tool-call` with the parsed `input`; accumulating
-            // delta fragments into `state.raw` is redundant work for no current consumer.
+          case "tool-input-delta": {
+            if (!STREAMABLE_TOOLS.has(value.name)) return
+            yield* ensureToolCall({ id: value.id, name: value.name, providerExecuted: false })
+            yield* updateToolCall(value.id, (match) => {
+              if (match.state.status !== "pending") return match
+              return {
+                ...match,
+                state: { ...match.state, raw: match.state.raw + value.text },
+              }
+            })
             return
+          }
 
           case "tool-input-end": {
             const toolCall = yield* ensureToolCall(value)
