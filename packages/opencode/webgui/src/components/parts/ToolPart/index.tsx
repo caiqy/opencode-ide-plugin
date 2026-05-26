@@ -18,6 +18,8 @@ import { QuestionTool } from "./QuestionTool"
 import { ToolImageAttachments } from "./ToolImageAttachments"
 import { getToolDisplayName, getBorderColor, getSubtaskStatusLabel, getToolLabel } from "./utils"
 import { parseTaskResult } from "../../../lib/task-result"
+import { usePartialToolInput } from "./usePartialToolInput"
+import { countLines } from "../../../lib/partial-tool-input"
 import type { QuestionInfo } from "@opencode-ai/sdk/v2/client"
 
 interface ToolPartProps {
@@ -29,6 +31,7 @@ interface ToolPartProps {
       state: {
         status: "pending" | "running" | "completed" | "error"
         input?: Record<string, unknown>
+        raw?: string
         output?: string
         title?: string
         error?: string
@@ -76,12 +79,14 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     permissions,
     getQuestionsBySession,
   } = useMessages()
+  const partialInput = usePartialToolInput(part.tool, part.state.status, part.state.raw)
+  const displayInput = (partialInput ?? part.state.input ?? {}) as Record<string, unknown>
   const permission = useMemo(() => {
     return sessionID ? getPermissionForCall(sessionID, part.callID) : undefined
   }, [getPermissionForCall, sessionID, part.callID])
 
   const toolName = getToolDisplayName(part.tool, part.state.input, part.state.title, part.state.output)
-  const filePath = (part.state.input?.filePath as string | undefined) || undefined
+  const filePath = (displayInput.filePath as string | undefined) || undefined
   const patchFilePaths = useMemo(() => {
     if (part.tool !== "apply_patch") return [] as string[]
     const files = (
@@ -152,13 +157,28 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     return `(${offset}-${offset + limit - 1} 行)`
   }, [part.tool, part.state.input, part.state.output, part.state.status])
 
+  const streamingLineCount = useMemo(() => {
+    if (!partialInput) return undefined
+    if (part.tool === "write") return countLines(partialInput.content)
+    if (part.tool === "edit") return countLines(partialInput.newString)
+    if (part.tool === "apply_patch") return countLines(partialInput.patchText ?? partialInput.patch)
+    return undefined
+  }, [partialInput, part.tool])
+
   const showOutput = part.state.status === "completed" && Boolean(part.state.output)
   const showWriteContent =
-    part.tool === "write" && part.state.status === "completed" && Boolean(part.state.input?.content)
+    part.tool === "write" &&
+    (part.state.status === "completed" || partialInput !== null) &&
+    Boolean(displayInput.content)
   const showDiff =
     (part.tool === "edit" || part.tool === "multiedit") &&
     part.state.status === "completed" &&
     Boolean(part.state.metadata?.diff)
+  const showEditPartial =
+    part.tool === "edit" &&
+    partialInput !== null &&
+    typeof displayInput.newString === "string" &&
+    (displayInput.newString as string).length > 0
   const showError = part.state.status === "error" && Boolean(part.state.error)
 
   const questionInput = useMemo(() => {
@@ -261,13 +281,16 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   // apply_patch: show patch content from current schema (patchText), fallback to legacy field (patch)
   const applyPatchContent =
     part.tool === "apply_patch"
-      ? typeof part.state.input?.patchText === "string" && part.state.input.patchText.length > 0
-        ? part.state.input.patchText
-        : typeof part.state.input?.patch === "string" && part.state.input.patch.length > 0
-          ? part.state.input.patch
+      ? typeof displayInput.patchText === "string" && displayInput.patchText.length > 0
+        ? displayInput.patchText
+        : typeof displayInput.patch === "string" && displayInput.patch.length > 0
+          ? displayInput.patch
           : ""
       : ""
-  const showApplyPatchContent = part.tool === "apply_patch" && Boolean(applyPatchContent)
+  const showApplyPatchContent =
+    part.tool === "apply_patch" &&
+    (part.state.status === "completed" || partialInput !== null) &&
+    Boolean(displayInput.patchText || displayInput.patch)
 
   const isQuestionStatic = Boolean(questionMode)
   const isExpandable = !isHeaderOnlyTool && !isQuestionStatic
@@ -306,6 +329,13 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     if (!subtaskSessionId) return
     void ensureSession(subtaskSessionId)
   }, [subtaskSessionId, ensureSession])
+
+  useEffect(() => {
+    if (part.state.status !== "pending") return
+    if (part.tool !== "write" && part.tool !== "edit" && part.tool !== "apply_patch") return
+    if (open.isOpen(part.id)) return
+    open.setOpen(part.id, true)
+  }, [part.state.status, part.tool, part.id, open])
 
   const progress = (() => {
     if (part.tool !== "task") return null
@@ -397,7 +427,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
         onToggle={() => open.toggle(part.id)}
         time={part.state.time}
         rightActions={rightActions}
-        lineRange={lineRange}
+        lineRange={streamingLineCount ? `(已接收 ${streamingLineCount} 行)` : lineRange}
         blocked={blocked}
         onBlockedClick={handleBlockedClick}
       />
@@ -419,10 +449,14 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
           {renderOutput()}
 
           {/* Content preview for write tool */}
-          {showWriteContent && <WriteTool content={String(part.state.input?.content)} filePath={filePath!} />}
+          {showWriteContent && <WriteTool content={String(displayInput.content)} filePath={filePath!} />}
 
           {/* Diff view for edit tool */}
           {showDiff && <EditTool diff={String(part.state.metadata?.diff)} />}
+
+          {showEditPartial && (
+            <WriteTool content={String(displayInput.newString)} filePath={String(displayInput.filePath ?? "")} />
+          )}
 
           {/* apply_patch: show patch content as additions */}
           {showApplyPatchContent && <WriteTool content={applyPatchContent} filePath={filePath || ""} />}
