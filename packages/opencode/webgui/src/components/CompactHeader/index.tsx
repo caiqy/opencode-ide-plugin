@@ -251,7 +251,12 @@ const CompactHeader = forwardRef<
   )
 
   const switchWithRollback = useCallback(
-    async (sessionId: string, afterSuccess?: () => void, afterFailure?: () => void) => {
+    async (
+      sessionId: string,
+      afterSuccess?: () => void,
+      afterFailure?: () => void,
+      shouldHandleUnrecoverable: () => boolean = () => true,
+    ) => {
       const ok = await switchSessionWithTabRollback({
         sessionId,
         previousSessionId: currentSession?.id ?? null,
@@ -261,6 +266,7 @@ const CompactHeader = forwardRef<
         activate: tabStore.activateTab,
         canActivate: (id) => tabStore.openTabs.includes(id),
         onUnrecoverable: () => {
+          if (!shouldHandleUnrecoverable()) return
           setCurrentSession(null)
           onNewSession()
         },
@@ -426,7 +432,25 @@ const CompactHeader = forwardRef<
     if (!tabStore.loaded) return
     if (tabStore.openTabs.length > 0) {
       if (!tabStore.activeTab) {
-        onNewSession()
+        const target = tabStore.openTabs[tabStore.openTabs.length - 1]
+        if (!target) {
+          onNewSession()
+          return
+        }
+        if (!restoring) {
+          setRestoring(true)
+          void switchWithRollback(
+            target,
+            () => tabStore.activateTab(target),
+            () => {
+              if (activeRef.current) return
+              onNewSession()
+            },
+            () => !activeRef.current || activeRef.current === target,
+          ).finally(() => {
+            setRestoring(false)
+          })
+        }
         return
       }
       if (currentSession?.id !== tabStore.activeTab && !restoring) {
@@ -435,10 +459,15 @@ const CompactHeader = forwardRef<
           sessionsEverLoaded.current && !isLoading && !hasMore && !sessions.some((s) => s.id === target)
         if (targetMissing) return
         setRestoring(true)
-        void switchWithRollback(target, undefined, () => {
-          if (activeRef.current !== target) return
-          onNewSession()
-        }).finally(() => {
+        void switchWithRollback(
+          target,
+          undefined,
+          () => {
+            if (activeRef.current !== target) return
+            onNewSession()
+          },
+          () => activeRef.current === target,
+        ).finally(() => {
           setRestoring(false)
         })
       }
@@ -459,6 +488,7 @@ const CompactHeader = forwardRef<
     tabStore.openTabs,
     tabStore.activeTab,
     tabStore.openTab,
+    tabStore.activateTab,
     restoring,
   ])
 

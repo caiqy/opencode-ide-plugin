@@ -363,22 +363,9 @@ export class WebviewController {
       this.webview.postMessage({
         type: "readUrisResult",
         results,
+        filePaths,
+        directoryPaths,
       })
-
-      // IMPORTANT: Call insertPaths for files and pastePath for directories
-      if (this.communicationBridge) {
-        if (filePaths.length > 0) {
-          this.communicationBridge.insertPaths(filePaths)
-          logger.appendLine(`Called insertPaths with ${filePaths.length} files`)
-        }
-
-        for (const dirPath of directoryPaths) {
-          this.communicationBridge.pastePath(dirPath)
-          logger.appendLine(`Called pastePath for directory: ${dirPath}`)
-        }
-      } else {
-        logger.appendLine("Warning: No communication bridge available to call insertPaths/pastePath")
-      }
 
       logger.appendLine(
         `Processed ${results.length} URIs: ${filePaths.length} files, ${directoryPaths.length} directories`,

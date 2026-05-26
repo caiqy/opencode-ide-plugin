@@ -159,14 +159,14 @@ describe("prepareSession", () => {
     })
 
     expect(open).toHaveBeenCalledWith("s-draft")
-    expect(setDraft).toHaveBeenNthCalledWith(1, null)
     expect(create).toHaveBeenCalledTimes(1)
     expect(open).toHaveBeenCalledWith("s-new")
-    expect(setDraft).toHaveBeenNthCalledWith(2, "s-new")
+    expect(setDraft).not.toHaveBeenCalledWith(null)
+    expect(setDraft).toHaveBeenCalledWith("s-new")
     expect(fail).not.toHaveBeenCalled()
   })
 
-  it("treats reusable check errors as invalid draft", async () => {
+  it("treats reusable check errors as unknown and preserves draft pointer", async () => {
     const open = vi.fn()
     const setDraft = vi.fn()
     const fail = vi.fn()
@@ -185,10 +185,10 @@ describe("prepareSession", () => {
       fail,
     })
 
-    expect(setDraft).toHaveBeenNthCalledWith(1, null)
     expect(create).toHaveBeenCalledTimes(1)
     expect(open).toHaveBeenCalledWith("s-new")
-    expect(setDraft).toHaveBeenNthCalledWith(2, "s-new")
+    expect(setDraft).not.toHaveBeenCalledWith(null)
+    expect(setDraft).toHaveBeenCalledWith("s-new")
     expect(switchTo).not.toHaveBeenCalled()
     expect(fail).not.toHaveBeenCalled()
   })

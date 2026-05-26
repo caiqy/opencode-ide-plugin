@@ -57,6 +57,7 @@ function scrollbarPointerIntent(container: HTMLElement, e: PointerEvent) {
 }
 
 const BOTTOM_THRESHOLD = 24
+const BOTTOM_SETTLE_THRESHOLD = 6
 const PROGRAM_TTL = 800
 const USER_INTENT_TTL = 800
 
@@ -86,7 +87,6 @@ export function useMessageScroll(
   const mode = useRef<FollowMode>("following")
   const program = useRef<ProgramMark | null>(null)
   const programTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const seekTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastTop = useRef(0)
   const lastHeight = useRef(0)
   const lastClient = useRef(0)
@@ -172,19 +172,25 @@ export function useMessageScroll(
     return item
   }, [clearProgram])
 
-  const clearSeek = useCallback(() => {
-    if (seekTimer.current) {
-      clearTimeout(seekTimer.current)
-      seekTimer.current = null
-    }
-  }, [])
-
   const isTowardProgramTarget = useCallback((item: ProgramMark, prevTop: number, currentTop: number) => {
     if (item.target === null) return true
     const prevDistance = Math.abs(item.target - prevTop)
     const nextDistance = Math.abs(item.target - currentTop)
     return nextDistance <= prevDistance + 1
   }, [])
+
+  const settleAtBottom = useCallback(
+    (el: HTMLElement) => {
+      const targetTop = Math.max(0, el.scrollHeight - el.clientHeight)
+      const gap = targetTop - el.scrollTop
+      if (gap > 0.5 && gap <= BOTTOM_SETTLE_THRESHOLD) {
+        el.scrollTop = targetTop
+      }
+      syncLast(el)
+      commitView("following", true)
+    },
+    [commitView, syncLast],
+  )
 
   // Immediately pin to bottom (no animation).
   // ResizeObserver fires after layout, before paint — instant assignment avoids
@@ -197,17 +203,8 @@ export function useMessageScroll(
       markProgram(cause, el.scrollTop, targetTop)
       if (cause === "button-seek") {
         commitView("seeking", false)
-        clearSeek()
-        seekTimer.current = setTimeout(() => {
-          const current = container()
-          if (!current) return
-          if (distanceFromBottom(current) <= BOTTOM_THRESHOLD) {
-            clearProgram()
-            commitView("following", true)
-          }
-          seekTimer.current = null
-        }, 700)
         el.scrollTo({ top: el.scrollHeight, behavior })
+        syncLast(el)
         return
       }
       commitView("following", true)
@@ -215,7 +212,7 @@ export function useMessageScroll(
       else el.scrollTop = targetTop
       syncLast(el)
     },
-    [clearProgram, clearSeek, commitView, container, markProgram, syncLast],
+    [commitView, container, markProgram, syncLast],
   )
 
   const followTail = useCallback(
@@ -230,7 +227,6 @@ export function useMessageScroll(
           allowNextTailFollow.current = false
           syncLast(el)
           clearProgram()
-          clearSeek()
           commitView("detached", false)
           return
         }
@@ -239,10 +235,10 @@ export function useMessageScroll(
         return
       }
       if (mode.current === "seeking") {
-        pinBottom("button-seek", "smooth")
+        pinBottom("button-seek", "auto")
       }
     },
-    [clearProgram, clearSeek, commitView, hasUserIntent, pinBottom, syncLast],
+    [clearProgram, commitView, hasUserIntent, pinBottom, syncLast],
   )
 
   const runProgrammaticScroll = useCallback(
@@ -271,19 +267,22 @@ export function useMessageScroll(
     lastClient.current = el.clientHeight
 
     const at = distanceFromBottom(el) <= BOTTOM_THRESHOLD
+    const item = getProgram()
 
     if (at) {
       allowNextTailFollow.current = false
       clearProgram()
-      clearSeek()
-      commitView("following", true)
+      settleAtBottom(el)
       return
     }
 
     const dimensionsChanged = el.scrollHeight !== prevHeight || el.clientHeight !== prevClient
     const wasAtBottom = prevHeight - prevClient - prevTop <= BOTTOM_THRESHOLD
-    const item = getProgram()
     const keepsBottomAnchor = item?.cause === "send-message" || item?.cause === "auto-follow" || item?.cause === "button-seek"
+    if (item?.cause === "button-seek" && !dimensionsChanged && !hasUserIntent()) {
+      pinBottom("button-seek", "auto")
+      return
+    }
     if (item && !dimensionsChanged) {
       // button-seek, history restore/trim and jcef wheel can all overlap with a
       // user's immediate scrollbar/keyboard intervention. While target is pending
@@ -308,18 +307,16 @@ export function useMessageScroll(
     }
 
     if (item && dimensionsChanged && !keepsBottomAnchor) {
-      clearSeek()
       commitView("detached", false)
       return
     }
 
     if (item?.cause === "button-seek" && dimensionsChanged) {
       if (hasUserIntent()) {
-        clearSeek()
         commitView("detached", false)
         return
       }
-      pinBottom("button-seek", "smooth")
+      pinBottom("button-seek", "auto")
       return
     }
 
@@ -336,9 +333,8 @@ export function useMessageScroll(
       return
     }
 
-    clearSeek()
     commitView("detached", false)
-  }, [clearProgram, clearSeek, commitView, container, getProgram, hasUserIntent, isTowardProgramTarget, pinBottom])
+  }, [clearProgram, commitView, container, getProgram, hasUserIntent, isTowardProgramTarget, pinBottom, settleAtBottom])
 
   // ── wheel / touch handlers ────────────────────────────────────────────────
 
@@ -354,7 +350,6 @@ export function useMessageScroll(
       // cause #5, not just lowering the threshold.
       if (e.deltaY < -2 && !nestedScrollable(el, e.target)) {
         markUserIntent()
-        clearSeek()
         clearProgram()
         commitView("detached", distanceFromBottom(el) <= BOTTOM_THRESHOLD)
       }
@@ -378,7 +373,6 @@ export function useMessageScroll(
       const y = e.touches[0]?.clientY
       if (y !== undefined && lastTouchY !== undefined && y > lastTouchY) {
         markUserIntent()
-        clearSeek()
         clearProgram()
         commitView("detached", distanceFromBottom(el) <= BOTTOM_THRESHOLD)
       }
@@ -406,7 +400,7 @@ export function useMessageScroll(
       el.removeEventListener("pointerdown", handlePointerDown)
       window.removeEventListener("keydown", handleKeyDown, { capture: true })
     }
-  }, [sessionID, multiplier, clearProgram, clearSeek, commitView, container, markUserIntent, runProgrammaticScroll])
+  }, [sessionID, multiplier, clearProgram, commitView, container, markUserIntent, runProgrammaticScroll])
 
   // ── scroll event binding ──────────────────────────────────────────────────
 
@@ -435,8 +429,9 @@ export function useMessageScroll(
 
   useEffect(() => {
     const el = container()
-    const content = tail?.current ?? messagesContainerRef.current
-    if (!el || !content) return
+    const shell = messagesContainerRef.current
+    const tailNode = tail?.current
+    if (!el || !shell) return
     if (typeof ResizeObserver === "undefined") return
 
     const obs = new ResizeObserver(() => {
@@ -444,8 +439,9 @@ export function useMessageScroll(
       followTail(el)
     })
 
-    obs.observe(content)
     obs.observe(el)
+    obs.observe(shell)
+    if (tailNode && tailNode !== shell) obs.observe(tailNode)
     return () => obs.disconnect()
   }, [sessionID, settling, tail, container, messagesContainerRef, followTail])
 
@@ -462,7 +458,6 @@ export function useMessageScroll(
     lastHeight.current = 0
     lastClient.current = 0
     lastUserIntent.current = 0
-    clearSeek()
     if (!sessionID) {
       pendingSessionPin.current = false
       commitView("following", true)
@@ -476,7 +471,7 @@ export function useMessageScroll(
     }
     pendingSessionPin.current = false
     pinBottom("history-restore")
-  }, [sessionID, clearProgram, clearSeek, commitView, container, pinBottom])
+  }, [sessionID, clearProgram, commitView, container, pinBottom])
 
   useEffect(() => {
     if (!pendingSessionPin.current || !sessionID) return
@@ -488,9 +483,8 @@ export function useMessageScroll(
   useEffect(() => {
     return () => {
       clearProgram()
-      clearSeek()
     }
-  }, [clearProgram, clearSeek])
+  }, [clearProgram])
 
   // ── User sends new message → force scroll back to bottom ─────────────────
 
@@ -545,7 +539,7 @@ export function useMessageScroll(
   // ── Manual scroll-to-bottom (button) ─────────────────────────────────────
 
   const scrollToBottom = useCallback(() => {
-    pinBottom("button-seek", "smooth")
+    pinBottom("button-seek", "auto")
   }, [pinBottom])
 
   return {

@@ -203,7 +203,7 @@ const MessageInputInner = forwardRef<
   const busy = !isIdle
   const locked = busy || blocked || selectionPending
 
-  useDragDrop({ contentEditableRef, containerRef, editor, worktree, parseWithRange, disabled: locked })
+  useDragDrop({ contentEditableRef, containerRef, disabled: locked })
 
   useEditorKeyboard({ editor, contentEditableRef, onSubmit: handleSubmit })
 

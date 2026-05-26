@@ -11,7 +11,7 @@ import { SessionSummaryScheduler } from "../../src/session/summary-scheduler"
 import { Snapshot } from "../../src/snapshot"
 import { Storage } from "../../src/storage"
 import { ProviderID, ModelID } from "../../src/provider/schema"
-import { Log } from "../../src/util"
+import * as Log from "../../src/util/log"
 import { provideTmpdirInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 

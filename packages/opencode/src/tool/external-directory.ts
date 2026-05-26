@@ -1,9 +1,9 @@
 import path from "path"
 import { Effect } from "effect"
-import { EffectLogger } from "@/effect"
-import { InstanceState } from "@/effect"
+import * as EffectLogger from "@opencode-ai/core/effect/logger"
+import { InstanceState } from "@/effect/instance-state"
 import type * as Tool from "./tool"
-import { Instance } from "../project/instance"
+import { containsPath } from "../project/instance-context"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
 
 type Kind = "file" | "directory"
@@ -23,8 +23,8 @@ export const assertExternalDirectoryEffect = Effect.fn("Tool.assertExternalDirec
   if (options?.bypass) return
 
   const ins = yield* InstanceState.context
-  const full = process.platform === "win32" ? AppFileSystem.normalizePath(target) : target
-  if (Instance.containsPath(full, ins)) return
+  const full = process.platform === "win32" ? normalizeWindowsTarget(target, ins) : target
+  if (containsPath(full, ins)) return
 
   const kind = options?.kind ?? "file"
   const dir = kind === "directory" ? full : path.dirname(full)
@@ -46,4 +46,11 @@ export const assertExternalDirectoryEffect = Effect.fn("Tool.assertExternalDirec
 
 export async function assertExternalDirectory(ctx: Tool.Context, target?: string, options?: Options) {
   return Effect.runPromise(assertExternalDirectoryEffect(ctx, target, options).pipe(Effect.provide(EffectLogger.layer)))
+}
+
+function normalizeWindowsTarget(target: string, ins: { directory: string; worktree: string }) {
+  const root = path.parse(ins.worktree || ins.directory).root
+  const drive = root.match(/^[A-Za-z]:/)?.[0]
+  const fixed = drive && /^[\/](?![\/])/.test(target) ? `${drive}${target}` : target
+  return AppFileSystem.normalizePath(fixed)
 }

@@ -156,7 +156,24 @@ describe("SubtaskMessageList", () => {
     expect(layer.parentElement).toBe(shell)
     expect(layer).toHaveClass("sticky", "bottom-4", "z-30", "flex", "justify-end", "pr-2", "pointer-events-none")
 
+    // 1 from mount-effect auto-scroll + 1 from click
     fireEvent.click(screen.getByTestId("mock-scroll-to-bottom"))
+    expect(scrollToBottom).toHaveBeenCalledTimes(2)
+  })
+
+  it("挂载有消息的子任务时会自动滚到底部 (scrollToBottom 在 mount effect 中被调用)", () => {
+    const scrollToBottom = vi.fn()
+    mocks.useMessageScroll.mockReturnValue({
+      messagesEndRef: { current: null },
+      messagesContainerRef: { current: null },
+      showScrollToBottom: false,
+      scrollToBottom,
+    })
+
+    render(<SubtaskMessageList sessionID="s-child" />)
+
+    // The useEffect(() => scrollToBottom(), [scrollToBottom]) fires synchronously
+    // inside render in the test environment.
     expect(scrollToBottom).toHaveBeenCalledTimes(1)
   })
 

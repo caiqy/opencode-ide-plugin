@@ -1,75 +1,32 @@
-import { GlobalBus } from "@/bus/global"
-import { disposeInstance } from "@/effect/instance-registry"
-import { makeRuntime } from "@/effect/run-service"
+import { AppRuntime } from "@/effect/app-runtime"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
-import { iife } from "@/util/iife"
-import { Log } from "@/util"
-import { LocalContext } from "../util"
-import * as Project from "./project"
-import { WorkspaceContext } from "@/control-plane/workspace-context"
+import { InstanceStore } from "./instance-store"
+import { containsPath as containsPathInContext, context } from "./instance-context"
+import type { InstanceContext } from "./instance-context"
+import type * as Project from "./project"
 
-export interface InstanceContext {
-  directory: string
-  worktree: string
-  project: Project.Info
-}
-
-const context = LocalContext.create<InstanceContext>("instance")
-const cache = new Map<string, Promise<InstanceContext>>()
-const project = makeRuntime(Project.Service, Project.defaultLayer)
-
-const disposal = {
-  all: undefined as Promise<void> | undefined,
-}
-
-function boot(input: { directory: string; init?: () => Promise<any>; worktree?: string; project?: Project.Info }) {
-  return iife(async () => {
-    const ctx =
-      input.project && input.worktree
-        ? {
-            directory: input.directory,
-            worktree: input.worktree,
-            project: input.project,
-          }
-        : await project
-            .runPromise((svc) => svc.fromDirectory(input.directory))
-            .then(({ project, sandbox }) => ({
-              directory: input.directory,
-              worktree: sandbox,
-              project,
-            }))
-    await context.provide(ctx, async () => {
-      await input.init?.()
-    })
-    return ctx
-  })
-}
-
-function track(directory: string, next: Promise<InstanceContext>) {
-  const task = next.catch((error) => {
-    if (cache.get(directory) === task) cache.delete(directory)
-    throw error
-  })
-  cache.set(directory, task)
-  return task
-}
+export type { InstanceContext } from "./instance-context"
 
 export const Instance = {
-  async provide<R>(input: { directory: string; init?: () => Promise<any>; fn: () => R }): Promise<R> {
+  async provide<R>(input: {
+    directory: string
+    init?: () => Promise<any>
+    worktree?: string
+    project?: InstanceStore.LoadInput["project"]
+    fn: () => R
+  }): Promise<R> {
     const directory = AppFileSystem.resolve(input.directory)
-    let existing = cache.get(directory)
-    if (!existing) {
-      Log.Default.info("creating instance", { directory })
-      existing = track(
-        directory,
-        boot({
+    const ctx = await AppRuntime.runPromise(
+      InstanceStore.Service.use((store) =>
+        store.load({
           directory,
-          init: input.init,
+          worktree: input.worktree,
+          project: input.project,
         }),
-      )
-    }
-    const ctx = await existing
-    return context.provide(ctx, async () => {
+      ),
+    )
+    return await context.provide(ctx, async () => {
+      await input.init?.()
       return input.fn()
     })
   },
@@ -93,9 +50,7 @@ export const Instance = {
    * For git worktrees opened from subdirectories, worktree stays anchored at the repo root.
    */
   containsPath(filepath: string, ctx?: InstanceContext) {
-    const instance = ctx ?? Instance
-    if (AppFileSystem.contains(instance.directory, filepath)) return true
-    return AppFileSystem.contains(instance.worktree, filepath)
+    return containsPathInContext(filepath, ctx ?? context.use())
   },
   /**
    * Captures the current instance ALS context and returns a wrapper that
@@ -116,73 +71,23 @@ export const Instance = {
   },
   async reload(input: { directory: string; init?: () => Promise<any>; project?: Project.Info; worktree?: string }) {
     const directory = AppFileSystem.resolve(input.directory)
-    Log.Default.info("reloading instance", { directory })
-    await disposeInstance(directory)
-    cache.delete(directory)
-    const next = track(directory, boot({ ...input, directory }))
-
-    GlobalBus.emit("event", {
-      directory,
-      project: input.project?.id,
-      workspace: WorkspaceContext.workspaceID,
-      payload: {
-        type: "server.instance.disposed",
-        properties: {
+    const ctx = await AppRuntime.runPromise(
+      InstanceStore.Service.use((store) =>
+        store.reload({
           directory,
-        },
-      },
-    })
-
-    return await next
+          worktree: input.worktree,
+          project: input.project,
+        }),
+      ),
+    )
+    await input.init?.()
+    return ctx
   },
   async dispose() {
-    const directory = Instance.directory
-    const project = Instance.project
-    Log.Default.info("disposing instance", { directory })
-    await disposeInstance(directory)
-    cache.delete(directory)
-
-    GlobalBus.emit("event", {
-      directory,
-      project: project.id,
-      workspace: WorkspaceContext.workspaceID,
-      payload: {
-        type: "server.instance.disposed",
-        properties: {
-          directory,
-        },
-      },
-    })
+    const ctx = context.use()
+    await AppRuntime.runPromise(InstanceStore.Service.use((store) => store.dispose(ctx)))
   },
   async disposeAll() {
-    if (disposal.all) return disposal.all
-
-    disposal.all = iife(async () => {
-      Log.Default.info("disposing all instances")
-      const entries = [...cache.entries()]
-      for (const [key, value] of entries) {
-        if (cache.get(key) !== value) continue
-
-        const ctx = await value.catch((error) => {
-          Log.Default.warn("instance dispose failed", { key, error })
-          return undefined
-        })
-
-        if (!ctx) {
-          if (cache.get(key) === value) cache.delete(key)
-          continue
-        }
-
-        if (cache.get(key) !== value) continue
-
-        await context.provide(ctx, async () => {
-          await Instance.dispose()
-        })
-      }
-    }).finally(() => {
-      disposal.all = undefined
-    })
-
-    return disposal.all
+    await AppRuntime.runPromise(InstanceStore.Service.use((store) => store.disposeAll()))
   },
 }

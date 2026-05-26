@@ -307,7 +307,9 @@ describe("SessionContext migration", () => {
     expect(getSpy).not.toHaveBeenCalledWith("opencode_selected_provider")
     expect(getSpy).not.toHaveBeenCalledWith("opencode_selected_model")
     expect(getSpy).not.toHaveBeenCalledWith("opencode_selected_agent")
-    expect(setSpy).not.toHaveBeenCalled()
+    expect(setSpy).not.toHaveBeenCalledWith("opencode_selected_provider", expect.anything())
+    expect(setSpy).not.toHaveBeenCalledWith("opencode_selected_model", expect.anything())
+    expect(setSpy).not.toHaveBeenCalledWith("opencode_selected_agent", expect.anything())
   })
 
   it("恢复优先级: workspace:last_selection > global:model.recent > config.model > providers 首个可用", async () => {
@@ -767,6 +769,28 @@ describe("SessionContext session paging", () => {
     await waitFor(() => {
       expect(sdk.session.list).toHaveBeenCalledWith({ roots: true, limit: SESSION_LIST_LIMIT })
     })
+  })
+
+  it("切换到未分页加载但可回源的 session 时不输出 warning", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
+    ;(sdk.session.get as any).mockResolvedValue({ data: session("s-late", 1), error: null })
+    ;(sdk.session.diff as any).mockResolvedValue({ data: [], error: null })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    await act(async () => {
+      await result.current.switchSession("s-late")
+    })
+
+    expect(sdk.session.get).toHaveBeenCalledWith({ path: { id: "s-late" } })
+    expect(result.current.currentSession?.id).toBe("s-late")
+    expect(warn).not.toHaveBeenCalledWith("[SessionContext] Session not found in local list, fetching...")
+    warn.mockRestore()
   })
 
   it("loadMoreSessions 会扩大 limit 并再次请求", async () => {

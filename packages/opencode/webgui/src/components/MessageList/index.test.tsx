@@ -271,24 +271,51 @@ describe("MessageList", () => {
     expect(screen.queryByRole("button", { name: "滚动到底部" })).not.toBeInTheDocument()
   })
 
-  it("showScrollToBottom=true 时渲染 sticky layer 并触发滚动", () => {
+  it("scroll-to-bottom-layer 作为 overlay 渲染，不参与 message-scroll-shell 文档流", () => {
     const scrollToBottom = vi.fn()
     mocks.useMessageScroll.mockReturnValue({
       messagesEndRef: { current: null },
       messagesContainerRef: { current: null },
+      mode: "detached",
       showScrollToBottom: true,
       scrollToBottom,
+      runProgrammaticScroll: vi.fn(),
     })
 
     render(<MessageList sessionID="s1" onUndoToInput={vi.fn()} />)
 
     const shell = screen.getByTestId("message-scroll-shell")
     const layer = screen.getByTestId("scroll-to-bottom-layer")
-    expect(layer.parentElement).toBe(shell)
-    expect(layer).toHaveClass("sticky", "bottom-4", "z-30", "flex", "justify-end", "pr-2", "pointer-events-none")
+    expect(shell).not.toContainElement(layer)
+    expect(layer).toHaveClass("sticky", "bottom-0", "z-30", "flex", "h-0", "justify-end", "pr-2", "pointer-events-none")
+    expect(screen.getByTestId("scroll-to-bottom-offset")).toHaveClass("-translate-y-[calc(100%+2rem)]")
 
     fireEvent.click(screen.getByRole("button", { name: "滚动到底部" }))
     expect(scrollToBottom).toHaveBeenCalledTimes(1)
+  })
+
+  it("message-scroll-shell 保持直接挂在外部滚动宿主下，避免 Hook 绑定到 overlay 包裹层", () => {
+    mocks.useMessageScroll.mockReturnValue({
+      messagesEndRef: { current: null },
+      messagesContainerRef: { current: null },
+      mode: "detached",
+      showScrollToBottom: true,
+      scrollToBottom: vi.fn(),
+      runProgrammaticScroll: vi.fn(),
+    })
+
+    render(
+      <main data-testid="scroll-host">
+        <MessageList sessionID="s1" onUndoToInput={vi.fn()} />
+      </main>,
+    )
+
+    const host = screen.getByTestId("scroll-host")
+    const shell = screen.getByTestId("message-scroll-shell")
+    const layer = screen.getByTestId("scroll-to-bottom-layer")
+
+    expect(shell.parentElement).toBe(host)
+    expect(layer.parentElement).toBe(host)
   })
 
   it("发送意图 key 会传给滚动 Hook", () => {

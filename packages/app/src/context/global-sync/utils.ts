@@ -1,6 +1,18 @@
-import type { Agent, Project, ProviderListResponse } from "@opencode-ai/sdk/v2/client"
+import type { Agent, Path, Project, ProviderListResponse } from "@opencode-ai/sdk/v2/client"
+export { pathKey as directoryKey, type PathKey as DirectoryKey } from "@/utils/path-key"
 
 export const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+
+export function emptyPath(): Path {
+  return {
+    state: "",
+    config: "",
+    configFile: "",
+    worktree: "",
+    directory: "",
+    home: "",
+  }
+}
 
 function isAgent(input: unknown): input is Agent {
   if (!input || typeof input !== "object") return false

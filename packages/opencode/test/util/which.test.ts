@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
-import { which } from "../../src/util/which"
+import { which, whichAll } from "../../src/util/which"
 import { tmpdir } from "../fixture/fixture"
 
 async function cmd(dir: string, name: string, exec = true) {
@@ -64,6 +64,24 @@ describe("util.which", () => {
     same(which("dupe", env([a, b].join(path.delimiter))), first)
   })
 
+  test("returns all PATH matches in order", async () => {
+    await using tmp = await tmpdir()
+    const a = path.join(tmp.path, "a")
+    const b = path.join(tmp.path, "b")
+    await fs.mkdir(a)
+    await fs.mkdir(b)
+    const first = await cmd(a, "multi")
+    const second = await cmd(b, "multi")
+
+    const matches = whichAll("multi", env([a, b].join(path.delimiter)))
+    if (process.platform === "win32") {
+      expect(matches.map((item) => item.toLowerCase())).toEqual([first.toLowerCase(), second.toLowerCase()])
+      return
+    }
+
+    expect(matches).toEqual([first, second])
+  })
+
   test("returns null for non-executable file on unix", async () => {
     if (process.platform === "win32") return
 
@@ -84,7 +102,7 @@ describe("util.which", () => {
     const file = path.join(bin, "pathext.CMD")
     await fs.writeFile(file, "@echo off\r\n")
 
-    expect(which("pathext", { PATH: bin, PATHEXT: ".CMD" })).toBe(file)
+    same(which("pathext", { PATH: bin, PATHEXT: ".CMD" }), file)
   })
 
   test("uses Windows Path casing fallback", async () => {

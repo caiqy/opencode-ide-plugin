@@ -55,4 +55,18 @@ describe("EditorContent", () => {
     const contentEditable = placeholderNode.parentElement
     expect(contentEditable).toHaveAttribute("aria-placeholder", placeholder)
   })
+
+  it("输入框提供稳定的表单标识与可访问名称", () => {
+    const { container } = render(
+      <EditorContent
+        contentEditableRef={{ current: null } as any}
+        containerRef={{ current: null } as any}
+        onEditorChange={vi.fn()}
+      />,
+    )
+
+    const input = container.querySelector("#opencode-message-input")
+    expect(input).toHaveAttribute("id", "opencode-message-input")
+    expect(input).toHaveAttribute("aria-label", "输入消息（回车发送）")
+  })
 })

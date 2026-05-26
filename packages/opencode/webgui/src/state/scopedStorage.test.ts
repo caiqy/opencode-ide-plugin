@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("../lib/ideBridge", () => ({
   ideBridge: {
@@ -22,6 +22,12 @@ describe("scopedStorage", () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-02-26T00:00:00Z"))
     resetScopedStateForTest()
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
   })
 
   it("三域 global/workspace/mem 读写与 cache 行为", async () => {
@@ -69,5 +75,120 @@ describe("scopedStorage", () => {
     })
 
     expect(value).toEqual({ agent: "build" })
+  })
+
+  it("无 ideBridge 时 global/workspace 会写入 localStorage 并可读回", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
+
+    await scopedStateSetJSON("workspace", "opencode:webgui:workspace:tabs:v1", {
+      open_tabs: ["s1"],
+      active_tab: "s1",
+    })
+    await scopedStateSetJSON("global", "opencode:webgui:global:theme:v1", "dark")
+
+    resetScopedStateForTest()
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
+
+    await expect(
+      scopedStateGetJSON("workspace", "opencode:webgui:workspace:tabs:v1", {
+        open_tabs: [],
+        active_tab: "",
+      }),
+    ).resolves.toEqual({ open_tabs: ["s1"], active_tab: "s1" })
+    await expect(scopedStateGetJSON("global", "opencode:webgui:global:theme:v1", "light")).resolves.toBe("dark")
+  })
+
+  it("无 ideBridge 时 mem 只保存在内存且不进入 localStorage", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
+
+    await scopedStateSetJSON("mem", "opencode:webgui:mem:runtime:v1", { panel: "chat" })
+
+    expect(localStorage.getItem("opencode:webgui:scoped:mem:opencode:webgui:mem:runtime:v1")).toBeNull()
+    await expect(scopedStateGetJSON("mem", "opencode:webgui:mem:runtime:v1", {})).resolves.toEqual({ panel: "chat" })
+
+    resetScopedStateForTest()
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
+    await expect(scopedStateGetJSON("mem", "opencode:webgui:mem:runtime:v1", {})).resolves.toEqual({})
+  })
+
+  it("localStorage 写失败时保留内存值并报告写入失败", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
+    const report = vi.fn()
+    setScopedStateWriteErrorReporter(report)
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota")
+    })
+
+    try {
+      await scopedStateSetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", "s1")
+
+      await expect(scopedStateGetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", null)).resolves.toBe(
+        "s1",
+      )
+      expect(report).toHaveBeenCalledWith({
+        key: "opencode:webgui:workspace:draft_session:v1",
+        error: "host_write_failed",
+        message: "设置未保存，本次会话可继续使用",
+      })
+    } finally {
+      setItem.mockRestore()
+    }
+  })
+
+  it("localStorage 写失败且已有旧值时优先读取内存新值", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
+    localStorage.setItem(
+      "opencode:webgui:scoped:workspace:opencode:webgui:workspace:draft_session:v1",
+      JSON.stringify("old"),
+    )
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota")
+    })
+
+    try {
+      await scopedStateSetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", "new")
+
+      await expect(scopedStateGetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", null)).resolves.toBe(
+        "new",
+      )
+    } finally {
+      setItem.mockRestore()
+    }
+  })
+
+  it("host 写失败且返回旧值时优先读取内存新值", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+    vi.mocked(ideBridge.storageSet).mockResolvedValue(false)
+    vi.mocked(ideBridge.storageGet).mockResolvedValue({
+      "opencode:webgui:workspace:draft_session:v1": JSON.stringify("old"),
+    })
+
+    await scopedStateSetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", "new")
+
+    await expect(scopedStateGetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", null)).resolves.toBe(
+      "new",
+    )
+  })
+
+  it("ideBridge installed 时 storageSet 成功路径走 host storage 且不写 localStorage", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+    vi.mocked(ideBridge.storageSet).mockResolvedValue(true)
+    const setItem = vi.spyOn(Storage.prototype, "setItem")
+
+    try {
+      await scopedStateSetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", "s1")
+
+      expect(ideBridge.storageSet).toHaveBeenCalledWith(
+        "workspace",
+        "opencode:webgui:workspace:draft_session:v1",
+        '"s1"',
+      )
+      expect(setItem).not.toHaveBeenCalled()
+      expect(
+        localStorage.getItem("opencode:webgui:scoped:workspace:opencode:webgui:workspace:draft_session:v1"),
+      ).toBeNull()
+    } finally {
+      setItem.mockRestore()
+    }
   })
 })

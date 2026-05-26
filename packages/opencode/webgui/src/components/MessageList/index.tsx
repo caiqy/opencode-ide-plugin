@@ -300,16 +300,18 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
             </div>
           </div>
         </PartOpenProvider>
+      </div>
 
-        {showScrollToBottom && (
-          <div
-            data-testid="scroll-to-bottom-layer"
-            className="pointer-events-none sticky bottom-4 z-30 flex justify-end pr-2"
-          >
+      {showScrollToBottom && (
+        <div
+          data-testid="scroll-to-bottom-layer"
+          className="pointer-events-none sticky bottom-0 z-30 flex h-0 justify-end pr-2"
+        >
+          <div data-testid="scroll-to-bottom-offset" className="-translate-y-[calc(100%+2rem)]">
             <ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Fork confirmation modal */}
       <ConfirmModal

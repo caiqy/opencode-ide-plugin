@@ -9,6 +9,7 @@ describe("useDebounce", () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.useRealTimers()
   })
 
   it("returns initial value immediately", () => {
@@ -86,6 +87,7 @@ describe("useDebouncedCallback", () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.useRealTimers()
   })
 
   it("debounces callback execution", () => {
@@ -144,6 +146,7 @@ describe("useDebouncedCallbackAdvanced", () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.useRealTimers()
   })
 
   it("returns callback, cancel, flush, and isPending", () => {

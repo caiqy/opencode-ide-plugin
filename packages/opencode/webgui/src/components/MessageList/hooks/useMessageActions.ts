@@ -1,11 +1,13 @@
 import { useState, useCallback } from "react"
 import { useSession } from "../../../state/SessionContext"
 import { useMessages } from "../../../state/MessagesContext"
+import { useTabStore } from "../../../state/tabStore"
 import { getUserMessagePlainText } from "../utils"
 
 export function useMessageActions(sessionID: string | null | undefined, onUndoToInput?: (value: string) => void) {
   const { currentSession, forkSession, revertToMessage, unrevertSession, redoNext } = useSession()
   const { getMessagesBySession, removeSessionErrors } = useMessages()
+  const tabStore = useTabStore()
 
   const [forkConfirm, setForkConfirm] = useState<string | null>(null)
   const [isForking, setIsForking] = useState(false)
@@ -26,9 +28,10 @@ export function useMessageActions(sessionID: string | null | undefined, onUndoTo
     setIsForking(false)
 
     if (forkedSession) {
+      tabStore.openTab(forkedSession.id)
       setForkConfirm(null)
     }
-  }, [forkConfirm, currentSession, forkSession])
+  }, [forkConfirm, currentSession, forkSession, tabStore])
 
   const handleRevert = useCallback(
     (messageId: string) => {

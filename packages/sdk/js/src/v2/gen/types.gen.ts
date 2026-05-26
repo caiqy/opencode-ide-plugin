@@ -347,6 +347,14 @@ export type SessionStatus =
       type: "retry"
       attempt: number
       message: string
+      action?: {
+        reason: string
+        provider: string
+        title: string
+        message: string
+        label: string
+        link?: string
+      }
       next: number
     }
   | {
@@ -946,12 +954,29 @@ export type Session = {
   projectID: string
   workspaceID?: string
   directory: string
+  path?: string
   parentID?: string
+  agent?: string
+  model?: {
+    id: string
+    providerID: string
+    variant?: string
+  }
   summary?: {
     additions: number
     deletions: number
     files: number
     diffs?: Array<SnapshotFileDiff>
+  }
+  cost?: number
+  tokens?: {
+    input: number
+    output: number
+    reasoning: number
+    cache: {
+      read: number
+      write: number
+    }
   }
   share?: {
     url: string
@@ -2149,6 +2174,7 @@ export type Path = {
   configFile: string
   worktree: string
   directory: string
+  vcs?: "git"
 }
 
 export type VcsInfo = {
@@ -2540,6 +2566,26 @@ export type ExperimentalWorkspaceStatusResponses = {
 export type ExperimentalWorkspaceStatusResponse =
   ExperimentalWorkspaceStatusResponses[keyof ExperimentalWorkspaceStatusResponses]
 
+export type ExperimentalWorkspaceSyncListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/workspace/sync-list"
+}
+
+export type ExperimentalWorkspaceSyncListResponses = {
+  /**
+   * Workspace list synced
+   */
+  204: void
+}
+
+export type ExperimentalWorkspaceSyncListResponse =
+  ExperimentalWorkspaceSyncListResponses[keyof ExperimentalWorkspaceSyncListResponses]
+
 export type ExperimentalWorkspaceRemoveData = {
   body?: never
   path: {
@@ -2607,6 +2653,46 @@ export type ExperimentalWorkspaceSessionRestoreResponses = {
 
 export type ExperimentalWorkspaceSessionRestoreResponse =
   ExperimentalWorkspaceSessionRestoreResponses[keyof ExperimentalWorkspaceSessionRestoreResponses]
+
+export type ExperimentalWorkspaceWarpData = {
+  body?: {
+    id: string | null
+    sessionID: string
+    copyChanges: boolean
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/workspace/warp"
+}
+
+export type ExperimentalWorkspaceWarpErrors = {
+  /**
+   * Bad request
+   */
+  400: {
+    name: "WorkspaceWarpError" | "VcsApplyError"
+    data: {
+      message: string
+      reason?: "non-git" | "not-clean"
+    }
+  }
+}
+
+export type ExperimentalWorkspaceWarpError =
+  ExperimentalWorkspaceWarpErrors[keyof ExperimentalWorkspaceWarpErrors]
+
+export type ExperimentalWorkspaceWarpResponses = {
+  /**
+   * Session warped
+   */
+  204: void
+}
+
+export type ExperimentalWorkspaceWarpResponse =
+  ExperimentalWorkspaceWarpResponses[keyof ExperimentalWorkspaceWarpResponses]
 
 export type ProjectListData = {
   body?: never

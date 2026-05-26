@@ -114,4 +114,75 @@ describe("KeyboardHandler", () => {
       configurable: true,
     })
   })
+
+  it("当 Ctrl+C 的 execCommand(copy) 成功时应阻止默认行为", () => {
+    const el = createEditable()
+    el.value = "hello"
+    el.setSelectionRange(0, 5)
+
+    const prev = Reflect.get(document, "execCommand")
+    const cmd = vi.fn(() => true)
+    Object.defineProperty(document, "execCommand", {
+      value: cmd,
+      configurable: true,
+    })
+    const handler = new KeyboardHandler()
+    const ev = new KeyboardEvent("keydown", {
+      key: "c",
+      code: "KeyC",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+
+    el.dispatchEvent(ev)
+
+    expect(cmd).toHaveBeenCalledWith("copy")
+    expect(ev.defaultPrevented).toBe(true)
+
+    handler.destroy()
+    Object.defineProperty(document, "execCommand", {
+      value: prev,
+      configurable: true,
+    })
+  })
+
+  it("非编辑区域存在 DOM 选区时 Ctrl+C 应在 iframe 内执行 copy 命令", () => {
+    const text = document.createElement("div")
+    text.textContent = "message text"
+    document.body.appendChild(text)
+    const range = document.createRange()
+    range.selectNodeContents(text)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const prev = Reflect.get(document, "execCommand")
+    const cmd = vi.fn(() => true)
+    Object.defineProperty(document, "execCommand", {
+      value: cmd,
+      configurable: true,
+    })
+    const handler = new KeyboardHandler()
+    const ev = new KeyboardEvent("keydown", {
+      key: "c",
+      code: "KeyC",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+
+    text.dispatchEvent(ev)
+
+    expect(cmd).toHaveBeenCalledWith("copy")
+    expect(ev.defaultPrevented).toBe(true)
+    expect(postMessageSpy).not.toHaveBeenCalled()
+
+    handler.destroy()
+    Object.defineProperty(document, "execCommand", {
+      value: prev,
+      configurable: true,
+    })
+    selection.removeAllRanges()
+  })
 })

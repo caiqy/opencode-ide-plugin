@@ -12,7 +12,7 @@ const dir = path.resolve(__dirname, "..")
 
 process.chdir(dir)
 
-await import("./generate.ts")
+const generated = await import("./generate.ts")
 
 import { Script } from "@opencode-ai/script"
 import pkg from "../package.json"
@@ -87,6 +87,7 @@ await Bun.write(
 console.log(`Embedded ${rows.length} webgui files`)
 
 const skipInstall = process.argv.includes("--skip-install")
+const sourcemapsFlag = process.argv.includes("--sourcemaps")
 const plugin = createSolidTransformPlugin()
 const skipEmbedWebUi = process.argv.includes("--skip-embed-web-ui")
 
@@ -97,6 +98,7 @@ const createEmbeddedWebUIBundle = async () => {
   await $`bun run --cwd ${appDir} build`
   const files = (await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: dist })))
     .map((file) => file.replaceAll("\\", "/"))
+    .filter((file) => !file.endsWith(".map"))
     .sort()
   const imports = files.map((file, i) => {
     const spec = path.relative(dir, path.join(dist, file)).replaceAll("\\", "/")
@@ -155,6 +157,7 @@ for (const item of targets) {
     external: ["node-gyp"],
     format: "esm",
     minify: true,
+    sourcemap: sourcemapsFlag ? "linked" : "none",
     splitting: true,
     compile: {
       autoloadBunfig: false,
@@ -171,6 +174,7 @@ for (const item of targets) {
     define: {
       OPENCODE_VERSION: `'${Script.version}'`,
       OPENCODE_MIGRATIONS: JSON.stringify(migrations),
+      OPENCODE_MODELS_DEV: generated.modelsData,
       OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
       OPENCODE_WORKER_PATH: workerPath,
       OPENCODE_CHANNEL: `'${Script.channel}'`,
@@ -197,6 +201,7 @@ for (const item of targets) {
       {
         name,
         version: Script.version,
+        preferUnplugged: true,
         os: [item.os],
         cpu: [item.arch],
       },

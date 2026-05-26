@@ -1,7 +1,9 @@
 import { Bus } from "@/bus"
 import { InstanceState } from "@/effect"
+import { NotFoundError } from "@/storage/storage"
 import { Context, Effect, Exit, Layer, Queue, Scope, Stream } from "effect"
 import { MessageID, SessionID } from "./schema"
+import { applyForegroundFinish, applyForegroundStart } from "./summary-scheduler-foreground"
 import { SessionSummary } from "./summary"
 import * as Session from "./session"
 
@@ -155,26 +157,28 @@ export const layer = Layer.effect(
         const runGuardVersion = current.guardVersion
         const canWrite = () =>
           sessions.get(sessionID).pipe(
-            Effect.as(
-              !current.deleted &&
+            Effect.map(
+              () =>
+                !current.deleted &&
                 current.guardVersion === runGuardVersion &&
                 current.version === runVersion &&
                 current.runVersion === runVersion &&
                 current.messageID === runMessageID,
             ),
-            Effect.catchCause(() => Effect.succeed(false)),
+            Effect.catchIf(NotFoundError.isInstance, () => Effect.succeed(false)),
           )
 
         yield* publishStatus(sessionID, "running", "Summary refresh in progress")
 
         const exit = yield*
-          summary
-            .summarize({
+          Effect.gen(function* () {
+            yield* summary.summarize({
               sessionID,
               messageID,
               canWrite,
             })
-            .pipe(Effect.exit)
+            return yield* canWrite()
+          }).pipe(Effect.exit)
 
         current.running = false
         data.backgroundRunning = false
@@ -192,7 +196,7 @@ export const layer = Layer.effect(
           return yield* Effect.failCause(exit.cause)
         }
 
-        const writeAllowed = yield* canWrite()
+        const writeAllowed = exit.value
 
         if (!current.deleted && (current.rerunNeeded || current.dirty || current.version > current.runVersion)) {
           current.rerunNeeded = false
@@ -204,7 +208,7 @@ export const layer = Layer.effect(
     })
 
     const state = yield* InstanceState.make<State>(
-      Effect.fn("SessionSummaryScheduler.state")(function* () {
+      Effect.fn("SessionSummaryScheduler.state")(function* (_ctx) {
         const wake = yield* Queue.unbounded<void>()
         const scope = yield* Scope.Scope
         const data: State = {
@@ -219,7 +223,7 @@ export const layer = Layer.effect(
 
         yield* Effect.addFinalizer(() => Queue.shutdown(wake))
 
-        yield* bus.subscribe(Session.Event.Deleted).pipe(
+        yield* (yield* bus.subscribe(Session.Event.Deleted)).pipe(
           Stream.runForEach((event) => deleteSessionState(data, event.properties.sessionID)),
           Effect.forkScoped,
         )
@@ -265,15 +269,12 @@ export const layer = Layer.effect(
 
     const foregroundStart = Effect.fn("SessionSummaryScheduler.foregroundStart")(function* (sessionID: SessionID) {
       const data = yield* InstanceState.get(state)
-      data.foregroundCount += 1
-      getSession(data, sessionID).closed = false
+      applyForegroundStart(data, sessionID)
     })
 
     const foregroundFinish = Effect.fn("SessionSummaryScheduler.foregroundFinish")(function* (sessionID: SessionID) {
       const data = yield* InstanceState.get(state)
-      data.foregroundCount = Math.max(0, data.foregroundCount - 1)
-      getSession(data, sessionID).closed = true
-      if (data.foregroundCount === 0) {
+      if (applyForegroundFinish(data, sessionID)) {
         yield* scheduleDirty(data)
         yield* signal(data)
       }
@@ -319,7 +320,11 @@ export const layer = Layer.effect(
 )
 
 export const defaultLayer = Layer.suspend(() =>
-  layer.pipe(Layer.provide(Session.defaultLayer), Layer.provide(SessionSummary.defaultLayer), Layer.provide(Bus.layer)),
+  layer.pipe(
+    Layer.provide(Bus.layer),
+    Layer.provide(SessionSummary.defaultLayer),
+    Layer.provide(Session.defaultLayer),
+  ),
 )
 
 export * as SessionSummaryScheduler from "./summary-scheduler"

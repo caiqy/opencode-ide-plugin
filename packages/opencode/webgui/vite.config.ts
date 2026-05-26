@@ -23,6 +23,8 @@ const proxyRoots = [
   "/agent",
   "/skill",
   "/path",
+  "/lsp",
+  "/formatter",
   "/event",
   "/pty",
   "/experimental",

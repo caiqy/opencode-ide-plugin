@@ -14,7 +14,7 @@ const TOOL_LABELS: Record<string, string> = {
   websearch: "网页搜索",
   codesearch: "代码搜索",
   lsp: "语言服务器查询",
-  image_generation: "图片生成",
+  image_generation: "模型内置生图",
   generate_image: "图片生成",
   batch: "批量工具调用",
   plan_enter: "进入计划模式",

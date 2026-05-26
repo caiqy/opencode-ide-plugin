@@ -5,6 +5,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { SessionRetry } from "../../src/session/retry"
 
 const providerID = ProviderID.make("test")
+const retryProvider = "test"
 
 describe("session.message-v2 stream error recovery", () => {
   test("keeps recovered context overflow as ContextOverflowError", () => {
@@ -74,7 +75,7 @@ describe("session.message-v2 stream error recovery", () => {
         responseBody: JSON.stringify(input),
       },
     })
-    expect(SessionRetry.retryable(result)).toBe("stream_timeout")
+    expect(SessionRetry.retryable(result, retryProvider)).toEqual({ message: "stream_timeout" })
   })
 
   test("marks recovered stream_read_error as retryable", () => {
@@ -85,6 +86,6 @@ describe("session.message-v2 stream error recovery", () => {
     const result = MessageV2.fromError(err, { providerID })
 
     expect(MessageV2.APIError.isInstance(result)).toBe(true)
-    expect(SessionRetry.retryable(result)).toBe("stream_read_error")
+    expect(SessionRetry.retryable(result, retryProvider)).toEqual({ message: "stream_read_error" })
   })
 })

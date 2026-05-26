@@ -1,9 +1,10 @@
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
-import { describe, expect } from "bun:test"
-import { Effect, Exit, Fiber, Layer } from "effect"
+import { describe, expect, test } from "bun:test"
+import { Cause, Effect, Exit, Fiber, Layer } from "effect"
 import { Bus } from "../../src/bus"
 import { Session } from "../../src/session"
 import { MessageID, SessionID } from "../../src/session/schema"
+import { applyForegroundFinish, applyForegroundStart } from "../../src/session/summary-scheduler-foreground"
 import { SessionSummary } from "../../src/session/summary"
 import { SessionSummaryScheduler } from "../../src/session/summary-scheduler"
 import { Snapshot } from "../../src/snapshot"
@@ -19,6 +20,7 @@ const state = {
     | {
         started: PromiseWithResolvers<void>
         release: PromiseWithResolvers<void>
+        skipCanWrite?: boolean
       },
 }
 
@@ -36,6 +38,7 @@ const summary = Layer.succeed(
               gate.started.resolve()
               await gate.release.promise
             })
+            if (gate.skipCanWrite) return
             const allowed = canWrite ? yield* canWrite() : true
             if (allowed) {
               state.writes.push({ sessionID, messageID })
@@ -92,6 +95,53 @@ function waitFor(check: () => boolean, timeout = 250) {
 }
 
 describe("SessionSummaryScheduler", () => {
+  test("foreground helper does not create state for missing sessions", () => {
+    const sessionID = SessionID.descending()
+    const sessions = new Map<SessionID, { closed: boolean }>()
+    const state = { foregroundCount: 0, sessions }
+
+    applyForegroundStart(state, sessionID)
+    const scheduled = applyForegroundFinish(state, sessionID)
+
+    expect(state.foregroundCount).toBe(0)
+    expect(scheduled).toBe(true)
+    expect(Array.from(sessions.keys())).toEqual([])
+  })
+
+  test("foreground helper only updates existing session state", () => {
+    const sessionID = SessionID.descending()
+    const current = { closed: true }
+    const sessions = new Map<SessionID, { closed: boolean }>([[sessionID, current]])
+    const state = { foregroundCount: 0, sessions }
+
+    applyForegroundStart(state, sessionID)
+    expect(state.foregroundCount).toBe(1)
+    expect(current.closed).toBe(false)
+    expect(Array.from(sessions.entries())).toEqual([[sessionID, current]])
+
+    const scheduled = applyForegroundFinish(state, sessionID)
+
+    expect(state.foregroundCount).toBe(0)
+    expect(scheduled).toBe(true)
+    expect(current.closed).toBe(true)
+    expect(Array.from(sessions.entries())).toEqual([[sessionID, current]])
+  })
+
+  const sessionGetError = Layer.mock(Session.Service)({
+    get: () => Effect.die(new Error("session lookup crashed")),
+  })
+  const sessionGetErrorEnv = Layer.mergeAll(
+    Bus.layer,
+    summary,
+    sessionGetError,
+    SessionSummaryScheduler.layer.pipe(
+      Layer.provide(summary),
+      Layer.provide(Bus.layer),
+      Layer.provide(sessionGetError),
+    ),
+  )
+  const errorIt = testEffect(Layer.mergeAll(CrossSpawnSpawner.defaultLayer, sessionGetErrorEnv))
+
   it.live("markDirty automatically runs summarize without manual flush", () =>
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
@@ -407,7 +457,7 @@ describe("SessionSummaryScheduler", () => {
 
         expect(state.calls).toEqual([{ sessionID: session.id, messageID }])
         expect(state.writes).toEqual([])
-        expect(statuses).toEqual(["scheduled", "running"])
+        expect(statuses).toEqual(["scheduled", "running", "deleted"])
       }),
     ),
   )
@@ -460,6 +510,51 @@ describe("SessionSummaryScheduler", () => {
         ])
         expect(state.writes).toEqual([{ sessionID: session.id, messageID }])
         expect(statuses).toEqual(["scheduled", "running", "scheduled", "running", "idle"])
+      }),
+    ),
+  )
+
+  errorIt.live("unexpected post-summarize session lookup errors publish failed status and stay visible", () =>
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        state.calls.length = 0
+        state.writes.length = 0
+        state.failures = 0
+        const gate = {
+          started: Promise.withResolvers<void>(),
+          release: Promise.withResolvers<void>(),
+          skipCanWrite: true,
+        }
+        state.pauseNext = gate
+
+        const bus = yield* Bus.Service
+        const scheduler = yield* SessionSummaryScheduler.Service
+        const sessionID = SessionID.descending()
+        const messageID = MessageID.ascending()
+        const statuses: string[] = []
+
+        const off = yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+          if (event.properties.sessionID === sessionID) statuses.push(event.properties.status)
+        })
+
+        yield* scheduler.syncVisible([sessionID])
+        yield* scheduler.markDirty({ sessionID, messageID, version: 1 })
+        const flush = yield* scheduler.flush().pipe(Effect.forkScoped)
+        yield* Effect.promise(() => gate.started.promise)
+        yield* scheduler.syncVisible([])
+        gate.release.resolve()
+
+        const exit = yield* Fiber.join(flush).pipe(Effect.exit)
+        yield* settleBus()
+        off()
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) {
+          expect(Cause.pretty(exit.cause)).toContain("session lookup crashed")
+        }
+        expect(state.calls).toEqual([{ sessionID, messageID }])
+        expect(state.writes).toEqual([])
+        expect(statuses).toEqual(["scheduled", "running", "failed"])
       }),
     ),
   )

@@ -6,6 +6,7 @@ import { bridgeServer } from "../../ui/IdeBridgeServer"
 import { WebviewController } from "../../ui/WebviewController"
 import { errorHandler } from "../../utils/ErrorHandler"
 import { FileMonitor } from "../../utils/FileMonitor"
+import { testResponse } from "./fetchResponse"
 
 suite("WebviewController Test Suite", () => {
   teardown(() => {
@@ -14,7 +15,19 @@ suite("WebviewController Test Suite", () => {
 
   async function loadController(options: { uiBase?: string } = {}) {
     let handlers: unknown
+    let receiveMessage: ((message: any) => unknown) | undefined
     const writeFile = sinon.stub().resolves()
+    const bridgeSend = sinon.stub(bridgeServer, "send").returns(undefined)
+    const webview = {
+      html: "",
+      cspSource: "vscode-webview:",
+      asWebviewUri: sinon.stub().callsFake((uri: vscode.Uri) => uri),
+      onDidReceiveMessage: sinon.stub().callsFake((handler: (message: any) => unknown) => {
+        receiveMessage = handler
+        return { dispose: sinon.spy() }
+      }),
+      postMessage: sinon.stub().resolves(true),
+    } as unknown as vscode.Webview & { html: string }
 
     sinon.stub(globals, "getUpdateService").returns(undefined)
     sinon.stub(bridgeServer, "createSession").callsFake(async (input) => {
@@ -28,14 +41,6 @@ suite("WebviewController Test Suite", () => {
     sinon.stub(FileMonitor.prototype, "startMonitoring").callsFake(() => undefined)
     sinon.stub(FileMonitor.prototype, "stopMonitoring").callsFake(() => undefined)
     sinon.stub(vscode.env, "asExternalUri").callsFake(async (uri: vscode.Uri) => uri)
-    const webview = {
-      html: "",
-      cspSource: "vscode-webview:",
-      asWebviewUri: sinon.stub().callsFake((uri: vscode.Uri) => uri),
-      onDidReceiveMessage: sinon.stub().returns({ dispose: sinon.spy() }),
-      postMessage: sinon.stub().resolves(true),
-    } as unknown as vscode.Webview
-
     const context = {
       extensionUri: vscode.Uri.file("D:/test-extension"),
       extension: { packageJSON: { version: "1.0.0" } },
@@ -56,10 +61,26 @@ suite("WebviewController Test Suite", () => {
 
     return {
       controller,
+      webview,
+      bridgeSend,
       writeFile,
+      receiveMessage: (message: any) => receiveMessage?.(message),
       saveImage: (handlers as { saveImage?: (url: string, filename: string) => Promise<{ cancelled: boolean }> }).saveImage,
     }
   }
+
+  test("readUris 只把解析结果返回 webview，不通过 bridge 直接插入", async () => {
+    sinon.stub(vscode.workspace.fs, "stat").resolves({ type: vscode.FileType.File } as vscode.FileStat)
+    sinon.stub(vscode.workspace.fs, "readFile").resolves(Buffer.from("content"))
+    const { controller, webview, bridgeSend, receiveMessage } = await loadController()
+
+    await receiveMessage({ type: "readUris", uris: ["file:///C:/repo/a.ts"] })
+
+    assert.ok((webview.postMessage as unknown as sinon.SinonStub).calledWithMatch({ type: "readUrisResult" }))
+    assert.ok(!bridgeSend.calledWithMatch("session-save-image", sinon.match({ type: "insertPaths" })))
+
+    controller.dispose()
+  })
 
   test("load 过程中若先 dispose 再 await 失败，仍会回滚已延后创建的资源", async () => {
     const updateService = {
@@ -211,7 +232,7 @@ suite("WebviewController Test Suite", () => {
     const showSaveDialog = sinon.stub(vscode.window, "showSaveDialog").resolves(target)
     globalThis.fetch = (async (input) => {
       assert.strictEqual(String(input), "https://example.com/image.png")
-      return new Response(Buffer.from("remote-image"), { status: 200 })
+      return testResponse(Buffer.from("remote-image"), { status: 200 })
     }) as typeof fetch
 
     try {
@@ -242,7 +263,7 @@ suite("WebviewController Test Suite", () => {
         String(input),
         "http://127.0.0.1:4096/generated-image?path=.opencode%2Fgenerated-images%2Ffoo.png",
       )
-      return new Response(Buffer.from("relative-image"), { status: 200 })
+      return testResponse(Buffer.from("relative-image"), { status: 200 })
     }) as typeof fetch
 
     try {

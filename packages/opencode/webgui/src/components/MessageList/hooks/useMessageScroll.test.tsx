@@ -312,7 +312,28 @@ describe("useMessageScroll", () => {
     expect(getByTestId("scroll-button-visible").textContent).toBe("0")
   })
 
-  it("手动 smooth 回底过程中不会让到底按钮闪回显示", () => {
+  it("following 时 history 区深层内容增长也会继续贴到底部", () => {
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const shell = getByTestId("message-scroll-container")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 500)
+    fireEvent.scroll(parent)
+    tracker.reset()
+
+    tracker.growHeight(1060)
+    triggerResize(shell)
+
+    expect(tracker.getTop()).toBe(560)
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+  })
+
+  it("手动快速回底过程中不会让到底按钮闪回显示", () => {
     vi.useFakeTimers()
 
     const { getByTestId } = render(
@@ -328,7 +349,7 @@ describe("useMessageScroll", () => {
 
     fireEvent.click(getByTestId("scroll-button"))
 
-    expect(tracker.scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: "smooth" })
+    expect(tracker.scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: "auto" })
     expect(getByTestId("scroll-button-visible").textContent).toBe("0")
 
     tracker.setMetrics(1000, 500, 460)
@@ -336,7 +357,90 @@ describe("useMessageScroll", () => {
     expect(getByTestId("scroll-button-visible").textContent).toBe("0")
   })
 
-  it("手动 smooth 期间用户再次上滑后会停止后续自动跟随", () => {
+  it("button-seek 不再创建额外的固定延迟收尾 timer", () => {
+    vi.useFakeTimers()
+
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 400)
+    fireEvent.scroll(parent)
+    fireEvent.click(getByTestId("scroll-button"))
+
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it("button-seek 后若整体布局继续增长 24px，会通过 shell resize 立即校准到底部", () => {
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const shell = getByTestId("message-scroll-container")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 0)
+    fireEvent.scroll(parent)
+    fireEvent.click(getByTestId("scroll-button"))
+    tracker.setMetrics(1024, 500, 500)
+    triggerResize(shell)
+
+    expect(tracker.getTop()).toBe(524)
+    tracker.setMetrics(1024, 500, 524)
+    fireEvent.scroll(parent)
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+  })
+
+  it("button-seek 首次到达底部后仍会响应随后 24px shell 布局增长", () => {
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const shell = getByTestId("message-scroll-container")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 0)
+    fireEvent.scroll(parent)
+    fireEvent.click(getByTestId("scroll-button"))
+    tracker.setMetrics(1000, 500, 500)
+    fireEvent.scroll(parent)
+    tracker.setMetrics(1024, 500, 500)
+    triggerResize(shell)
+
+    expect(tracker.getTop()).toBe(524)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+  })
+
+  it("button-seek 到底后即使中间有一次布局收缩 scroll，也会响应后续 shell 增长", () => {
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const shell = getByTestId("message-scroll-container")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 0)
+    fireEvent.scroll(parent)
+    fireEvent.click(getByTestId("scroll-button"))
+    tracker.setMetrics(1000, 500, 500)
+    fireEvent.scroll(parent)
+    tracker.setMetrics(976, 500, 476)
+    fireEvent.scroll(parent)
+    tracker.setMetrics(1000, 500, 476)
+    triggerResize(shell)
+
+    expect(tracker.getTop()).toBe(500)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+  })
+
+  it("手动快速回底期间用户再次上滑后会停止后续自动跟随", () => {
     vi.useFakeTimers()
 
     const { getByTestId } = render(
@@ -405,12 +509,12 @@ describe("useMessageScroll", () => {
     fireEvent.click(getByTestId("scroll-button"))
     expect(getByTestId("scroll-mode").textContent).toBe("seeking")
     expect(getByTestId("scroll-button-visible").textContent).toBe("0")
-    expect(tracker.scrollTo).toHaveBeenLastCalledWith({ top: 1000, behavior: "smooth" })
+    expect(tracker.scrollTo).toHaveBeenLastCalledWith({ top: 1000, behavior: "auto" })
 
     tracker.growHeight(1400)
     triggerResize(tail)
 
-    expect(tracker.scrollTo).toHaveBeenLastCalledWith({ top: 1400, behavior: "smooth" })
+    expect(tracker.scrollTo).toHaveBeenLastCalledWith({ top: 1400, behavior: "auto" })
     expect(getByTestId("scroll-button-visible").textContent).toBe("0")
 
     tracker.setMetrics(1400, 500, 900)
@@ -424,6 +528,34 @@ describe("useMessageScroll", () => {
     triggerResize(tail)
 
     expect(tracker.getCount()).toBeGreaterThan(0)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+  })
+
+  it("button-seek 后多次整体布局增长会通过 shell resize 立即追到底部", () => {
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const shell = getByTestId("message-scroll-container")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 200)
+    fireEvent.scroll(parent)
+    fireEvent.click(getByTestId("scroll-button"))
+    expect(getByTestId("scroll-mode").textContent).toBe("seeking")
+
+    tracker.growHeight(1060)
+    triggerResize(shell)
+    expect(tracker.scrollTo).toHaveBeenLastCalledWith({ top: 1060, behavior: "auto" })
+
+    tracker.setMetrics(1060, 500, 560)
+    fireEvent.scroll(parent)
+    tracker.scrollTo.mockClear()
+
+    tracker.growHeight(1120)
+    triggerResize(shell)
+    expect(tracker.getTop()).toBe(620)
     expect(getByTestId("scroll-button-visible").textContent).toBe("0")
   })
 
@@ -446,7 +578,7 @@ describe("useMessageScroll", () => {
 
     expect(getByTestId("scroll-mode").textContent).toBe("seeking")
     expect(getByTestId("scroll-button-visible").textContent).toBe("0")
-    expect(tracker.scrollTo).toHaveBeenLastCalledWith({ top: 1400, behavior: "smooth" })
+    expect(tracker.scrollTo).toHaveBeenLastCalledWith({ top: 1400, behavior: "auto" })
   })
 
   it("button-seek 期间键盘上滚伴随尺寸变化时不会被重新吸到底部", () => {
@@ -1247,6 +1379,40 @@ describe("useMessageScroll", () => {
     expect(getByTestId("scroll-button-visible").textContent).toBe("1")
   })
 
+  it("接近底部时会校准到物理最底部，避免残留 1-5px 距离", () => {
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 496)
+    fireEvent.scroll(parent)
+
+    expect(tracker.getTop()).toBe(500)
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+    expect(getByTestId("scroll-at-bottom").textContent).toBe("1")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+  })
+
+  it("接近底部但超过回弹校准范围时不会强制吸回，避免吞掉用户小幅上滑", () => {
+    const { getByTestId } = render(
+      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1000, 500, 480)
+    fireEvent.scroll(parent)
+
+    expect(tracker.getTop()).toBe(480)
+    expect(getByTestId("scroll-mode").textContent).toBe("following")
+    expect(getByTestId("scroll-at-bottom").textContent).toBe("1")
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
+  })
+
   it("用户已离开底部时，顶部 prepend 历史不会强制跳到底部", () => {
     const { rerender, getByTestId } = render(
       <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} />,
@@ -1291,6 +1457,29 @@ describe("useMessageScroll", () => {
 
     rerender(<Harness sessionID="s2" sortedMessages={textMessage("ab")} isIdle={false} isReasoning={false} />)
     expect(tracker.getCount()).toBe(1)
+  })
+
+  it("稳定期内发生 shell 尺寸变化时，稳定结束后会补一次贴底", () => {
+    const { rerender, getByTestId } = render(
+      <Harness sessionID="s2" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} settling controls />,
+    )
+
+    const parent = getByTestId("scroll-parent")
+    const shell = getByTestId("message-scroll-container")
+    const tracker = makeScrollTracker(parent)
+
+    tracker.setMetrics(1300, 500, 800)
+    fireEvent.scroll(parent)
+    tracker.reset()
+
+    tracker.growHeight(1380)
+    triggerResize(shell)
+    expect(tracker.getCount()).toBe(0)
+
+    rerender(<Harness sessionID="s2" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls />)
+
+    expect(tracker.getTop()).toBe(880)
+    expect(getByTestId("scroll-button-visible").textContent).toBe("0")
   })
 
   it("没有 ResizeObserver 时仍保留基础 tail 贴底语义", () => {

@@ -123,7 +123,7 @@ async function run(name: string, tools: ToolSet = {}) {
       } satisfies Agent.Info
 
       const user = {
-        id: MessageID.make(`user-${name}`),
+        id: MessageID.make(`msg-${name}`),
         sessionID,
         role: "user",
         time: { created: Date.now() },

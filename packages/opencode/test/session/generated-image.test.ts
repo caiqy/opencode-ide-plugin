@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { normalizeImageGenerationOutput } from "../../src/session/generated-image"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 
-const sessionID = SessionID.zod.parse("ses_01J5Y5H0AH4Q4NXJ6P4C3P5V2K")
-const messageID = MessageID.zod.parse("msg_01J5Y5H0AH4Q4NXJ6P4C3P5V2M")
+const sessionID = SessionID.make("ses_01J5Y5H0AH4Q4NXJ6P4C3P5V2K")
+const messageID = MessageID.make("msg_01J5Y5H0AH4Q4NXJ6P4C3P5V2M")
 const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAF/gL+ee1vNwAAAABJRU5ErkJggg=="
 const svgDataUrl = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg=="
 

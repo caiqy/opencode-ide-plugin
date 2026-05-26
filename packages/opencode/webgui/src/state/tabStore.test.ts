@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
       }),
     ),
     saveOpenTabs: vi.fn(async (_value: unknown) => ({ open_tabs: [], active_tab: "" })),
+    saveTabs: vi.fn(async (_value: unknown) => ({ open_tabs: [], active_tab: "" })),
     activateTab: vi.fn(async (_sessionId: string) => ({ ok: true })),
   }
 })
@@ -19,6 +20,7 @@ vi.mock("./repo/tabsRepo", () => {
   return {
     loadTabs: () => mocks.loadTabs(),
     saveOpenTabs: (value: unknown) => mocks.saveOpenTabs(value),
+    saveTabs: (value: unknown) => mocks.saveTabs(value),
     activateTab: (sessionId: string) => mocks.activateTab(sessionId),
   }
 })
@@ -34,6 +36,7 @@ describe("useTabStore", () => {
     vi.resetAllMocks()
     mocks.loadTabs.mockResolvedValue({ open_tabs: [], active_tab: "" })
     mocks.saveOpenTabs.mockResolvedValue({ open_tabs: [], active_tab: "" })
+    mocks.saveTabs.mockResolvedValue({ open_tabs: [], active_tab: "" })
     mocks.activateTab.mockResolvedValue({ ok: true })
   })
 
@@ -107,9 +110,26 @@ describe("useTabStore", () => {
 
     expect(result.current.openTabs).toEqual(["s1", "s2"])
     expect(result.current.activeTab).toBe("s1")
-    expect(mocks.saveOpenTabs).toHaveBeenCalledTimes(2)
+    expect(mocks.saveTabs).toHaveBeenCalledTimes(2)
     expect(mocks.activateTab).toHaveBeenCalledWith("s1")
-    expect(mocks.saveOpenTabs).toHaveBeenLastCalledWith(["s1", "s2"])
+    expect(mocks.saveTabs).toHaveBeenLastCalledWith({ open_tabs: ["s1", "s2"], active_tab: "s2" })
+    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
+  })
+
+  it("openTab 原子保存 open_tabs 与 active_tab", async () => {
+    const { result } = renderHook(() => useTabStore(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    act(() => {
+      result.current.openTab("s1")
+      result.current.openTab("s2")
+    })
+
+    expect(mocks.saveTabs).toHaveBeenLastCalledWith({ open_tabs: ["s1", "s2"], active_tab: "s2" })
+    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
   })
 
   it("openTab 仅激活已存在标签时走 activateTab 入口", async () => {
@@ -124,6 +144,7 @@ describe("useTabStore", () => {
     })
 
     mocks.saveOpenTabs.mockClear()
+    mocks.saveTabs.mockClear()
     mocks.activateTab.mockClear()
 
     act(() => {
@@ -133,6 +154,7 @@ describe("useTabStore", () => {
     expect(result.current.openTabs).toEqual(["s1"])
     expect(result.current.activeTab).toBe("s1")
     expect(mocks.activateTab).toHaveBeenCalledWith("s1")
+    expect(mocks.saveTabs).not.toHaveBeenCalled()
     expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
   })
 
@@ -169,11 +191,21 @@ describe("useTabStore", () => {
       result.current.openTab("s2")
       result.current.openTab("s3")
       result.current.activateTab("s2")
+    })
+
+    mocks.saveOpenTabs.mockClear()
+    mocks.saveTabs.mockClear()
+
+    act(() => {
       result.current.closeTab("s2")
     })
 
     expect(result.current.openTabs).toEqual(["s1", "s3"])
     expect(result.current.activeTab).toBe("s3")
+    expect(mocks.saveTabs).toHaveBeenCalledWith({ open_tabs: ["s1", "s3"], active_tab: "s3" })
+    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
+
+    mocks.saveTabs.mockClear()
 
     act(() => {
       result.current.closeTab("s3")
@@ -181,6 +213,8 @@ describe("useTabStore", () => {
 
     expect(result.current.openTabs).toEqual(["s1"])
     expect(result.current.activeTab).toBe("s1")
+    expect(mocks.saveTabs).toHaveBeenCalledWith({ open_tabs: ["s1"], active_tab: "s1" })
+    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
   })
 
   it("closeTab clears activeTab when closing last tab", async () => {
@@ -192,11 +226,19 @@ describe("useTabStore", () => {
 
     act(() => {
       result.current.openTab("s1")
+    })
+
+    mocks.saveOpenTabs.mockClear()
+    mocks.saveTabs.mockClear()
+
+    act(() => {
       result.current.closeTab("s1")
     })
 
     expect(result.current.openTabs).toEqual([])
     expect(result.current.activeTab).toBe("")
+    expect(mocks.saveTabs).toHaveBeenCalledWith({ open_tabs: [], active_tab: "" })
+    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
   })
 
   it("activateTab is no-op for non-existing tab", async () => {
@@ -211,6 +253,7 @@ describe("useTabStore", () => {
     })
 
     mocks.saveOpenTabs.mockClear()
+    mocks.saveTabs.mockClear()
 
     act(() => {
       result.current.activateTab("missing")
@@ -218,6 +261,7 @@ describe("useTabStore", () => {
 
     expect(result.current.openTabs).toEqual(["s1"])
     expect(result.current.activeTab).toBe("s1")
+    expect(mocks.saveTabs).not.toHaveBeenCalled()
     expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
   })
 
@@ -231,11 +275,19 @@ describe("useTabStore", () => {
     act(() => {
       result.current.openTab("s1")
       result.current.openTab("s2")
+    })
+
+    mocks.saveOpenTabs.mockClear()
+    mocks.saveTabs.mockClear()
+
+    act(() => {
       result.current.removeTab("s2")
     })
 
     expect(result.current.openTabs).toEqual(["s1"])
     expect(result.current.activeTab).toBe("s1")
+    expect(mocks.saveTabs).toHaveBeenCalledWith({ open_tabs: ["s1"], active_tab: "s1" })
+    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
   })
 
   it("replaceTab keeps position and updates active when needed", async () => {
@@ -321,6 +373,7 @@ describe("useTabStore", () => {
     })
 
     mocks.saveOpenTabs.mockClear()
+    mocks.saveTabs.mockClear()
 
     act(() => {
       result.current.reorderTabs(2, 0)
@@ -328,20 +381,21 @@ describe("useTabStore", () => {
     })
 
     expect(result.current.openTabs).toEqual(["s1", "s3", "s2"])
-    expect(mocks.saveOpenTabs).toHaveBeenCalledTimes(0)
+    expect(mocks.saveTabs).toHaveBeenCalledTimes(0)
 
     act(() => {
       vi.advanceTimersByTime(499)
     })
 
-    expect(mocks.saveOpenTabs).toHaveBeenCalledTimes(0)
+    expect(mocks.saveTabs).toHaveBeenCalledTimes(0)
 
     act(() => {
       vi.advanceTimersByTime(1)
     })
 
-    expect(mocks.saveOpenTabs).toHaveBeenCalledTimes(1)
-    expect(mocks.saveOpenTabs).toHaveBeenCalledWith(["s1", "s3", "s2"])
+    expect(mocks.saveTabs).toHaveBeenCalledTimes(1)
+    expect(mocks.saveTabs).toHaveBeenCalledWith({ open_tabs: ["s1", "s3", "s2"], active_tab: "s3" })
+    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
   })
 
   it("flushes pending reorder persistence on unmount", async () => {
@@ -360,17 +414,19 @@ describe("useTabStore", () => {
     })
 
     mocks.saveOpenTabs.mockClear()
+    mocks.saveTabs.mockClear()
 
     act(() => {
       result.current.reorderTabs(2, 0)
     })
 
-    expect(mocks.saveOpenTabs).toHaveBeenCalledTimes(0)
+    expect(mocks.saveTabs).toHaveBeenCalledTimes(0)
 
     unmount()
 
-    expect(mocks.saveOpenTabs).toHaveBeenCalledTimes(1)
-    expect(mocks.saveOpenTabs).toHaveBeenCalledWith(["s3", "s1", "s2"])
+    expect(mocks.saveTabs).toHaveBeenCalledTimes(1)
+    expect(mocks.saveTabs).toHaveBeenCalledWith({ open_tabs: ["s3", "s1", "s2"], active_tab: "s3" })
+    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
   })
 
   it("pruneTabs is a no-op when all tabs are valid", async () => {
@@ -386,12 +442,14 @@ describe("useTabStore", () => {
     })
 
     mocks.saveOpenTabs.mockClear()
+    mocks.saveTabs.mockClear()
 
     act(() => {
       result.current.pruneTabs(new Set(["s1", "s2"]))
     })
 
     expect(result.current.openTabs).toEqual(["s1", "s2"])
+    expect(mocks.saveTabs).not.toHaveBeenCalled()
     expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
   })
 
@@ -410,6 +468,7 @@ describe("useTabStore", () => {
     })
 
     mocks.saveOpenTabs.mockClear()
+    mocks.saveTabs.mockClear()
 
     act(() => {
       result.current.pruneTabs(new Set(["s1", "s3"]))
@@ -418,8 +477,8 @@ describe("useTabStore", () => {
     expect(result.current.openTabs).toEqual(["s1", "s3"])
     expect(result.current.activeTab).toBe("s3")
     await waitFor(() => {
-      expect(mocks.saveOpenTabs).toHaveBeenCalledWith(["s1", "s3"])
-      expect(mocks.activateTab).toHaveBeenCalledWith("s3")
+      expect(mocks.saveTabs).toHaveBeenCalledWith({ open_tabs: ["s1", "s3"], active_tab: "s3" })
     })
+    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
   })
 })

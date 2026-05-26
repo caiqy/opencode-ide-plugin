@@ -47,6 +47,7 @@ npm-debug.log*
 # Include compiled JavaScript output
 !out/**/*.js
 !out/**/*.js.map
+out/test/**
 
 # Include resources (binaries)
 !resources/**

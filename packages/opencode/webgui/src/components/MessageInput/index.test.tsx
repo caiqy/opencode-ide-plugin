@@ -285,7 +285,8 @@ describe("MessageInput compact confirm", () => {
     render(<MessageInput sessionID="s1" />)
 
     await waitFor(() => {
-      expect(lastQuickPhraseBarProps).toBeTruthy()
+      expect(lastQuickPhraseBarProps.mode).toBe("fill_input")
+      expect(lastQuickPhraseBarProps.items[0]?.body).toBe("请总结改动")
     })
     expect(lastQuickPhraseBarProps.items).toEqual([
       {
@@ -301,7 +302,8 @@ describe("MessageInput compact confirm", () => {
     render(<MessageInput sessionID="s1" />)
 
     await waitFor(() => {
-      expect(lastQuickPhraseBarProps).toBeTruthy()
+      expect(lastQuickPhraseBarProps.mode).toBe("fill_input")
+      expect(lastQuickPhraseBarProps.items[0]?.body).toBe("请总结改动")
     })
 
     act(() => {

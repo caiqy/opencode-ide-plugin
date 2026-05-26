@@ -18,10 +18,38 @@ const cache = {
   workspace: new Map<string, string>(),
   mem: new Map<string, string>(),
 }
+const dirty = {
+  global: new Set<string>(),
+  workspace: new Set<string>(),
+  mem: new Set<string>(),
+}
 const seen = new Map<string, number>()
 const delay = 5000
 
 let report: ((input: { key: string; error: ScopedStateWriteError; message: string }) => void) | null = null
+
+function browserKey(scope: StorageScope, key: string) {
+  return `opencode:webgui:scoped:${scope}:${key}`
+}
+
+function browserGet(scope: StorageScope, key: string) {
+  if (scope === "mem") return undefined
+  try {
+    return window.localStorage.getItem(browserKey(scope, key)) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+function browserSet(scope: StorageScope, key: string, value: string) {
+  if (scope === "mem") return true
+  try {
+    window.localStorage.setItem(browserKey(scope, key), value)
+    return true
+  } catch {
+    return false
+  }
+}
 
 function warn(key: string, error: ScopedStateWriteError) {
   const id = `${key}:${error}`
@@ -42,14 +70,23 @@ export function resetScopedStateForTest() {
   cache.global.clear()
   cache.workspace.clear()
   cache.mem.clear()
+  dirty.global.clear()
+  dirty.workspace.clear()
+  dirty.mem.clear()
   seen.clear()
   report = null
 }
 
 export async function scopedStateGet(scope: StorageScope, keys: string[]) {
   const mem = cache[scope]
+  const dirtyKeys = dirty[scope]
   if (!ideBridge.isInstalled()) {
-    return Object.fromEntries(keys.map((key) => [key, mem.get(key)]))
+    return Object.fromEntries(
+      keys.map((key) => [
+        key,
+        dirtyKeys.has(key) ? mem.get(key) ?? browserGet(scope, key) : browserGet(scope, key) ?? mem.get(key),
+      ]),
+    )
   }
 
   const host = await ideBridge.storageGet(scope, keys)
@@ -58,22 +95,45 @@ export async function scopedStateGet(scope: StorageScope, keys: string[]) {
   }
 
   keys.forEach((key) => {
-    if (typeof host[key] === "string") {
+    if (!dirtyKeys.has(key) && typeof host[key] === "string") {
       mem.set(key, host[key]!)
     }
   })
 
-  return Object.fromEntries(keys.map((key) => [key, host[key] ?? mem.get(key)]))
+  return Object.fromEntries(
+    keys.map((key) => [
+      key,
+      dirtyKeys.has(key) ? mem.get(key) ?? host[key] : host[key] ?? mem.get(key),
+    ]),
+  )
 }
 
 export async function scopedStateSet(scope: StorageScope, key: string, value: string): Promise<ScopedStateWriteResult> {
   const mem = cache[scope]
+  const dirtyKeys = dirty[scope]
   mem.set(key, value)
-  if (!ideBridge.isInstalled()) return { ok: true }
+  if (!ideBridge.isInstalled()) {
+    const ok = browserSet(scope, key, value)
+    if (ok) {
+      dirtyKeys.delete(key)
+      return { ok: true }
+    }
+
+    dirtyKeys.add(key)
+    warn(key, "host_write_failed")
+    return {
+      ok: false,
+      error: "host_write_failed",
+    }
+  }
 
   const ok = await ideBridge.storageSet(scope, key, value)
-  if (ok) return { ok: true }
+  if (ok) {
+    dirtyKeys.delete(key)
+    return { ok: true }
+  }
 
+  dirtyKeys.add(key)
   warn(key, "host_write_failed")
   return {
     ok: false,

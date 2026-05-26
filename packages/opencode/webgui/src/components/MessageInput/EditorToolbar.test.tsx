@@ -63,6 +63,40 @@ describe("EditorToolbar", () => {
     expect(addFile).toHaveAttribute("title", "添加文件")
   })
 
+  it("隐藏文件输入框提供表单标识与可访问名称", () => {
+    const { container } = render(
+      <EditorToolbar
+        selectedProviderId="openai"
+        selectedModelId="gpt-4.1"
+        selectedAgent="build"
+        onModelSelect={vi.fn()}
+        onAgentSelect={vi.fn()}
+        onFileSelect={vi.fn()}
+        isDisabled={false}
+        modelSelectorKey={0}
+        lastFailedMessage={null}
+        onRetry={vi.fn()}
+        fileInputRef={{ current: null } as any}
+        onFileChange={vi.fn()}
+        isIdle={true}
+        isButtonDisabled={false}
+        isCompactDisabled={false}
+        onSubmit={vi.fn()}
+        onAbort={vi.fn()}
+        onCompactClick={vi.fn()}
+        variants={[]}
+        selectedVariant={undefined}
+        onVariantSelect={vi.fn()}
+        isReasoningModel={false}
+      />,
+    )
+
+    const input = container.querySelector('input[type="file"]')
+    expect(input).toHaveAttribute("id", "opencode-file-input")
+    expect(input).toHaveAttribute("name", "opencode-file-input")
+    expect(input).toHaveAttribute("aria-label", "添加文件")
+  })
+
   it("selection 切换期间显示加载占位而不是旧选择器", () => {
     render(
       <EditorToolbar

@@ -8,11 +8,10 @@ import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner
 
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { Global } from "@opencode-ai/core/global"
-import { Log } from "@/util"
+import * as Log from "@opencode-ai/core/util/log"
 import { sanitizedProcessEnv } from "@opencode-ai/core/util/opencode-process"
-import { which } from "@/util/which"
-import { zod } from "@/util/effect-zod"
-import { withStatics } from "@/util/schema"
+import { which, whichAll } from "@/util/which"
+import { NonNegativeInt } from "@opencode-ai/core/schema"
 
 const log = Log.create({ service: "ripgrep" })
 const VERSION = "15.1.0"
@@ -27,19 +26,19 @@ const PLATFORM = {
 } as const
 
 const TimeStats = Schema.Struct({
-  secs: Schema.Number,
-  nanos: Schema.Number,
+  secs: NonNegativeInt,
+  nanos: NonNegativeInt,
   human: Schema.String,
 })
 
 const Stats = Schema.Struct({
   elapsed: TimeStats,
-  searches: Schema.Number,
-  searches_with_match: Schema.Number,
-  bytes_searched: Schema.Number,
-  bytes_printed: Schema.Number,
-  matched_lines: Schema.Number,
-  matches: Schema.Number,
+  searches: NonNegativeInt,
+  searches_with_match: NonNegativeInt,
+  bytes_searched: NonNegativeInt,
+  bytes_printed: NonNegativeInt,
+  matched_lines: NonNegativeInt,
+  matches: NonNegativeInt,
 })
 
 const PathText = Schema.Struct({
@@ -58,18 +57,18 @@ export const SearchMatch = Schema.Struct({
   lines: Schema.Struct({
     text: Schema.String,
   }),
-  line_number: Schema.Number,
-  absolute_offset: Schema.Number,
+  line_number: NonNegativeInt,
+  absolute_offset: NonNegativeInt,
   submatches: Schema.Array(
     Schema.Struct({
       match: Schema.Struct({
         text: Schema.String,
       }),
-      start: Schema.Number,
-      end: Schema.Number,
+      start: NonNegativeInt,
+      end: NonNegativeInt,
     }),
   ),
-}).pipe(withStatics((s) => ({ zod: zod(s) })))
+})
 
 export const Match = Schema.Struct({
   type: Schema.Literal("match"),
@@ -80,7 +79,7 @@ const End = Schema.Struct({
   type: Schema.Literal("end"),
   data: Schema.Struct({
     path: PathText,
-    binary_offset: Schema.NullOr(Schema.Number),
+    binary_offset: Schema.NullOr(NonNegativeInt),
     stats: Stats,
   }),
 })
@@ -190,6 +189,10 @@ function parse(line: string) {
   return decodeResult(line).pipe(Effect.mapError((cause) => new Error("invalid ripgrep output", { cause })))
 }
 
+export function selectBinary(matches: string[]) {
+  return matches.find((item) => !item.split(path.sep).some((part) => part === ".bin")) ?? null
+}
+
 function fail(queue: Queue.Queue<string, PlatformError | Error | Cause.Done>, err: PlatformError | Error) {
   Queue.failCauseUnsafe(queue, Cause.fail(err))
 }
@@ -288,11 +291,11 @@ export const layer: Layer.Layer<Service, never, AppFileSystem.Service | ChildPro
 
       const filepath = yield* Effect.cached(
         Effect.gen(function* () {
-          const system = yield* Effect.sync(() => which(process.platform === "win32" ? "rg.exe" : "rg"))
-          if (system && (yield* fs.isFile(system).pipe(Effect.orDie))) return system
-
           const target = path.join(Global.Path.bin, `rg${process.platform === "win32" ? ".exe" : ""}`)
           if (yield* fs.isFile(target).pipe(Effect.orDie)) return target
+
+          const system = yield* Effect.sync(() => selectBinary(whichAll(process.platform === "win32" ? "rg.exe" : "rg")))
+          if (system && (yield* fs.isFile(system).pipe(Effect.orDie))) return system
 
           const platformKey = `${process.arch}-${process.platform}` as keyof typeof PLATFORM
           const config = PLATFORM[platformKey]

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react"
+import type { Session } from "@opencode-ai/sdk/client"
 import { useEventStream, useEventHandler, eventEmitter, type ServerEvent, type ConnectionState } from "./lib/api/events"
 import { useSessionEvents } from "./lib/api/useSessionEvents"
 import { useSession } from "./state/SessionContext"
@@ -19,6 +20,12 @@ import { SubtaskDrawer } from "./components/SubtaskDrawer/SubtaskDrawer"
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts"
 import { ideBridge } from "./lib/ideBridge"
 import { extractPathsFromDrop } from "./lib/dnd"
+import { createDropCoordinator } from "./lib/dropCoordinator"
+import {
+  isUnsupportedForwardedSystemFileDrop,
+  isUnsupportedNativeSystemFileDrop,
+  unsupportedSystemFileDropMessage,
+} from "./lib/dropUnsupported"
 import { initKeyboardHandler, destroyKeyboardHandler } from "./lib/keyboardHandler"
 import { useSessionActivation } from "./state/useSessionActivation"
 import { useTabStore } from "./state/tabStore"
@@ -74,11 +81,101 @@ export function handleSessionUiEvent(input: {
   })
 }
 
+export type ReuseCheck = "reusable" | "not_reusable" | "unknown"
+type SessionCandidate = { id: string }
+type DefaultSessionInput = Pick<Session, "id" | "title" | "parentID"> & {
+  time: Session["time"] & { archived?: number }
+}
+
+function normalizeReuseCheck(value: unknown): ReuseCheck {
+  if (value === true) return "reusable"
+  if (value === false) return "not_reusable"
+  if (value === "reusable" || value === "not_reusable" || value === "unknown") return value
+  return "unknown"
+}
+
+function isNotFoundError(error: unknown) {
+  const record = typeof error === "object" && error !== null ? (error as Record<string, unknown>) : null
+  const data = typeof record?.data === "object" && record.data !== null ? (record.data as Record<string, unknown>) : null
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : record?.message
+  const dataMessage = data?.message
+  const text = [message, dataMessage]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase()
+
+  return (
+    record?.name === "NotFoundError" ||
+    text.includes("404") ||
+    text.includes("not found") ||
+    text.includes("not_found") ||
+    text.includes("not-found") ||
+    text.includes("session not found") ||
+    record?.status === 404 ||
+    record?.status === "404" ||
+    record?.statusCode === 404 ||
+    record?.statusCode === "404"
+  )
+}
+
+export function reuseCheckFromResponses(input: {
+  exists: boolean | "unknown"
+  messages: unknown[] | "unknown"
+}): ReuseCheck {
+  if (input.exists === false) return "not_reusable"
+  if (input.exists === "unknown" || input.messages === "unknown") return "unknown"
+  return input.messages.length === 0 ? "reusable" : "not_reusable"
+}
+
+export async function findReusableDefaultSession(
+  sessions: DefaultSessionInput[],
+  messages: (id: string) => Promise<unknown[]> | unknown[],
+): Promise<SessionCandidate | null> {
+  return [...sessions]
+    .filter(
+      (session) =>
+        !session.parentID &&
+        session.time.archived === undefined &&
+        /^New session - \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(session.title || ""),
+    )
+    .sort((a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created))
+    .reduce<Promise<SessionCandidate | null>>(async (result, session) => {
+      const found = await result
+      if (found) return found
+      const list = await Promise.resolve(messages(session.id)).catch(() => null)
+      return list?.length === 0 ? { id: session.id } : null
+    }, Promise.resolve(null))
+}
+
+export async function findReusableDefaultSessionFallback(input: {
+  sessions: DefaultSessionInput[]
+  list: () => Promise<DefaultSessionInput[]>
+  messages: (id: string) => Promise<unknown[]> | unknown[]
+}) {
+  const loaded = input.sessions.length > 0 ? input.sessions : await input.list()
+  return findReusableDefaultSession(loaded, input.messages)
+}
+
+export async function checkDraftSessionReusable(id: string): Promise<ReuseCheck> {
+  const session = await sdk.session.get({ path: { id } }).catch((error: unknown) => error)
+  if (isNotFoundError(session)) return "not_reusable"
+  const response = typeof session === "object" && session !== null ? (session as { data?: unknown; error?: unknown }) : null
+  if (!response || session instanceof Error) return "unknown"
+  if (isNotFoundError(response.error)) return "not_reusable"
+  if (response.error) return "unknown"
+  if (!response.data) return reuseCheckFromResponses({ exists: false, messages: "unknown" })
+  const messages = await sdk.session.messages({ path: { id } }).catch(() => null)
+  if (!messages || messages.error) return "unknown"
+  if (!messages.data) return "unknown"
+  return reuseCheckFromResponses({ exists: true, messages: messages.data })
+}
+
 export async function prepareSession(input: {
   draft: string | null
   restore?: () => Promise<string | null>
-  reusable: (id: string) => Promise<boolean>
-  create: () => Promise<{ id: string } | null>
+  reusable: (id: string) => Promise<ReuseCheck | boolean>
+  fallback?: () => Promise<SessionCandidate | null>
+  create: () => Promise<SessionCandidate | null>
   open: (id: string) => void
   switchTo: (id: string) => Promise<void>
   setDraft: (id: string | null) => void
@@ -86,8 +183,11 @@ export async function prepareSession(input: {
 }) {
   const draft = input.draft ?? (input.restore ? await input.restore().catch(() => null) : null)
   if (draft) {
-    const ok = await input.reusable(draft).catch(() => false)
-    if (ok) {
+    const reuse = await input
+      .reusable(draft)
+      .then(normalizeReuseCheck)
+      .catch((): ReuseCheck => "unknown")
+    if (reuse === "reusable") {
       input.open(draft)
       const restored = await input
         .switchTo(draft)
@@ -95,10 +195,23 @@ export async function prepareSession(input: {
         .catch(() => false)
       if (restored) return
     }
-    input.setDraft(null)
+    if (reuse === "not_reusable") input.setDraft(null)
   }
 
-  const next = await input.create()
+  const fallback = input.fallback ? await input.fallback().catch(() => null) : null
+  if (fallback) {
+    input.open(fallback.id)
+    const switched = await input
+      .switchTo(fallback.id)
+      .then(() => true)
+      .catch(() => false)
+    if (switched) {
+      input.setDraft(fallback.id)
+      return
+    }
+  }
+
+  const next = await input.create().catch(() => null)
   if (!next) {
     input.fail()
     return
@@ -131,6 +244,14 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     pastePath: (path: string) => void
     insertPlainWithMentions: (value: string) => void
   }>(null)
+  const dropCoordinatorRef = useRef<ReturnType<typeof createDropCoordinator> | null>(null)
+  if (!dropCoordinatorRef.current) {
+    dropCoordinatorRef.current = createDropCoordinator({
+      focus: () => messageInputRef.current?.focus(),
+      insertPaths: (paths) => messageInputRef.current?.insertPaths(paths),
+      pastePath: (path) => messageInputRef.current?.pastePath(path),
+    })
+  }
 
   useEffect(() => {
     setScopedStateWriteErrorReporter((input) => {
@@ -178,13 +299,35 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     void prepareSession({
       draft: null,
       restore: loadDraftSession,
-      reusable: async (id) => {
-        const session = await sdk.session.get({ path: { id } })
-        if (!session.data) return false
-        const messages = await sdk.session.messages({ path: { id } })
-        if (messages.error) return false
-        return (messages.data ?? []).length === 0
-      },
+      reusable: checkDraftSessionReusable,
+      fallback: () =>
+        findReusableDefaultSessionFallback({
+          sessions,
+          list: () =>
+            sdk.session.list({ limit: 50, roots: true }).then((response) => {
+              if (response.error) {
+                throw new Error(
+                  typeof response.error === "object" && "message" in response.error
+                    ? String(response.error.message)
+                    : "Failed to load sessions",
+                )
+              }
+              if (!Array.isArray(response.data)) throw new Error("sessions missing")
+              return response.data
+            }),
+          messages: async (id) => {
+            const messages = await sdk.session.messages({ path: { id } })
+            if (messages.error) {
+              throw new Error(
+                typeof messages.error === "object" && "message" in messages.error
+                  ? String(messages.error.message)
+                  : "Failed to load messages",
+              )
+            }
+            if (!Array.isArray(messages.data)) throw new Error("messages missing")
+            return messages.data
+          },
+        }),
       create: createSession,
       open: tabStore.openTab,
       switchTo: switchSession,
@@ -197,7 +340,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     }).finally(() => {
       creating.current = false
     })
-  }, [createSession, switchSession, tabStore.openTab, showToast])
+  }, [createSession, sessions, switchSession, tabStore.openTab, showToast])
 
   const handleToggleSessionList = useCallback(() => {
     compactHeaderRef.current?.toggleSessionDropdown()
@@ -259,6 +402,40 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
 
   // Host → UI bridge messages
   useEffect(() => {
+    const consumeReadUrisResult = (msg: any) => {
+      const files = (msg.payload?.filePaths ?? msg.filePaths) as string[] | undefined
+      const directories = (msg.payload?.directoryPaths ?? msg.directoryPaths) as string[] | undefined
+      if (!Array.isArray(files) && !Array.isArray(directories)) return false
+      return dropCoordinatorRef.current?.consume({
+        files: Array.isArray(files) ? files : [],
+        directories: Array.isArray(directories) ? directories : [],
+      })
+    }
+
+    const consumeDragEventDrop = (msg: any) => {
+      const eventType = typeof msg.eventType === "string" ? msg.eventType : ""
+      const payload = msg.payload as
+        | {
+            dataTransfer?: { data?: Record<string, string> }
+          }
+        | undefined
+      if (eventType !== "drop" || !payload?.dataTransfer?.data) return false
+      if (isUnsupportedForwardedSystemFileDrop(payload)) {
+        showToast(unsupportedSystemFileDropMessage, { variant: "warning", duration: 5000 })
+        return true
+      }
+      const data = payload.dataTransfer.data
+      const uriList = (data["application/vnd.code.uri-list"] || data["text/uri-list"]) as string | undefined
+      if (!uriList) return false
+      const files = uriList
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && !s.startsWith("#"))
+        .map((uri) => (uri.startsWith("file://") ? uri.replace("file://", "") : uri))
+      if (files.length === 0) return false
+      return dropCoordinatorRef.current?.consume({ files })
+    }
+
     const handler = (msg: any) => {
       if (!msg || typeof msg !== "object") return
       if (msg.type === "insertPaths") {
@@ -275,7 +452,11 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
           messageInputRef.current?.pastePath(path)
         }
       }
+      if (msg.type === "readUrisResult") {
+        consumeReadUrisResult(msg)
+      }
       if (msg.type === "drag-event") {
+        if (consumeDragEventDrop(msg)) return
         if (!isMac) return
         const eventType = typeof msg.eventType === "string" ? msg.eventType : ""
         const payload = msg.payload as
@@ -287,20 +468,6 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
             }
           | undefined
         if (!eventType || !payload) return
-
-        if (eventType === "drop" && payload.dataTransfer && payload.dataTransfer.data) {
-          const uriList = payload.dataTransfer.data["application/vnd.code.uri-list"] as string | undefined
-          if (!uriList) return
-          const paths = uriList
-            .split("\n")
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0 && !s.startsWith("#"))
-            .map((uri) => (uri.startsWith("file://") ? uri.replace("file://", "") : uri))
-          if (paths.length === 0) return
-          messageInputRef.current?.focus()
-          messageInputRef.current?.insertPaths(paths)
-          return
-        }
 
         const clientX = typeof payload.clientX === "number" ? payload.clientX : 0
         const clientY = typeof payload.clientY === "number" ? payload.clientY : 0
@@ -317,7 +484,22 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
       }
     }
     ideBridge.on(handler)
-    return () => ideBridge.off(handler)
+    const windowHandler = (event: MessageEvent) => {
+      const msg = event.data
+      if (!msg || typeof msg !== "object") return
+      if (msg.type === "readUrisResult") {
+        consumeReadUrisResult(msg)
+        return
+      }
+      if (msg.type === "drag-event") {
+        consumeDragEventDrop(msg)
+      }
+    }
+    window.addEventListener("message", windowHandler)
+    return () => {
+      ideBridge.off(handler)
+      window.removeEventListener("message", windowHandler)
+    }
   }, [])
 
   // Accept drop anywhere in the webview (VSCode iframe)
@@ -331,8 +513,12 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
       ev.stopPropagation()
       const paths = extractPathsFromDrop(ev)
       if (paths && paths.length > 0) {
-        messageInputRef.current?.focus()
-        messageInputRef.current?.insertPaths(paths)
+        dropCoordinatorRef.current?.consume({ files: paths })
+        return
+      }
+      const types = ev.dataTransfer?.types ? Array.from(ev.dataTransfer.types) : []
+      if (isUnsupportedNativeSystemFileDrop({ types, paths: paths ?? [] })) {
+        showToast(unsupportedSystemFileDropMessage, { variant: "warning", duration: 5000 })
       }
     }
     document.addEventListener("dragover", onDragOver as any)

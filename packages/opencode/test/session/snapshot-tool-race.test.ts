@@ -18,14 +18,14 @@ import type * as PlatformError from "effect/PlatformError"
 import type * as Scope from "effect/Scope"
 import fs from "fs/promises"
 import path from "path"
-import { Session } from "../../src/session"
+import { Session } from "@/session/session"
 import { LLM } from "../../src/session/llm"
 import { SessionPrompt } from "../../src/session/prompt"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionSummary } from "../../src/session/summary"
 import { SessionSummaryScheduler } from "../../src/session/summary-scheduler"
 import { MessageV2 } from "../../src/session/message-v2"
-import { Log } from "../../src/util"
+import * as Log from "@opencode-ai/core/util/log"
 import { provideTmpdirServer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { TestLLMServer } from "../lib/llm-server"
@@ -33,16 +33,19 @@ import { TestLLMServer } from "../lib/llm-server"
 // Same layer setup as prompt-effect.test.ts
 import { NodeFileSystem } from "@effect/platform-node"
 import { Agent as AgentSvc } from "../../src/agent/agent"
+import { BackgroundJob } from "@/background/job"
+import { Git } from "../../src/git"
 import { Bus } from "../../src/bus"
 import { Command } from "../../src/command"
-import { Config } from "../../src/config"
-import { LSP } from "../../src/lsp"
+import { Config } from "@/config/config"
+import { LSP } from "@/lsp/lsp"
 import { MCP } from "../../src/mcp"
 import { Permission } from "../../src/permission"
 import { Plugin } from "../../src/plugin"
-import { Provider as ProviderSvc } from "../../src/provider"
+import { Provider as ProviderSvc } from "@/provider/provider"
 import { Env } from "../../src/env"
 import { Question } from "../../src/question"
+import { Image } from "../../src/image/image"
 import { Skill } from "../../src/skill"
 import { SystemPrompt } from "../../src/session/system"
 import { Todo } from "../../src/session/todo"
@@ -52,12 +55,17 @@ import { SessionProcessor } from "../../src/session/processor"
 import { SessionRunState } from "../../src/session/run-state"
 import { SessionStatus } from "../../src/session/status"
 import { Snapshot } from "../../src/snapshot"
-import { ToolRegistry } from "../../src/tool"
-import { Truncate } from "../../src/tool"
+import { ToolRegistry } from "@/tool/registry"
+import { Truncate } from "@/tool/truncate"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { Ripgrep } from "../../src/file/ripgrep"
 import { Format } from "../../src/format"
+import { Reference } from "../../src/reference/reference"
+import { RepositoryCache } from "../../src/reference/repository-cache"
+import { SyncEvent } from "@/sync"
+import { RuntimeFlags } from "@/effect/runtime-flags"
+import { EventV2Bridge } from "@/event-v2-bridge"
 
 void Log.init({ print: false })
 
@@ -126,7 +134,10 @@ function makeHttp() {
     lsp,
     mcp,
     AppFileSystem.defaultLayer,
+    BackgroundJob.defaultLayer,
     status,
+    SyncEvent.defaultLayer,
+    EventV2Bridge.defaultLayer,
   ).pipe(Layer.provideMerge(infra))
   const question = Question.layer.pipe(Layer.provideMerge(deps))
   const todo = Todo.layer.pipe(Layer.provideMerge(deps))
@@ -134,8 +145,12 @@ function makeHttp() {
     Layer.provide(Skill.defaultLayer),
     Layer.provide(FetchHttpClient.layer),
     Layer.provide(CrossSpawnSpawner.defaultLayer),
+    Layer.provide(RepositoryCache.defaultLayer),
+    Layer.provide(Git.defaultLayer),
+    Layer.provide(Reference.defaultLayer),
     Layer.provide(Ripgrep.defaultLayer),
     Layer.provide(Format.defaultLayer),
+    Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
     Layer.provideMerge(todo),
     Layer.provideMerge(question),
     Layer.provideMerge(deps),
@@ -143,14 +158,27 @@ function makeHttp() {
   const trunc = Truncate.layer.pipe(Layer.provideMerge(deps))
   const summary = SessionSummary.defaultLayer
   const summaryScheduler = SessionSummaryScheduler.defaultLayer
-  const proc = SessionProcessor.layer.pipe(Layer.provide(summaryScheduler), Layer.provide(summary), Layer.provideMerge(deps))
-  const compact = SessionCompaction.layer.pipe(Layer.provideMerge(proc), Layer.provideMerge(deps))
+  const proc = SessionProcessor.layer.pipe(
+    Layer.provide(summaryScheduler),
+    Layer.provide(summary),
+    Layer.provide(Image.defaultLayer),
+    Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
+    Layer.provideMerge(deps),
+  )
+  const compact = SessionCompaction.layer.pipe(
+    Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
+    Layer.provideMerge(proc),
+    Layer.provideMerge(deps),
+  )
   return Layer.mergeAll(
     TestLLMServer.layer,
+    summary,
     SessionPrompt.layer.pipe(
       Layer.provide(SessionRevert.defaultLayer),
       Layer.provide(summaryScheduler),
       Layer.provide(summary),
+      Layer.provide(Image.defaultLayer),
+      Layer.provide(Reference.defaultLayer),
       Layer.provideMerge(run),
       Layer.provideMerge(compact),
       Layer.provideMerge(proc),
@@ -158,6 +186,7 @@ function makeHttp() {
       Layer.provideMerge(trunc),
       Layer.provide(Instruction.defaultLayer),
       Layer.provide(SystemPrompt.defaultLayer),
+      Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
       Layer.provideMerge(deps),
     ),
   ).pipe(Layer.provide(summaryScheduler), Layer.provide(summary))
@@ -247,7 +276,7 @@ const runSnapshotRace = (): Effect.Effect<void, PlatformError.PlatformError, Htt
       expect(tool?.state.status).toBe("completed")
 
       // Poll for diff — summarize() is fire-and-forget
-      let diff: Array<{ file: string }> = []
+      let diff: Array<{ file?: string }> = []
       for (let i = 0; i < 50; i++) {
         diff = yield* summary.diff({ sessionID: session.id })
         if (diff.length > 0) break
