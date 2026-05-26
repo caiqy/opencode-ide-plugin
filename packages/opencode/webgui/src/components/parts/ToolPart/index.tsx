@@ -99,8 +99,6 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
           }
         | undefined
     )?.files
-    if (!Array.isArray(files)) return [] as string[]
-
     const seen = new Set<string>()
     const next: string[] = []
     const add = (value?: string) => {
@@ -110,13 +108,25 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
       next.push(value)
     }
 
-    for (const item of files) {
+    for (const item of files ?? []) {
       add(item.filePath)
       add(item.movePath)
     }
 
+    const patchText = partialInput?.patchText ?? partialInput?.patch
+    if (typeof patchText === "string") {
+      patchText
+        .split("\n")
+        .map((line) =>
+          line.match(/^\*\*\*\s+(?:Add|Update|Delete) File:\s+(.+?)\s*$/)?.[1] ??
+          line.match(/^\*\*\*\s+Move to:\s+(.+?)\s*$/)?.[1],
+        )
+        .filter((path): path is string => Boolean(path))
+        .forEach(add)
+    }
+
     return next
-  }, [part.tool, part.state.metadata])
+  }, [part.tool, part.state.metadata, partialInput])
 
   const lineRange = useMemo(() => {
     if (part.tool !== "read") return undefined
@@ -456,17 +466,17 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
           {renderOutput()}
 
           {/* Content preview for write tool */}
-          {showWriteContent && <WriteTool content={writeContent} filePath={filePath ?? ""} />}
+          {showWriteContent && <WriteTool content={writeContent} />}
 
           {/* Diff view for edit tool */}
           {showDiff && <EditTool diff={String(part.state.metadata?.diff)} />}
 
           {showEditPartial && (
-            <WriteTool content={editNewString} filePath={filePath ?? ""} />
+            <WriteTool content={editNewString} />
           )}
 
           {/* apply_patch: show patch content as additions */}
-          {showApplyPatchContent && <WriteTool content={applyPatchContent} filePath={filePath || ""} />}
+          {showApplyPatchContent && <WriteTool content={applyPatchContent} />}
 
           {/* Expandable tools keep attachments inside the collapsible content. */}
           {part.state.status === "completed" && !isHeaderOnlyTool ? (

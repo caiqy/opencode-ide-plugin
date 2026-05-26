@@ -105,6 +105,24 @@ describe("ToolPart streaming preview", () => {
     expect(screen.getByText(/\+hello/)).toBeInTheDocument()
   })
 
+  it("pending write 在 header 显示已流入的文件名，不在展开区重复显示路径", () => {
+    const part = {
+      id: "prt_w_file_name",
+      type: "tool",
+      callID: "call_w_file_name",
+      tool: "write",
+      state: {
+        status: "pending",
+        input: {},
+        raw: '{"filePath":"/tmp/a.ts","content":"hello\\nworld',
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+    expect(screen.getByText("a.ts")).toBeInTheDocument()
+    expect(screen.queryByText("/tmp/a.ts")).not.toBeInTheDocument()
+  })
+
   it("pending edit 在展开区按 newString 走 WriteTool 预览", () => {
     const part = {
       id: "prt_e1",
@@ -155,6 +173,24 @@ describe("ToolPart streaming preview", () => {
 
     render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
     expect(screen.getByText(/已接收\s*4\s*行/)).toBeInTheDocument()
+  })
+
+  it("pending apply_patch 在 header 显示 patchText 里的目标文件名", () => {
+    const part = {
+      id: "prt_p_file_name",
+      type: "tool",
+      callID: "call_p_file_name",
+      tool: "apply_patch",
+      state: {
+        status: "pending",
+        input: {},
+        raw: '{"patchText":"*** Begin Patch\\n*** Add File: test-200-lines.txt\\n+Line 001',
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+    expect(screen.getByText("test-200-lines.txt")).toBeInTheDocument()
+    expect(screen.getByText(/已接收\s*3\s*行/)).toBeInTheDocument()
   })
 
   it("pending 非三件套（read）不显示已接收行数", () => {

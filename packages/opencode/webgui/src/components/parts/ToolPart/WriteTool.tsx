@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react"
 
 interface WriteToolProps {
   content: string
-  filePath: string
 }
 
 export function WriteTool({ content }: WriteToolProps) {
