@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo, useRef } from "react"
 import type { TaskResultParsed } from "../../../types/messages"
 import { DiffModal } from "../../DiffModal"
 import { IconButton } from "../../common"
@@ -18,7 +18,7 @@ import { QuestionTool } from "./QuestionTool"
 import { ToolImageAttachments } from "./ToolImageAttachments"
 import { getToolDisplayName, getBorderColor, getSubtaskStatusLabel, getToolLabel } from "./utils"
 import { parseTaskResult } from "../../../lib/task-result"
-import { usePartialToolInput } from "./usePartialToolInput"
+import { isStreamableTool, usePartialToolInput } from "./usePartialToolInput"
 import { countLines } from "../../../lib/partial-tool-input"
 import type { QuestionInfo } from "@opencode-ai/sdk/v2/client"
 
@@ -65,6 +65,7 @@ interface ToolPartProps {
 export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPartProps) {
   const [showDiffModal, setShowDiffModal] = useState(false)
   const [isResponding, setIsResponding] = useState<"once" | "always" | "reject" | null>(null)
+  const autoExpandedRef = useRef<string | null>(null)
 
   const open = usePartOpen()
   const isExpanded = open.isOpen(part.id)
@@ -86,7 +87,9 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   }, [getPermissionForCall, sessionID, part.callID])
 
   const toolName = getToolDisplayName(part.tool, part.state.input, part.state.title, part.state.output)
-  const filePath = (displayInput.filePath as string | undefined) || undefined
+  const filePath = typeof displayInput.filePath === "string" ? displayInput.filePath : undefined
+  const writeContent = typeof displayInput.content === "string" ? displayInput.content : ""
+  const editNewString = typeof displayInput.newString === "string" ? displayInput.newString : ""
   const patchFilePaths = useMemo(() => {
     if (part.tool !== "apply_patch") return [] as string[]
     const files = (
@@ -169,7 +172,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const showWriteContent =
     part.tool === "write" &&
     (part.state.status === "completed" || partialInput !== null) &&
-    Boolean(displayInput.content)
+    writeContent.length > 0
   const showDiff =
     (part.tool === "edit" || part.tool === "multiedit") &&
     part.state.status === "completed" &&
@@ -177,8 +180,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const showEditPartial =
     part.tool === "edit" &&
     partialInput !== null &&
-    typeof displayInput.newString === "string" &&
-    (displayInput.newString as string).length > 0
+    editNewString.length > 0
   const showError = part.state.status === "error" && Boolean(part.state.error)
 
   const questionInput = useMemo(() => {
@@ -331,10 +333,15 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   }, [subtaskSessionId, ensureSession])
 
   useEffect(() => {
-    if (part.state.status !== "pending") return
-    if (part.tool !== "write" && part.tool !== "edit" && part.tool !== "apply_patch") return
-    if (open.isOpen(part.id)) return
-    open.setOpen(part.id, true)
+    // Auto-expand once per pending session; after that, respect manual collapse.
+    if (part.state.status !== "pending") {
+      autoExpandedRef.current = null
+      return
+    }
+    if (autoExpandedRef.current === part.id) return
+    if (!isStreamableTool(part.tool)) return
+    autoExpandedRef.current = part.id
+    if (!open.isOpen(part.id)) open.setOpen(part.id, true)
   }, [part.state.status, part.tool, part.id, open])
 
   const progress = (() => {
@@ -449,13 +456,13 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
           {renderOutput()}
 
           {/* Content preview for write tool */}
-          {showWriteContent && <WriteTool content={String(displayInput.content)} filePath={filePath!} />}
+          {showWriteContent && <WriteTool content={writeContent} filePath={filePath ?? ""} />}
 
           {/* Diff view for edit tool */}
           {showDiff && <EditTool diff={String(part.state.metadata?.diff)} />}
 
           {showEditPartial && (
-            <WriteTool content={String(displayInput.newString)} filePath={String(displayInput.filePath ?? "")} />
+            <WriteTool content={editNewString} filePath={filePath ?? ""} />
           )}
 
           {/* apply_patch: show patch content as additions */}

@@ -140,6 +140,23 @@ describe("ToolPart streaming preview", () => {
     expect(screen.getByText(/\+\*\*\* Begin Patch/)).toBeInTheDocument()
   })
 
+  it("pending apply_patch 的 header 也显示已接收行数", () => {
+    const part = {
+      id: "prt_p2",
+      type: "tool",
+      callID: "call_p2",
+      tool: "apply_patch",
+      state: {
+        status: "pending",
+        input: {},
+        raw: '{"patchText":"*** Begin Patch\\n*** Add File: a.ts\\n+hello\\n*** End Patch',
+      },
+    } as any
+
+    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+    expect(screen.getByText(/已接收\s*4\s*行/)).toBeInTheDocument()
+  })
+
   it("pending 非三件套（read）不显示已接收行数", () => {
     const part = {
       id: "prt_r1",
@@ -195,6 +212,40 @@ describe("ToolPart streaming preview", () => {
 
     render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
     expect(mocks.setOpen).toHaveBeenCalledWith("prt_auto1", true)
+  })
+
+  it("用户手动收起 pending 卡片后，effect 不应再次自动展开", () => {
+    // First render: card is closed -> effect should auto-expand once
+    mocks.isOpen.mockReturnValue(false)
+    const part = {
+      id: "prt_collapse_persist",
+      type: "tool",
+      callID: "call_cp",
+      tool: "write",
+      state: {
+        status: "pending",
+        input: {},
+        raw: '{"filePath":"/tmp/a.ts","content":"x',
+      },
+    } as any
+
+    const view = render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+    expect(mocks.setOpen).toHaveBeenCalledTimes(1)
+    expect(mocks.setOpen).toHaveBeenCalledWith("prt_collapse_persist", true)
+
+    // Simulate the user collapsing manually: setOpen is invoked with false outside
+    // our control; from our component's view, isOpen now reports false again. The
+    // raw also grows (more delta arrived).
+    mocks.setOpen.mockClear()
+    const part2 = {
+      ...part,
+      state: { ...part.state, raw: '{"filePath":"/tmp/a.ts","content":"x\\nmore' },
+    } as any
+
+    view.rerender(<ToolPart part={part2} sessionID="s1" messageID="m1" />)
+
+    // Effect must NOT call setOpen again - user's collapse decision is respected
+    expect(mocks.setOpen).not.toHaveBeenCalled()
   })
 
   it("pending 非三件套（read）不会触发自动展开", () => {

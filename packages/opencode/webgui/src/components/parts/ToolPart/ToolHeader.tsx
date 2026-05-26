@@ -139,9 +139,15 @@ export function ToolHeader({
                 </span>
               ))
             : null}
+          {showPatchFileLinks && lineRange ? (
+            <span className="text-gray-500 dark:text-gray-400 ml-1.5 font-normal">{lineRange}</span>
+          ) : null}
         </span>
       ) : (
-        <span className="text-xs font-medium flex-1 min-w-0 truncate">{toolName}</span>
+        <span className="text-xs font-medium flex-1 min-w-0 truncate">
+          {toolName}
+          {lineRange && <span className="text-gray-500 dark:text-gray-400 ml-1.5 font-normal">{lineRange}</span>}
+        </span>
       )}
       {durationText && (
         <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">{durationText}</span>

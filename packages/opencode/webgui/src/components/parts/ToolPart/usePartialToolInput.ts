@@ -3,6 +3,8 @@ import { parsePartialInput } from "../../../lib/partial-tool-input"
 
 const STREAMABLE = new Set(["write", "edit", "apply_patch"])
 
+export const isStreamableTool = (tool: string): boolean => STREAMABLE.has(tool)
+
 /**
  * In `pending` status, returns a best-effort parse of the streaming
  * tool args from `state.raw`. Returns `null` outside of pending or for
@@ -20,7 +22,7 @@ export function usePartialToolInput(
   const deferredRaw = useDeferredValue(raw ?? "")
   return useMemo(() => {
     if (status !== "pending") return null
-    if (!STREAMABLE.has(tool)) return null
+    if (!isStreamableTool(tool)) return null
     if (!deferredRaw) return null
     return parsePartialInput(deferredRaw)
   }, [status, tool, deferredRaw])
