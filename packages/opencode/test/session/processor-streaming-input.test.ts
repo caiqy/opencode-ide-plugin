@@ -235,10 +235,11 @@ it.live("accumulates tool-input-delta into state.raw for write tool", () =>
         yield* Effect.gen(function* () {
           yield* llm.wait(1)
           const part = yield* pollUntilToolPending(chat.id)
+          const expectedArgs = JSON.stringify({ filePath: "/tmp/x.txt", content: "hello world" })
+          const expectedPartial = expectedArgs.slice(0, Math.max(1, Math.floor(expectedArgs.length / 2)))
 
           expect(part.state.status).toBe("pending")
-          expect(part.state.raw.length).toBeGreaterThan(0)
-          expect(part.state.raw.startsWith("{")).toBe(true)
+          expect(part.state.raw).toBe(expectedPartial)
         }).pipe(Effect.ensuring(Fiber.interrupt(run)))
       }),
     { config: (url) => providerCfg(url) },
