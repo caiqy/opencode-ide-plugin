@@ -1,14 +1,24 @@
+import { useEffect, useRef } from "react"
+
 interface EditToolProps {
   diff: string
 }
 
 export function EditTool({ diff }: EditToolProps) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [diff])
+
   // Filter to only show changed lines (additions, deletions, and hunk headers for context)
   const lines = diff.split("\n")
 
   return (
     <div className="px-3 py-1.5">
-      <div className="text-xs overflow-x-auto max-h-60 overflow-y-auto">
+      <div ref={scrollRef} className="text-xs overflow-x-auto max-h-60 overflow-y-auto">
         <pre className="font-mono text-[11px] whitespace-pre leading-[1.6]">
           {lines.map((line, i) => {
             // Skip file-level headers (---, +++, diff, index lines)
