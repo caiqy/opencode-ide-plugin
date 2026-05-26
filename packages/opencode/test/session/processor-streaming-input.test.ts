@@ -263,3 +263,174 @@ const pollUntilToolPending = Effect.fn("pollUntilToolPending")(function* (sessio
   }
   return yield* Effect.fail(new Error("no pending tool part with raw observed within 2.5s"))
 })
+
+const pollUntilAnyPendingTool = Effect.fn("pollUntilAnyPendingTool")(function* (sessionID: SessionID) {
+  const session = yield* Session.Service
+  for (let i = 0; i < 50; i++) {
+    const messages = yield* session.messages({ sessionID })
+    const part = messages
+      .flatMap((msg) => msg.parts)
+      .find(
+        (part): part is PendingToolPart =>
+          part.type === "tool" && part.state.status === "pending",
+      )
+    if (part) return part
+    yield* Effect.sleep("50 millis")
+  }
+  return yield* Effect.fail(new Error("no pending tool part observed within 2.5s"))
+})
+
+it.live("accumulates tool-input-delta into state.raw for edit tool", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+        yield* llm.toolHang("edit", { filePath: "/tmp/x.txt", oldString: "hello", newString: "world" })
+
+        const chat = yield* session.create({ title: "streaming-input-edit" })
+        const parent = yield* user(chat.id, "edit it")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: chat.id,
+          model: mdl,
+        })
+        const run = yield* handle
+          .process({
+            user: {
+              id: parent.id,
+              sessionID: chat.id,
+              role: "user",
+              time: parent.time,
+              agent: parent.agent,
+              model: { providerID: ref.providerID, modelID: ref.modelID },
+            } satisfies MessageV2.User,
+            sessionID: chat.id,
+            model: mdl,
+            agent: agent(),
+            system: [],
+            messages: [{ role: "user", content: "edit it" }],
+            tools: {},
+          } satisfies LLM.StreamInput)
+          .pipe(Effect.forkChild)
+
+        yield* Effect.gen(function* () {
+          yield* llm.wait(1)
+          const part = yield* pollUntilToolPending(chat.id)
+          const expectedArgs = JSON.stringify({ filePath: "/tmp/x.txt", oldString: "hello", newString: "world" })
+          const expectedPartial = expectedArgs.slice(0, Math.max(1, Math.floor(expectedArgs.length / 2)))
+
+          expect(part.state.status).toBe("pending")
+          expect(part.state.raw).toBe(expectedPartial)
+        }).pipe(Effect.ensuring(Fiber.interrupt(run)))
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
+it.live("accumulates tool-input-delta into state.raw for apply_patch tool", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+        yield* llm.toolHang("apply_patch", {
+          filePath: "/tmp/x.txt",
+          patchText: "--- a/x.txt\n+++ b/x.txt\n@@ -1 +1 @@\n-hello\n+world",
+        })
+
+        const chat = yield* session.create({ title: "streaming-input-apply-patch" })
+        const parent = yield* user(chat.id, "patch it")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: chat.id,
+          model: mdl,
+        })
+        const run = yield* handle
+          .process({
+            user: {
+              id: parent.id,
+              sessionID: chat.id,
+              role: "user",
+              time: parent.time,
+              agent: parent.agent,
+              model: { providerID: ref.providerID, modelID: ref.modelID },
+            } satisfies MessageV2.User,
+            sessionID: chat.id,
+            model: mdl,
+            agent: agent(),
+            system: [],
+            messages: [{ role: "user", content: "patch it" }],
+            tools: {},
+          } satisfies LLM.StreamInput)
+          .pipe(Effect.forkChild)
+
+        yield* Effect.gen(function* () {
+          yield* llm.wait(1)
+          const part = yield* pollUntilToolPending(chat.id)
+          const expectedArgs = JSON.stringify({
+            filePath: "/tmp/x.txt",
+            patchText: "--- a/x.txt\n+++ b/x.txt\n@@ -1 +1 @@\n-hello\n+world",
+          })
+          const expectedPartial = expectedArgs.slice(0, Math.max(1, Math.floor(expectedArgs.length / 2)))
+
+          expect(part.state.status).toBe("pending")
+          expect(part.state.raw).toBe(expectedPartial)
+        }).pipe(Effect.ensuring(Fiber.interrupt(run)))
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
+it.live("does not accumulate raw for non-streamable tool", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+        yield* llm.toolHang("bash", { cmd: "pwd" })
+
+        const chat = yield* session.create({ title: "streaming-input-non-streamable" })
+        const parent = yield* user(chat.id, "run bash")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: chat.id,
+          model: mdl,
+        })
+        const run = yield* handle
+          .process({
+            user: {
+              id: parent.id,
+              sessionID: chat.id,
+              role: "user",
+              time: parent.time,
+              agent: parent.agent,
+              model: { providerID: ref.providerID, modelID: ref.modelID },
+            } satisfies MessageV2.User,
+            sessionID: chat.id,
+            model: mdl,
+            agent: agent(),
+            system: [],
+            messages: [{ role: "user", content: "run bash" }],
+            tools: {},
+          } satisfies LLM.StreamInput)
+          .pipe(Effect.forkChild)
+
+        yield* Effect.gen(function* () {
+          yield* llm.wait(1)
+          // tool-input-start creates the part, tool-input-delta follows in the
+          // same processor fiber. A short sleep ensures both are consumed before
+          // we read state.raw. If bash were (wrongly) added to STREAMABLE_TOOLS,
+          // raw would be populated by the delta.
+          yield* Effect.sleep("100 millis")
+          const part = yield* pollUntilAnyPendingTool(chat.id)
+
+          expect(part.state.raw).toBe("")
+        }).pipe(Effect.ensuring(Fiber.interrupt(run)))
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
