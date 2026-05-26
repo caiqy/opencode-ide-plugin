@@ -1,24 +1,14 @@
 import { useEffect } from "react"
-import { $getSelection, $isRangeSelection, $createTextNode, type LexicalEditor } from "lexical"
-import { $createMentionNode } from "../../mention/MentionNode"
-import { extractPathsFromDrop } from "../../../lib/dnd"
-import { toProjectRelative } from "../../../utils/path"
 
 interface UseDragDropOptions {
   contentEditableRef: React.RefObject<HTMLDivElement | null>
   containerRef: React.RefObject<HTMLDivElement | null>
-  editor: LexicalEditor
-  worktree: string | null
-  parseWithRange: (val: string) => { display: string; path: string; range?: { start: number; end: number } }
   disabled?: boolean
 }
 
 export function useDragDrop({
   contentEditableRef,
   containerRef,
-  editor,
-  worktree,
-  parseWithRange,
   disabled = false,
 }: UseDragDropOptions) {
   // Attach drag-and-drop to the contentEditable
@@ -64,50 +54,6 @@ export function useDragDrop({
       ev.preventDefault()
       overCount = 0
       removeHighlight()
-      if (disabled) return
-      const paths = extractPathsFromDrop(ev)
-      if (paths && paths.length > 0) {
-        // Reuse the same insertion logic as insertPaths
-        let tries = 0
-        const perform = () => {
-          if (!worktree && tries++ < 10) {
-            setTimeout(perform, 200)
-            return
-          }
-          editor.update(() => {
-            const selection = $getSelection()
-            if (!$isRangeSelection(selection)) return
-            const nodes = [] as any[]
-
-            for (const raw of paths) {
-              const isDir = raw.endsWith("/")
-              if (isDir) {
-                let rel = toProjectRelative(raw, worktree)
-                if (!rel.endsWith("/")) rel = rel + "/"
-                const metadata = { type: "directory" as const, display: rel, path: rel }
-                nodes.push($createMentionNode(metadata))
-                nodes.push($createTextNode(" "))
-                continue
-              }
-
-              const parsed = parseWithRange(raw)
-              const relBase = toProjectRelative(parsed.path, worktree)
-              const display = parsed.range ? `${relBase}:${parsed.range.start}-${parsed.range.end}` : relBase
-              const metadata: any = { type: "file" as const, display, path: relBase }
-              if (parsed.range) {
-                metadata.range = {
-                  start: { line: parsed.range.start, character: 0 },
-                  end: { line: parsed.range.end, character: 0 },
-                }
-              }
-              nodes.push($createMentionNode(metadata))
-              nodes.push($createTextNode(" "))
-            }
-            if (nodes.length > 0) selection.insertNodes(nodes)
-          })
-        }
-        perform()
-      }
     }
 
     el.addEventListener("dragenter", onDragEnter as any)
@@ -120,7 +66,7 @@ export function useDragDrop({
       el.removeEventListener("dragleave", onDragLeave as any)
       el.removeEventListener("drop", onDrop as any)
     }
-  }, [contentEditableRef.current, disabled, editor, worktree, containerRef, parseWithRange])
+  }, [contentEditableRef.current, disabled, containerRef])
 
   // Document-level drag highlight
   useEffect(() => {

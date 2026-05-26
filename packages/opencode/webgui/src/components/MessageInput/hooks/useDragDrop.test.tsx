@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest"
 import { useDragDrop } from "./useDragDrop"
 
 const mocks = vi.hoisted(() => ({
-  extractPathsFromDrop: vi.fn(),
   insertNodes: vi.fn(),
 }))
 
@@ -18,23 +17,12 @@ vi.mock("../../mention/MentionNode", () => ({
   $createMentionNode: (data: unknown) => ({ type: "mention", data }),
 }))
 
-vi.mock("../../../lib/dnd", () => ({
-  extractPathsFromDrop: (...args: unknown[]) => mocks.extractPathsFromDrop(...args),
-}))
-
-vi.mock("../../../utils/path", () => ({
-  toProjectRelative: (value: string) => value,
-}))
-
 function Harness(props: { disabled?: boolean; update: ReturnType<typeof vi.fn> }) {
   const contentEditableRef = createRef<HTMLDivElement>()
   const containerRef = createRef<HTMLDivElement>()
   useDragDrop({
     contentEditableRef,
     containerRef,
-    editor: { update: props.update } as any,
-    worktree: "/repo",
-    parseWithRange: (value: string) => ({ display: value, path: value }),
     disabled: props.disabled ?? false,
   } as any)
 
@@ -46,9 +34,19 @@ function Harness(props: { disabled?: boolean; update: ReturnType<typeof vi.fn> }
 }
 
 describe("useDragDrop", () => {
+  it("拖拽进入输入框时不显示 VSCode Explorer 的 Shift 提示", () => {
+    const update = vi.fn((fn: () => void) => fn())
+    const view = render(<Harness update={update} />)
+    const editor = view.getByTestId("editor")
+    const hint = "从 VSCode Explorer 拖入文件请按住 Shift再释放鼠标"
+
+    editor.dispatchEvent(new Event("dragenter", { bubbles: true, cancelable: true }))
+
+    expect(view.queryByText(hint)).toBeNull()
+  })
+
   it("disabled 时 drop 仍会阻止默认行为，且不会写入编辑器", () => {
     const update = vi.fn((fn: () => void) => fn())
-    mocks.extractPathsFromDrop.mockReturnValue(["foo/"])
     mocks.insertNodes.mockClear()
 
     const view = render(<Harness disabled update={update} />)
@@ -90,6 +88,22 @@ describe("useDragDrop", () => {
     view.getByTestId("editor").dispatchEvent(ev)
 
     expect(box.classList.contains("ring-2")).toBe(false)
+  })
+
+  it("editor drop 不会阻止冒泡，让 App 的统一 drop coordinator 处理插入", () => {
+    const update = vi.fn((fn: () => void) => fn())
+    mocks.insertNodes.mockClear()
+
+    const view = render(<Harness update={update} />)
+
+    const documentDrop = vi.fn()
+    document.addEventListener("drop", documentDrop)
+    const ev = new Event("drop", { bubbles: true, cancelable: true })
+
+    view.getByTestId("editor").dispatchEvent(ev)
+
+    expect(documentDrop).toHaveBeenCalled()
+    document.removeEventListener("drop", documentDrop)
   })
 
   it("editor drop 后，新一轮 document dragleave 不会残留高亮", () => {

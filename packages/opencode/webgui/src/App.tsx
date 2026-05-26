@@ -20,6 +20,12 @@ import { SubtaskDrawer } from "./components/SubtaskDrawer/SubtaskDrawer"
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts"
 import { ideBridge } from "./lib/ideBridge"
 import { extractPathsFromDrop } from "./lib/dnd"
+import { createDropCoordinator } from "./lib/dropCoordinator"
+import {
+  isUnsupportedForwardedSystemFileDrop,
+  isUnsupportedNativeSystemFileDrop,
+  unsupportedSystemFileDropMessage,
+} from "./lib/dropUnsupported"
 import { initKeyboardHandler, destroyKeyboardHandler } from "./lib/keyboardHandler"
 import { useSessionActivation } from "./state/useSessionActivation"
 import { useTabStore } from "./state/tabStore"
@@ -238,6 +244,14 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     pastePath: (path: string) => void
     insertPlainWithMentions: (value: string) => void
   }>(null)
+  const dropCoordinatorRef = useRef<ReturnType<typeof createDropCoordinator> | null>(null)
+  if (!dropCoordinatorRef.current) {
+    dropCoordinatorRef.current = createDropCoordinator({
+      focus: () => messageInputRef.current?.focus(),
+      insertPaths: (paths) => messageInputRef.current?.insertPaths(paths),
+      pastePath: (path) => messageInputRef.current?.pastePath(path),
+    })
+  }
 
   useEffect(() => {
     setScopedStateWriteErrorReporter((input) => {
@@ -388,6 +402,40 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
 
   // Host → UI bridge messages
   useEffect(() => {
+    const consumeReadUrisResult = (msg: any) => {
+      const files = (msg.payload?.filePaths ?? msg.filePaths) as string[] | undefined
+      const directories = (msg.payload?.directoryPaths ?? msg.directoryPaths) as string[] | undefined
+      if (!Array.isArray(files) && !Array.isArray(directories)) return false
+      return dropCoordinatorRef.current?.consume({
+        files: Array.isArray(files) ? files : [],
+        directories: Array.isArray(directories) ? directories : [],
+      })
+    }
+
+    const consumeDragEventDrop = (msg: any) => {
+      const eventType = typeof msg.eventType === "string" ? msg.eventType : ""
+      const payload = msg.payload as
+        | {
+            dataTransfer?: { data?: Record<string, string> }
+          }
+        | undefined
+      if (eventType !== "drop" || !payload?.dataTransfer?.data) return false
+      if (isUnsupportedForwardedSystemFileDrop(payload)) {
+        showToast(unsupportedSystemFileDropMessage, { variant: "warning", duration: 5000 })
+        return true
+      }
+      const data = payload.dataTransfer.data
+      const uriList = (data["application/vnd.code.uri-list"] || data["text/uri-list"]) as string | undefined
+      if (!uriList) return false
+      const files = uriList
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && !s.startsWith("#"))
+        .map((uri) => (uri.startsWith("file://") ? uri.replace("file://", "") : uri))
+      if (files.length === 0) return false
+      return dropCoordinatorRef.current?.consume({ files })
+    }
+
     const handler = (msg: any) => {
       if (!msg || typeof msg !== "object") return
       if (msg.type === "insertPaths") {
@@ -404,7 +452,11 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
           messageInputRef.current?.pastePath(path)
         }
       }
+      if (msg.type === "readUrisResult") {
+        consumeReadUrisResult(msg)
+      }
       if (msg.type === "drag-event") {
+        if (consumeDragEventDrop(msg)) return
         if (!isMac) return
         const eventType = typeof msg.eventType === "string" ? msg.eventType : ""
         const payload = msg.payload as
@@ -416,20 +468,6 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
             }
           | undefined
         if (!eventType || !payload) return
-
-        if (eventType === "drop" && payload.dataTransfer && payload.dataTransfer.data) {
-          const uriList = payload.dataTransfer.data["application/vnd.code.uri-list"] as string | undefined
-          if (!uriList) return
-          const paths = uriList
-            .split("\n")
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0 && !s.startsWith("#"))
-            .map((uri) => (uri.startsWith("file://") ? uri.replace("file://", "") : uri))
-          if (paths.length === 0) return
-          messageInputRef.current?.focus()
-          messageInputRef.current?.insertPaths(paths)
-          return
-        }
 
         const clientX = typeof payload.clientX === "number" ? payload.clientX : 0
         const clientY = typeof payload.clientY === "number" ? payload.clientY : 0
@@ -446,7 +484,22 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
       }
     }
     ideBridge.on(handler)
-    return () => ideBridge.off(handler)
+    const windowHandler = (event: MessageEvent) => {
+      const msg = event.data
+      if (!msg || typeof msg !== "object") return
+      if (msg.type === "readUrisResult") {
+        consumeReadUrisResult(msg)
+        return
+      }
+      if (msg.type === "drag-event") {
+        consumeDragEventDrop(msg)
+      }
+    }
+    window.addEventListener("message", windowHandler)
+    return () => {
+      ideBridge.off(handler)
+      window.removeEventListener("message", windowHandler)
+    }
   }, [])
 
   // Accept drop anywhere in the webview (VSCode iframe)
@@ -460,8 +513,12 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
       ev.stopPropagation()
       const paths = extractPathsFromDrop(ev)
       if (paths && paths.length > 0) {
-        messageInputRef.current?.focus()
-        messageInputRef.current?.insertPaths(paths)
+        dropCoordinatorRef.current?.consume({ files: paths })
+        return
+      }
+      const types = ev.dataTransfer?.types ? Array.from(ev.dataTransfer.types) : []
+      if (isUnsupportedNativeSystemFileDrop({ types, paths: paths ?? [] })) {
+        showToast(unsupportedSystemFileDropMessage, { variant: "warning", duration: 5000 })
       }
     }
     document.addEventListener("dragover", onDragOver as any)
