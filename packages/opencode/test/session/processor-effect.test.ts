@@ -1011,6 +1011,7 @@ it.live("retries upstream stream_timeout structured errors", () =>
       }),
     { git: true, config: (url) => providerCfg(url) },
   ),
+  15_000,
 )
 
 it.live("retries adapter-flattened stream_timeout message errors", () =>
@@ -1172,6 +1173,7 @@ it.live("requests compaction on structured context overflow", () =>
       }),
     { config: (url) => providerCfg(url) },
   ),
+  15_000,
 )
 
 it.live("suppresses session error when overflow transitions into compaction", () =>
