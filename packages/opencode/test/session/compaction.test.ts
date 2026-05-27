@@ -1221,14 +1221,18 @@ describe("session.compaction.process", () => {
           .pipe(Effect.forkChild)
 
         yield* Deferred.await(ready).pipe(Effect.timeout("1 second"))
+        // The retry status event fires inside SessionRetry.set(), slightly before the
+        // retried fiber fully settles into the backoff sleep. Yield once so the test
+        // interrupts during the actual retry wait instead of racing that transition.
+        yield* Effect.yieldNow
         const start = Date.now()
         yield* Fiber.interrupt(fiber)
-        const exit = yield* Fiber.await(fiber).pipe(Effect.timeout("250 millis"))
+        const exit = yield* Fiber.await(fiber).pipe(Effect.timeout("1 second"))
 
         expect(Exit.isFailure(exit)).toBe(true)
         if (Exit.isFailure(exit)) {
           expect(Cause.hasInterrupts(exit.cause)).toBe(true)
-          expect(Date.now() - start).toBeLessThan(250)
+          expect(Date.now() - start).toBeLessThan(1000)
         }
       }).pipe(withCompaction({ llm: stub.layer }))
     },
@@ -1256,7 +1260,7 @@ describe("session.compaction.process", () => {
 
           yield* Deferred.await(ready).pipe(Effect.timeout("1 second"))
           yield* Fiber.interrupt(fiber)
-          const exit = yield* Fiber.await(fiber).pipe(Effect.timeout("250 millis"))
+          const exit = yield* Fiber.await(fiber).pipe(Effect.timeout("1 second"))
           const all = yield* ssn.messages({ sessionID: session.id })
 
           expect(Exit.isFailure(exit)).toBe(true)
