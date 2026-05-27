@@ -35,6 +35,7 @@ import {
   SummarizePayload,
   UpdatePayload,
 } from "../groups/session"
+import * as ApiError from "../errors"
 import * as SessionError from "./session-errors"
 
 const tryParseJson = (text: string) =>
@@ -205,7 +206,13 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       params: { sessionID: SessionID }
     }) {
       yield* requireSession(ctx.params.sessionID)
-      return yield* promptSvc.regenerateTitle({ sessionID: ctx.params.sessionID })
+      return yield* promptSvc.regenerateTitle({ sessionID: ctx.params.sessionID }).pipe(
+        Effect.catchTags({
+          NotFoundError: (error) => Effect.fail(ApiError.notFound(error.message)),
+          ProviderModelNotFoundError: (error) =>
+            Effect.fail(ApiError.notFound(`Model not found: ${error.providerID}/${error.modelID}`)),
+        }),
+      )
     })
 
     const fork = Effect.fn("SessionHttpApi.fork")(function* (ctx: {
