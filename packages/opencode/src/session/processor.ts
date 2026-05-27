@@ -781,7 +781,6 @@ export const layer = Layer.effect(
         const error = parse(e)
         if (MessageV2.ContextOverflowError.isInstance(error)) {
           ctx.needsCompaction = true
-          yield* bus.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
           return
         }
         if (!ctx.assistantMessage.summary) {

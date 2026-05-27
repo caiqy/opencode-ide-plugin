@@ -1174,6 +1174,64 @@ it.live("requests compaction on structured context overflow", () =>
   ),
 )
 
+it.live("suppresses session error when overflow transitions into compaction", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+        const bus = yield* Bus.Service
+        const seen = defer<string>()
+
+        yield* llm.error(400, { type: "error", error: { code: "context_length_exceeded" } })
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "compact json")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const errs: string[] = []
+        const off = yield* bus.subscribeCallback(Session.Event.Error, (evt) => {
+          if (evt.properties.sessionID !== chat.id) return
+          if (!evt.properties.error) return
+          errs.push(evt.properties.error.name)
+          seen.resolve(evt.properties.error.name)
+        })
+
+        const handle = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: chat.id,
+          model: mdl,
+        })
+
+        const value = yield* handle.process({
+          user: {
+            id: parent.id,
+            sessionID: chat.id,
+            role: "user",
+            time: parent.time,
+            agent: parent.agent,
+            model: { providerID: ref.providerID, modelID: ref.modelID },
+          } satisfies MessageV2.User,
+          sessionID: chat.id,
+          model: mdl,
+          agent: agent(),
+          system: [],
+          messages: [{ role: "user", content: "compact json" }],
+          tools: {},
+        })
+
+        const published = yield* Effect.promise(() => Promise.race([seen.promise, Bun.sleep(50).then(() => "__timeout__")]))
+
+        off()
+
+        expect(value).toBe("compact")
+        expect(handle.message.error).toBeUndefined()
+        expect(published).toBe("__timeout__")
+        expect(errs).toEqual([])
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
 it.live("session.processor effect tests complete AI SDK tool calls when native flag is off", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
