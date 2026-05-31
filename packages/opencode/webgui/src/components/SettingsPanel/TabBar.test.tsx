@@ -25,5 +25,8 @@ describe("TabBar", () => {
 
     await user.click(screen.getByRole("button", { name: /高级/ }))
     expect(onTabChange).toHaveBeenCalledWith("advanced")
+
+    await user.click(screen.getByRole("button", { name: /Agent 配置/ }))
+    expect(onTabChange).toHaveBeenCalledWith("agents")
   })
 })

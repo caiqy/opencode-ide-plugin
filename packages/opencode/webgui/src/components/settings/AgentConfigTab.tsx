@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { sdk } from "../../lib/api/sdkClient"
 import type { Config, Agent, Provider } from "@opencode-ai/sdk/client"
 
@@ -36,6 +36,7 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
   const [providers, setProviders] = useState<Provider[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
 
   const loadData = async () => {
     setIsLoading(true)
@@ -43,50 +44,31 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
     try {
       const [agentsRes, providersRes] = await Promise.all([sdk.app.agents(), sdk.config.providers()])
 
+      if (!mountedRef.current) return
+
       if (agentsRes.error) throw new Error("加载 Agent 列表失败")
       if (providersRes.error) throw new Error("加载模型列表失败")
 
       if (agentsRes.data) setAgents(agentsRes.data)
       if (providersRes.data) setProviders(providersRes.data.providers)
     } catch (err) {
+      if (!mountedRef.current) return
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setIsLoading(false)
+      if (mountedRef.current) setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    let active = true
-
-    const load = async () => {
-      setIsLoading(true)
-      setError(null)
-      try {
-        const [agentsRes, providersRes] = await Promise.all([sdk.app.agents(), sdk.config.providers()])
-
-        if (!active) return
-
-        if (agentsRes.error) throw new Error("加载 Agent 列表失败")
-        if (providersRes.error) throw new Error("加载模型列表失败")
-
-        if (agentsRes.data) setAgents(agentsRes.data)
-        if (providersRes.data) setProviders(providersRes.data.providers)
-      } catch (err) {
-        if (!active) return
-        setError(err instanceof Error ? err.message : String(err))
-      } finally {
-        if (active) setIsLoading(false)
-      }
-    }
-
-    load()
-    return () => { active = false }
+    loadData()
+    return () => { mountedRef.current = false }
   }, [])
 
   const handleReload = async () => {
     setError(null)
     try {
       const configRes = await sdk.global.config.get()
+      if (!mountedRef.current) return
       if (configRes.error) throw new Error("重新加载配置失败")
       if (configRes.data) {
         const fresh = structuredClone(configRes.data)
@@ -95,6 +77,7 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
       }
       await loadData()
     } catch (err) {
+      if (!mountedRef.current) return
       setError(err instanceof Error ? err.message : String(err))
     }
   }
@@ -240,6 +223,12 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
                       className="w-full max-w-[200px] px-1.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
                       <option value="">默认</option>
+                      {row.model && !providers.some((p) => {
+                        const slashIdx = row.model!.indexOf("/")
+                        return slashIdx >= 0 && p.id === row.model!.slice(0, slashIdx) && p.models[row.model!.slice(slashIdx + 1)]
+                      }) && (
+                        <option value={row.model}>{row.model}（未知）</option>
+                      )}
                       {providers.map((provider) => (
                         <optgroup key={provider.id} label={provider.name}>
                           {Object.entries(provider.models).map(([modelId, model]) => (
