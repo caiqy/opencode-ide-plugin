@@ -60,6 +60,7 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
   }
 
   useEffect(() => {
+    mountedRef.current = true
     loadData()
     return () => { mountedRef.current = false }
   }, [])
