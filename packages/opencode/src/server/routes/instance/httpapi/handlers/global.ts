@@ -16,6 +16,36 @@ import { GlobalUpgradeInput } from "../groups/global"
 
 const log = Log.create({ service: "server" })
 
+// Fields that only need config cache invalidation (no instance dispose required).
+// Changes to these take effect on the next message/operation without reconnection.
+const LIGHTWEIGHT_FIELDS = new Set([
+  "agent",
+  "mode",
+  "username",
+  "autoupdate",
+  "snapshot",
+  "share",
+  "autoshare",
+  "watcher",
+  "theme",
+  "default_agent",
+  "small_model",
+  "command",
+  "skills",
+  "layout",
+  "keybinds",
+  "compaction",
+])
+
+// Determine whether a config update payload contains changes that require
+// full instance disposal (provider, mcp, plugin, model, shell, etc.) or
+// only lightweight fields that take effect via cache invalidation alone.
+function requiresDispose(payload: Record<string, unknown>): boolean {
+  const keys = Object.keys(payload).filter((k) => k !== "$schema")
+  if (keys.length === 0) return false
+  return keys.some((key) => !LIGHTWEIGHT_FIELDS.has(key))
+}
+
 function eventData(data: unknown): Sse.Event {
   return {
     _tag: "Event",
@@ -86,7 +116,9 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
 
     const configUpdate = Effect.fn("GlobalHttpApi.configUpdate")(function* (ctx) {
       const result = yield* config.updateGlobal(ctx.payload)
-      if (result.changed) bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
+      if (result.changed && requiresDispose(ctx.payload)) {
+        bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
+      }
       return result.info
     })
 
