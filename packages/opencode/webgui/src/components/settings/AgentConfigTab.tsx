@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { sdk } from "../../lib/api/sdkClient"
 import type { Config, Agent, Provider } from "@opencode-ai/sdk/client"
 
 interface AgentConfigTabProps {
   formData: Partial<Config>
   setFormData: (data: Partial<Config>) => void
+  onReloadConfig?: (data: Partial<Config>) => void
 }
 
 interface AgentRow {
@@ -30,13 +31,13 @@ function getVariantsForModel(providers: Provider[], modelValue: string | undefin
   return Object.keys(model.variants)
 }
 
-export function AgentConfigTab({ formData, setFormData }: AgentConfigTabProps) {
+export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentConfigTabProps) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [providers, setProviders] = useState<Provider[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const loadData = useCallback(async () => {
+  const loadData = async () => {
     setIsLoading(true)
     setError(null)
     try {
@@ -52,11 +53,35 @@ export function AgentConfigTab({ formData, setFormData }: AgentConfigTabProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    let active = true
+
+    const load = async () => {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const [agentsRes, providersRes] = await Promise.all([sdk.app.agents(), sdk.config.providers()])
+
+        if (!active) return
+
+        if (agentsRes.error) throw new Error("加载 Agent 列表失败")
+        if (providersRes.error) throw new Error("加载模型列表失败")
+
+        if (agentsRes.data) setAgents(agentsRes.data)
+        if (providersRes.data) setProviders(providersRes.data.providers)
+      } catch (err) {
+        if (!active) return
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        if (active) setIsLoading(false)
+      }
+    }
+
+    load()
+    return () => { active = false }
+  }, [])
 
   const handleReload = async () => {
     setError(null)
@@ -64,7 +89,9 @@ export function AgentConfigTab({ formData, setFormData }: AgentConfigTabProps) {
       const configRes = await sdk.global.config.get()
       if (configRes.error) throw new Error("重新加载配置失败")
       if (configRes.data) {
-        setFormData(structuredClone(configRes.data))
+        const fresh = structuredClone(configRes.data)
+        setFormData(fresh)
+        onReloadConfig?.(structuredClone(configRes.data))
       }
       await loadData()
     } catch (err) {
@@ -128,8 +155,23 @@ export function AgentConfigTab({ formData, setFormData }: AgentConfigTabProps) {
 
   if (error) {
     return (
-      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3 text-sm text-red-800 dark:text-red-200">
-        {error}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Agent 模型配置</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">为每个 Agent 指定使用的模型和推理强度</p>
+          </div>
+          <button
+            onClick={handleReload}
+            className="px-2 py-1 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded border border-gray-300 dark:border-gray-700"
+            title="重新加载配置"
+          >
+            ↻ 重新加载
+          </button>
+        </div>
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3 text-sm text-red-800 dark:text-red-200">
+          {error}
+        </div>
       </div>
     )
   }

@@ -114,7 +114,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               <>
                 {activeTab === "general" && <GeneralTab formData={formData} setFormData={setFormData} />}
 
-                {activeTab === "agents" && <AgentConfigTab formData={formData} setFormData={setFormData} />}
+                {activeTab === "agents" && <AgentConfigTab formData={formData} setFormData={setFormData} onReloadConfig={setOriginalFormData} />}
 
                 {activeTab === "advanced" && <AdvancedTab formData={formData} setFormData={setFormData} />}
 
