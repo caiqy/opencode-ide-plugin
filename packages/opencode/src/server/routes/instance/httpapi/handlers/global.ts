@@ -120,8 +120,12 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
     const configUpdate = Effect.fn("GlobalHttpApi.configUpdate")(function* (ctx) {
       const previous = yield* config.getGlobal()
       const result = yield* config.updateGlobal(ctx.payload)
-      if (result.changed && requiresDispose(previous as Record<string, unknown>, ctx.payload as Record<string, unknown>)) {
-        bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
+      if (result.changed) {
+        const dominated = requiresDispose(previous as Record<string, unknown>, ctx.payload as Record<string, unknown>)
+        log.info("config updated", { changed: result.changed, requiresDispose: dominated })
+        if (dominated) {
+          bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
+        }
       }
       return result.info
     })

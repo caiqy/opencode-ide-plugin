@@ -63,8 +63,16 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     try {
       // Save config if it changed
       if (JSON.stringify(formData) !== JSON.stringify(originalFormData)) {
+        // Only send fields that actually changed to avoid unnecessary instance disposal
+        const patch: Partial<Config> = {}
+        for (const key of Object.keys(formData) as (keyof Config)[]) {
+          if (JSON.stringify(formData[key]) !== JSON.stringify(originalFormData[key])) {
+            ;(patch as any)[key] = formData[key]
+          }
+        }
+
         const configResponse = await sdk.global.config.update({
-          body: formData,
+          body: Object.keys(patch).length > 0 ? patch : formData,
         })
 
         if (configResponse.error) {
