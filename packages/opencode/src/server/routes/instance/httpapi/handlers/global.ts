@@ -38,15 +38,25 @@ const LIGHTWEIGHT_FIELDS = new Set([
 ])
 
 // Determine whether a config update payload contains changes that require
-// full instance disposal (provider, mcp, plugin, model, shell, etc.) or
-// only lightweight fields that take effect via cache invalidation alone.
-// Compares against the previous config to find actually-changed fields.
+// full instance disposal. Uses a two-pass strategy:
+// 1. If the payload only contains lightweight keys → no dispose needed
+// 2. If it contains heavy keys, compare their values against previous config
+//    to check if they actually changed (handles full-config-object payloads)
 function requiresDispose(previous: Record<string, unknown>, payload: Record<string, unknown>): boolean {
   const keys = Object.keys(payload).filter((k) => k !== "$schema")
   if (keys.length === 0) return false
-  const changedKeys = keys.filter((key) => JSON.stringify(previous[key]) !== JSON.stringify(payload[key]))
-  if (changedKeys.length === 0) return false
-  return changedKeys.some((key) => !LIGHTWEIGHT_FIELDS.has(key))
+
+  // Fast path: if all keys are lightweight, no dispose needed regardless of values
+  const heavyKeys = keys.filter((key) => !LIGHTWEIGHT_FIELDS.has(key))
+  if (heavyKeys.length === 0) return false
+
+  // Slow path: check if any heavy key actually changed
+  for (const key of heavyKeys) {
+    const prev = JSON.stringify(previous[key] ?? null)
+    const next = JSON.stringify(payload[key] ?? null)
+    if (prev !== next) return true
+  }
+  return false
 }
 
 function eventData(data: unknown): Sse.Event {
@@ -121,10 +131,12 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       const previous = yield* config.getGlobal()
       const result = yield* config.updateGlobal(ctx.payload)
       if (result.changed) {
-        const dominated = requiresDispose(previous as Record<string, unknown>, ctx.payload as Record<string, unknown>)
-        log.info("config updated", { changed: result.changed, requiresDispose: dominated })
-        if (dominated) {
+        const needsDispose = requiresDispose(previous as Record<string, unknown>, ctx.payload as Record<string, unknown>)
+        if (needsDispose) {
+          log.info("config update requires dispose", { keys: Object.keys(ctx.payload as Record<string, unknown>).filter((k) => k !== "$schema") })
           bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
+        } else {
+          log.info("config update lightweight, skipping dispose")
         }
       }
       return result.info
