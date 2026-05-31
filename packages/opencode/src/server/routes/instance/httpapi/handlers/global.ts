@@ -1,4 +1,5 @@
 import { Config } from "@/config/config"
+import { Agent } from "@/agent/agent"
 import { GlobalBus, type GlobalEvent as GlobalBusEvent } from "@/bus/global"
 import { EffectBridge } from "@/effect/bridge"
 import { Bus } from "@/bus"
@@ -112,6 +113,7 @@ function eventResponse() {
 export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handlers) =>
   Effect.gen(function* () {
     const config = yield* Config.Service
+    const agent = yield* Agent.Service
     const installation = yield* Installation.Service
     const bridge = yield* EffectBridge.make()
 
@@ -133,10 +135,11 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       if (result.changed) {
         const needsDispose = requiresDispose(previous as Record<string, unknown>, ctx.payload as Record<string, unknown>)
         if (needsDispose) {
-          log.info("config update requires dispose", { keys: Object.keys(ctx.payload as Record<string, unknown>).filter((k) => k !== "$schema") })
+          log.info("config update requires dispose")
           bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
         } else {
-          log.info("config update lightweight, skipping dispose")
+          log.info("config update lightweight, reloading agent config")
+          yield* agent.reloadModelConfig().pipe(Effect.ignore)
         }
       }
       return result.info

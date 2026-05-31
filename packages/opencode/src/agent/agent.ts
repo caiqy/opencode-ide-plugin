@@ -61,6 +61,7 @@ export interface Interface {
   readonly list: () => Effect.Effect<Info[]>
   readonly defaultInfo: () => Effect.Effect<Info>
   readonly defaultAgent: () => Effect.Effect<string>
+  readonly reloadModelConfig: () => Effect.Effect<void>
   readonly generate: (input: {
     description: string
     model?: { providerID: ProviderID; modelID: ModelID }
@@ -377,11 +378,23 @@ export const layer = Layer.effect(
           return (yield* defaultInfo()).name
         })
 
+        const reloadModelConfig = Effect.fnUntraced(function* () {
+          const cfg = yield* config.get()
+          for (const [key, value] of Object.entries(cfg.agent ?? {})) {
+            const item = agents[key]
+            if (!item) continue
+            if (value.model) item.model = Provider.parseModel(value.model)
+            else item.model = undefined
+            item.variant = value.variant ?? undefined
+          }
+        })
+
         return {
           get,
           list,
           defaultInfo,
           defaultAgent,
+          reloadModelConfig,
         } satisfies State
       }),
     )
@@ -398,6 +411,9 @@ export const layer = Layer.effect(
       }),
       defaultAgent: Effect.fn("Agent.defaultAgent")(function* () {
         return yield* InstanceState.useEffect(state, (s) => s.defaultAgent())
+      }),
+      reloadModelConfig: Effect.fn("Agent.reloadModelConfig")(function* () {
+        yield* InstanceState.useEffect(state, (s) => s.reloadModelConfig())
       }),
       generate: Effect.fn("Agent.generate")(function* (input: {
         description: string
