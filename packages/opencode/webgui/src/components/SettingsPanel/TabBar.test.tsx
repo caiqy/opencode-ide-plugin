@@ -8,6 +8,7 @@ describe("TabBar", () => {
     render(<TabBar activeTab="general" onTabChange={vi.fn()} />)
 
     expect(screen.getByRole("button", { name: /常规/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Agent 配置/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /高级/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /快捷短语/ })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /API\s*密钥/ })).not.toBeInTheDocument()
