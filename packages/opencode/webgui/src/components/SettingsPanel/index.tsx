@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { sdk } from "../../lib/api/sdkClient"
 import { ConfirmModal } from "../ConfirmModal"
 import { GeneralTab } from "../settings/GeneralTab"
+import { AgentConfigTab } from "../settings/AgentConfigTab"
 import { AdvancedTab } from "../settings/AdvancedTab"
 import { QuickPhrasesTab } from "../settings/QuickPhrasesTab"
 import { useSettingsForm } from "./hooks/useSettingsForm"
@@ -15,7 +16,7 @@ interface SettingsPanelProps {
   onClose: () => void
 }
 
-type TabType = "general" | "advanced" | "quick-phrases"
+type TabType = "general" | "agents" | "advanced" | "quick-phrases"
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("general")
@@ -112,6 +113,8 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             ) : (
               <>
                 {activeTab === "general" && <GeneralTab formData={formData} setFormData={setFormData} />}
+
+                {activeTab === "agents" && <AgentConfigTab formData={formData} setFormData={setFormData} />}
 
                 {activeTab === "advanced" && <AdvancedTab formData={formData} setFormData={setFormData} />}
 
