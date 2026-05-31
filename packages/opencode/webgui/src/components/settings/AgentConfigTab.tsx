@@ -18,7 +18,10 @@ interface AgentRow {
 
 function getVariantsForModel(providers: Provider[], modelValue: string | undefined): string[] {
   if (!modelValue) return []
-  const [providerID, modelID] = modelValue.split("/", 2)
+  const slashIndex = modelValue.indexOf("/")
+  if (slashIndex < 0) return []
+  const providerID = modelValue.slice(0, slashIndex)
+  const modelID = modelValue.slice(slashIndex + 1)
   if (!providerID || !modelID) return []
   const provider = providers.find((p) => p.id === providerID)
   if (!provider) return []
@@ -56,11 +59,17 @@ export function AgentConfigTab({ formData, setFormData }: AgentConfigTabProps) {
   }, [loadData])
 
   const handleReload = async () => {
-    const configRes = await sdk.global.config.get()
-    if (configRes.data) {
-      setFormData(structuredClone(configRes.data))
+    setError(null)
+    try {
+      const configRes = await sdk.global.config.get()
+      if (configRes.error) throw new Error("重新加载配置失败")
+      if (configRes.data) {
+        setFormData(structuredClone(configRes.data))
+      }
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
     }
-    await loadData()
   }
 
   const rows: AgentRow[] = agents.map((agent) => {
@@ -71,7 +80,7 @@ export function AgentConfigTab({ formData, setFormData }: AgentConfigTabProps) {
       description: agent.description,
       model: agentConfig?.model ?? undefined,
       variant: agentConfig?.variant ?? undefined,
-      configured: !!agentConfig?.model || !!agentConfig?.variant,
+      configured: agentConfig !== undefined && Object.keys(agentConfig).length > 0,
     }
   })
 
