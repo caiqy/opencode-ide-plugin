@@ -40,6 +40,7 @@ function StarIcon({
   return (
     <button
       onClick={onClick}
+      onKeyDown={(e) => e.stopPropagation()}
       aria-label={label}
       className="flex-shrink-0 p-0.5 hover:scale-110 transition-transform"
       title={label}
@@ -142,20 +143,21 @@ export function ModelSelector({
   }, [])
 
   const getCurrentDisplay = () => {
-    if (!selectedProviderId && !selectedModelId) {
-      if (hasExplicitPlaceholder) return effectivePlaceholder
-      const pid = defaultIds.provider
-      const mid = defaultIds.model
-      if (!pid || !mid) return effectivePlaceholder
-      const provider = providers.find((p) => p.id === pid)
-      if (!provider) return `${pid}/${mid}`
-      return provider.models[mid]?.name || `${pid}/${mid}`
+    if (!selectedProviderId || !selectedModelId) {
+      if (hasExplicitPlaceholder || !selectedProviderId && !selectedModelId) {
+        if (hasExplicitPlaceholder) return effectivePlaceholder
+        const pid = defaultIds.provider
+        const mid = defaultIds.model
+        if (!pid || !mid) return effectivePlaceholder
+        const provider = providers.find((p) => p.id === pid)
+        if (!provider) return `${pid}/${mid}`
+        return provider.models[mid]?.name || `${pid}/${mid}`
+      }
+      return effectivePlaceholder
     }
-    const pid = selectedProviderId!
-    const mid = selectedModelId!
-    const provider = providers.find((p) => p.id === pid)
-    if (!provider) return `${pid}/${mid}`
-    return provider.models[mid]?.name || `${pid}/${mid}`
+    const provider = providers.find((p) => p.id === selectedProviderId)
+    if (!provider) return `${selectedProviderId}/${selectedModelId}`
+    return provider.models[selectedModelId]?.name || `${selectedProviderId}/${selectedModelId}`
   }
 
   const handleSelect = async (providerID: string, modelID: string) => {
@@ -281,10 +283,11 @@ export function ModelSelector({
     buttonClassName ||
     "h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
 
+  const dropdownBase = "absolute left-0 min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
   const dropdownClasses =
     dropdownPlacement === "bottom"
-      ? "absolute top-full left-0 mt-1 min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
-      : "absolute bottom-full left-0 mb-1 min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
+      ? `${dropdownBase} top-full mt-1`
+      : `${dropdownBase} bottom-full mb-1`
 
   return (
     <div className="relative" ref={dropdownRef}>

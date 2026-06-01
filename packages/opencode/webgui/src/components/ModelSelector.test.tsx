@@ -208,4 +208,39 @@ describe("ModelSelector favorites", () => {
 
     expect(screen.queryByRole("button", { name: "默认" })).not.toBeInTheDocument()
   })
+
+  it("键盘激活星标按钮不触发模型选择", async () => {
+    const onSelect = vi.fn()
+    render(<ModelSelector onSelect={onSelect} />)
+    await screen.findByText("GPT 4.1")
+
+    const user = userEvent.setup()
+    await user.click(screen.getByTitle("选择模型"))
+
+    const starBtn = screen.getByLabelText("切换收藏 openai/gpt-4.1")
+    starBtn.focus()
+
+    // Enter 不应触发 onSelect
+    await user.keyboard("{Enter}")
+    expect(onSelect).not.toHaveBeenCalled()
+
+    // Space 不应触发 onSelect
+    await user.keyboard(" ")
+    expect(onSelect).not.toHaveBeenCalled()
+
+    // 收藏逻辑被触发
+    await waitFor(() => {
+      expect(repo.updateModelPrefs).toHaveBeenCalled()
+    })
+  })
+
+  it("partial selection 只传 providerId 时显示 placeholder", async () => {
+    render(<ModelSelector selectedProviderId="openai" onSelect={() => {}} />)
+    await screen.findByText("选择模型")
+  })
+
+  it("partial selection 只传 modelId 时显示 placeholder", async () => {
+    render(<ModelSelector selectedModelId="gpt-4.1" onSelect={() => {}} />)
+    await screen.findByText("选择模型")
+  })
 })
