@@ -183,11 +183,14 @@ export function useClickOutsideWithEscape<T extends HTMLElement = HTMLElement>(
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault()
+        event.stopPropagation()
         handlerRef.current()
       }
     }
 
-    document.addEventListener("keydown", handleEscape)
-    return () => document.removeEventListener("keydown", handleEscape)
+    // Capture and consume Escape so nested dropdowns close before parent modals
+    // with document-level Escape handlers can react to the same keypress.
+    document.addEventListener("keydown", handleEscape, { capture: true })
+    return () => document.removeEventListener("keydown", handleEscape, { capture: true })
   }, [enabled])
 }

@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 
 const mocks = vi.hoisted(() => ({
   useSettingsForm: vi.fn(),
   useUnsavedChanges: vi.fn(),
   globalConfigUpdate: vi.fn(),
   authSet: vi.fn(),
+  appAgents: vi.fn(),
+  configProviders: vi.fn(),
+  globalConfigGet: vi.fn(),
+  loadModelPrefs: vi.fn(),
+  addRecentModel: vi.fn(),
+  updateModelPrefs: vi.fn(),
 }))
 
 vi.mock("./hooks/useSettingsForm", () => ({
@@ -36,8 +43,15 @@ vi.mock("../../lib/api/sdkClient", () => ({
   sdk: {
     global: {
       config: {
+        get: (...args: unknown[]) => mocks.globalConfigGet(...args),
         update: (...args: unknown[]) => mocks.globalConfigUpdate(...args),
       },
+    },
+    app: {
+      agents: (...args: unknown[]) => mocks.appAgents(...args),
+    },
+    config: {
+      providers: (...args: unknown[]) => mocks.configProviders(...args),
     },
     auth: {
       set: (...args: unknown[]) => mocks.authSet(...args),
@@ -45,12 +59,41 @@ vi.mock("../../lib/api/sdkClient", () => ({
   },
 }))
 
+vi.mock("../../state/repo/modelPrefsRepo", () => ({
+  loadModelPrefs: (...args: unknown[]) => mocks.loadModelPrefs(...args),
+  addRecentModel: (...args: unknown[]) => mocks.addRecentModel(...args),
+  updateModelPrefs: (...args: unknown[]) => mocks.updateModelPrefs(...args),
+}))
+
 import { SettingsPanel } from "./index"
 
 describe("SettingsPanel", () => {
   beforeEach(() => {
     mocks.globalConfigUpdate.mockResolvedValue({ data: {}, error: null })
+    mocks.globalConfigGet.mockResolvedValue({ data: {}, error: null })
     mocks.authSet.mockResolvedValue(undefined)
+    mocks.appAgents.mockResolvedValue({
+      data: [{ name: "build", mode: "primary", description: "Build agent" }],
+      error: null,
+    })
+    mocks.configProviders.mockResolvedValue({
+      data: {
+        providers: [
+          {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              "gpt-5.5": { name: "GPT-5.5", capabilities: {}, variants: {} },
+            },
+          },
+        ],
+        default: { provider: "openai", model: "gpt-5.5" },
+      },
+      error: null,
+    })
+    mocks.loadModelPrefs.mockResolvedValue({ recent: [], favorite: [] })
+    mocks.addRecentModel.mockResolvedValue({ recent: [], favorite: [] })
+    mocks.updateModelPrefs.mockResolvedValue({ recent: [], favorite: [] })
 
     mocks.useSettingsForm.mockReturnValue({
       formData: {},
@@ -104,6 +147,40 @@ describe("SettingsPanel", () => {
 
     expect(onClose).not.toHaveBeenCalled()
     expect(setShowCloseConfirm).not.toHaveBeenCalled()
+  })
+
+  it("模型选择器打开时 Escape 只关闭下拉不关闭设置面板", async () => {
+    const onClose = vi.fn()
+    const setShowCloseConfirm = vi.fn()
+    mocks.useSettingsForm.mockReturnValue({
+      formData: {},
+      setFormData: vi.fn(),
+      originalFormData: { agent: { build: { model: "openai/gpt-5.5" } } },
+      setOriginalFormData: vi.fn(),
+      isLoading: false,
+      error: null,
+    })
+    mocks.useUnsavedChanges.mockReturnValue({
+      hasUnsavedChanges: () => true,
+      showCloseConfirm: false,
+      setShowCloseConfirm,
+    })
+
+    render(<SettingsPanel isOpen={true} onClose={onClose} />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: /Agent 配置/ }))
+    await waitFor(() => expect(screen.getByText("build")).toBeInTheDocument())
+    const buildRow = screen.getByText("build").closest("tr")!
+    await waitFor(() => expect(within(buildRow).getByTitle("选择模型")).not.toBeDisabled())
+    await user.click(within(buildRow).getByTitle("选择模型"))
+    expect(screen.getByPlaceholderText("搜索模型…")).toBeInTheDocument()
+
+    await user.keyboard("{Escape}")
+
+    await waitFor(() => expect(screen.queryByPlaceholderText("搜索模型…")).not.toBeInTheDocument())
+    expect(onClose).not.toHaveBeenCalled()
+    expect(setShowCloseConfirm).not.toHaveBeenCalled()
+    expect(screen.queryByText("未保存的更改")).not.toBeInTheDocument()
   })
 
   it("保存设置走全局配置接口", async () => {

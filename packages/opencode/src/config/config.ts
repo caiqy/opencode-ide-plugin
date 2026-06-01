@@ -437,6 +437,8 @@ function replaceJsonc(input: string, value: unknown, path: string[]): string {
 
 function mergeGlobalConfigForWrite(existing: Info, patch: Info): Info {
   const merged = mergeDeep(writable(existing), patch) as Info
+  // Replace top-level agent config instead of deep-merging so omitted nested fields
+  // (for example a cleared `agent.build.model`) are removed from the persisted global config.
   if (Object.hasOwn(patch, "agent")) merged.agent = patch.agent
   return merged
 }
@@ -444,6 +446,8 @@ function mergeGlobalConfigForWrite(existing: Info, patch: Info): Info {
 function patchGlobalJsonc(input: string, patch: Info): string {
   let next = input
   if (Object.hasOwn(patch, "agent")) {
+    // Keep JSONC writes aligned with JSON writes: agent patches are replacement semantics,
+    // otherwise clearing nested fields would leave stale values in place.
     next = replaceJsonc(next, patch.agent, ["agent"])
     const { agent: _agent, ...rest } = patch
     return patchJsonc(next, rest)
