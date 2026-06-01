@@ -142,7 +142,7 @@ describe("ModelSelector favorites", () => {
     expect(legacyCheckPath).not.toBeInTheDocument()
   })
 
-  it("显示清空入口并在点击时调用 onClear", async () => {
+  it("显示清空入口并在点击时调用 onClear，且关闭 dropdown", async () => {
     const onSelect = vi.fn()
     const onClear = vi.fn()
     render(
@@ -159,15 +159,27 @@ describe("ModelSelector favorites", () => {
 
     const user = userEvent.setup()
     await user.click(screen.getByTitle("选择模型"))
+    expect(screen.getByPlaceholderText("搜索模型…")).toBeInTheDocument()
+
     await user.click(screen.getByRole("button", { name: "默认" }))
 
     expect(onClear).toHaveBeenCalledTimes(1)
     expect(onSelect).not.toHaveBeenCalled()
+    expect(screen.queryByPlaceholderText("搜索模型…")).not.toBeInTheDocument()
   })
 
-  it("未选择模型时使用传入的 placeholder", async () => {
+  it("未选择模型时使用传入的 placeholder，provider 加载后仍稳定显示", async () => {
     render(<ModelSelector onSelect={() => {}} placeholder="默认" />)
     await screen.findByText("默认")
+
+    // provider 加载完成后按钮仍显示 placeholder 而非 SDK 默认模型名
+    await waitFor(() => expect(screen.queryByText("GPT 4.1")).not.toBeInTheDocument())
+    expect(screen.getByTitle("选择模型")).toHaveTextContent("默认")
+  })
+
+  it("unknown selected model 显示 provider/model", async () => {
+    render(<ModelSelector selectedProviderId="openai" selectedModelId="unknown-model" onSelect={() => {}} />)
+    await screen.findByText("openai/unknown-model")
   })
 
   it("默认不显示清空入口", async () => {

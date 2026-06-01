@@ -80,13 +80,15 @@ export function ModelSelector({
   selectedModelId,
   onSelect,
   disabled,
-  placeholder = "选择模型",
+  placeholder,
   allowClear = false,
   clearLabel = "默认",
   onClear,
   buttonClassName,
   dropdownPlacement = "top",
 }: ModelSelectorProps) {
+  const hasExplicitPlaceholder = placeholder !== undefined
+  const effectivePlaceholder = placeholder ?? "选择模型"
   const { isOpen, searchTerm, setSearchTerm, dropdownRef, close, toggle } = useDropdown()
   const [providers, setProviders] = useState<Provider[]>([])
   const [defaultIds, setDefaultIds] = useState<{ [key: string]: string }>({})
@@ -140,9 +142,17 @@ export function ModelSelector({
   }, [])
 
   const getCurrentDisplay = () => {
-    const pid = selectedProviderId || defaultIds.provider
-    const mid = selectedModelId || defaultIds.model
-    if (!pid || !mid) return placeholder
+    if (!selectedProviderId && !selectedModelId) {
+      if (hasExplicitPlaceholder) return effectivePlaceholder
+      const pid = defaultIds.provider
+      const mid = defaultIds.model
+      if (!pid || !mid) return effectivePlaceholder
+      const provider = providers.find((p) => p.id === pid)
+      if (!provider) return `${pid}/${mid}`
+      return provider.models[mid]?.name || `${pid}/${mid}`
+    }
+    const pid = selectedProviderId!
+    const mid = selectedModelId!
     const provider = providers.find((p) => p.id === pid)
     if (!provider) return `${pid}/${mid}`
     return provider.models[mid]?.name || `${pid}/${mid}`
@@ -307,6 +317,7 @@ export function ModelSelector({
           <div className="overflow-y-auto flex-1">
             {allowClear && (
               <button
+                type="button"
                 onClick={handleClear}
                 className="w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 text-gray-900 dark:text-gray-100"
               >
