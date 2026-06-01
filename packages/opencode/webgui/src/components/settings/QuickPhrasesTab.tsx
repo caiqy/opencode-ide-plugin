@@ -24,12 +24,6 @@ export function QuickPhrasesTab() {
   const loading = useRef(0)
   const mounted = useRef(true)
 
-  useEffect(() => {
-    return () => {
-      mounted.current = false
-    }
-  }, [])
-
   function apply(state: QuickPhraseState) {
     setMode(state.mode)
     setOrder(state.order)
@@ -52,7 +46,11 @@ export function QuickPhrasesTab() {
   )
 
   useEffect(() => {
+    mounted.current = true
     sync(loadQuickPhraseState())
+    return () => {
+      mounted.current = false
+    }
   }, [])
 
   function move(id: string, delta: -1 | 1) {
