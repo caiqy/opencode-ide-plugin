@@ -20,6 +20,7 @@ export interface Interface {
   readonly dispose: (ctx: InstanceContext) => Effect.Effect<void>
   readonly disposeAll: () => Effect.Effect<void>
   readonly provide: <A, E, R>(input: LoadInput, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
+  readonly provideAll: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A[], E, R>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/InstanceStore") {}
@@ -176,6 +177,11 @@ export const layer: Layer.Layer<Service, never, Project.Service | InstanceBootst
     const provide = <A, E, R>(input: LoadInput, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
       load(input).pipe(Effect.flatMap((ctx) => effect.pipe(Effect.provideService(InstanceRef, ctx))))
 
+    const provideAll = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A[], E, R> =>
+      Effect.forEach([...cache.values()], (entry) =>
+        Deferred.await(entry.deferred).pipe(Effect.flatMap((ctx) => effect.pipe(Effect.provideService(InstanceRef, ctx)))),
+      )
+
     yield* Effect.addFinalizer(() => disposeAll().pipe(Effect.ignore))
 
     return Service.of({
@@ -184,6 +190,7 @@ export const layer: Layer.Layer<Service, never, Project.Service | InstanceBootst
       dispose,
       disposeAll,
       provide,
+      provideAll,
     })
   }),
 )

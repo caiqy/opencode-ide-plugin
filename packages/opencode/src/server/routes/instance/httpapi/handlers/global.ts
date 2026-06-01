@@ -4,6 +4,7 @@ import { GlobalBus, type GlobalEvent as GlobalBusEvent } from "@/bus/global"
 import { EffectBridge } from "@/effect/bridge"
 import { Bus } from "@/bus"
 import { Installation } from "@/installation"
+import { InstanceStore } from "@/project/instance-store"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import * as Log from "@opencode-ai/core/util/log"
@@ -114,6 +115,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
   Effect.gen(function* () {
     const config = yield* Config.Service
     const agent = yield* Agent.Service
+    const instances = yield* InstanceStore.Service
     const installation = yield* Installation.Service
     const bridge = yield* EffectBridge.make()
 
@@ -139,7 +141,13 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
           bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
         } else {
           log.info("config update lightweight, reloading agent config")
-          yield* agent.reloadModelConfig().pipe(Effect.ignore)
+          yield* instances.provideAll(agent.reloadModelConfig()).pipe(
+            Effect.catchCause((cause) =>
+              Effect.sync(() => {
+                log.warn("agent config reload failed", { cause })
+              }),
+            ),
+          )
         }
       }
       return result.info

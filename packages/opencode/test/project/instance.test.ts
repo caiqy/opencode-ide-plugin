@@ -163,6 +163,25 @@ describe("InstanceStore", () => {
     }),
   )
 
+  it.live("provideAll runs effect with each active InstanceRef", () =>
+    Effect.gen(function* () {
+      const dir1 = yield* tmpdirScoped({ git: true })
+      const dir2 = yield* tmpdirScoped({ git: true })
+      const store = yield* InstanceStore.Service
+
+      yield* store.load({ directory: dir1 })
+      yield* store.load({ directory: dir2 })
+
+      const directories = yield* store.provideAll(
+        Effect.gen(function* () {
+          return (yield* InstanceRef)?.directory
+        }),
+      )
+
+      expect(directories.toSorted()).toEqual([dir1, dir2].toSorted())
+    }),
+  )
+
   it.live("stale dispose does not delete an in-flight reload", () =>
     Effect.gen(function* () {
       const dir = yield* tmpdirScoped({ git: true })
