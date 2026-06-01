@@ -3,7 +3,6 @@ import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/re
 
 const mocks = vi.hoisted(() => ({
   loadQuickPhraseState: vi.fn(),
-  setQuickPhraseMode: vi.fn(),
   addCustomQuickPhrase: vi.fn(),
   updateCustomQuickPhrase: vi.fn(),
   removeQuickPhrase: vi.fn(),
@@ -13,7 +12,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../state/repo/quickPhraseRepo", () => ({
   loadQuickPhraseState: () => mocks.loadQuickPhraseState(),
-  setQuickPhraseMode: (mode: "double_send" | "confirm_send" | "fill_input") => mocks.setQuickPhraseMode(mode),
   addCustomQuickPhrase: (input: { title: string; body: string }) => mocks.addCustomQuickPhrase(input),
   updateCustomQuickPhrase: (id: string, patch: { title: string; body: string }) =>
     mocks.updateCustomQuickPhrase(id, patch),
@@ -25,7 +23,6 @@ vi.mock("../../state/repo/quickPhraseRepo", () => ({
 import { QuickPhrasesTab } from "./QuickPhrasesTab"
 
 const state = {
-  mode: "fill_input" as const,
   preset_version: 1,
   order: ["preset:commit", "custom:1"],
   items: {
@@ -54,25 +51,11 @@ describe("QuickPhrasesTab", () => {
   beforeEach(() => {
     vi.resetAllMocks()
     mocks.loadQuickPhraseState.mockResolvedValue(state)
-    mocks.setQuickPhraseMode.mockResolvedValue(state)
     mocks.addCustomQuickPhrase.mockResolvedValue(state)
     mocks.updateCustomQuickPhrase.mockResolvedValue(state)
     mocks.removeQuickPhrase.mockResolvedValue(state)
     mocks.toggleQuickPhraseHidden.mockResolvedValue(state)
     mocks.reorderQuickPhrase.mockResolvedValue(state)
-  })
-
-  it("可以切换输入模式", async () => {
-    render(<QuickPhrasesTab />)
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("输入模式")).toBeInTheDocument()
-    })
-
-    fireEvent.change(screen.getByLabelText("输入模式"), { target: { value: "double_send" } })
-    await waitFor(() => {
-      expect(mocks.setQuickPhraseMode).toHaveBeenCalledWith("double_send")
-    })
   })
 
   it("支持新增自定义短语", async () => {

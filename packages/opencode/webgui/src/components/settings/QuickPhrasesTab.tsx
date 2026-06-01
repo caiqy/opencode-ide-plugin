@@ -4,16 +4,13 @@ import {
   loadQuickPhraseState,
   reorderQuickPhrase,
   removeQuickPhrase,
-  setQuickPhraseMode,
   toggleQuickPhraseHidden,
   updateCustomQuickPhrase,
-  type QuickPhraseMode,
   type QuickPhraseState,
 } from "../../state/repo/quickPhraseRepo"
 import { quick_phrase_updated_event } from "../../state/repo/quickPhraseEvent"
 
 export function QuickPhrasesTab() {
-  const [mode, setMode] = useState<QuickPhraseMode>("fill_input")
   const [order, setOrder] = useState<string[]>([])
   const [items, setItems] = useState<QuickPhraseState["items"]>({})
   const [title, setTitle] = useState("")
@@ -25,7 +22,6 @@ export function QuickPhrasesTab() {
   const mounted = useRef(true)
 
   function apply(state: QuickPhraseState) {
-    setMode(state.mode)
     setOrder(state.order)
     setItems(state.items)
     window.dispatchEvent(new Event(quick_phrase_updated_event))
@@ -68,26 +64,6 @@ export function QuickPhrasesTab() {
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">快捷短语设置</h3>
-
-      <div>
-        <label htmlFor="quick-phrase-mode" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-          输入模式
-        </label>
-        <select
-          id="quick-phrase-mode"
-          value={mode}
-          onChange={(event) => {
-            const next = event.target.value as QuickPhraseMode
-            setMode(next)
-            sync(setQuickPhraseMode(next))
-          }}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-        >
-          <option value="double_send">直接发送</option>
-          <option value="confirm_send">确认后发送</option>
-          <option value="fill_input">回填输入框</option>
-        </select>
-      </div>
 
       <div className="space-y-2">
         {list.map((item) => (
