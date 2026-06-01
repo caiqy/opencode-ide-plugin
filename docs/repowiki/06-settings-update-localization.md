@@ -35,7 +35,7 @@
 - `packages/opencode/webgui/src/components/settings/QuickPhrasesTab.tsx`
 - `packages/opencode/webgui/src/components/MessageInput/QuickPhraseBar.tsx`
 
-快捷短语由 preset 和 custom 合并得到。用户可隐藏 preset、调整排序、编辑 custom，并为每条短语选择执行模式：填入输入框、确认后发送或双击发送。`quickPhraseEvent` 用于设置页保存后通知输入区刷新，避免用户必须重载 WebGUI 才能看到变化。
+快捷短语由 preset 和 custom 合并得到。用户可隐藏 preset、调整排序、编辑 custom，每条短语固定通过左键双击立即发送、右键双击回填输入框。`quickPhraseEvent` 用于设置页保存后通知输入区刷新，避免用户必须重载 WebGUI 才能看到变化。
 
 ## 模型、Provider 与主题偏好
 

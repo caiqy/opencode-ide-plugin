@@ -139,7 +139,7 @@ WebGUI 避免全量 virtualization，采用更保守的聊天滚动模型：
 - 图片、PDF、文本附件；`fileUtils` 负责 MIME 识别和 text attachment 归一化。
 - `@文件` mention 的后端分流顺序固定为：目录 → PDF/图片 → 文本文件 → 其他二进制；其他二进制只保留路径引用，不自动 `Read`，也不应制造 `Session.Error`。
 - 拖拽文件路径插入。
-- 快捷短语，支持填入输入框、确认后发送、双击发送等模式。
+- 快捷短语，左键双击立即发送、右键双击回填输入框。
 - 会话维度草稿保存与恢复。
 - 会话 busy、selection restore、加载错误时禁用或保护输入。
 - abort 当前会话时，前端会先本地 reject 该 session 下仍未回答的 question，再调用 `session.abort`，避免 UI 残留阻塞问题卡片。
