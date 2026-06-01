@@ -395,8 +395,6 @@ describe("MessageInput compact confirm", () => {
     expect(onSendIntent).not.toHaveBeenCalled()
   })
 
-
-
   it("没有 session 时 onSend 不应触发发送意图", async () => {
     const onSendIntent = vi.fn()
     mocks.loadQuickPhraseState.mockResolvedValue(quick)
@@ -417,10 +415,6 @@ describe("MessageInput compact confirm", () => {
     expect(onSendIntent).not.toHaveBeenCalled()
     expect(mocks.submitQuickPhrase).not.toHaveBeenCalled()
   })
-
-
-
-
 
   it("精简会话确认弹窗文案为中文", () => {
     render(<MessageInput sessionID="s1" />)
