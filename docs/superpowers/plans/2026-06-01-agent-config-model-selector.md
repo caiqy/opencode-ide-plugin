@@ -10,20 +10,50 @@
 
 ---
 
+## Implementation Notes Added After Review
+
+Current implementation went beyond the initial picker swap plan to cover production issues found during review and end-to-end testing:
+
+- `ModelSelector` also supports `providersData`, `defaultIdsData`, and `renderInPortal` so Agent 配置页 can share one provider load across rows and avoid dropdown clipping inside SettingsPanel.
+- Portal dropdown position is recalculated on window/ancestor scroll and resize.
+- `useClickOutsideWithEscape` consumes Escape in capture phase so a nested model dropdown closes before SettingsPanel's document-level Escape handler can close the modal.
+- `SettingsPanel` sends only changed top-level config fields. For Agent config changes, the changed top-level `agent` object is sent as a full replacement patch.
+- `Config.updateGlobal()` writes top-level `agent` with replace semantics for both JSON and JSONC, so clearing a nested model removes stale `agent.<name>.model` from disk.
+- Global config updates treat `agent` as lightweight: saving Agent model/variant config does not dispose instances or disconnect `/event`; active instances hot-reload `Agent.reloadModelConfig()` through `InstanceStore.provideAll(...)`.
+
+---
+
 ## Files
 
 - Modify: `packages/opencode/webgui/src/components/ModelSelector.tsx`
   - Add optional clear/default props.
   - Add placement and button class customization.
+  - Add optional preloaded provider/default data props.
+  - Add optional portal rendering and scroll/resize position refresh.
   - Keep existing default behavior unchanged for chat.
 - Modify: `packages/opencode/webgui/src/components/ModelSelector.test.tsx`
   - Add tests for clear/default behavior.
 - Modify: `packages/opencode/webgui/src/components/settings/AgentConfigTab.tsx`
   - Replace model `<select>` with adapted `ModelSelector`.
   - Add a small parser for `provider/model` strings.
+  - Pass preloaded provider/default data into each row's `ModelSelector`.
+  - Render model dropdowns in a portal to avoid SettingsPanel overflow clipping.
 - Modify: `packages/opencode/webgui/src/components/settings/AgentConfigTab.test.tsx`
   - Update tests to interact with the search picker.
   - Keep existing variant-clearing and reload coverage.
+- Modify: `packages/opencode/webgui/src/components/SettingsPanel/index.tsx`
+  - Save only changed top-level fields.
+  - Ignore Escape if a child dropdown already handled it.
+- Modify: `packages/opencode/webgui/src/hooks/useClickOutside.ts`
+  - Consume Escape in capture phase for nested dropdowns.
+- Modify: `packages/opencode/src/config/config.ts`
+  - Replace top-level `agent` on global config writes to remove cleared nested model fields.
+- Modify: `packages/opencode/src/server/routes/instance/httpapi/handlers/global.ts`
+  - Avoid dispose for lightweight config changes and hot-reload agent model config.
+- Modify: `packages/opencode/src/project/instance-store.ts`
+  - Provide an effect across active instance refs for hot reload.
+- Modify: `packages/opencode/src/agent/agent.ts`
+  - Add `reloadModelConfig()` to refresh cached agent model/variant config.
 
 ---
 
@@ -470,4 +500,47 @@ Expected: only intended files are changed or all changes are already committed.
 - Spec goal “默认/清空”：Task 1 adds clear support; Task 2 wires it to `updateAgent(row.name, "model", undefined)`.
 - Spec goal “Variant 联动”：Task 2 keeps and relies on existing `updateAgent` variant validation.
 - Spec goal “对话界面不回退”：Task 1 tests default behavior does not show clear entry.
+- Review follow-up “不裁剪下拉”：implemented through `renderInPortal` and covered by portal/positioning tests.
+- Review follow-up “Escape 不关闭 SettingsPanel”：implemented in `useClickOutsideWithEscape` capture handler and covered by SettingsPanel integration test.
+- Review follow-up “清空 model 真正删除旧配置”：implemented by top-level `agent` replace semantics in `Config.updateGlobal` and covered by JSON/JSONC config tests.
+- Review follow-up “保存不断连”：implemented by lightweight config detection + `Agent.reloadModelConfig()` hot reload instead of dispose; verified with focused tests and browser E2E.
 - No placeholders remain; all commands and expected results are explicit.
+
+---
+
+## Final Verification Commands Used
+
+```bash
+cd packages/opencode
+bun test test/config/config.test.ts -t "updates global agent config by replacing nested agent object"
+```
+
+Expected/observed: `2 pass`, `0 fail`.
+
+```bash
+cd packages/opencode/webgui
+node_modules\.bin\vitest run src/components/SettingsPanel src/components/settings/AgentConfigTab.test.tsx src/components/ModelSelector.test.tsx src/state/repo/modelPrefsRepo.test.ts
+```
+
+Expected/observed: all focused frontend tests pass.
+
+```bash
+cd packages/opencode/webgui
+node_modules\.bin\tsc --noEmit
+```
+
+Expected/observed: exits with code 0.
+
+```bash
+cd packages/opencode
+bun run typecheck
+```
+
+Expected/observed: exits with code 0.
+
+Manual E2E on `http://localhost:5173/app`:
+
+1. Open Settings → Agent 配置.
+2. Open `compaction` model picker, search and select `DeepSeek V4 Flash Free`.
+3. Reopen picker and press Escape: dropdown closes, SettingsPanel remains open.
+4. Save: `PATCH /global/config` returns 200; `/event` remains connected; no console errors/warnings.

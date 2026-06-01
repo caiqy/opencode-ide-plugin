@@ -10,6 +10,23 @@
 
 ---
 
+## Implementation Notes Added After Review
+
+The final implementation differs from this initial plan in several important ways:
+
+- The model column no longer uses a native `<select>`; it uses the shared `ModelSelector` search picker with a “默认” clear option.
+- Agent 配置保存 is written to global config through changed top-level fields only. When `agent` changes, the whole top-level `agent` object is sent so cleared nested model fields can be removed.
+- Backend global config writes use replacement semantics for top-level `agent` in JSON and JSONC files.
+- Saving Agent model/variant config no longer disposes instances. It is treated as lightweight config and hot-reloads active instances through `Agent.reloadModelConfig()`.
+- The model picker renders in a portal inside SettingsPanel to avoid overflow clipping; Escape closes only the picker, not the SettingsPanel.
+
+See the follow-up design/plan for the implemented model picker details:
+
+- `docs/superpowers/specs/2026-06-01-agent-config-model-selector-design.md`
+- `docs/superpowers/plans/2026-06-01-agent-config-model-selector.md`
+
+---
+
 ## 文件结构
 
 | 文件 | 职责 |
@@ -17,6 +34,17 @@
 | `src/components/settings/AgentConfigTab.tsx` | 新建。Agent 配置表格主组件 |
 | `src/components/SettingsPanel/TabBar.tsx` | 修改。新增 "agents" tab |
 | `src/components/SettingsPanel/index.tsx` | 修改。导入并渲染 AgentConfigTab |
+
+Additional files changed by review follow-ups:
+
+| 文件 | 职责 |
+|------|------|
+| `packages/opencode/webgui/src/components/ModelSelector.tsx` | 搜索式模型选择器、默认/清空、预加载 provider、portal 下拉 |
+| `packages/opencode/webgui/src/hooks/useClickOutside.ts` | 子下拉 Escape 优先处理，避免关闭 SettingsPanel |
+| `packages/opencode/src/config/config.ts` | 全局 `agent` replace 写入语义 |
+| `packages/opencode/src/server/routes/instance/httpapi/handlers/global.ts` | lightweight config 更新与 agent 热更新 |
+| `packages/opencode/src/agent/agent.ts` | agent model/variant cache 热更新 |
+| `packages/opencode/src/project/instance-store.ts` | 在 active instances 中执行热更新 effect |
 
 ---
 
