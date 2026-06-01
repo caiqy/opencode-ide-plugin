@@ -101,7 +101,7 @@ export function ModelSelector({
   const hasExplicitPlaceholder = placeholder !== undefined
   const effectivePlaceholder = placeholder ?? "选择模型"
   const portalRef = useRef<HTMLDivElement>(null)
-  const excludeRefs = useMemo(() => (renderInPortal ? [portalRef] : undefined), [renderInPortal])
+  const excludeRefs = useMemo(() => (renderInPortal ? [portalRef as React.RefObject<HTMLElement>] : undefined), [renderInPortal])
   const { isOpen, searchTerm, setSearchTerm, dropdownRef, close, toggle } = useDropdown({
     excludeRefs,
   })
@@ -142,7 +142,7 @@ export function ModelSelector({
         if (!active) return
 
         if (provRes) {
-          if (provRes.error) {
+          if ("error" in provRes && provRes.error) {
             console.error("[ModelSelector] Failed to load providers:", provRes.error)
             setIsLoading(false)
             return

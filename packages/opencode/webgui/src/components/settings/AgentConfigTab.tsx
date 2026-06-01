@@ -27,7 +27,7 @@ function getVariantsForModel(providers: Provider[], modelValue: string | undefin
   if (!providerID || !modelID) return []
   const provider = providers.find((p) => p.id === providerID)
   if (!provider) return []
-  const model = provider.models[modelID]
+  const model = provider.models[modelID] as { variants?: Record<string, unknown> } | undefined
   if (!model?.variants) return []
   return Object.keys(model.variants)
 }
@@ -104,8 +104,8 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
       name: agent.name,
       mode: agent.mode,
       description: agent.description,
-      model: agentConfig?.model ?? undefined,
-      variant: agentConfig?.variant ?? undefined,
+      model: (agentConfig?.model as string | undefined) ?? undefined,
+      variant: (agentConfig?.variant as string | undefined) ?? undefined,
       configured: agentConfig !== undefined && Object.keys(agentConfig).length > 0,
     }
   })
@@ -119,11 +119,11 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
     const currentAgent = formData.agent ?? {}
     const currentConfig = currentAgent[name] ?? {}
 
-    const updated = { ...currentConfig, [field]: value || undefined }
+    const updated: Record<string, unknown> = { ...currentConfig, [field]: value || undefined }
 
     if (field === "model") {
       const variants = getVariantsForModel(providers, value)
-      if (updated.variant && !variants.includes(updated.variant)) {
+      if (updated.variant && typeof updated.variant === "string" && !variants.includes(updated.variant)) {
         updated.variant = undefined
       }
     }
@@ -131,7 +131,7 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
     const hasValues = updated.model || updated.variant
     const nextAgent = { ...currentAgent }
     if (hasValues) {
-      nextAgent[name] = updated
+      nextAgent[name] = updated as typeof currentConfig
     } else {
       const { model: _m, variant: _v, ...rest } = currentConfig
       if (Object.keys(rest).length > 0) {
