@@ -191,7 +191,7 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
         </button>
       </div>
 
-      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-clip overflow-y-visible">
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
@@ -245,6 +245,7 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
                       dropdownPlacement="bottom"
                       providersData={providers}
                       defaultIdsData={defaultIds}
+                      renderInPortal
                       buttonClassName="h-7 w-full max-w-[220px] px-2 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between gap-1"
                     />
                   </td>

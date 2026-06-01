@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { createPortal } from "react-dom"
 import { sdk } from "../lib/api/sdkClient"
 import type { Provider } from "@opencode-ai/sdk/client"
 import { useDropdown } from "../hooks/useDropdown"
@@ -19,6 +20,8 @@ interface ModelSelectorProps {
   providersData?: Provider[]
   /** Pre-loaded default ids (e.g. { provider, model }); paired with providersData */
   defaultIdsData?: Record<string, string>
+  /** Render dropdown in a portal to escape overflow clipping */
+  renderInPortal?: boolean
 }
 
 interface ModelEntry {
@@ -93,15 +96,21 @@ export function ModelSelector({
   dropdownPlacement = "top",
   providersData,
   defaultIdsData,
+  renderInPortal = false,
 }: ModelSelectorProps) {
   const hasExplicitPlaceholder = placeholder !== undefined
   const effectivePlaceholder = placeholder ?? "选择模型"
-  const { isOpen, searchTerm, setSearchTerm, dropdownRef, close, toggle } = useDropdown()
+  const portalRef = useRef<HTMLDivElement>(null)
+  const { isOpen, searchTerm, setSearchTerm, dropdownRef, close, toggle } = useDropdown({
+    excludeRefs: renderInPortal ? [portalRef] : undefined,
+  })
   const [providers, setProviders] = useState<Provider[]>(providersData ?? [])
   const [defaultIds, setDefaultIds] = useState<Record<string, string>>(defaultIdsData ?? {})
   const [isLoading, setIsLoading] = useState(!providersData)
   const [recent, setRecent] = useState<ModelEntry[]>([])
   const [favorite, setFavorite] = useState<ModelEntry[]>([])
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [portalStyle, setPortalStyle] = useState<React.CSSProperties>({})
 
   const favoriteSet = new Set(favorite.map(favoriteKey))
 
@@ -159,6 +168,36 @@ export function ModelSelector({
       active = false
     }
   }, [])
+
+  // Refresh prefs each time the dropdown opens so sibling instances see latest recent/favorite
+  useEffect(() => {
+    if (!isOpen) return
+    let active = true
+    loadModelPrefs().then((prefs) => {
+      if (!active) return
+      setRecent(prefs.recent.slice(0, MAX_RECENT))
+      setFavorite(prefs.favorite)
+    }).catch(() => {})
+    return () => { active = false }
+  }, [isOpen])
+
+  // Compute portal position when open in portal mode
+  useEffect(() => {
+    if (!isOpen || !renderInPortal || !triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const style: React.CSSProperties = {
+      position: "fixed",
+      minWidth: Math.max(rect.width, 300),
+      left: rect.left,
+      zIndex: 9999,
+    }
+    if (dropdownPlacement === "bottom") {
+      style.top = rect.bottom + 4
+    } else {
+      style.bottom = window.innerHeight - rect.top + 4
+    }
+    setPortalStyle(style)
+  }, [isOpen, renderInPortal, dropdownPlacement])
 
   const getCurrentDisplay = () => {
     if (!selectedProviderId || !selectedModelId) {
@@ -301,15 +340,113 @@ export function ModelSelector({
     buttonClassName ||
     "h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
 
-  const dropdownBase = "absolute left-0 min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
-  const dropdownClasses =
+  const dropdownBase = "min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
+  const inlineDropdownClasses =
     dropdownPlacement === "bottom"
-      ? `${dropdownBase} top-full mt-1`
-      : `${dropdownBase} bottom-full mb-1`
+      ? `absolute left-0 ${dropdownBase} top-full mt-1`
+      : `absolute left-0 ${dropdownBase} bottom-full mb-1`
+
+  const dropdownContent = (
+    <div
+      ref={renderInPortal ? portalRef : undefined}
+      className={renderInPortal ? dropdownBase : inlineDropdownClasses}
+      style={renderInPortal ? portalStyle : undefined}
+      data-testid={renderInPortal ? "model-selector-portal" : undefined}
+    >
+      <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="搜索模型…"
+          className="w-full px-2 py-1 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          autoFocus
+        />
+      </div>
+
+      <div className="overflow-y-auto flex-1">
+        {allowClear && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 text-gray-900 dark:text-gray-100"
+          >
+            <ModelSelectionIndicator selected={!selectedProviderId && !selectedModelId} />
+            <span className="font-medium">{clearLabel}</span>
+          </button>
+        )}
+        {isLoading ? (
+          <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">正在加载模型…</div>
+        ) : providers.length === 0 ? (
+          <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">尚未配置提供方</div>
+        ) : (
+          <>
+            {/* Favorites group */}
+            {filteredFavorites().length > 0 && (
+              <div className="border-b border-gray-100 dark:border-gray-800">
+                <div className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800">
+                  收藏
+                </div>
+                {filteredFavorites().map((item) => renderModelRow(item.providerID, item.modelID))}
+              </div>
+            )}
+
+            {/* Recent group (excluding favorites) */}
+            {filteredRecent().length > 0 && (
+              <div className="border-b border-gray-100 dark:border-gray-800">
+                <div className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800">
+                  最近
+                </div>
+                {filteredRecent().map((item) => renderModelRow(item.providerID, item.modelID))}
+              </div>
+            )}
+
+            {/* Provider groups */}
+            {providers.map((provider) => {
+              const filtered = filterModels(provider).filter(([modelId]) => {
+                if (searchTerm.trim().length > 0) return true
+                return !favoriteSet.has(`${provider.id}/${modelId}`)
+              })
+              if (filtered.length === 0) return null
+
+              return (
+                <div key={provider.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
+                  <div className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800">
+                    {provider.name}
+                  </div>
+                  {filtered.map(([modelId, model]) => {
+                    const isDefault = defaultIds.provider === provider.id && defaultIds.model === modelId
+
+                    return renderModelRow(
+                      provider.id,
+                      modelId,
+                      <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
+                        {model.capabilities.reasoning && (
+                          <span className="px-1 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-[9px] leading-none">
+                            推理
+                          </span>
+                        )}
+                        {isDefault && (
+                          <span className="px-1 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-[9px] leading-none">
+                            默认
+                          </span>
+                        )}
+                      </div>,
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  )
 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
+        ref={triggerRef}
         onClick={toggle}
         disabled={disabled || isLoading}
         className={buttonClasses}
@@ -322,97 +459,7 @@ export function ModelSelector({
         </svg>
       </button>
 
-      {isOpen && (
-        <div className={dropdownClasses}>
-          <div className="p-2 border-b border-gray-200 dark:border-gray-700">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="搜索模型…"
-              className="w-full px-2 py-1 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              autoFocus
-            />
-          </div>
-
-          <div className="overflow-y-auto flex-1">
-            {allowClear && (
-              <button
-                type="button"
-                onClick={handleClear}
-                className="w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 text-gray-900 dark:text-gray-100"
-              >
-                <ModelSelectionIndicator selected={!selectedProviderId && !selectedModelId} />
-                <span className="font-medium">{clearLabel}</span>
-              </button>
-            )}
-            {isLoading ? (
-              <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">正在加载模型…</div>
-            ) : providers.length === 0 ? (
-              <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">尚未配置提供方</div>
-            ) : (
-              <>
-                {/* Favorites group */}
-                {filteredFavorites().length > 0 && (
-                  <div className="border-b border-gray-100 dark:border-gray-800">
-                    <div className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800">
-                      收藏
-                    </div>
-                    {filteredFavorites().map((item) => renderModelRow(item.providerID, item.modelID))}
-                  </div>
-                )}
-
-                {/* Recent group (excluding favorites) */}
-                {filteredRecent().length > 0 && (
-                  <div className="border-b border-gray-100 dark:border-gray-800">
-                    <div className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800">
-                      最近
-                    </div>
-                    {filteredRecent().map((item) => renderModelRow(item.providerID, item.modelID))}
-                  </div>
-                )}
-
-                {/* Provider groups */}
-                {providers.map((provider) => {
-                  const filtered = filterModels(provider).filter(([modelId]) => {
-                    if (searchTerm.trim().length > 0) return true
-                    return !favoriteSet.has(`${provider.id}/${modelId}`)
-                  })
-                  if (filtered.length === 0) return null
-
-                  return (
-                    <div key={provider.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
-                      <div className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800">
-                        {provider.name}
-                      </div>
-                      {filtered.map(([modelId, model]) => {
-                        const isDefault = defaultIds.provider === provider.id && defaultIds.model === modelId
-
-                        return renderModelRow(
-                          provider.id,
-                          modelId,
-                          <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
-                            {model.capabilities.reasoning && (
-                              <span className="px-1 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-[9px] leading-none">
-                                推理
-                              </span>
-                            )}
-                            {isDefault && (
-                              <span className="px-1 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-[9px] leading-none">
-                                默认
-                              </span>
-                            )}
-                          </div>,
-                        )
-                      })}
-                    </div>
-                  )
-                })}
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      {isOpen && (renderInPortal ? createPortal(dropdownContent, document.body) : dropdownContent)}
     </div>
   )
 }

@@ -92,6 +92,11 @@ async function waitForPickerReady() {
   })
 }
 
+/** Get the portal dropdown container */
+function getPortalDropdown() {
+  return screen.getByTestId("model-selector-portal")
+}
+
 describe("AgentConfigTab", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -135,8 +140,9 @@ describe("AgentConfigTab", () => {
 
     const buildRow = screen.getByText("build").closest("tr")!
     await user.click(within(buildRow).getByTitle("选择模型"))
-    await user.type(screen.getByPlaceholderText("搜索模型…"), "gpt-5.5")
-    await user.click(screen.getByRole("button", { name: /GPT-5.5/ }))
+    const portal = getPortalDropdown()
+    await user.type(within(portal).getByPlaceholderText("搜索模型…"), "gpt-5.5")
+    await user.click(within(portal).getByRole("button", { name: /GPT-5.5/ }))
 
     expect(setFormData).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -159,8 +165,9 @@ describe("AgentConfigTab", () => {
 
     const buildRow = screen.getByText("build").closest("tr")!
     await user.click(within(buildRow).getByTitle("选择模型"))
-    await user.type(screen.getByPlaceholderText("搜索模型…"), "gpt-5.5")
-    await user.click(screen.getByRole("button", { name: /GPT-5.5/ }))
+    const portal = getPortalDropdown()
+    await user.type(within(portal).getByPlaceholderText("搜索模型…"), "gpt-5.5")
+    await user.click(within(portal).getByRole("button", { name: /GPT-5.5/ }))
 
     expect(setFormData).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -183,8 +190,8 @@ describe("AgentConfigTab", () => {
 
     const buildRow = screen.getByText("build").closest("tr")!
     await user.click(within(buildRow).getByTitle("选择模型"))
-    const dropdown = screen.getByPlaceholderText("搜索模型…").closest(".overflow-hidden")!
-    await user.click(within(dropdown as HTMLElement).getByRole("button", { name: "默认" }))
+    const portal = getPortalDropdown()
+    await user.click(within(portal).getByRole("button", { name: "默认" }))
 
     const call = setFormData.mock.calls[setFormData.mock.calls.length - 1][0]
     expect(call.agent.build.prompt).toBe("custom prompt")
@@ -209,9 +216,9 @@ describe("AgentConfigTab", () => {
 
     // Select a different model and verify the slash-containing id round-trips
     await user.click(within(buildRow).getByTitle("选择模型"))
-    await user.type(screen.getByPlaceholderText("搜索模型…"), "Family")
-    const dropdown = screen.getByPlaceholderText("搜索模型…").closest(".overflow-hidden")!
-    await user.click(within(dropdown as HTMLElement).getByRole("button", { name: /Family Model V1/ }))
+    const portal = getPortalDropdown()
+    await user.type(within(portal).getByPlaceholderText("搜索模型…"), "Family")
+    await user.click(within(portal).getByRole("button", { name: /Family Model V1/ }))
 
     expect(setFormData).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -220,6 +227,38 @@ describe("AgentConfigTab", () => {
         }),
       }),
     )
+  })
+
+  it("portal dropdown renders outside the table DOM subtree", async () => {
+    const user = userEvent.setup()
+    setup()
+    await waitForPickerReady()
+
+    const buildRow = screen.getByText("build").closest("tr")!
+    await user.click(within(buildRow).getByTitle("选择模型"))
+
+    const portal = getPortalDropdown()
+    const table = screen.getByRole("table")
+    // Portal dropdown should NOT be inside the table
+    expect(table.contains(portal)).toBe(false)
+    // It should be a direct child of document.body
+    expect(portal.parentElement).toBe(document.body)
+  })
+
+  it("model column has no native select elements (only variant column)", async () => {
+    setup()
+    await waitForPickerReady()
+
+    const rows = screen.getAllByRole("row").slice(1) // skip header
+    for (const row of rows) {
+      const selects = row.querySelectorAll("select")
+      // Each row should have at most 1 select (the variant selector)
+      expect(selects.length).toBeLessThanOrEqual(1)
+      // No select should have optgroup (which the old model select had)
+      for (const sel of selects) {
+        expect(sel.querySelector("optgroup")).toBeNull()
+      }
+    }
   })
 
   it("reload button re-fetches config", async () => {

@@ -281,4 +281,47 @@ describe("ModelSelector favorites", () => {
     expect((dropdown as HTMLElement).className).not.toContain("bottom-full")
     expect((dropdown as HTMLElement).className).not.toContain("mb-1")
   })
+
+  it("opening a second selector refreshes prefs to show latest recent/favorite", async () => {
+    // First render: loadModelPrefs returns empty
+    repo.loadModelPrefs.mockResolvedValue({ recent: [], favorite: [] })
+
+    const { container } = render(
+      <div>
+        <ModelSelector onSelect={() => {}} />
+        <ModelSelector onSelect={() => {}} />
+      </div>,
+    )
+    // Wait for both to load
+    const buttons = await screen.findAllByTitle("选择模型")
+    expect(buttons).toHaveLength(2)
+
+    const user = userEvent.setup()
+
+    // Open first selector
+    await user.click(buttons[0])
+    expect(screen.getByPlaceholderText("搜索模型…")).toBeInTheDocument()
+
+    // Simulate that after first selector interaction, prefs now have a recent entry
+    repo.loadModelPrefs.mockResolvedValue({
+      recent: [{ providerID: "openai", modelID: "gpt-4.1" }],
+      favorite: [],
+    })
+
+    // Close first selector via Escape
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByPlaceholderText("搜索模型…")).not.toBeInTheDocument())
+
+    // Open second selector — it should refresh prefs and show "最近" section
+    await user.click(buttons[1])
+    await waitFor(() => {
+      expect(screen.getByText("最近")).toBeInTheDocument()
+    })
+
+    // The recent model should be visible
+    const dropdown = screen.getByPlaceholderText("搜索模型…").closest("div")?.parentElement
+    expect(dropdown).toBeTruthy()
+    const ui = within(dropdown as HTMLElement)
+    expect(ui.getByText("最近")).toBeInTheDocument()
+  })
 })
