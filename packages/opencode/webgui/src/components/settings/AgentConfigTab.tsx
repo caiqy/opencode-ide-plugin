@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { sdk } from "../../lib/api/sdkClient"
 import type { Config, Agent, Provider } from "@opencode-ai/sdk/client"
+import { ModelSelector } from "../ModelSelector"
 
 interface AgentConfigTabProps {
   formData: Partial<Config>
@@ -29,6 +30,16 @@ function getVariantsForModel(providers: Provider[], modelValue: string | undefin
   const model = provider.models[modelID]
   if (!model?.variants) return []
   return Object.keys(model.variants)
+}
+
+function parseModelValue(modelValue: string | undefined) {
+  if (!modelValue) return { providerID: undefined, modelID: undefined }
+  const slashIndex = modelValue.indexOf("/")
+  if (slashIndex < 0) return { providerID: undefined, modelID: undefined }
+  const providerID = modelValue.slice(0, slashIndex)
+  const modelID = modelValue.slice(slashIndex + 1)
+  if (!providerID || !modelID) return { providerID: undefined, modelID: undefined }
+  return { providerID, modelID }
 }
 
 export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentConfigTabProps) {
@@ -189,6 +200,7 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
           <tbody>
             {sortedRows.map((row) => {
               const variants = getVariantsForModel(providers, row.model)
+              const selectedModel = parseModelValue(row.model)
               return (
                 <tr
                   key={row.name}
@@ -218,28 +230,17 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
                     </span>
                   </td>
                   <td className="px-3 py-2">
-                    <select
-                      value={row.model ?? ""}
-                      onChange={(e) => updateAgent(row.name, "model", e.target.value || undefined)}
-                      className="w-full max-w-[200px] px-1.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="">默认</option>
-                      {row.model && !providers.some((p) => {
-                        const slashIdx = row.model!.indexOf("/")
-                        return slashIdx >= 0 && p.id === row.model!.slice(0, slashIdx) && p.models[row.model!.slice(slashIdx + 1)]
-                      }) && (
-                        <option value={row.model}>{row.model}（未知）</option>
-                      )}
-                      {providers.map((provider) => (
-                        <optgroup key={provider.id} label={provider.name}>
-                          {Object.entries(provider.models).map(([modelId, model]) => (
-                            <option key={`${provider.id}/${modelId}`} value={`${provider.id}/${modelId}`}>
-                              {model.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
+                    <ModelSelector
+                      selectedProviderId={selectedModel.providerID}
+                      selectedModelId={selectedModel.modelID}
+                      onSelect={(providerID, modelID) => updateAgent(row.name, "model", `${providerID}/${modelID}`)}
+                      allowClear
+                      clearLabel="默认"
+                      placeholder="默认"
+                      onClear={() => updateAgent(row.name, "model", undefined)}
+                      dropdownPlacement="bottom"
+                      buttonClassName="h-7 w-full max-w-[220px] px-2 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between gap-1"
+                    />
                   </td>
                   <td className="px-3 py-2">
                     <select

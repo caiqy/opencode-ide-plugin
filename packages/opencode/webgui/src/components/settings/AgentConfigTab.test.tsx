@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentConfigTab } from "./AgentConfigTab"
 
@@ -19,6 +19,12 @@ vi.mock("../../lib/api/sdkClient", () => ({
   },
 }))
 
+vi.mock("../../state/repo/modelPrefsRepo", () => ({
+  loadModelPrefs: vi.fn().mockResolvedValue({ recent: [], favorite: [] }),
+  addRecentModel: vi.fn().mockResolvedValue({ recent: [], favorite: [] }),
+  updateModelPrefs: vi.fn().mockResolvedValue({ recent: [], favorite: [] }),
+}))
+
 import { sdk } from "../../lib/api/sdkClient"
 
 const mockAgents = [
@@ -35,10 +41,12 @@ const mockProviders = {
       models: {
         "gpt-5.5": {
           name: "GPT-5.5",
+          capabilities: {},
           variants: { low: {}, medium: {}, high: {} },
         },
         "gpt-4o": {
           name: "GPT-4o",
+          capabilities: {},
           variants: { low: {}, high: {} },
         },
       },
@@ -49,11 +57,13 @@ const mockProviders = {
       models: {
         "claude-opus-4-6": {
           name: "Claude Opus 4.6",
+          capabilities: {},
           variants: { medium: {}, high: {}, xhigh: {} },
         },
       },
     },
   ],
+  default: { provider: "openai", model: "gpt-5.5" },
 }
 
 function setup(formData = {}, setFormData = vi.fn(), onReloadConfig = vi.fn()) {
@@ -103,7 +113,7 @@ describe("AgentConfigTab", () => {
     expect(rows[1]).toHaveTextContent("explore")
   })
 
-  it("selecting model updates formData", async () => {
+  it("selecting model with the search picker updates formData", async () => {
     const user = userEvent.setup()
     const { setFormData } = setup()
     await waitFor(() => {
@@ -111,9 +121,10 @@ describe("AgentConfigTab", () => {
     })
 
     const buildRow = screen.getByText("build").closest("tr")!
-    const modelSelect = buildRow.querySelectorAll("select")[0]
+    await user.click(within(buildRow).getByTitle("选择模型"))
+    await user.type(screen.getByPlaceholderText("搜索模型…"), "gpt-5.5")
+    await user.click(screen.getByRole("button", { name: /GPT-5.5/ }))
 
-    await user.selectOptions(modelSelect, "openai/gpt-5.5")
     expect(setFormData).toHaveBeenCalledWith(
       expect.objectContaining({
         agent: expect.objectContaining({
@@ -136,10 +147,10 @@ describe("AgentConfigTab", () => {
     })
 
     const buildRow = screen.getByText("build").closest("tr")!
-    const modelSelect = buildRow.querySelectorAll("select")[0]
+    await user.click(within(buildRow).getByTitle("选择模型"))
+    await user.type(screen.getByPlaceholderText("搜索模型…"), "gpt-5.5")
+    await user.click(screen.getByRole("button", { name: /GPT-5.5/ }))
 
-    // Change to openai/gpt-5.5 which doesn't have "xhigh" variant
-    await user.selectOptions(modelSelect, "openai/gpt-5.5")
     expect(setFormData).toHaveBeenCalledWith(
       expect.objectContaining({
         agent: expect.objectContaining({
@@ -149,7 +160,7 @@ describe("AgentConfigTab", () => {
     )
   })
 
-  it("clearing model/variant preserves other agent fields", async () => {
+  it("clearing model with the picker preserves other agent fields", async () => {
     const user = userEvent.setup()
     const formData = {
       agent: {
@@ -162,15 +173,15 @@ describe("AgentConfigTab", () => {
     })
 
     const buildRow = screen.getByText("build").closest("tr")!
-    const modelSelect = buildRow.querySelectorAll("select")[0]
+    await user.click(within(buildRow).getByTitle("选择模型"))
+    const dropdown = screen.getByPlaceholderText("搜索模型…").closest(".overflow-hidden")!
+    await user.click(within(dropdown as HTMLElement).getByRole("button", { name: "默认" }))
 
-    // Clear model (select "默认")
-    await user.selectOptions(modelSelect, "")
-
-    // Should preserve prompt and temperature
     const call = setFormData.mock.calls[setFormData.mock.calls.length - 1][0]
     expect(call.agent.build.prompt).toBe("custom prompt")
     expect(call.agent.build.temperature).toBe(0.7)
+    expect(call.agent.build.model).toBeUndefined()
+    expect(call.agent.build.variant).toBeUndefined()
   })
 
   it("reload button re-fetches config", async () => {
