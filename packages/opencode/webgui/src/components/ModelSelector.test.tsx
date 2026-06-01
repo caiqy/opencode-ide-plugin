@@ -141,4 +141,42 @@ describe("ModelSelector favorites", () => {
     )
     expect(legacyCheckPath).not.toBeInTheDocument()
   })
+
+  it("显示清空入口并在点击时调用 onClear", async () => {
+    const onSelect = vi.fn()
+    const onClear = vi.fn()
+    render(
+      <ModelSelector
+        selectedProviderId="openai"
+        selectedModelId="gpt-4.1"
+        onSelect={onSelect}
+        allowClear
+        clearLabel="默认"
+        onClear={onClear}
+      />,
+    )
+    await screen.findByText("GPT 4.1")
+
+    const user = userEvent.setup()
+    await user.click(screen.getByTitle("选择模型"))
+    await user.click(screen.getByRole("button", { name: "默认" }))
+
+    expect(onClear).toHaveBeenCalledTimes(1)
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it("未选择模型时使用传入的 placeholder", async () => {
+    render(<ModelSelector onSelect={() => {}} placeholder="默认" />)
+    await screen.findByText("默认")
+  })
+
+  it("默认不显示清空入口", async () => {
+    render(<ModelSelector selectedProviderId="openai" selectedModelId="gpt-4.1" onSelect={() => {}} />)
+    await screen.findByText("GPT 4.1")
+
+    const user = userEvent.setup()
+    await user.click(screen.getByTitle("选择模型"))
+
+    expect(screen.queryByRole("button", { name: "默认" })).not.toBeInTheDocument()
+  })
 })

@@ -9,6 +9,12 @@ interface ModelSelectorProps {
   selectedModelId?: string
   onSelect: (providerId: string, modelId: string) => void | Promise<void>
   disabled?: boolean
+  placeholder?: string
+  allowClear?: boolean
+  clearLabel?: string
+  onClear?: () => void | Promise<void>
+  buttonClassName?: string
+  dropdownPlacement?: "top" | "bottom"
 }
 
 interface ModelEntry {
@@ -69,7 +75,18 @@ function ModelSelectionIndicator({ selected }: { selected: boolean }) {
   )
 }
 
-export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, disabled }: ModelSelectorProps) {
+export function ModelSelector({
+  selectedProviderId,
+  selectedModelId,
+  onSelect,
+  disabled,
+  placeholder = "选择模型",
+  allowClear = false,
+  clearLabel = "默认",
+  onClear,
+  buttonClassName,
+  dropdownPlacement = "top",
+}: ModelSelectorProps) {
   const { isOpen, searchTerm, setSearchTerm, dropdownRef, close, toggle } = useDropdown()
   const [providers, setProviders] = useState<Provider[]>([])
   const [defaultIds, setDefaultIds] = useState<{ [key: string]: string }>({})
@@ -125,10 +142,10 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
   const getCurrentDisplay = () => {
     const pid = selectedProviderId || defaultIds.provider
     const mid = selectedModelId || defaultIds.model
-    if (!pid || !mid) return "选择模型"
+    if (!pid || !mid) return placeholder
     const provider = providers.find((p) => p.id === pid)
-    if (!provider) return "选择模型"
-    return provider.models[mid]?.name || "选择模型"
+    if (!provider) return `${pid}/${mid}`
+    return provider.models[mid]?.name || `${pid}/${mid}`
   }
 
   const handleSelect = async (providerID: string, modelID: string) => {
@@ -146,6 +163,11 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
       })
       .catch((err) => console.error("[ModelSelector] Failed to update recent:", err))
 
+    close()
+  }
+
+  const handleClear = async () => {
+    await onClear?.()
     close()
   }
 
@@ -245,12 +267,21 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
     )
   }
 
+  const buttonClasses =
+    buttonClassName ||
+    "h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
+
+  const dropdownClasses =
+    dropdownPlacement === "bottom"
+      ? "absolute top-full left-0 mt-1 min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
+      : "absolute bottom-full left-0 mb-1 min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
+
   return (
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={toggle}
         disabled={disabled || isLoading}
-        className="h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
+        className={buttonClasses}
         title="选择模型"
         data-tip="选择模型"
       >
@@ -261,7 +292,7 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full left-0 mb-1 min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col">
+        <div className={dropdownClasses}>
           <div className="p-2 border-b border-gray-200 dark:border-gray-700">
             <input
               type="text"
@@ -274,6 +305,15 @@ export function ModelSelector({ selectedProviderId, selectedModelId, onSelect, d
           </div>
 
           <div className="overflow-y-auto flex-1">
+            {allowClear && (
+              <button
+                onClick={handleClear}
+                className="w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 text-gray-900 dark:text-gray-100"
+              >
+                <ModelSelectionIndicator selected={!selectedProviderId && !selectedModelId} />
+                <span className="font-medium">{clearLabel}</span>
+              </button>
+            )}
             {isLoading ? (
               <div className="p-4 text-xs text-gray-500 dark:text-gray-400 text-center">正在加载模型…</div>
             ) : providers.length === 0 ? (
