@@ -15,6 +15,10 @@ interface ModelSelectorProps {
   onClear?: () => void | Promise<void>
   buttonClassName?: string
   dropdownPlacement?: "top" | "bottom"
+  /** Pre-loaded providers array; when supplied the component skips its own sdk.config.providers() call */
+  providersData?: Provider[]
+  /** Pre-loaded default ids (e.g. { provider, model }); paired with providersData */
+  defaultIdsData?: Record<string, string>
 }
 
 interface ModelEntry {
@@ -23,6 +27,20 @@ interface ModelEntry {
 }
 
 const MAX_RECENT = 10
+
+let cachedPrefsPromise: Promise<{ recent: ModelEntry[]; favorite: ModelEntry[] }> | undefined
+
+function loadModelPrefsOnce() {
+  if (!cachedPrefsPromise) {
+    cachedPrefsPromise = loadModelPrefs()
+  }
+  return cachedPrefsPromise
+}
+
+/** Invalidate the module-level prefs cache so the next mount re-reads from storage */
+export function invalidateModelPrefsCache() {
+  cachedPrefsPromise = undefined
+}
 
 function favoriteKey(entry: ModelEntry) {
   return `${entry.providerID}/${entry.modelID}`
@@ -87,13 +105,15 @@ export function ModelSelector({
   onClear,
   buttonClassName,
   dropdownPlacement = "top",
+  providersData,
+  defaultIdsData,
 }: ModelSelectorProps) {
   const hasExplicitPlaceholder = placeholder !== undefined
   const effectivePlaceholder = placeholder ?? "选择模型"
   const { isOpen, searchTerm, setSearchTerm, dropdownRef, close, toggle } = useDropdown()
-  const [providers, setProviders] = useState<Provider[]>([])
-  const [defaultIds, setDefaultIds] = useState<{ [key: string]: string }>({})
-  const [isLoading, setIsLoading] = useState(true)
+  const [providers, setProviders] = useState<Provider[]>(providersData ?? [])
+  const [defaultIds, setDefaultIds] = useState<Record<string, string>>(defaultIdsData ?? {})
+  const [isLoading, setIsLoading] = useState(!providersData)
   const [recent, setRecent] = useState<ModelEntry[]>([])
   const [favorite, setFavorite] = useState<ModelEntry[]>([])
 
@@ -105,24 +125,36 @@ export function ModelSelector({
   )
 
   useEffect(() => {
+    if (providersData) {
+      setProviders(providersData)
+      setDefaultIds(defaultIdsData ?? {})
+    }
+  }, [providersData, defaultIdsData])
+
+  useEffect(() => {
     let active = true
 
     async function load() {
-      setIsLoading(true)
+      if (!providersData) setIsLoading(true)
       try {
-        const [provRes, modelPrefs] = await Promise.all([sdk.config.providers(), loadModelPrefs()])
+        const tasks: [Promise<Awaited<ReturnType<typeof sdk.config.providers>>> | undefined, Promise<{ recent: ModelEntry[]; favorite: ModelEntry[] }>] = [
+          providersData ? undefined : sdk.config.providers(),
+          loadModelPrefsOnce(),
+        ]
+        const [provRes, modelPrefs] = await Promise.all(tasks)
 
         if (!active) return
 
-        if (provRes.error) {
-          console.error("[ModelSelector] Failed to load providers:", provRes.error)
-          setIsLoading(false)
-          return
-        }
-
-        if (provRes.data) {
-          setProviders(provRes.data.providers)
-          setDefaultIds(provRes.data.default)
+        if (provRes) {
+          if (provRes.error) {
+            console.error("[ModelSelector] Failed to load providers:", provRes.error)
+            setIsLoading(false)
+            return
+          }
+          if (provRes.data) {
+            setProviders(provRes.data.providers)
+            setDefaultIds(provRes.data.default)
+          }
         }
 
         setRecent(modelPrefs.recent.slice(0, MAX_RECENT))

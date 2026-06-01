@@ -45,6 +45,7 @@ function parseModelValue(modelValue: string | undefined) {
 export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentConfigTabProps) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [providers, setProviders] = useState<Provider[]>([])
+  const [defaultIds, setDefaultIds] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const mountedRef = useRef(true)
@@ -61,7 +62,10 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
       if (providersRes.error) throw new Error("加载模型列表失败")
 
       if (agentsRes.data) setAgents(agentsRes.data)
-      if (providersRes.data) setProviders(providersRes.data.providers)
+      if (providersRes.data) {
+        setProviders(providersRes.data.providers)
+        setDefaultIds(providersRes.data.default)
+      }
     } catch (err) {
       if (!mountedRef.current) return
       setError(err instanceof Error ? err.message : String(err))
@@ -187,7 +191,7 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
         </button>
       </div>
 
-      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-clip overflow-y-visible">
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
@@ -239,6 +243,8 @@ export function AgentConfigTab({ formData, setFormData, onReloadConfig }: AgentC
                       placeholder="默认"
                       onClear={() => updateAgent(row.name, "model", undefined)}
                       dropdownPlacement="bottom"
+                      providersData={providers}
+                      defaultIdsData={defaultIds}
                       buttonClassName="h-7 w-full max-w-[220px] px-2 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between gap-1"
                     />
                   </td>

@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentConfigTab } from "./AgentConfigTab"
+import { invalidateModelPrefsCache } from "../ModelSelector"
 
 vi.mock("../../lib/api/sdkClient", () => ({
   sdk: {
@@ -49,6 +50,11 @@ const mockProviders = {
           capabilities: {},
           variants: { low: {}, high: {} },
         },
+        "family/model-v1": {
+          name: "Family Model V1",
+          capabilities: {},
+          variants: {},
+        },
       },
     },
     {
@@ -66,10 +72,12 @@ const mockProviders = {
   default: { provider: "openai", model: "gpt-5.5" },
 }
 
+const mockedSdk = vi.mocked(sdk, { deep: true })
+
 function setup(formData = {}, setFormData = vi.fn(), onReloadConfig = vi.fn()) {
-  ;(sdk.app.agents as any).mockResolvedValue({ data: mockAgents, error: null })
-  ;(sdk.config.providers as any).mockResolvedValue({ data: mockProviders, error: null })
-  ;(sdk.global.config.get as any).mockResolvedValue({ data: formData, error: null })
+  mockedSdk.app.agents.mockResolvedValue({ data: mockAgents, error: null } as any)
+  mockedSdk.config.providers.mockResolvedValue({ data: mockProviders, error: null } as any)
+  mockedSdk.global.config.get.mockResolvedValue({ data: formData, error: null } as any)
 
   const result = render(
     <AgentConfigTab formData={formData} setFormData={setFormData} onReloadConfig={onReloadConfig} />,
@@ -77,14 +85,23 @@ function setup(formData = {}, setFormData = vi.fn(), onReloadConfig = vi.fn()) {
   return { ...result, setFormData, onReloadConfig }
 }
 
+/** Wait for the build row's model picker button to become interactive */
+async function waitForPickerReady() {
+  await waitFor(() => {
+    const buildRow = screen.getByText("build").closest("tr")!
+    expect(within(buildRow).getByTitle("选择模型")).not.toBeDisabled()
+  })
+}
+
 describe("AgentConfigTab", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    invalidateModelPrefsCache()
   })
 
   it("shows loading state initially", () => {
-    ;(sdk.app.agents as any).mockReturnValue(new Promise(() => {})) // never resolves
-    ;(sdk.config.providers as any).mockReturnValue(new Promise(() => {}))
+    mockedSdk.app.agents.mockReturnValue(new Promise(() => {}) as any)
+    mockedSdk.config.providers.mockReturnValue(new Promise(() => {}) as any)
     render(<AgentConfigTab formData={{}} setFormData={vi.fn()} />)
     expect(screen.getByText("正在加载 Agent 配置…")).toBeInTheDocument()
   })
@@ -116,9 +133,7 @@ describe("AgentConfigTab", () => {
   it("selecting model with the search picker updates formData", async () => {
     const user = userEvent.setup()
     const { setFormData } = setup()
-    await waitFor(() => {
-      expect(screen.getByText("build")).toBeInTheDocument()
-    })
+    await waitForPickerReady()
 
     const buildRow = screen.getByText("build").closest("tr")!
     await user.click(within(buildRow).getByTitle("选择模型"))
@@ -142,9 +157,7 @@ describe("AgentConfigTab", () => {
       },
     }
     const { setFormData } = setup(formData)
-    await waitFor(() => {
-      expect(screen.getByText("build")).toBeInTheDocument()
-    })
+    await waitForPickerReady()
 
     const buildRow = screen.getByText("build").closest("tr")!
     await user.click(within(buildRow).getByTitle("选择模型"))
@@ -168,9 +181,7 @@ describe("AgentConfigTab", () => {
       },
     }
     const { setFormData } = setup(formData)
-    await waitFor(() => {
-      expect(screen.getByText("build")).toBeInTheDocument()
-    })
+    await waitForPickerReady()
 
     const buildRow = screen.getByText("build").closest("tr")!
     await user.click(within(buildRow).getByTitle("选择模型"))
@@ -184,6 +195,35 @@ describe("AgentConfigTab", () => {
     expect(call.agent.build.variant).toBeUndefined()
   })
 
+  it("model id containing slash is parsed and written correctly", async () => {
+    const user = userEvent.setup()
+    const formData = {
+      agent: {
+        build: { model: "openai/family/model-v1" },
+      },
+    }
+    const { setFormData } = setup(formData)
+    await waitForPickerReady()
+
+    // Verify display: the picker should show the model name resolved from providers
+    const buildRow = screen.getByText("build").closest("tr")!
+    expect(within(buildRow).getByTitle("选择模型")).toHaveTextContent("Family Model V1")
+
+    // Select a different model and verify the slash-containing id round-trips
+    await user.click(within(buildRow).getByTitle("选择模型"))
+    await user.type(screen.getByPlaceholderText("搜索模型…"), "Family")
+    const dropdown = screen.getByPlaceholderText("搜索模型…").closest(".overflow-hidden")!
+    await user.click(within(dropdown as HTMLElement).getByRole("button", { name: /Family Model V1/ }))
+
+    expect(setFormData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: expect.objectContaining({
+          build: expect.objectContaining({ model: "openai/family/model-v1" }),
+        }),
+      }),
+    )
+  })
+
   it("reload button re-fetches config", async () => {
     const user = userEvent.setup()
     const { onReloadConfig } = setup()
@@ -192,6 +232,6 @@ describe("AgentConfigTab", () => {
     })
 
     await user.click(screen.getByTitle("重新加载配置"))
-    expect(sdk.global.config.get).toHaveBeenCalled()
+    expect(mockedSdk.global.config.get).toHaveBeenCalled()
   })
 })
