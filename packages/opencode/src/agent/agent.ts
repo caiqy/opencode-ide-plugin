@@ -379,6 +379,7 @@ export const layer = Layer.effect(
         })
 
         const reloadModelConfig = Effect.fnUntraced(function* () {
+          yield* config.reload()
           const cfg = yield* config.get()
           for (const [key, value] of Object.entries(cfg.agent ?? {})) {
             const item = agents[key]

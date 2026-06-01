@@ -19,7 +19,7 @@ const agentLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
     Layer.provide(Plugin.defaultLayer),
     Layer.provide(Provider.defaultLayer),
     Layer.provide(Auth.defaultLayer),
-    Layer.provide(Config.defaultLayer),
+    Layer.provideMerge(Config.defaultLayer),
     Layer.provide(Skill.defaultLayer),
     Layer.provide(RuntimeFlags.layer(flags)),
   )
@@ -175,6 +175,52 @@ it.instance("compaction agent denies all permissions", () =>
     expect(evalPerm(compaction, "bash")).toBe("deny")
     expect(evalPerm(compaction, "edit")).toBe("deny")
     expect(evalPerm(compaction, "read")).toBe("deny")
+  }),
+)
+
+it.instance("reloadModelConfig sees global config updates without disposing the instance", () =>
+  Effect.gen(function* () {
+    const test = yield* TestInstance
+    const previousConfigDir = Global.Path.config
+    ;(Global.Path as { config: string }).config = test.directory
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        ;(Global.Path as { config: string }).config = previousConfigDir
+      }),
+    )
+
+    yield* Effect.promise(() =>
+      Bun.write(
+        path.join(test.directory, "opencode.jsonc"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          agent: {
+            compaction: {
+              model: "openai/old-model",
+            },
+          },
+        }),
+      ),
+    )
+
+    const config = yield* Config.Service
+    const agent = yield* Agent.Service
+    const before = yield* agent.get("compaction")
+    expect(String(before.model?.providerID)).toBe("openai")
+    expect(String(before.model?.modelID)).toBe("old-model")
+
+    yield* config.updateGlobal({
+      agent: {
+        compaction: {
+          model: "anthropic/new-model",
+        },
+      },
+    })
+    yield* agent.reloadModelConfig()
+
+    const after = yield* agent.get("compaction")
+    expect(String(after.model?.providerID)).toBe("anthropic")
+    expect(String(after.model?.modelID)).toBe("new-model")
   }),
 )
 

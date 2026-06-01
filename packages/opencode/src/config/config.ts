@@ -394,6 +394,7 @@ export interface Interface {
   readonly update: (config: Info) => Effect.Effect<void>
   readonly updateGlobal: (config: Info) => Effect.Effect<{ info: Info; changed: boolean }>
   readonly invalidate: () => Effect.Effect<void>
+  readonly reload: () => Effect.Effect<void>
   readonly directories: () => Effect.Effect<string[]>
   readonly waitForDependencies: () => Effect.Effect<void>
 }
@@ -889,6 +890,20 @@ export const layer = Layer.effect(
       yield* invalidateGlobal
     })
 
+    const reload = Effect.fn("Config.reload")(function* () {
+      yield* invalidateGlobal
+      const ctx = yield* InstanceState.context
+      const next = yield* loadInstanceState(ctx).pipe(Effect.orDie)
+      yield* InstanceState.useEffect(state, (current) =>
+        Effect.sync(() => {
+          current.config = next.config
+          current.directories = next.directories
+          current.deps = next.deps
+          current.consoleState = next.consoleState
+        }),
+      )
+    })
+
     const updateGlobal = Effect.fn("Config.updateGlobal")(function* (config: Info) {
       const file = globalConfigFile()
       const before = (yield* readConfigFile(file)) ?? "{}"
@@ -922,6 +937,7 @@ export const layer = Layer.effect(
       update,
       updateGlobal,
       invalidate,
+      reload,
       directories,
       waitForDependencies,
     })
