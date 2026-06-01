@@ -28,20 +28,6 @@ interface ModelEntry {
 
 const MAX_RECENT = 10
 
-let cachedPrefsPromise: Promise<{ recent: ModelEntry[]; favorite: ModelEntry[] }> | undefined
-
-function loadModelPrefsOnce() {
-  if (!cachedPrefsPromise) {
-    cachedPrefsPromise = loadModelPrefs()
-  }
-  return cachedPrefsPromise
-}
-
-/** Invalidate the module-level prefs cache so the next mount re-reads from storage */
-export function invalidateModelPrefsCache() {
-  cachedPrefsPromise = undefined
-}
-
 function favoriteKey(entry: ModelEntry) {
   return `${entry.providerID}/${entry.modelID}`
 }
@@ -139,7 +125,7 @@ export function ModelSelector({
       try {
         const tasks: [Promise<Awaited<ReturnType<typeof sdk.config.providers>>> | undefined, Promise<{ recent: ModelEntry[]; favorite: ModelEntry[] }>] = [
           providersData ? undefined : sdk.config.providers(),
-          loadModelPrefsOnce(),
+          loadModelPrefs(),
         ]
         const [provRes, modelPrefs] = await Promise.all(tasks)
 

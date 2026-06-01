@@ -13,6 +13,7 @@ export type ModelPrefs = {
 }
 
 let queue = Promise.resolve()
+let cachedPrefsPromise: Promise<ModelPrefs> | undefined
 
 function entries(input: unknown) {
   if (!Array.isArray(input)) return [] as ModelEntry[]
@@ -25,7 +26,7 @@ function entries(input: unknown) {
   )
 }
 
-export async function loadModelPrefs(): Promise<ModelPrefs> {
+async function loadModelPrefsFresh(): Promise<ModelPrefs> {
   const fallback: ModelPrefs = {
     recent: [],
     favorite: [],
@@ -38,11 +39,25 @@ export async function loadModelPrefs(): Promise<ModelPrefs> {
   }
 }
 
+export function loadModelPrefs(): Promise<ModelPrefs> {
+  if (!cachedPrefsPromise) {
+    cachedPrefsPromise = loadModelPrefsFresh()
+  }
+  return cachedPrefsPromise
+}
+
+/** Reset the internal prefs cache. Intended for test isolation. */
+export function resetModelPrefsCache() {
+  cachedPrefsPromise = undefined
+}
+
 export async function saveModelPrefs(value: ModelPrefs) {
-  return scopedStateSetJSON("global", key, {
+  const safe = {
     recent: entries(value.recent),
     favorite: entries(value.favorite),
-  })
+  }
+  await scopedStateSetJSON("global", key, safe)
+  cachedPrefsPromise = Promise.resolve(safe)
 }
 
 function enqueue<T>(task: () => Promise<T>) {
@@ -56,13 +71,14 @@ function enqueue<T>(task: () => Promise<T>) {
 
 export function updateModelPrefs(mutator: (value: ModelPrefs) => ModelPrefs | Promise<ModelPrefs>) {
   return enqueue(async () => {
-    const value = await loadModelPrefs()
+    const value = await loadModelPrefsFresh()
     const next = await mutator(value)
     const safe = {
       recent: entries(next.recent),
       favorite: entries(next.favorite),
     }
-    await saveModelPrefs(safe)
+    await scopedStateSetJSON("global", key, safe)
+    cachedPrefsPromise = Promise.resolve(safe)
     return safe
   })
 }

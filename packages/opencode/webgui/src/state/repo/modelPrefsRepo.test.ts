@@ -6,11 +6,12 @@ vi.mock("../scopedStorage", () => ({
 }))
 
 import { scopedStateGetJSON, scopedStateSetJSON } from "../scopedStorage"
-import { loadModelPrefs, saveModelPrefs, updateModelPrefs } from "./modelPrefsRepo"
+import { loadModelPrefs, saveModelPrefs, updateModelPrefs, addRecentModel, resetModelPrefsCache } from "./modelPrefsRepo"
 
 describe("modelPrefsRepo", () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    resetModelPrefsCache()
   })
 
   it("loadModelPrefs 仅返回 recent/favorite", async () => {
@@ -78,5 +79,59 @@ describe("modelPrefsRepo", () => {
 
     expect(store.recent[0]).toEqual(entry)
     expect(store.favorite[0]).toEqual(fav)
+  })
+
+  it("consecutive loadModelPrefs calls share the cached promise", async () => {
+    vi.mocked(scopedStateGetJSON).mockResolvedValue({ recent: [], favorite: [] })
+
+    const [a, b] = await Promise.all([loadModelPrefs(), loadModelPrefs()])
+
+    expect(a).toBe(b)
+    expect(scopedStateGetJSON).toHaveBeenCalledTimes(1)
+  })
+
+  it("addRecentModel updates cache so subsequent loadModelPrefs sees new recent", async () => {
+    const entry = { providerID: "openai", modelID: "gpt-5" }
+    vi.mocked(scopedStateGetJSON).mockResolvedValue({ recent: [], favorite: [] })
+    vi.mocked(scopedStateSetJSON).mockResolvedValue({ ok: true })
+
+    await addRecentModel(entry)
+
+    // loadModelPrefs should return the updated value without hitting storage again
+    const prefs = await loadModelPrefs()
+    expect(prefs.recent[0]).toEqual(entry)
+    // scopedStateGetJSON was called once by addRecentModel's fresh load, not again by loadModelPrefs
+    expect(scopedStateGetJSON).toHaveBeenCalledTimes(1)
+  })
+
+  it("updateModelPrefs updates cache so subsequent loadModelPrefs sees new favorite", async () => {
+    const fav = { providerID: "anthropic", modelID: "claude-5" }
+    vi.mocked(scopedStateGetJSON).mockResolvedValue({ recent: [], favorite: [] })
+    vi.mocked(scopedStateSetJSON).mockResolvedValue({ ok: true })
+
+    await updateModelPrefs((value) => ({
+      recent: value.recent,
+      favorite: [fav, ...value.favorite],
+    }))
+
+    const prefs = await loadModelPrefs()
+    expect(prefs.favorite[0]).toEqual(fav)
+    expect(scopedStateGetJSON).toHaveBeenCalledTimes(1)
+  })
+
+  it("saveModelPrefs updates cache so subsequent loadModelPrefs sees saved data", async () => {
+    vi.mocked(scopedStateGetJSON).mockResolvedValue({ recent: [], favorite: [] })
+    vi.mocked(scopedStateSetJSON).mockResolvedValue({ ok: true })
+
+    const saved = {
+      recent: [{ providerID: "a", modelID: "b" }],
+      favorite: [{ providerID: "c", modelID: "d" }],
+    }
+    await saveModelPrefs(saved)
+
+    const prefs = await loadModelPrefs()
+    expect(prefs).toEqual(saved)
+    // Storage read was never called because saveModelPrefs set the cache
+    expect(scopedStateGetJSON).not.toHaveBeenCalled()
   })
 })

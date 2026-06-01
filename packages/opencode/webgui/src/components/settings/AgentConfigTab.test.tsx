@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentConfigTab } from "./AgentConfigTab"
-import { invalidateModelPrefsCache } from "../ModelSelector"
 
 vi.mock("../../lib/api/sdkClient", () => ({
   sdk: {
@@ -96,7 +95,6 @@ async function waitForPickerReady() {
 describe("AgentConfigTab", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    invalidateModelPrefsCache()
   })
 
   it("shows loading state initially", () => {

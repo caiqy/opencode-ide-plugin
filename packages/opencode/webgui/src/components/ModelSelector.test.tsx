@@ -30,13 +30,12 @@ vi.mock("../lib/ideBridge", () => ({
 }))
 
 import { sdk } from "../lib/api/sdkClient"
-import { ModelSelector, invalidateModelPrefsCache } from "./ModelSelector"
+import { ModelSelector } from "./ModelSelector"
 
 describe("ModelSelector favorites", () => {
   beforeEach(() => {
     localStorage.clear()
     vi.resetAllMocks()
-    invalidateModelPrefsCache()
     ;(sdk.config.providers as any).mockResolvedValue({
       data: {
         providers: [
