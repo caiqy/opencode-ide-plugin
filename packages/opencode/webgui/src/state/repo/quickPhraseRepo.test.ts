@@ -22,12 +22,11 @@ describe("quickPhraseRepo", () => {
     vi.resetAllMocks()
   })
 
-  it("loadQuickPhraseState 在空存储时注入预置并返回默认模式", async () => {
+  it("loadQuickPhraseState 在空存储时注入预置", async () => {
     vi.mocked(scopedStateGetJSON).mockResolvedValue(null)
 
     const value = await loadQuickPhraseState()
 
-    expect(value.mode).toBe("double_send")
     expect(value.preset_version).toBe(quick_phrase_preset.version)
     expect(value.order).toEqual(quick_phrase_preset.items.map((item) => item.id))
     expect(Object.values(value.items).map((item) => item.source)).toEqual(quick_phrase_preset.items.map(() => "preset"))
@@ -37,7 +36,6 @@ describe("quickPhraseRepo", () => {
   it("loadQuickPhraseState 合并旧数据并清理非法字段", async () => {
     const preset = quick_phrase_preset.items[0]!.id
     vi.mocked(scopedStateGetJSON).mockResolvedValue({
-      mode: "confirm_send",
       preset_version: 0,
       order: ["custom:1", preset, "ghost"],
       items: {
@@ -67,7 +65,6 @@ describe("quickPhraseRepo", () => {
 
     const value = await loadQuickPhraseState()
 
-    expect(value.mode).toBe("confirm_send")
     expect(value.items["custom:1"]?.title).toBe("我的短语")
     expect(value.items[preset]?.title).toBe(quick_phrase_preset.items[0]!.title)
     expect(value.items[preset]?.hidden).toBe(true)
@@ -80,7 +77,6 @@ describe("quickPhraseRepo", () => {
     vi.mocked(scopedStateSetJSON).mockResolvedValue({ ok: true })
 
     await saveQuickPhraseState({
-      mode: "fill_input",
       preset_version: quick_phrase_preset.version,
       order: ["preset:commit"],
       items: {
@@ -100,7 +96,6 @@ describe("quickPhraseRepo", () => {
       "global",
       "opencode:webgui:global:quick_phrase:v1",
       expect.objectContaining({
-        mode: "fill_input",
         preset_version: quick_phrase_preset.version,
       }),
     )

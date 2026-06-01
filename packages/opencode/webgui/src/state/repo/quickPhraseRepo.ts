@@ -3,8 +3,6 @@ import { quick_phrase_preset } from "./quickPhrasePreset"
 
 const key = "opencode:webgui:global:quick_phrase:v1"
 
-export type QuickPhraseMode = "double_send" | "confirm_send" | "fill_input"
-
 export type QuickPhraseItem = {
   id: string
   title: string
@@ -16,18 +14,12 @@ export type QuickPhraseItem = {
 }
 
 export type QuickPhraseState = {
-  mode: QuickPhraseMode
   preset_version: number
   order: string[]
   items: Record<string, QuickPhraseItem>
 }
 
 let queue = Promise.resolve()
-
-function mode(input: unknown): QuickPhraseMode {
-  if (input === "double_send" || input === "confirm_send" || input === "fill_input") return input
-  return "double_send"
-}
 
 function item(input: unknown): QuickPhraseItem | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null
@@ -97,7 +89,6 @@ function normalize(input: unknown): QuickPhraseState {
     .sort((a, b) => a.order - b.order)
     .map((v) => v.id)
   return {
-    mode: mode((raw as { mode?: unknown }).mode),
     preset_version: quick_phrase_preset.version,
     order: [...new Set([...base, ...rest])],
     items,
@@ -137,18 +128,6 @@ export function reorderQuickPhrase(order: string[]) {
     const next = {
       ...prev,
       order: sorted(prev, order),
-    }
-    await saveQuickPhraseState(next)
-    return next
-  })
-}
-
-export function setQuickPhraseMode(input: QuickPhraseMode) {
-  return enqueue(async () => {
-    const prev = await loadQuickPhraseState()
-    const next = {
-      ...prev,
-      mode: input,
     }
     await saveQuickPhraseState(next)
     return next
