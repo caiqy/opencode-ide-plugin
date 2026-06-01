@@ -73,7 +73,7 @@ const MessageInputInner = forwardRef<
   const [editor] = useLexicalComposerContext()
   const [isEmpty, setIsEmpty] = useState(true)
   const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
-  const [phraseConfirm, setPhraseConfirm] = useState<{ title: string; body: string } | null>(null)
+
   const [isCompacting, setIsCompacting] = useState(false)
   const [modelSelectorKey, setModelSelectorKey] = useState(0)
   const contentEditableRef = useRef<HTMLDivElement>(null)
@@ -439,33 +439,20 @@ const MessageInputInner = forwardRef<
     [isDisabled, onSendIntent, sessionID, submitQuickPhrase],
   )
 
-  useEffect(() => {
-    setPhraseConfirm(null)
-  }, [sessionID])
-
-  const onActivatePhrase = useCallback(
+  const onSendPhrase = useCallback(
     (item: { id: string; title: string; body: string }) => {
-      if (!quickPhrases || isDisabled) return
-      if (!item.body.trim()) return
-      if (quickPhrases.mode === "fill_input") {
-        fillPhrase(item.body)
-        return
-      }
-      if (quickPhrases.mode === "double_send") {
-        sendPhrase(item.body)
-        return
-      }
-      setPhraseConfirm({ title: item.title, body: item.body })
+      sendPhrase(item.body)
     },
-    [fillPhrase, isDisabled, quickPhrases, sendPhrase],
+    [sendPhrase],
   )
 
-  const onConfirmPhrase = useCallback(() => {
-    const body = phraseConfirm?.body
-    setPhraseConfirm(null)
-    if (!body) return
-    sendPhrase(body)
-  }, [phraseConfirm?.body, sendPhrase])
+  const onFillPhrase = useCallback(
+    (item: { id: string; title: string; body: string }) => {
+      if (isDisabled) return
+      fillPhrase(item.body)
+    },
+    [fillPhrase, isDisabled],
+  )
 
   const phraseItems = useMemo(() => {
     if (!quickPhrases) return [] as Array<{ id: string; title: string; body: string }>
@@ -481,9 +468,9 @@ const MessageInputInner = forwardRef<
         <FooterPanels sessionID={sessionID} />
         <QuickPhraseBar
           items={phraseItems}
-          mode={quickPhrases?.mode}
           disabled={isDisabled}
-          onActivate={onActivatePhrase}
+          onSend={onSendPhrase}
+          onFill={onFillPhrase}
         />
         <EditorContent
           contentEditableRef={contentEditableRef}
@@ -516,17 +503,6 @@ const MessageInputInner = forwardRef<
           selectionPending={selectionPending}
         />
       </footer>
-
-      <ConfirmModal
-        isOpen={Boolean(phraseConfirm)}
-        onClose={() => setPhraseConfirm(null)}
-        onConfirm={onConfirmPhrase}
-        title="确认发送快捷短语"
-        message={phraseConfirm ? `将发送：${phraseConfirm.title}` : ""}
-        confirmText="发送"
-        cancelText="取消"
-        variant="info"
-      />
 
       <ConfirmModal
         isOpen={isCompactConfirmOpen}

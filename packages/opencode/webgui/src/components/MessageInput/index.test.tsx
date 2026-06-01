@@ -28,7 +28,6 @@ const mocks = vi.hoisted(() => {
     handleAbort: vi.fn(),
     handleCompact: vi.fn((done: () => void) => done()),
     loadQuickPhraseState: vi.fn(async () => ({
-      mode: "fill_input",
       preset_version: 1,
       order: ["preset:commit"],
       items: {
@@ -238,7 +237,6 @@ vi.mock("../../lib/api/sdkClient", () => {
 import { MessageInput } from "./index"
 
 const quick = {
-  mode: "fill_input",
   preset_version: 1,
   order: ["preset:commit"],
   items: {
@@ -285,7 +283,6 @@ describe("MessageInput compact confirm", () => {
     render(<MessageInput sessionID="s1" />)
 
     await waitFor(() => {
-      expect(lastQuickPhraseBarProps.mode).toBe("fill_input")
       expect(lastQuickPhraseBarProps.items[0]?.body).toBe("请总结改动")
     })
     expect(lastQuickPhraseBarProps.items).toEqual([
@@ -297,17 +294,16 @@ describe("MessageInput compact confirm", () => {
     ])
   })
 
-  it("fill_input 模式双击仅回填不发送", async () => {
+  it("onFill 回调仅回填不发送", async () => {
     mocks.loadQuickPhraseState.mockResolvedValue(quick)
     render(<MessageInput sessionID="s1" />)
 
     await waitFor(() => {
-      expect(lastQuickPhraseBarProps.mode).toBe("fill_input")
       expect(lastQuickPhraseBarProps.items[0]?.body).toBe("请总结改动")
     })
 
     act(() => {
-      lastQuickPhraseBarProps.onActivate({
+      lastQuickPhraseBarProps.onFill({
         id: "preset:commit",
         title: "提交总结",
         body: "请总结改动",
@@ -318,26 +314,12 @@ describe("MessageInput compact confirm", () => {
       replace: true,
     })
     expect(mocks.handleSubmit).not.toHaveBeenCalled()
+    expect(mocks.submitQuickPhrase).not.toHaveBeenCalled()
   })
 
-  it("double_send 模式双击会直接发送", async () => {
+  it("onSend 回调会直接发送", async () => {
     const onSendIntent = vi.fn()
-    mocks.loadQuickPhraseState.mockResolvedValue({
-      mode: "double_send",
-      preset_version: 1,
-      order: ["preset:commit"],
-      items: {
-        "preset:commit": {
-          id: "preset:commit",
-          title: "提交总结",
-          body: "请总结改动",
-          source: "preset",
-          hidden: false,
-          order: 0,
-          updated_at: 1,
-        },
-      },
-    })
+    mocks.loadQuickPhraseState.mockResolvedValue(quick)
 
     render(<MessageInput sessionID="s1" onSendIntent={onSendIntent} />)
     await waitFor(() => {
@@ -345,7 +327,7 @@ describe("MessageInput compact confirm", () => {
     })
 
     act(() => {
-      lastQuickPhraseBarProps.onActivate({
+      lastQuickPhraseBarProps.onSend({
         id: "preset:commit",
         title: "提交总结",
         body: "请总结改动",
@@ -358,23 +340,8 @@ describe("MessageInput compact confirm", () => {
     expect(onSendIntent).toHaveBeenCalledTimes(1)
   })
 
-  it("double_send 模式发送不应回填输入框", async () => {
-    mocks.loadQuickPhraseState.mockResolvedValue({
-      mode: "double_send",
-      preset_version: 1,
-      order: ["preset:commit"],
-      items: {
-        "preset:commit": {
-          id: "preset:commit",
-          title: "提交总结",
-          body: "请总结改动",
-          source: "preset",
-          hidden: false,
-          order: 0,
-          updated_at: 1,
-        },
-      },
-    })
+  it("onSend 发送不应回填输入框", async () => {
+    mocks.loadQuickPhraseState.mockResolvedValue(quick)
 
     render(<MessageInput sessionID="s1" />)
     await waitFor(() => {
@@ -382,7 +349,7 @@ describe("MessageInput compact confirm", () => {
     })
 
     act(() => {
-      lastQuickPhraseBarProps.onActivate({
+      lastQuickPhraseBarProps.onSend({
         id: "preset:commit",
         title: "提交总结",
         body: "请总结改动",
@@ -392,10 +359,9 @@ describe("MessageInput compact confirm", () => {
     expect(mocks.insertPlainWithMentionsImpl).not.toHaveBeenCalled()
   })
 
-  it("double_send 模式遇到空正文时不应发送", async () => {
+  it("onSend 遇到空正文时不应发送", async () => {
     const onSendIntent = vi.fn()
     mocks.loadQuickPhraseState.mockResolvedValue({
-      mode: "double_send",
       preset_version: 1,
       order: ["preset:empty"],
       items: {
@@ -417,7 +383,7 @@ describe("MessageInput compact confirm", () => {
     })
 
     act(() => {
-      lastQuickPhraseBarProps.onActivate({
+      lastQuickPhraseBarProps.onSend({
         id: "preset:empty",
         title: "空正文",
         body: "   ",
@@ -429,70 +395,11 @@ describe("MessageInput compact confirm", () => {
     expect(onSendIntent).not.toHaveBeenCalled()
   })
 
-  it("confirm_send 模式双击需确认后发送", async () => {
+
+
+  it("没有 session 时 onSend 不应触发发送意图", async () => {
     const onSendIntent = vi.fn()
-    mocks.loadQuickPhraseState.mockResolvedValue({
-      mode: "confirm_send",
-      preset_version: 1,
-      order: ["preset:commit"],
-      items: {
-        "preset:commit": {
-          id: "preset:commit",
-          title: "提交总结",
-          body: "请总结改动",
-          source: "preset",
-          hidden: false,
-          order: 0,
-          updated_at: 1,
-        },
-      },
-    })
-
-    render(<MessageInput sessionID="s1" onSendIntent={onSendIntent} />)
-    await waitFor(() => {
-      expect(lastQuickPhraseBarProps).toBeTruthy()
-    })
-
-    act(() => {
-      lastQuickPhraseBarProps.onActivate({
-        id: "preset:commit",
-        title: "提交总结",
-        body: "请总结改动",
-      })
-    })
-
-    await waitFor(() => {
-      expect(confirmModalMap["确认发送快捷短语"]?.isOpen).toBe(true)
-    })
-
-    act(() => {
-      confirmModalMap["确认发送快捷短语"].onConfirm()
-    })
-
-    await waitFor(() => {
-      expect(mocks.submitQuickPhrase).toHaveBeenCalledWith("请总结改动")
-    })
-    expect(onSendIntent).toHaveBeenCalledTimes(1)
-  })
-
-  it("没有 session 时 double_send 不应触发发送意图", async () => {
-    const onSendIntent = vi.fn()
-    mocks.loadQuickPhraseState.mockResolvedValue({
-      mode: "double_send",
-      preset_version: 1,
-      order: ["preset:commit"],
-      items: {
-        "preset:commit": {
-          id: "preset:commit",
-          title: "提交总结",
-          body: "请总结改动",
-          source: "preset",
-          hidden: false,
-          order: 0,
-          updated_at: 1,
-        },
-      },
-    })
+    mocks.loadQuickPhraseState.mockResolvedValue(quick)
 
     render(<MessageInput sessionID={null} onSendIntent={onSendIntent} />)
     await waitFor(() => {
@@ -500,7 +407,7 @@ describe("MessageInput compact confirm", () => {
     })
 
     act(() => {
-      lastQuickPhraseBarProps.onActivate({
+      lastQuickPhraseBarProps.onSend({
         id: "preset:commit",
         title: "提交总结",
         body: "请总结改动",
@@ -511,88 +418,9 @@ describe("MessageInput compact confirm", () => {
     expect(mocks.submitQuickPhrase).not.toHaveBeenCalled()
   })
 
-  it("confirm_send 弹窗切换会话后会关闭且不会发送旧会话短语", async () => {
-    const onSendIntent = vi.fn()
-    mocks.loadQuickPhraseState.mockResolvedValue({
-      mode: "confirm_send",
-      preset_version: 1,
-      order: ["preset:commit"],
-      items: {
-        "preset:commit": {
-          id: "preset:commit",
-          title: "提交总结",
-          body: "请总结改动",
-          source: "preset",
-          hidden: false,
-          order: 0,
-          updated_at: 1,
-        },
-      },
-    })
 
-    const { rerender } = render(<MessageInput sessionID="s1" onSendIntent={onSendIntent} />)
-    await waitFor(() => {
-      expect(lastQuickPhraseBarProps).toBeTruthy()
-    })
 
-    act(() => {
-      lastQuickPhraseBarProps.onActivate({
-        id: "preset:commit",
-        title: "提交总结",
-        body: "请总结改动",
-      })
-    })
-    await waitFor(() => {
-      expect(confirmModalMap["确认发送快捷短语"]?.isOpen).toBe(true)
-    })
 
-    rerender(<MessageInput sessionID="s2" onSendIntent={onSendIntent} />)
-
-    await waitFor(() => {
-      expect(confirmModalMap["确认发送快捷短语"]?.isOpen).toBe(false)
-    })
-    act(() => {
-      confirmModalMap["确认发送快捷短语"].onConfirm()
-    })
-
-    expect(onSendIntent).not.toHaveBeenCalled()
-    expect(mocks.submitQuickPhrase).not.toHaveBeenCalled()
-  })
-
-  it("confirm_send 模式遇到空正文时不应弹确认也不发送", async () => {
-    mocks.loadQuickPhraseState.mockResolvedValue({
-      mode: "confirm_send",
-      preset_version: 1,
-      order: ["preset:empty"],
-      items: {
-        "preset:empty": {
-          id: "preset:empty",
-          title: "空正文",
-          body: "",
-          source: "preset",
-          hidden: false,
-          order: 0,
-          updated_at: 1,
-        },
-      },
-    } as any)
-
-    render(<MessageInput sessionID="s1" />)
-    await waitFor(() => {
-      expect(lastQuickPhraseBarProps).toBeTruthy()
-    })
-
-    act(() => {
-      lastQuickPhraseBarProps.onActivate({
-        id: "preset:empty",
-        title: "空正文",
-        body: "",
-      })
-    })
-
-    expect(confirmModalMap["确认发送快捷短语"]?.isOpen).not.toBe(true)
-    expect(mocks.submitQuickPhrase).not.toHaveBeenCalled()
-  })
 
   it("精简会话确认弹窗文案为中文", () => {
     render(<MessageInput sessionID="s1" />)
@@ -843,22 +671,7 @@ describe("MessageInput compact confirm", () => {
   it("生成中状态下快捷短语触发应无效", async () => {
     const onSendIntent = vi.fn()
     sessionIdle = false
-    mocks.loadQuickPhraseState.mockResolvedValue({
-      mode: "double_send",
-      preset_version: 1,
-      order: ["preset:commit"],
-      items: {
-        "preset:commit": {
-          id: "preset:commit",
-          title: "提交总结",
-          body: "请总结改动",
-          source: "preset",
-          hidden: false,
-          order: 0,
-          updated_at: 1,
-        },
-      },
-    })
+    mocks.loadQuickPhraseState.mockResolvedValue(quick)
 
     render(<MessageInput sessionID="s1" onSendIntent={onSendIntent} />)
     await waitFor(() => {
@@ -866,7 +679,7 @@ describe("MessageInput compact confirm", () => {
     })
 
     act(() => {
-      lastQuickPhraseBarProps.onActivate({
+      lastQuickPhraseBarProps.onSend({
         id: "preset:commit",
         title: "提交总结",
         body: "请总结改动",
@@ -916,7 +729,6 @@ describe("MessageInput compact confirm", () => {
 
   it("快捷短语刷新时应仅应用最后一次加载结果", async () => {
     const old = {
-      mode: "fill_input",
       preset_version: 1,
       order: ["preset:old"],
       items: {
@@ -932,7 +744,6 @@ describe("MessageInput compact confirm", () => {
       },
     } as any
     const newer = {
-      mode: "fill_input",
       preset_version: 1,
       order: ["preset:new"],
       items: {
