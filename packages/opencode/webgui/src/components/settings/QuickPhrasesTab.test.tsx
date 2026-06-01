@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react"
 
 const mocks = vi.hoisted(() => ({
   loadQuickPhraseState: vi.fn(),
@@ -151,5 +151,22 @@ describe("QuickPhrasesTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存-custom:1" }))
 
     expect(mocks.updateCustomQuickPhrase).not.toHaveBeenCalled()
+  })
+
+  it("StrictMode remount 后仍能加载短语列表", async () => {
+    const { unmount } = render(<QuickPhrasesTab />)
+    await waitFor(() => {
+      expect(screen.getByText("我的短语")).toBeInTheDocument()
+    })
+
+    // Simulate StrictMode unmount/remount
+    unmount()
+    mocks.loadQuickPhraseState.mockClear()
+    render(<QuickPhrasesTab />)
+
+    await waitFor(() => {
+      expect(screen.getByText("我的短语")).toBeInTheDocument()
+    })
+    expect(mocks.loadQuickPhraseState).toHaveBeenCalled()
   })
 })

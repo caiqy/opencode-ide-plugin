@@ -288,4 +288,31 @@ describe("AgentConfigTab", () => {
     await user.click(screen.getByTitle("重新加载配置"))
     expect(mockedSdk.global.config.get).toHaveBeenCalled()
   })
+
+  it("clearing one agent model preserves other agents and non-model/variant fields", async () => {
+    const user = userEvent.setup()
+    const formData = {
+      agent: {
+        build: { model: "openai/gpt-5.5", variant: "high", prompt: "build prompt", temperature: 0.5 },
+        explore: { model: "anthropic/claude-sonnet-4-6", variant: "high" },
+      },
+    }
+    const { setFormData } = setup(formData)
+    await waitForPickerReady()
+
+    // Clear build model
+    const buildRow = screen.getByText("build").closest("tr")!
+    await user.click(within(buildRow).getByTitle("选择模型"))
+    const portal = getPortalDropdown()
+    await user.click(within(portal).getByRole("button", { name: "默认" }))
+
+    const call = setFormData.mock.calls[setFormData.mock.calls.length - 1][0]
+    // build: model/variant cleared, but prompt/temperature preserved
+    expect(call.agent.build.model).toBeUndefined()
+    expect(call.agent.build.variant).toBeUndefined()
+    expect(call.agent.build.prompt).toBe("build prompt")
+    expect(call.agent.build.temperature).toBe(0.5)
+    // explore: completely untouched
+    expect(call.agent.explore).toEqual({ model: "anthropic/claude-sonnet-4-6", variant: "high" })
+  })
 })

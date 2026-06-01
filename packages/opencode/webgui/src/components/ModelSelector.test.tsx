@@ -374,4 +374,35 @@ describe("ModelSelector favorites", () => {
 
     await waitFor(() => expect(portal).toHaveStyle({ top: "114px", left: "40px", minWidth: "300px" }))
   })
+
+  it("portal dropdown repositions on ancestor container scroll (capture)", async () => {
+    const { container } = render(
+      <div data-testid="scroll-container" style={{ overflow: "auto", height: "200px" }}>
+        <ModelSelector selectedProviderId="openai" selectedModelId="gpt-4.1" onSelect={() => {}} renderInPortal dropdownPlacement="bottom" />
+      </div>,
+    )
+    await screen.findByText("GPT 4.1")
+
+    const button = screen.getByTitle("选择模型")
+    const rects = [
+      { left: 10, bottom: 50, top: 26, width: 200 },
+      { left: 10, bottom: 30, top: 6, width: 200 },
+    ]
+    vi.spyOn(button, "getBoundingClientRect").mockImplementation(
+      () => ({ ...rects.shift()!, right: 0, height: 24, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect,
+    )
+
+    const user = userEvent.setup()
+    await user.click(button)
+    const portal = await screen.findByTestId("model-selector-portal")
+    await waitFor(() => expect(portal).toHaveStyle({ top: "54px", left: "10px", minWidth: "300px" }))
+
+    // Scroll the ancestor container (not window)
+    const scrollContainer = screen.getByTestId("scroll-container")
+    act(() => {
+      scrollContainer.dispatchEvent(new Event("scroll", { bubbles: false }))
+    })
+
+    await waitFor(() => expect(portal).toHaveStyle({ top: "34px", left: "10px", minWidth: "300px" }))
+  })
 })

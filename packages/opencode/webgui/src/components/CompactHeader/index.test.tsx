@@ -55,6 +55,7 @@ const mocks = vi.hoisted(() => ({
   sdkPathGet: vi.fn(),
   ideBridgeRequest: vi.fn(),
   ideBridgeRestartMode: "window" as "window" | "ide" | null,
+  ideBridgeInstalled: true,
   tabBarProps: null as null | {
     onClose: (id: string) => void
     onCloseOtherTabs: (id: string) => void
@@ -150,7 +151,7 @@ vi.mock("../../lib/api/sdkClient", () => ({
 vi.mock("../../lib/ideBridge", () => ({
   ideBridge: {
     request: (...args: unknown[]) => mocks.ideBridgeRequest(...args),
-    isInstalled: () => true,
+    isInstalled: () => mocks.ideBridgeInstalled,
     get restartMode() {
       return mocks.ideBridgeRestartMode
     },
@@ -1295,6 +1296,26 @@ describe("CompactHeader", () => {
     expect(mocks.ideBridgeRequest).toHaveBeenCalledWith("ensureAndOpenFile", {
       path: "/real/opencode.json",
     })
+  })
+
+  it("浏览器模式下更多菜单不显示配置文件按钮", async () => {
+    const user = userEvent.setup()
+    mocks.ideBridgeInstalled = false
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByTitle("更多选项"))
+    expect(screen.getByText("设置")).toBeInTheDocument()
+    expect(screen.queryByText("配置文件")).not.toBeInTheDocument()
+
+    mocks.ideBridgeInstalled = true
   })
 
   it("点击重启插件后弹出确认框并调用 restartHost", async () => {
