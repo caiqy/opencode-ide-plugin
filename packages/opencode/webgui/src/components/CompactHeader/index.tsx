@@ -556,7 +556,7 @@ const CompactHeader = forwardRef<
             theme={theme}
             toggleTheme={toggleTheme}
             onOpenCommandPalette={onOpenCommandPalette}
-            onOpenConfigFile={handleOpenConfigFile}
+            onOpenConfigFile={ideBridge.isInstalled() ? handleOpenConfigFile : undefined}
             displayVersion={displayVersion}
             isCheckingForUpdates={isChecking}
             onCheckForUpdates={() => {

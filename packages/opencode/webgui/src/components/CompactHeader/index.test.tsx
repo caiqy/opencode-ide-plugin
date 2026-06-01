@@ -150,6 +150,7 @@ vi.mock("../../lib/api/sdkClient", () => ({
 vi.mock("../../lib/ideBridge", () => ({
   ideBridge: {
     request: (...args: unknown[]) => mocks.ideBridgeRequest(...args),
+    isInstalled: () => true,
     get restartMode() {
       return mocks.ideBridgeRestartMode
     },
