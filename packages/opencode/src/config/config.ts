@@ -425,6 +425,32 @@ function patchJsonc(input: string, patch: unknown, path: string[] = []): string 
   return Object.entries(patch).reduce((result, [key, value]) => patchJsonc(result, value, [...path, key]), input)
 }
 
+function replaceJsonc(input: string, value: unknown, path: string[]): string {
+  const edits = modify(input, path, value, {
+    formattingOptions: {
+      insertSpaces: true,
+      tabSize: 2,
+    },
+  })
+  return applyEdits(input, edits)
+}
+
+function mergeGlobalConfigForWrite(existing: Info, patch: Info): Info {
+  const merged = mergeDeep(writable(existing), patch) as Info
+  if (Object.hasOwn(patch, "agent")) merged.agent = patch.agent
+  return merged
+}
+
+function patchGlobalJsonc(input: string, patch: Info): string {
+  let next = input
+  if (Object.hasOwn(patch, "agent")) {
+    next = replaceJsonc(next, patch.agent, ["agent"])
+    const { agent: _agent, ...rest } = patch
+    return patchJsonc(next, rest)
+  }
+  return patchJsonc(next, patch)
+}
+
 function writable(info: Info) {
   const { plugin_origins: _plugin_origins, ...next } = info
   return next
@@ -913,13 +939,13 @@ export const layer = Layer.effect(
       let changed: boolean
       if (!file.endsWith(".jsonc")) {
         const existing = ConfigParse.schema(Info, ConfigParse.jsonc(before, file), file)
-        const merged = mergeDeep(writable(existing), patch)
+        const merged = mergeGlobalConfigForWrite(existing, patch)
         const serialized = JSON.stringify(merged, null, 2)
         changed = serialized !== before
         if (changed) yield* fs.writeFileString(file, serialized).pipe(Effect.orDie)
         next = merged
       } else {
-        const updated = patchJsonc(before, patch)
+        const updated = patchGlobalJsonc(before, patch)
         next = ConfigParse.schema(Info, ConfigParse.jsonc(updated, file), file)
         changed = updated !== before
         if (changed) yield* fs.writeFileString(file, updated).pipe(Effect.orDie)

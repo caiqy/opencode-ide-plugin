@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import userEvent from "@testing-library/user-event"
-import { render, screen, within, waitFor } from "../test/test-utils"
+import { act, render, screen, within, waitFor } from "../test/test-utils"
 
 vi.mock("../lib/api/sdkClient", () => ({
   sdk: {
@@ -323,5 +323,30 @@ describe("ModelSelector favorites", () => {
     expect(dropdown).toBeTruthy()
     const ui = within(dropdown as HTMLElement)
     expect(ui.getByText("最近")).toBeInTheDocument()
+  })
+
+  it("portal dropdown repositions on window scroll", async () => {
+    render(<ModelSelector selectedProviderId="openai" selectedModelId="gpt-4.1" onSelect={() => {}} renderInPortal dropdownPlacement="bottom" />)
+    await screen.findByText("GPT 4.1")
+
+    const button = screen.getByTitle("选择模型")
+    const rects = [
+      { left: 12, bottom: 44, top: 20, width: 180 },
+      { left: 30, bottom: 90, top: 66, width: 220 },
+    ]
+    vi.spyOn(button, "getBoundingClientRect").mockImplementation(
+      () => ({ ...rects.shift()!, right: 0, height: 24, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect,
+    )
+
+    const user = userEvent.setup()
+    await user.click(button)
+    const portal = await screen.findByTestId("model-selector-portal")
+    await waitFor(() => expect(portal).toHaveStyle({ top: "48px", left: "12px", minWidth: "300px" }))
+
+    act(() => {
+      window.dispatchEvent(new Event("scroll"))
+    })
+
+    await waitFor(() => expect(portal).toHaveStyle({ top: "94px", left: "30px", minWidth: "300px" }))
   })
 })

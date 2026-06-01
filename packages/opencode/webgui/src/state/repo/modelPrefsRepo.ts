@@ -41,7 +41,10 @@ async function loadModelPrefsFresh(): Promise<ModelPrefs> {
 
 export function loadModelPrefs(): Promise<ModelPrefs> {
   if (!cachedPrefsPromise) {
-    cachedPrefsPromise = loadModelPrefsFresh()
+    cachedPrefsPromise = loadModelPrefsFresh().catch((error) => {
+      cachedPrefsPromise = undefined
+      throw error
+    })
   }
   return cachedPrefsPromise
 }
@@ -49,6 +52,7 @@ export function loadModelPrefs(): Promise<ModelPrefs> {
 /** Reset the internal prefs cache. Intended for test isolation. */
 export function resetModelPrefsCache() {
   cachedPrefsPromise = undefined
+  queue = Promise.resolve()
 }
 
 export async function saveModelPrefs(value: ModelPrefs) {

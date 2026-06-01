@@ -90,6 +90,46 @@ describe("modelPrefsRepo", () => {
     expect(scopedStateGetJSON).toHaveBeenCalledTimes(1)
   })
 
+  it("failed loadModelPrefs calls do not poison the cache", async () => {
+    vi.mocked(scopedStateGetJSON)
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValueOnce({ recent: [{ providerID: "openai", modelID: "gpt-5" }], favorite: [] })
+
+    await expect(loadModelPrefs()).rejects.toThrow("temporary failure")
+    const prefs = await loadModelPrefs()
+
+    expect(prefs.recent[0]).toEqual({ providerID: "openai", modelID: "gpt-5" })
+    expect(scopedStateGetJSON).toHaveBeenCalledTimes(2)
+  })
+
+  it("resetModelPrefsCache resets the write queue for test isolation", async () => {
+    const release: Array<() => void> = []
+    vi.mocked(scopedStateGetJSON).mockResolvedValue({ recent: [], favorite: [] })
+    vi.mocked(scopedStateSetJSON).mockImplementation(
+      () => new Promise((resolve) => release.push(() => resolve({ ok: true }))),
+    )
+
+    const pending = updateModelPrefs(() => ({
+      recent: [{ providerID: "openai", modelID: "pending" }],
+      favorite: [],
+    }))
+    await vi.waitFor(() => expect(release).toHaveLength(1))
+    resetModelPrefsCache()
+    vi.mocked(scopedStateSetJSON).mockResolvedValue({ ok: true })
+
+    const next = updateModelPrefs(() => ({
+      recent: [{ providerID: "openai", modelID: "next" }],
+      favorite: [],
+    }))
+    await Promise.race([
+      next,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("queue was not reset")), 100)),
+    ])
+
+    release[0]()
+    await pending
+  })
+
   it("addRecentModel updates cache so subsequent loadModelPrefs sees new recent", async () => {
     const entry = { providerID: "openai", modelID: "gpt-5" }
     vi.mocked(scopedStateGetJSON).mockResolvedValue({ recent: [], favorite: [] })

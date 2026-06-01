@@ -315,6 +315,86 @@ test("updates global config and omits empty shell key in jsonc", async () => {
   }
 })
 
+test("updates global agent config by replacing nested agent object in jsonc", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Filesystem.write(
+        path.join(dir, "opencode.jsonc"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          agent: {
+            build: {
+              model: "openai/gpt-5.5",
+              prompt: "custom prompt",
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  const prev = Global.Path.config
+  ;(Global.Path as { config: string }).config = tmp.path
+  await clear(true)
+
+  try {
+    await saveGlobal({
+      agent: {
+        build: {
+          prompt: "custom prompt",
+        },
+      },
+    })
+
+    const file = path.join(tmp.path, "opencode.jsonc")
+    const writtenConfig = await Filesystem.readJson<{ agent?: { build?: { model?: string; prompt?: string } } }>(file)
+    expect(writtenConfig.agent?.build?.prompt).toBe("custom prompt")
+    expect(writtenConfig.agent?.build?.model).toBeUndefined()
+  } finally {
+    ;(Global.Path as { config: string }).config = prev
+    await clear(true)
+  }
+})
+
+test("updates global agent config by replacing nested agent object in json", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        agent: {
+          build: {
+            model: "openai/gpt-5.5",
+            prompt: "custom prompt",
+          },
+        },
+      })
+    },
+  })
+
+  const prev = Global.Path.config
+  ;(Global.Path as { config: string }).config = tmp.path
+  await clear(true)
+
+  try {
+    await saveGlobal({
+      agent: {
+        build: {
+          prompt: "custom prompt",
+        },
+      },
+    })
+
+    const writtenConfig = await Filesystem.readJson<{ agent?: { build?: { model?: string; prompt?: string } } }>(
+      path.join(tmp.path, "opencode.json"),
+    )
+    expect(writtenConfig.agent?.build?.prompt).toBe("custom prompt")
+    expect(writtenConfig.agent?.build?.model).toBeUndefined()
+  } finally {
+    ;(Global.Path as { config: string }).config = prev
+    await clear(true)
+  }
+})
+
 it.instance(
   "loads formatter boolean config",
   Effect.gen(function* () {

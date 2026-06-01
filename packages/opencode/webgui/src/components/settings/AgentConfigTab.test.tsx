@@ -84,11 +84,11 @@ function setup(formData = {}, setFormData = vi.fn(), onReloadConfig = vi.fn()) {
   return { ...result, setFormData, onReloadConfig }
 }
 
-/** Wait for the build row's model picker button to become interactive */
-async function waitForPickerReady() {
+/** Wait for a row's model picker button to become interactive */
+async function waitForPickerReady(rowName = "build") {
   await waitFor(() => {
-    const buildRow = screen.getByText("build").closest("tr")!
-    expect(within(buildRow).getByTitle("选择模型")).not.toBeDisabled()
+    const row = screen.getByText(rowName).closest("tr")!
+    expect(within(row).getByTitle("选择模型")).not.toBeDisabled()
   })
 }
 
@@ -259,6 +259,23 @@ describe("AgentConfigTab", () => {
         expect(sel.querySelector("optgroup")).toBeNull()
       }
     }
+  })
+
+  it("loads providers once even with multiple agent rows and opened pickers", async () => {
+    const user = userEvent.setup()
+    setup()
+    await waitForPickerReady("build")
+    await waitForPickerReady("explore")
+    expect(mockedSdk.config.providers).toHaveBeenCalledTimes(1)
+
+    const buildRow = screen.getByText("build").closest("tr")!
+    await user.click(within(buildRow).getByTitle("选择模型"))
+    await user.keyboard("{Escape}")
+
+    const exploreRow = screen.getByText("explore").closest("tr")!
+    await user.click(within(exploreRow).getByTitle("选择模型"))
+
+    expect(mockedSdk.config.providers).toHaveBeenCalledTimes(1)
   })
 
   it("reload button re-fetches config", async () => {

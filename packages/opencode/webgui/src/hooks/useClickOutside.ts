@@ -182,6 +182,7 @@ export function useClickOutsideWithEscape<T extends HTMLElement = HTMLElement>(
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault()
         handlerRef.current()
       }
     }

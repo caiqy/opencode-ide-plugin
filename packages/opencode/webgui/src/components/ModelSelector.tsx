@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { createPortal } from "react-dom"
 import { sdk } from "../lib/api/sdkClient"
 import type { Provider } from "@opencode-ai/sdk/client"
@@ -101,8 +101,9 @@ export function ModelSelector({
   const hasExplicitPlaceholder = placeholder !== undefined
   const effectivePlaceholder = placeholder ?? "选择模型"
   const portalRef = useRef<HTMLDivElement>(null)
+  const excludeRefs = useMemo(() => (renderInPortal ? [portalRef] : undefined), [renderInPortal])
   const { isOpen, searchTerm, setSearchTerm, dropdownRef, close, toggle } = useDropdown({
-    excludeRefs: renderInPortal ? [portalRef] : undefined,
+    excludeRefs,
   })
   const [providers, setProviders] = useState<Provider[]>(providersData ?? [])
   const [defaultIds, setDefaultIds] = useState<Record<string, string>>(defaultIdsData ?? {})
@@ -181,9 +182,8 @@ export function ModelSelector({
     return () => { active = false }
   }, [isOpen])
 
-  // Compute portal position when open in portal mode
-  useEffect(() => {
-    if (!isOpen || !renderInPortal || !triggerRef.current) return
+  const updatePortalPosition = useCallback(() => {
+    if (!renderInPortal || !triggerRef.current) return
     const rect = triggerRef.current.getBoundingClientRect()
     const style: React.CSSProperties = {
       position: "fixed",
@@ -197,7 +197,19 @@ export function ModelSelector({
       style.bottom = window.innerHeight - rect.top + 4
     }
     setPortalStyle(style)
-  }, [isOpen, renderInPortal, dropdownPlacement])
+  }, [renderInPortal, dropdownPlacement])
+
+  // Keep portal aligned with its trigger while the settings panel scrolls or viewport changes.
+  useEffect(() => {
+    if (!isOpen || !renderInPortal) return
+    updatePortalPosition()
+    window.addEventListener("resize", updatePortalPosition)
+    window.addEventListener("scroll", updatePortalPosition, true)
+    return () => {
+      window.removeEventListener("resize", updatePortalPosition)
+      window.removeEventListener("scroll", updatePortalPosition, true)
+    }
+  }, [isOpen, renderInPortal, updatePortalPosition])
 
   const getCurrentDisplay = () => {
     if (!selectedProviderId || !selectedModelId) {

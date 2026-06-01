@@ -48,6 +48,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     if (!isOpen) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
       if (e.key === "Escape" && !isSaving) {
         handleClose()
       }

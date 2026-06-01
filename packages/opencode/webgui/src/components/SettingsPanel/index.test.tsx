@@ -88,6 +88,24 @@ describe("SettingsPanel", () => {
     expect(screen.getByRole("button", { name: "继续编辑" })).toBeInTheDocument()
   })
 
+  it("Escape 已被子弹层处理时不关闭设置面板", async () => {
+    const onClose = vi.fn()
+    const setShowCloseConfirm = vi.fn()
+    mocks.useUnsavedChanges.mockReturnValue({
+      hasUnsavedChanges: () => true,
+      showCloseConfirm: false,
+      setShowCloseConfirm,
+    })
+
+    render(<SettingsPanel isOpen={true} onClose={onClose} />)
+    const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })
+    event.preventDefault()
+    document.dispatchEvent(event)
+
+    expect(onClose).not.toHaveBeenCalled()
+    expect(setShowCloseConfirm).not.toHaveBeenCalled()
+  })
+
   it("保存设置走全局配置接口", async () => {
     const setFormData = vi.fn()
     const setOriginalFormData = vi.fn()
@@ -114,6 +132,45 @@ describe("SettingsPanel", () => {
       })
     })
     expect(mocks.authSet).not.toHaveBeenCalled()
+  })
+
+  it("清空 Agent 模型时发送完整 agent 配置以删除旧字段", async () => {
+    const setFormData = vi.fn()
+    const setOriginalFormData = vi.fn()
+    mocks.useSettingsForm.mockReturnValue({
+      formData: {
+        agent: {
+          build: { prompt: "custom prompt" },
+        },
+      },
+      setFormData,
+      originalFormData: {
+        agent: {
+          build: { model: "openai/gpt-5.5", prompt: "custom prompt" },
+        },
+      },
+      setOriginalFormData,
+      isLoading: false,
+      error: null,
+    })
+    mocks.useUnsavedChanges.mockReturnValue({
+      hasUnsavedChanges: () => true,
+      showCloseConfirm: false,
+      setShowCloseConfirm: vi.fn(),
+    })
+
+    render(<SettingsPanel isOpen={true} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole("button", { name: "保存更改" }))
+
+    await waitFor(() => {
+      expect(mocks.globalConfigUpdate).toHaveBeenCalledWith({
+        body: {
+          agent: {
+            build: { prompt: "custom prompt" },
+          },
+        },
+      })
+    })
   })
 
   it("设置中不再显示 API 密钥与模型标签页", () => {
