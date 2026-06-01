@@ -441,9 +441,10 @@ const MessageInputInner = forwardRef<
 
   const onSendPhrase = useCallback(
     (item: { id: string; title: string; body: string }) => {
+      if (isDisabled) return
       sendPhrase(item.body)
     },
-    [sendPhrase],
+    [isDisabled, sendPhrase],
   )
 
   const onFillPhrase = useCallback(
