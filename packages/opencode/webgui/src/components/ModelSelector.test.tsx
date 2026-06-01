@@ -237,10 +237,48 @@ describe("ModelSelector favorites", () => {
   it("partial selection 只传 providerId 时显示 placeholder", async () => {
     render(<ModelSelector selectedProviderId="openai" onSelect={() => {}} />)
     await screen.findByText("选择模型")
+
+    // 打开 dropdown 确认 provider 已加载
+    const user = userEvent.setup()
+    await user.click(screen.getByTitle("选择模型"))
+    await screen.findByRole("button", { name: /切换收藏 openai\/gpt-4\.1/ })
+
+    // 关闭后 trigger 仍为 placeholder，不出现 openai/undefined
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByPlaceholderText("搜索模型…")).not.toBeInTheDocument())
+    expect(screen.getByTitle("选择模型")).toHaveTextContent("选择模型")
+    expect(screen.queryByText("openai/undefined")).not.toBeInTheDocument()
   })
 
   it("partial selection 只传 modelId 时显示 placeholder", async () => {
     render(<ModelSelector selectedModelId="gpt-4.1" onSelect={() => {}} />)
     await screen.findByText("选择模型")
+
+    // 打开 dropdown 确认 provider 已加载
+    const user = userEvent.setup()
+    await user.click(screen.getByTitle("选择模型"))
+    await screen.findByRole("button", { name: /切换收藏 openai\/gpt-4\.1/ })
+
+    // 关闭后 trigger 仍为 placeholder，不出现 undefined/gpt-4.1
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByPlaceholderText("搜索模型…")).not.toBeInTheDocument())
+    expect(screen.getByTitle("选择模型")).toHaveTextContent("选择模型")
+    expect(screen.queryByText("undefined/gpt-4.1")).not.toBeInTheDocument()
+  })
+
+  it("dropdownPlacement='bottom' 时 dropdown 使用 top-full mt-1", async () => {
+    render(<ModelSelector selectedProviderId="openai" selectedModelId="gpt-4.1" onSelect={() => {}} dropdownPlacement="bottom" />)
+    await screen.findByText("GPT 4.1")
+
+    const user = userEvent.setup()
+    await user.click(screen.getByTitle("选择模型"))
+
+    const input = screen.getByPlaceholderText("搜索模型…")
+    const dropdown = input.closest("div")?.parentElement
+    expect(dropdown).toBeTruthy()
+    expect((dropdown as HTMLElement).className).toContain("top-full")
+    expect((dropdown as HTMLElement).className).toContain("mt-1")
+    expect((dropdown as HTMLElement).className).not.toContain("bottom-full")
+    expect((dropdown as HTMLElement).className).not.toContain("mb-1")
   })
 })
