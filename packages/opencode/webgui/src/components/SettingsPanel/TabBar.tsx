@@ -5,10 +5,8 @@ interface TabBarProps {
 
 export function TabBar({ activeTab, onTabChange }: TabBarProps) {
   const all: { id: typeof activeTab; label: string; icon: string }[] = [
-    { id: "general", label: "常规", icon: "⚙️" },
     { id: "agents", label: "Agent 配置", icon: "🤖" },
     { id: "quick-phrases", label: "快捷短语", icon: "🏷️" },
-    { id: "advanced", label: "高级", icon: "🔧" },
   ]
 
   return (

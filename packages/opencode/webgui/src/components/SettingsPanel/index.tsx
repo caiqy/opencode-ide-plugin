@@ -20,7 +20,7 @@ interface SettingsPanelProps {
 type TabType = "general" | "agents" | "advanced" | "quick-phrases"
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
-  const [activeTab, setActiveTab] = useState<TabType>("general")
+  const [activeTab, setActiveTab] = useState<TabType>("agents")
   const [isSaving, setIsSaving] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
