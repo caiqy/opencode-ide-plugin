@@ -56,6 +56,8 @@ WebGUI 在 `ideBridge.ts` 中解析这些元数据，供版本门禁、重启按
 - `storageGet` / `storageSet`：读写 `global | workspace | mem` scoped storage。
 - `saveImage`：保存 WebGUI 图片预览中的 data URL、remote URL 或 generated-image relative URL。取消保存返回 `{ cancelled: true }`，不支持时返回明确错误。
 - `getExtensionVersion`：返回宿主插件真实版本，供 WebGUI 更新 UI 和 user agent 相关展示使用。
+- `setProjectDirectory`：切换项目目录。
+- `showDiagnostics`：显示诊断面板。
 
 VSCode 与 JetBrains 共同支持的更新请求：
 
@@ -98,3 +100,5 @@ JetBrains 更新限制：
 - 新增 bridge 消息时，必须同时评估 VSCode、JetBrains、WebGUI 三端。
 - VSCode 往往先支持宿主能力，JetBrains 可能需要补齐 parity。
 - `restartHost` 这类会中断 transport 的请求，应优先回复再执行破坏性动作。
+- VSCode `package.json` 注册了 5 个 commands，详见 [07](./07-host-plugins.md)。
+- JetBrains `plugin.xml` 注册了 4 个 action 和 6 个快捷键，详见 [07](./07-host-plugins.md)。

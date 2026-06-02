@@ -57,15 +57,37 @@ RepoWiki 只记录 WebGUI/IDE 如何消费这些能力，以及本 fork 为插�
 - `packages/opencode/src/config/config.ts`
 - `packages/opencode/src/permission/index.ts`
 - `packages/opencode/src/server/routes/instance/index.ts`
-- `packages/opencode/src/server/routes/instance/httpapi/instance.ts`
+- `packages/opencode/src/server/routes/instance/httpapi/groups/instance.ts`
 - `packages/opencode/src/session/prompt.ts`
 - `packages/opencode/src/session/system.ts`
+- `packages/opencode/src/session/tool-permission.ts` — 构建带 overlay 优先级的 Permission.AskInput，确保 runtime overlay 压过历史 persisted approval
 - `packages/opencode/src/skill/index.ts`
 - `packages/opencode/webgui/src/components/CompactHeader/useStatusPopoverData.ts`
 
 用途：WebGUI 可展示和切换 Skills。主 Hono 路由和 experimental HttpApi 都必须让 `GET /skill` 返回由后端权限系统计算的 effective `enabled`，前端只消费这个结果；`PATCH /skill/:name/enabled` 负责持久化 `permission.skill` 并设置同实例 runtime overlay。runtime overlay 还需要进入 `Skill.available()`、`SystemPrompt.skills()` 和 tool permission ask，确保禁用/启用在不触发 `Instance.dispose()` 的情况下立即影响下次 agent 行为。`Permission.ask()` 的顺序必须让当前 config deny 压过历史 persisted approval，并让 runtime overlay 压过二者，避免 UI 显示禁用但 skill tool 仍因旧 “always allow” 执行。修改此契约后必须同步 `packages/sdk/openapi.json` 和 v2 `packages/sdk/js/src/v2/gen/**`；legacy `packages/sdk/js/src/gen/**` 仍服务旧客户端形状，除非单独做 SDK 迁移，否则不要在功能修复中重生成以免破坏现有 WebGUI/插件调用方式。
 
 风险：上游 skill 发现、config merge 或 permission 语义变化时，前端开关可能显示成功但实际不生效。同步时尤其要保留 shorthand `permission.skill: "deny"` 转 `{ "*": "deny" }` fallback、overlay 优先级高于 cached/live permission 的顺序，以及 WebGUI 不复刻 wildcard/平台大小写规则的边界。
+
+### Agent 配置热重载
+
+关键文件：
+
+- `packages/opencode/src/server/routes/instance/httpapi/handlers/instance.ts`
+
+用途：Agent 默认配置变更（model、variant、system prompt 等）不应触发整个 Instance dispose。对于轻量级 agent config 变更，服务端跳过 dispose 并直接热重载受影响的服务，使同实例立即生效。
+
+当前约定：
+
+- 保存 agent 配置时，服务端对比实际变更字段，仅当深度变更时才触发 dispose。
+- 轻量级变更（如 model/variant 切换）走热重载路径，不销毁 Instance。
+- 热重载后需刷新 Instance 内的 agent 服务缓存。
+
+风险：上游 config merge 或 instance lifecycle 改动可能导致热重载失效，退化为不必要的 dispose。
+
+维护约束：
+
+- 调整 config save/reload 链路时，不要移除轻量变更的热重载逻辑。
+- 测试时确认 `PATCH /instance` 后 agent 配置即时生效且没有触发 session 中断。
 
 ### Provider / Anthropic SSE 兼容补丁
 
@@ -111,8 +133,14 @@ RepoWiki 只记录 WebGUI/IDE 如何消费这些能力，以及本 fork 为插�
 关键文件：
 
 - `packages/opencode/src/tool/generate-image.ts`
+- `packages/opencode/src/tool/generate-image/config.ts` — 图片模型配置
+- `packages/opencode/src/tool/generate-image/openai-compatible.ts` — OpenAI 兼容图片生成
 - `packages/opencode/src/tool/generate-image/persist.ts`
 - `packages/opencode/src/tool/generate-image/input.ts`
+- `packages/opencode/src/tool/generate-image/filename.ts` — 文件名生成逻辑
+- `packages/opencode/src/tool/generate-image/types.ts` — 类型定义
+- `packages/opencode/src/session/generated-image.ts` — 会话层图片附件处理
+- `packages/opencode/src/session/generated-image-persistence.ts` — 图片文件持久化
 - `packages/opencode/src/server/routes/instance/generated-image.ts`
 - `packages/opencode/webgui/src/components/parts/ToolPart/ToolImageAttachments.tsx`
 - `packages/opencode/webgui/src/components/MarkdownRenderer.tsx`
@@ -130,11 +158,28 @@ RepoWiki 只记录 WebGUI/IDE 如何消费这些能力，以及本 fork 为插�
 
 风险：上游 tool schema、session attachment 或 server route 重构时，容易丢失图片项目内持久化、readonly 输入兼容或 generated-image 专用路由。
 
+### 工具安全边界
+
+关键文件：
+
+- `packages/opencode/src/tool/external-directory.ts`
+
+用途：验证工具操作目标不超出项目目录边界，防止路径遍历攻击。这是 IDE 场景的关键安全适配，确保工具（Read、Write、Edit、Glob、Grep、Bash 等）不会访问项目目录之外的文件系统路径。
+
+当前约定：
+
+- 所有文件操作工具在执行前必须通过外部目录校验。
+- 路径遍历（`../`、符号链接逃逸等）会被拦截并拒绝执行。
+- 项目边界以当前 worktree/project 根目录为准。
+
+风险：上游新增工具或修改现有工具的文件访问路径逻辑时，可能绕过或破坏外部目录校验。
+
 ### 前台读取优先于后台 diff
 
 关键文件：
 
 - `packages/opencode/src/session/summary-scheduler.ts`
+- `packages/opencode/src/session/summary-scheduler-foreground.ts` — foreground 保护的状态跟踪（applyForegroundStart/applyForegroundFinish）
 - `packages/opencode/src/server/routes/instance/httpapi/session.ts`
 - `packages/opencode/src/server/routes/instance/session.ts`
 - `packages/opencode/webgui/src/hooks/useSessionVisibilitySync.ts`
@@ -201,11 +246,14 @@ RepoWiki 只记录 WebGUI/IDE 如何消费这些能力，以及本 fork 为插�
 - `packages/opencode/src/config/config.ts`
 - `packages/opencode/src/mcp/index.ts`
 - `packages/opencode/src/provider/provider.ts`
-- `packages/opencode/src/server/instance/index.ts`
 - `packages/opencode/src/server/server.ts`
 - `packages/opencode/src/session/message-v2.ts`
 - `packages/opencode/src/session/compaction.ts`
 - `packages/opencode/src/skill/index.ts`
+- `packages/opencode/src/tool/external-directory.ts`
+- `packages/opencode/src/session/generated-image.ts`
+- `packages/opencode/src/session/summary-scheduler-foreground.ts`
+- `packages/opencode/src/session/tool-permission.ts`
 
 同步后最低验证：
 

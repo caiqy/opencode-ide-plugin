@@ -47,17 +47,48 @@
 
 ## WebGUI 模块覆盖矩阵
 
-| 源码模块                                                                                                            | 对应页面                                                                                                 | 维护重点                                                               |
-| ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `src/main.tsx`、`src/App.tsx`                                                                                       | [01](./01-webgui-architecture.md)、[04](./04-session-chat.md)                                            | Provider 装配、SSE、全局快捷键、Host → UI 消息。                       |
-| `src/lib/api/sdkClient.ts`、`src/lib/api/events.ts`、`src/lib/api/useSessionEvents.ts`                              | [01](./01-webgui-architecture.md)、[04](./04-session-chat.md)、[08](./08-upstream-adaptations.md)        | SDK 包装、事件流、兼容 API 与上游适配。                                |
-| `src/lib/ideBridge.ts`、`src/state/IdeBridgeContext.tsx`                                                            | [02](./02-ide-bridge.md)                                                                                 | Host bridge 协议、打开文件、宿主存储、opened files 同步。              |
-| `src/state/scopedStorage.ts`、`src/state/repo/*`                                                                    | [03](./03-state-storage.md)、[06](./06-settings-update-localization.md)                                  | scoped storage、tabs/drafts/selection/theme/model/quick phrases 真源。 |
-| `src/state/SessionContext.tsx`、`MessagesContext.tsx`、`tabStore.ts`                                                | [04](./04-session-chat.md)                                                                               | 会话、消息、分页、标签、selection 恢复、reasoning/busy 状态。          |
-| `src/components/MessageInput/*`、`attachment/*`、`mention/*`、`command/*`                                           | [04](./04-session-chat.md)                                                                               | 输入增强、附件、mention、命令、拖拽、快捷短语。                        |
-| `src/components/MessageList/*`、`MarkdownRenderer.tsx`、`CodeBlock.tsx`                                             | [04](./04-session-chat.md)                                                                               | 消息渲染、Markdown、代码块、错误/回滚/复制保真。                       |
-| `src/components/CompactHeader/*`                                                                                    | [04](./04-session-chat.md)、[05](./05-subtasks-tools-mcp.md)、[06](./06-settings-update-localization.md) | 会话工作台、状态面板、设置/更新/重启入口。                             |
-| `src/components/SubtaskDrawer/*`、`components/parts/ToolPart/*`、`DiffModal/*`                                      | [05](./05-subtasks-tools-mcp.md)                                                                         | 子任务、工具卡片标题/权限/问题、diff/patch 浏览。                      |
-| `src/components/SettingsPanel/*`、`src/components/settings/*`                                                       | [06](./06-settings-update-localization.md)                                                               | 配置编辑、快捷短语、未保存变更、偏好 UI。                              |
-| `src/state/ProjectContext.tsx`、`ProvidersContext.tsx`、`ThemeContext.tsx`、`ToastContext.tsx`、`UpdateContext.tsx` | [01](./01-webgui-architecture.md)、[06](./06-settings-update-localization.md)                            | 项目路径、Provider 刷新、主题、通知、更新。                            |
-| `src/hooks/*`、`src/utils/*`、`src/config/shortcuts.ts`                                                             | [04](./04-session-chat.md)、[06](./06-settings-update-localization.md)                                   | 搜索、用量、diff 合并、键盘、剪贴板、路径工具。                        |
+| 源码模块 | 对应页面 | 维护重点 |
+| -------- | -------- | -------- |
+| `src/main.tsx`、`src/App.tsx` | [01](./01-webgui-architecture.md)、[04](./04-session-chat.md) | Provider 装配、SSE、全局快捷键、Host → UI 消息 |
+| `src/lib/api/sdkClient.ts`、`events.ts`、`useSessionEvents.ts` | [01](./01-webgui-architecture.md)、[04](./04-session-chat.md)、[08](./08-upstream-adaptations.md) | SDK 包装、事件流、兼容 API 与上游适配 |
+| `src/lib/ideBridge.ts`、`src/state/IdeBridgeContext.tsx` | [02](./02-ide-bridge.md) | Host bridge 协议、打开文件、宿主存储、opened files 同步 |
+| `src/state/scopedStorage.ts`、`src/state/repo/*` | [03](./03-state-storage.md)、[06](./06-settings-update-localization.md) | scoped storage、tabs/drafts/selection/theme/model/quick phrases 真源 |
+| `src/state/SessionContext.tsx`、`MessagesContext.tsx`、`tabStore.ts`、`tabPolicy.ts` | [04](./04-session-chat.md) | 会话、消息、分页、标签、selection 恢复、reasoning/busy 状态 |
+| `src/state/ProjectContext.tsx`、`ProvidersContext.tsx`、`ThemeContext.tsx`、`ToastContext.tsx`、`UpdateContext.tsx`、`UISettingsContext.tsx` | [01](./01-webgui-architecture.md)、[06](./06-settings-update-localization.md) | 项目路径、Provider 刷新、主题、通知、更新、UI 偏好 |
+| `src/state/SubtaskDrawerContext.tsx` | [05](./05-subtasks-tools-mcp.md) | 子任务抽屉状态与切换 |
+| `src/components/common/`：`Button`、`Card`、`IconButton`、`Input`、`Modal`、`Select` | [01](./01-webgui-architecture.md) | 通用 UI 组件库，被全站复用 |
+| `src/components/CompactHeader/`：包含 `index.tsx`、`TabBar`、`Tab`、`TabContextMenu`、`SessionDropdown`、`SessionList`、`SessionItem`、`ActionButtons`、`StatusPopover`、`StatusIndicator`、`UsageDisplay`、`hooks/` | [04](./04-session-chat.md)、[05](./05-subtasks-tools-mcp.md)、[06](./06-settings-update-localization.md) | 会话工作台、标签管理、状态面板、设置/更新/重启入口 |
+| `src/components/MessageList/`：包含 `index.tsx`、`MessageRow`、`MessagePart`、`AssistantMeta`、`ReasoningPart`、`CollapsiblePart`、`RevertBanner`、`RevertSummary`、`SessionErrorPart`、`ScrollToBottomButton`、`TextPart`、`Parts/QuestionPart/`、滚动与历史 hooks | [04](./04-session-chat.md) | 消息渲染、Markdown、代码块、推理块、错误/回滚/复制保真、滚动锚定 |
+| `src/components/MessageInput/`：包含 `index.tsx`、`EditorConfig`、`EditorContent`、`EditorToolbar`、`FooterPanels`、`MessageActions`、`QuickPhraseBar`、`TodosPanel`、`hooks/`（`useDragDrop`、`useMessageInput` 等） | [04](./04-session-chat.md) | 输入增强、Lexical 编辑器、附件、快速短语、待办面板、拖拽 |
+| `src/components/attachment/`、`mention/`、`command/` | [04](./04-session-chat.md) | Lexical 插件：附件节点、mention 检测与弹窗、命令检测与弹窗 |
+| `src/components/parts/`：`ToolPart/`（含 `BashTool`、`EditTool`、`ReadTool`、`TaskTool`、`TodoTool`、`QuestionTool` 等子组件）、`AgentPart`、`FilePart`、`PatchPart`、`RetryPart`、`SnapshotPart`、`ImageOverlay`、`ImagePreview` | [05](./05-subtasks-tools-mcp.md) | 工具卡片标题/权限/问题展示、diff/patch 浏览、图片预览/保存 |
+| `src/components/SubtaskDrawer/` | [05](./05-subtasks-tools-mcp.md) | 子任务抽屉：独立消息列表、宽度拖拽、阻塞状态 |
+| `src/components/DiffModal/`：包含 `DiffHeader`、`DiffNavigation`、`DiffViewer`、`hooks/useDiffData` | [05](./05-subtasks-tools-mcp.md) | 多文件 diff 浏览、文件间导航、变更内容查看 |
+| `src/components/SettingsPanel/`：包含 `SettingsHeader`、`SettingsFooter`、`TabBar`、`hooks/` | [06](./06-settings-update-localization.md) | 设置面板壳层、标签导航、未保存变更保护 |
+| `src/components/settings/`：`GeneralTab`、`AdvancedTab`、`QuickPhrasesTab`、`AgentConfigTab` | [06](./06-settings-update-localization.md) | 通用设置、高级配置、快捷短语管理、Agent 配置 |
+| `src/components/` 全局壳层：`VersionGate`、`ChatLoadGuard`、`OfflineBanner`、`ErrorBoundary`、`Toast`、`ConfirmModal`、`CommandPalette`、`KeyboardShortcutsHelp`、`ModelSelector`、`AgentSelector`、`VariantSelector`、`UpdateBanner`、`FileChangesPanel` | [01](./01-webgui-architecture.md)、[04](./04-session-chat.md)、[06](./06-settings-update-localization.md) | 版本门禁、加载守卫、离线提示、错误边界、全局通知、命令面板、模型/Agent 选择器 |
+| `src/hooks/`：`useOpenFile`、`useCommandSearch`、`useMentionSearch`、`useMentionNavigation`、`useSessionUsage`、`useMergedFileDiffs`、`useProviderStore`、`useSessionVisibilitySync`、`useKeyboard`、`useKeyboardShortcuts`、`useClickOutside`、`useDebounce`、`useDropdown` | [04](./04-session-chat.md)、[06](./06-settings-update-localization.md) | 文件打开、命令/mention 搜索与导航、用量估算、diff 合并、键盘/快捷键、可见性同步 |
+| `src/lib/`：`dnd.ts`、`dropCoordinator.ts`、`fileUtils.ts`、`keyboardHandler.ts`、`messagesStore.ts`、`messageFormatting.ts`、`task-part.ts`、`task-result.ts`、`partial-tool-input.ts`、`tooltipPolyfill.ts` | [04](./04-session-chat.md)、[05](./05-subtasks-tools-mcp.md) | 拖拽协调、文件处理、键盘兼容、消息存储/格式化、工具 part 解析 |
+| `src/utils/`：`path.ts`、`clipboard.ts`、`classNames.ts`、`formatting.ts`、`validation.ts` | [01](./01-webgui-architecture.md)、[02](./02-ide-bridge.md) | 路径归一化、剪贴板兼容、CSS 工具类、格式化、校验 |
+| `src/config/shortcuts.ts` | [04](./04-session-chat.md) | 快捷键定义，全局键盘处理 |
+
+## 宿主插件模块索引
+
+| VSCode 模块（`hosts/vscode-plugin/src/`） | 对应页面 | 维护重点 |
+| ---------------------------------------- | -------- | -------- |
+| `extension.ts`、`globals.ts` | [07](./07-host-plugins.md) | 插件激活入口、全局单例 |
+| `backend/`：`BackendLauncher`、`ResourceExtractor`、`kill.ts` | [07](./07-host-plugins.md) | 启动 opencode 后端、解压内嵌 binary、进程清理 |
+| `ui/`：`WebviewController`、`WebviewManager`、`ActivityBarProvider`、`CommunicationBridge`、`IdeBridgeServer`、`loading.ts` | [02](./02-ide-bridge.md)、[07](./07-host-plugins.md) | webview 承载、IDE bridge 服务、面板/活动栏切换、加载页 |
+| `commands/`：`AddToContextCommand`、`AddLinesToContextCommand`、`PastePathCommand` | [07](./07-host-plugins.md) | 右键菜单命令、文件/行范围添加上下文、粘贴路径 |
+| `update/`：`ReleaseChecker`、`UpdateInstaller`、`UpdateService` | [07](./07-host-plugins.md) | GitHub Release 检查、.vsix 下载安装、更新状态机 |
+| `settings/`：`SettingsManager` | [07](./07-host-plugins.md) | customCommand / minVersion 配置管理 |
+| `utils/`：`ErrorHandler`、`FileMonitor`、`PathInserter`、`RecoveryUtils` | [07](./07-host-plugins.md) | 错误处理、打开文件监控、路径插入、SW 恢复 |
+
+| JetBrains 模块（`hosts/jetbrains-plugin/.../opencode/`） | 对应页面 | 维护重点 |
+| ------------------------------------------------------- | -------- | -------- |
+| `ui/`：`ChatToolWindowFactory`、`IdeBridge`、`IdeBridgeStorageBackend`、`IdeOpenFilesUpdater`、`DragAndDropInstaller`、`PathInserter`、`BackendLogsVisibilityController` | [02](./02-ide-bridge.md)、[07](./07-host-plugins.md) | 工具窗口、IDE bridge、存储后端、打开文件同步、拖拽安装、日志懒显示 |
+| `backendprocess/`：`BackendLauncher`、`BackendProcess`、`TerminalBackendProcess`、`TerminalOutputCapture` | [07](./07-host-plugins.md) | 后端进程抽象、终端输出捕获、连接地址发现 |
+| `actions/`：`EditorAddToContextAction`、`EditorAddLinesToContextAction`、`ProjectAddToContextAction`、`ProjectPastePathAction` | [07](./07-host-plugins.md) | 编辑器/项目视图右键菜单、文件/行范围添加上下文 |
+| `settings/`：`OpenCodeConfigurable`、`OpenCodeSettings` | [07](./07-host-plugins.md) | 插件设置页、持久化配置服务 |
+| `update/`：`MarketplaceVersionSource`、`PluginUpdateService`、`PluginUpdateModels` | [07](./07-host-plugins.md) | JetBrains Marketplace 版本查询、更新状态管理 |
+| `util/`：`ResourceExtractor` | [07](./07-host-plugins.md) | 解压内嵌 backend binary |

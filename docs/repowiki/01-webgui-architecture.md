@@ -132,6 +132,17 @@ WebGUI 通过 `sdkClient` 访问 opencode 核心 API。迁移目标是优先使�
 - 处理 Host → UI 消息，例如 `insertPaths`、`pastePath`、`drag-event`。
 - 处理全局快捷键、拖拽、设置面板、命令面板、离线提示。
 
+## 浏览器模式适配
+
+WebGUI 支持两种运行环境：IDE webview 和普通浏览器。在浏览器模式下，部分 IDE 特有功能不可用或需要回退处理：
+
+- **设置面板差异**：浏览器模式下隐藏"打开配置文件"按钮（依赖 IDE bridge），并暂时隐藏通用设置和高级设置标签页。
+- **文件打开回退**：浏览器模式通过下载链接代替 IDE bridge 的文件打开能力。
+- **剪贴板回退**：浏览器模式使用标准 Clipboard API，IDE 模式优先使用宿主剪贴板。
+- **图片保存回退**：浏览器模式回退为下载链接，不调用 IDE bridge `saveImage`。
+
+WebGUI 通过 `ideBridge` 是否可用来判断当前运行模式。不在 IDE 环境时，`ideBridge` 为 null，WebGUI 自动进入浏览器模式降级。
+
 ## 全局壳层组件
 
 关键文件：
@@ -153,9 +164,53 @@ WebGUI 通过 `sdkClient` 访问 opencode 核心 API。迁移目标是优先使�
 - `ToastContext` 是全局通知通道，被更新、打开文件、设置保存、输入/附件错误等场景复用。
 - `ConfirmModal` 用于删除、关闭、危险操作等确认流程。
 
+## 通用 UI 组件 (common/)
+
+`packages/opencode/webgui/src/components/common/` 目录提供 WebGUI 全局依赖的基础 UI 组件库。与业务组件不同，这些是纯展示/交互基元，被消息渲染、Header、设置面板、状态弹窗等所有场景复用。
+
+关键文件：
+
+- `packages/opencode/webgui/src/components/common/Button.tsx`：通用按钮组件，支持 variant、loading 等状态。
+- `packages/opencode/webgui/src/components/common/Card.tsx`：轻量卡片容器，用于设置面板、session 列表等分组布局。
+- `packages/opencode/webgui/src/components/common/IconButton.tsx`：纯图标按钮，通用性高，Header、输入框、附件列表等均使用。
+- `packages/opencode/webgui/src/components/common/Input.tsx`：基础输入框，被 MessageInput、设置面板等消费。
+- `packages/opencode/webgui/src/components/common/Modal.tsx`：通用模态框，用于设置、确认、命令面板等弹出场景。
+- `packages/opencode/webgui/src/components/common/Select.tsx`：下拉选择组件。
+- `packages/opencode/webgui/src/components/common/index.ts`：统一导出入口，消费方通过该文件引入。
+
 ## 维护注意点
 
 - 修改 server 路由时，必须确认 `/app` 挂载仍在 workspace middleware 之前。
 - 修改 WebGUI 构建路径或 asset 命名时，必须同步嵌入脚本与 `webgui/server/app.ts`。
 - 修改 `sdkClient.ts` 时，要保持 WebGUI 现有 `{ data, error }` 调用习惯，避免把异常直接抛给组件层。
 - 修改 dev 模式链路时，不要把 backend 发现、proxy 或端口探测逻辑泄漏到生产 `/app` 托管路径。
+- 修改 common/ 组件时，必须检查所有消费方，避免破坏消息渲染、设置面板、状态弹窗等多个场景。
+- 新增全局壳层组件时，注意 `App.tsx` 的 Provider 装配顺序。
+
+## 消息输入与附件系统
+
+消息输入是 WebGUI 的核心交互入口，由多个紧密协作的子模块组成。
+
+关键目录与文件：
+
+- `packages/opencode/webgui/src/components/MessageInput/`：
+  - `EditorConfig` — 编辑器配置与初始化。
+  - `EditorContent` — 消息正文编辑区。
+  - `EditorToolbar` — 编辑器功能工具栏。
+  - `FooterPanels` — 底栏面板（附件、命令等子面板的容器）。
+  - `MessageActions` — 发送、停止等消息操作按钮。
+  - `TodosPanel` — 待办事项面板。
+  - `QuickPhraseBar` — 快速短语/快捷指令栏。
+- `packages/opencode/webgui/src/components/attachment/`：
+  - `AttachmentComponent` — 已上传附件展示组件。
+  - `AttachmentNode` — 编辑器内联附件节点。
+  - `AttachmentPlugin` — 附件功能的编辑器插件注册。
+- `packages/opencode/webgui/src/components/command/`：
+  - `CommandPopover` — 命令选择弹出层。
+  - `CommandPlugin` — 编辑器命令自动完成插件。
+- `packages/opencode/webgui/src/components/mention/`：
+  - `MentionNode` — @提及的内联渲染节点。
+  - `MentionPopover` — @提及的选择弹出层。
+  - `MentionPlugin` — @提及的编辑器插件注册。
+
+这些模块的详细交互流程与状态管理见 [04-session-chat](./04-session-chat.md)。

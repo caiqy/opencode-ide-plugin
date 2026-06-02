@@ -146,6 +146,24 @@ WebGUI 避免全量 virtualization，采用更保守的聊天滚动模型：
 
 拖拽和键盘处理是 IDE 场景的兼容层：`dnd.ts` 解析 VSCode/JCEF 传入的 uri-list 与文件/目录信息；`keyboardHandler.ts` 在 iframe 中接管复制、粘贴、撤销、重做等组合键，避免宿主 webview 吞掉编辑器快捷键。
 
+### 输入区内部组件
+
+- `packages/opencode/webgui/src/components/MessageInput/EditorConfig.ts` — Lexical 编辑器配置
+- `packages/opencode/webgui/src/components/MessageInput/EditorContent.tsx` — 编辑器内容区
+- `packages/opencode/webgui/src/components/MessageInput/EditorToolbar.tsx` — 编辑器工具栏
+- `packages/opencode/webgui/src/components/MessageInput/FooterPanels.tsx` — 底部面板容器（附件预览、diff 面板）
+- `packages/opencode/webgui/src/components/MessageInput/MessageActions.tsx` — 发送/停止/模型切换按钮
+- `packages/opencode/webgui/src/components/MessageInput/TodosPanel.tsx` — 待办事项面板
+
+输入相关 hooks：
+
+- `useDragDrop` — 拖拽文件到输入框
+- `useEditorKeyboard` — 编辑器键盘事件处理
+- `useFileAttachment` — 文件附件管理
+- `useMessageInput` — 输入框主状态（发送、草稿、分区上传）
+- `useMessageParts` — 消息 part 组装
+- `resolveSlashInput` — `/command` 斜杠输入解析
+
 ## 当前会话前台读取优先级
 
 关键文件：
@@ -191,6 +209,37 @@ WebGUI 避免全量 virtualization，采用更保守的聊天滚动模型：
 - `stream_timeout` 属于可重试的上游流内错误，后端会进入 retry 状态并通过 TypingIndicator 显示重试提示，而不是立即固化成最终错误卡片。
 - 图片可以来自普通附件、Markdown generated image 路径或 tool result attachments；生成图片的模型上下文以 tool attachment 为准，保存到本地文件不改变模型上下文。
 
+### 消息列表内部组件
+
+`MessageList` 内部还包含以下组件和工具：
+
+- `packages/opencode/webgui/src/components/MessageList/MessageRow.tsx` — 单条消息行容器
+- `packages/opencode/webgui/src/components/MessageList/MessagePart.tsx` — 消息 part 渲染分发
+- `packages/opencode/webgui/src/components/MessageList/AssistantMeta.tsx` — Assistant 元信息（模型、token、耗时）
+- `packages/opencode/webgui/src/components/MessageList/ReasoningPart.tsx` — 推理块展开/折叠
+- `packages/opencode/webgui/src/components/MessageList/CollapsiblePart.tsx` — 可折叠工具输出
+- `packages/opencode/webgui/src/components/MessageList/ScrollToBottomButton.tsx` — 回到底部按钮
+- `packages/opencode/webgui/src/components/MessageList/SessionErrorPart.tsx` — 会话错误展示
+- `packages/opencode/webgui/src/components/MessageList/RevertBanner.tsx` — 回滚提示横幅
+- `packages/opencode/webgui/src/components/MessageList/RevertSummary.tsx` — 回滚变更摘要
+- `packages/opencode/webgui/src/components/MessageList/TextPart.tsx` — 纯文本 part 渲染
+- `packages/opencode/webgui/src/components/MessageList/MessageStats.tsx` — 消息统计信息
+- `packages/opencode/webgui/src/components/MessageList/EmptyState.tsx` — 空会话占位
+- `packages/opencode/webgui/src/components/MessageList/ActionButtons.tsx` — 消息操作按钮
+- `packages/opencode/webgui/src/components/MessageList/messageCopy.ts` — 消息复制工具
+- `packages/opencode/webgui/src/components/MessageList/turnMeta.ts` — turn 元数据解析
+- `packages/opencode/webgui/src/components/MessageList/Parts/QuestionPart/` — 问题交互组件（QuestionOptions、QuestionTabs、ConfirmTab、index）
+
+滚动相关 hooks：
+
+- `useMessageScroll` — 消息区滚动控制
+- `useHistoryScroll` — 历史区滚动（顶部"加载更多"区域）
+- `useHistoryBlocks` — 历史块高度缓存与批量测量
+- `useHistoryMeasure` — 历史区 DOM 测量
+- `useHistoryWindow` — 历史区可视窗口管理
+- `useTopTrim` — 顶部溢出项裁剪
+- `useMessageActions` — 消息操作事件分发（复制、回滚等）
+
 ## 顶部会话工作台
 
 关键文件：
@@ -206,19 +255,30 @@ WebGUI 避免全量 virtualization，采用更保守的聊天滚动模型：
 
 ## 辅助 hooks
 
-关键文件：
+通用 hooks：
 
-- `packages/opencode/webgui/src/hooks/useSessionUsage.ts`
-- `packages/opencode/webgui/src/hooks/useMergedFileDiffs.ts`
-- `packages/opencode/webgui/src/hooks/useProviderStore.ts`
-- `packages/opencode/webgui/src/hooks/useOpenFile.ts`
+- `packages/opencode/webgui/src/hooks/useSessionUsage.ts` — 根据消息和模型信息估算 token、成本与 context limit 展示
+- `packages/opencode/webgui/src/hooks/useMergedFileDiffs.ts` — 合并 session diff 与工具 part 中的文件变更，供 diff 入口使用
+- `packages/opencode/webgui/src/hooks/useProviderStore.ts` — 缓存 provider/model 名称和可用性，减少 selector 直接依赖原始响应
+- `packages/opencode/webgui/src/hooks/useOpenFile.ts` — 优先通过 IDE bridge 打开文件，浏览器开发模式下再 fallback
+- `packages/opencode/webgui/src/hooks/useMentionSearch.ts` — mention 搜索（文件、目录、agent、symbol）
+- `packages/opencode/webgui/src/hooks/useCommandSearch.ts` — 命令搜索（/command 补全）
 
-职责：
+UI 辅助 hooks：
 
-- `useSessionUsage` 根据消息和模型信息估算 token、成本与 context limit 展示。
-- `useMergedFileDiffs` 合并 session diff 与工具 part 中的文件变更，供 diff 入口使用。
-- `useProviderStore` 缓存 provider/model 名称和可用性，减少 selector 直接依赖原始响应。
-- `useOpenFile` 优先通过 IDE bridge 打开文件，浏览器开发模式下再 fallback。
+- `packages/opencode/webgui/src/hooks/useKeyboard.ts` — 全局键盘事件处理
+- `packages/opencode/webgui/src/hooks/useKeyboardShortcuts.ts` — 快捷键注册与分发
+- `packages/opencode/webgui/src/hooks/useClickOutside.ts` — 点击外部检测
+- `packages/opencode/webgui/src/hooks/useDebounce.ts` — 防抖
+- `packages/opencode/webgui/src/hooks/useDropdown.ts` — 下拉菜单管理
+- `packages/opencode/webgui/src/hooks/useMentionNavigation.ts` — mention 列表键盘导航
+
+## lib 工具层
+
+- `packages/opencode/webgui/src/lib/dropCoordinator.ts` — 拖拽协调器
+- `packages/opencode/webgui/src/lib/dropUnsupported.ts` — 不支持的拖拽类型提示
+- `packages/opencode/webgui/src/lib/messageFormatting.ts` — 消息内容格式化
+- `packages/opencode/webgui/src/lib/tooltipPolyfill.ts` — tooltip 兼容补丁
 
 ## IDE 场景适配
 

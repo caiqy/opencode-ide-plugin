@@ -102,6 +102,7 @@ JetBrains：
 - `themeRepo.ts`：保存全局主题偏好，供 `ThemeContext` hydration 后切换 DOM `dark` class。
 - `modelPrefsRepo.ts`：保存模型 recent/favorite，供 `ModelSelector` 搜索和置顶常用模型。
 - `quickPhraseRepo.ts`：合并 preset 与 custom 快捷短语，维护隐藏项、排序和执行模式，并通过事件通知输入区刷新。
+- `UISettingsContext.tsx`：管理通用 UI 偏好设置（如 CompactHeader 折叠状态、抽屉宽度等），通过 scoped storage 持久化。
 
 这些 repo 是 WebGUI 状态真源的边界。组件可以组合多个 repo 的结果，但不应自己拼 scoped storage key。
 

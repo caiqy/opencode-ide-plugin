@@ -36,6 +36,20 @@ VSCode 稳定性补丁：
 - 动态 CSP origin 拼接。
 - panel 与 activity bar 共用 `WebviewController`，减少协议分叉。
 
+### VSCode 命令与上下文操作
+
+关键文件：
+
+- `hosts/vscode-plugin/src/commands/AddToContextCommand.ts` — 将文件/目录添加到会话上下文
+- `hosts/vscode-plugin/src/commands/AddLinesToContextCommand.ts` — 将选中行范围添加到上下文
+- `hosts/vscode-plugin/src/commands/PastePathCommand.ts` — 粘贴路径到输入框
+
+`package.json` 注册详情：
+
+- 共 5 个 commands：`openPanel`、`addFileToContext`、`addLinesToContext`、`pastePath`、`showDiagnostics`
+- menu 注册在 5 个位置：`explorer/context`、`editor/context`、`view/title`、`view/item/context`、`commandPalette`
+- 2 个快捷键：`Ctrl+'`（openPanel）、`Ctrl+Shift+'`（添加选中行到上下文）
+
 ### VSCode 本地开发入口约定
 
 关键文件：
@@ -54,6 +68,27 @@ VSCode 稳定性补丁：
 - backend 调试入口固定使用开发端口 `4300`，避免与维护者常用的默认 `4096` 冲突。
 - 本地开发应优先运行当前工作区源码，而不是历史构建产物或全局安装二进制。
 - `WebGUI: dev` 可提示输入 `OPENCODE_DEV_DIRECTORY_OVERRIDE`，默认是 `${workspaceFolder}`；该值只影响 Vite dev proxy 的 `x-opencode-directory`，不进入正式 build。
+
+### VSCode 更新系统
+
+关键文件：
+
+- `hosts/vscode-plugin/src/update/ReleaseChecker.ts` — 从 GitHub Release 检查最新版本
+- `hosts/vscode-plugin/src/update/UpdateInstaller.ts` — 下载并安装 `.vsix` 更新包
+- `hosts/vscode-plugin/src/update/UpdateService.ts` — 更新状态机编排（检查→下载→安装→重启）
+- `hosts/vscode-plugin/src/update/version.ts` — 语义版本比较工具
+
+### VSCode 配置与工具
+
+关键文件：
+
+- `hosts/vscode-plugin/src/settings/SettingsManager.ts` — 管理 `opencode.customCommand` 和 `opencode.minVersion` 配置
+- `hosts/vscode-plugin/src/utils/ErrorHandler.ts` — 全局错误处理与恢复策略
+- `hosts/vscode-plugin/src/utils/FileMonitor.ts` — 监控 IDE 打开文件变化，用于 `updateOpenedFiles` 推送
+- `hosts/vscode-plugin/src/utils/PathInserter.ts` — 将文件路径插入 WebGUI 输入框
+- `hosts/vscode-plugin/src/utils/RecoveryUtils.ts` — Service Worker 异常恢复
+- `hosts/vscode-plugin/src/backend/ResourceExtractor.ts` — 解压插件内嵌 backend binary 到临时目录
+- `hosts/vscode-plugin/src/backend/kill.ts` — 清理后端进程与端口占用
 
 ## JetBrains 插件
 
@@ -103,6 +138,42 @@ JetBrains 工具窗口中的 backend logs 面板采用“懒显示”规则：
 - 一旦 reveal，在当前工具窗口生命周期内保留，不自动隐藏。
 
 这里只改 **UI 暴露时机**，不改日志采集机制；当前仍依赖后端输出中的监听地址建立 JCEF 连接。
+
+### JetBrains 命令与上下文操作
+
+关键文件：
+
+- `hosts/jetbrains-plugin/.../opencode/actions/EditorAddToContextAction.kt` — 编辑器右键菜单：将文件添加到会话上下文
+- `hosts/jetbrains-plugin/.../opencode/actions/EditorAddLinesToContextAction.kt` — 编辑器右键菜单：将选中行添加到上下文
+- `hosts/jetbrains-plugin/.../opencode/actions/ProjectAddToContextAction.kt` — 项目视图右键菜单：将文件/目录添加到上下文
+- `hosts/jetbrains-plugin/.../opencode/actions/ProjectPastePathAction.kt` — 项目视图右键菜单：粘贴文件路径到输入框
+
+`plugin.xml` 注册详情：
+
+- 共 4 个 `<action>` 声明
+- 6 个 `<keyboard-shortcut>` 条目，绑定常用键盘快捷键
+
+### JetBrains 设置与更新
+
+关键文件：
+
+- `hosts/jetbrains-plugin/.../opencode/settings/OpenCodeConfigurable.kt` — 插件设置页实现（Tools → OpenCode Plugin）
+- `hosts/jetbrains-plugin/.../opencode/settings/OpenCodeSettings.kt` — 持久化配置服务，基于 `PropertiesComponent`
+- `hosts/jetbrains-plugin/.../opencode/update/MarketplaceVersionSource.kt` — 从 JetBrains Marketplace 查询最新版本
+- `hosts/jetbrains-plugin/.../opencode/update/PluginUpdateService.kt` — 更新检查与通知服务
+- `hosts/jetbrains-plugin/.../opencode/update/PluginUpdateModels.kt` — 更新相关数据模型
+
+### JetBrains UI 辅助组件
+
+关键文件：
+
+- `hosts/jetbrains-plugin/.../opencode/ui/DragAndDropInstaller.kt` — 处理 IDE 拖拽文件到 JCEF WebGUI 的事件
+- `hosts/jetbrains-plugin/.../opencode/ui/PathInserter.kt` — 将文件路径插入 WebGUI 输入框
+- `hosts/jetbrains-plugin/.../opencode/ui/BackendLogsErrorView.kt` — 后端启动失败时的错误日志 UI 视图
+- `hosts/jetbrains-plugin/.../opencode/ui/BackendLogsVisibilityController.kt` — 控制日志面板懒显示/隐藏逻辑
+- `hosts/jetbrains-plugin/.../opencode/ui/OpenPluginSettings.kt` — 打开插件设置页的动作
+- `hosts/jetbrains-plugin/.../opencode/ui/ConnInfo.kt` — 连接信息数据类（URL、token 等）
+- `hosts/jetbrains-plugin/.../opencode/PluginIdentity.kt` — 插件 ID 常量定义
 
 ### JetBrains 测试分层约定
 
@@ -223,3 +294,5 @@ JetBrains 还会在 IDE bridge 的 `connected` 事件里下发 `minVersion`；�
 - JetBrains Marketplace 更新判断依赖 Marketplace 包元数据；调整构建链路时不要移除 `distribution.channel=marketplace` 注入。
 - 调整 JetBrains 发布或更新逻辑时，不要把运行时 plugin ID 改回 `qtkj.opencode-ui`；若需提及旧 ID，只能放在迁移说明中。
 - 修改发布流程时，要同时检查共享内容真源、release workflow 职责边界，以及 VSCode / JetBrains Marketplace 是否仍消费已有 artifact。
+- 新增 VSCode 命令时，需同时更新 `package.json` 的 `contributes.commands` 和 `contributes.menus`。
+- JetBrains 新增右键菜单时，需同时更新 `actions/` 下的 Kotlin 实现和 `plugin.xml` 的 `<action>` 声明。

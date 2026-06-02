@@ -7,10 +7,15 @@
 关键文件：
 
 - `packages/opencode/webgui/src/components/SettingsPanel/index.tsx`
+- `packages/opencode/webgui/src/components/SettingsPanel/SettingsHeader.tsx` — 设置面板头部
+- `packages/opencode/webgui/src/components/SettingsPanel/SettingsFooter.tsx` — 设置面板底部
+- `packages/opencode/webgui/src/components/SettingsPanel/TabBar.tsx` — 设置标签导航
 - `packages/opencode/webgui/src/components/SettingsPanel/hooks/useSettingsForm.ts`
+- `packages/opencode/webgui/src/components/SettingsPanel/hooks/useUnsavedChanges.ts` — 未保存变更检测与拦截
 - `packages/opencode/webgui/src/components/settings/GeneralTab.tsx`
 - `packages/opencode/webgui/src/components/settings/AdvancedTab.tsx`
 - `packages/opencode/webgui/src/components/settings/QuickPhrasesTab.tsx`
+- `packages/opencode/webgui/src/components/settings/AgentConfigTab.tsx` — Agent 默认配置（system prompt、max steps 等）
 
 职责：
 
@@ -51,7 +56,7 @@
 
 能力：
 
-- `ModelSelector` 支持 provider/model 搜索、recent/favorite、可用性展示。
+- `ModelSelector` 支持 provider/model 搜索、recent/favorite、可用性展示，以及可清除选择（clearable）选项，允许用户清空当前选定模型。
 - `AgentSelector` 与 `VariantSelector` 参与会话选择恢复链路。
 - `modelPrefsRepo` 保存 recent/favorite，并避免并发写覆盖用户最新选择。
 - `ProvidersContext` 在 Provider 配置变化后用 dirty flag 通知输入区和 selector 重新拉取 provider/model。
