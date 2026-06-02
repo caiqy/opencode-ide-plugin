@@ -42,20 +42,6 @@
 | `codebase/STACK.md` | 需要技术栈、依赖版本、配置文件细节时 |
 | `CONVENTIONS.md` | 编写代码前确认命名、模式、错误处理规范时 |
 | `ARCHITECTURE.md` | 需要系统架构、组件关系、数据流、入口点时 |
-
-<!-- GSD:project-start source:PROJECT.md -->
-<!-- GSD:project-end -->
-
-<!-- GSD:stack-start source:codebase/STACK.md -->
-<!-- GSD:stack-end -->
-
-<!-- GSD:conventions-start source:CONVENTIONS.md -->
-<!-- GSD:conventions-end -->
-
-<!-- GSD:architecture-start source:ARCHITECTURE.md -->
-<!-- GSD:architecture-end -->
-
-<!-- CODEGRAPH_START -->
 ## CodeGraph
 
 本项目已配置 CodeGraph MCP 服务器（`codegraph_*` 工具）。CodeGraph 是基于 tree-sitter 解析的知识图谱，包含每个符号、边和文件。读取速度在毫秒级，返回 grep 无法获取的结构化信息。

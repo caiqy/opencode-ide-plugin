@@ -45,6 +45,7 @@ target
 .opencode/commands/
 .specify
 .playwright-mcp
+.understand-anything
 
 # ---- Java/Kotlin/Gradle ----
 .gradle/
