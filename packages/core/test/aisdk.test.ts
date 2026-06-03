@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import { AISDK } from "@opencode-ai/core/aisdk"
 
-function sseResponse(frames: string[], url = "https://proxy.example/v1/responses") {
+function sseResponse(frames: string[], separator = "\n\n") {
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(new TextEncoder().encode(frames.join("\n\n") + "\n\n"))
+      controller.enqueue(new TextEncoder().encode(frames.join(separator) + separator))
       controller.close()
     },
   })
@@ -75,6 +75,11 @@ describe("AISDK.isEmptyChatCompletionFrame", () => {
     expect(AISDK.isEmptyChatCompletionFrame(data)).toBe(false)
   })
 
+  test("does not flag a chat chunk without choices (malformed)", () => {
+    const data = JSON.stringify({ object: "chat.completion.chunk" })
+    expect(AISDK.isEmptyChatCompletionFrame(data)).toBe(false)
+  })
+
   test("does not flag responses events", () => {
     expect(AISDK.isEmptyChatCompletionFrame(JSON.stringify({ type: "response.created", response: {} }))).toBe(false)
   })
@@ -105,5 +110,29 @@ describe("AISDK.filterResponsesDummyChunks", () => {
     const out = await readAll(filtered)
     expect(out).not.toContain("chatcmpl-dummy")
     expect(out).toContain("real text")
+  })
+
+  test("handles CRLF frame separators", async () => {
+    const filtered = AISDK.filterResponsesDummyChunks(sseResponse([dummy, created, textDelta], "\r\n\r\n"))
+    const out = await readAll(filtered)
+    expect(out).not.toContain("chatcmpl-dummy")
+    expect(out).toContain("response.created")
+    expect(out).toContain("response.output_text.delta")
+  })
+
+  test("preserves malformed chat chunks without choices", async () => {
+    const malformed = `data: ${JSON.stringify({ object: "chat.completion.chunk" })}`
+    const filtered = AISDK.filterResponsesDummyChunks(sseResponse([malformed, created]))
+    const out = await readAll(filtered)
+    expect(out).toContain("chat.completion.chunk")
+    expect(out).toContain("response.created")
+  })
+
+  test("passes non-event-stream responses unchanged", async () => {
+    const jsonBody = JSON.stringify({ id: "resp_1", output: [] })
+    const res = new Response(jsonBody, { headers: { "content-type": "application/json" } })
+    const filtered = AISDK.filterResponsesDummyChunks(res)
+    const out = await filtered.text()
+    expect(out).toBe(jsonBody)
   })
 })

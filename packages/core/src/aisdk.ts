@@ -17,20 +17,24 @@ type SDK = any
  */
 export function isEmptyChatCompletionFrame(data: string): boolean {
   if (data === "[DONE]") return false
-  let json: any
+  let json: Record<string, unknown>
   try {
-    json = JSON.parse(data)
+    const parsed = JSON.parse(data)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
+    json = parsed
   } catch {
     return false
   }
-  if (!json || typeof json !== "object") return false
   if (json.object !== "chat.completion.chunk") return false
-  if (!Array.isArray(json.choices)) return true // no choices = empty
-  return !json.choices.some((choice: any) => {
-    const delta = choice?.delta
+  // Only treat as empty dummy when choices is a present array with no real
+  // payload. Missing or malformed choices should pass through to the parser
+  // so protocol errors remain visible.
+  if (!Array.isArray(json.choices)) return false
+  return !(json.choices as Array<Record<string, unknown>>).some((choice) => {
+    const delta = choice?.delta as Record<string, unknown> | undefined
     return (
-      (typeof delta?.content === "string" && delta.content.length > 0) ||
-      (Array.isArray(delta?.tool_calls) && delta.tool_calls.length > 0) ||
+      (typeof delta?.content === "string" && (delta.content as string).length > 0) ||
+      (Array.isArray(delta?.tool_calls) && (delta.tool_calls as unknown[]).length > 0) ||
       choice?.finish_reason != null
     )
   })
@@ -63,7 +67,8 @@ export function filterResponsesDummyChunks(res: Response): Response {
       }
 
       buffer += decoder.decode(value, { stream: true })
-      const parts = buffer.split("\n\n")
+      // Support both LF (\n\n) and CRLF (\r\n\r\n) SSE frame separators
+      const parts = buffer.split(/\r?\n\r?\n/)
       buffer = parts.pop() ?? ""
 
       for (const part of parts) {
@@ -71,7 +76,7 @@ export function filterResponsesDummyChunks(res: Response): Response {
         if (!trimmed) continue
         // Extract the data line from the SSE frame
         const dataLine = trimmed
-          .split("\n")
+          .split(/\r?\n/)
           .find((line) => line.startsWith("data: ") || line.startsWith("data:"))
         if (dataLine) {
           const payload = dataLine.startsWith("data: ") ? dataLine.slice(6) : dataLine.slice(5)
@@ -178,10 +183,19 @@ function prepareOptions(model: ModelV2.Info, pkg: string) {
 
     // Strip empty chat.completion.chunk dummy frames that third-party proxies
     // inject at the start of Responses SSE streams. Only applies when the URL
-    // path indicates the Responses API — never touches /chat/completions.
+    // pathname ends with /responses — never touches /chat/completions.
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as any).url ?? ""
-    if (typeof url === "string" && url.includes("/responses")) {
-      res = filterResponsesDummyChunks(res)
+    if (typeof url === "string") {
+      const pathname = (() => {
+        try {
+          return new URL(url).pathname
+        } catch {
+          return url
+        }
+      })()
+      if (pathname.endsWith("/responses")) {
+        res = filterResponsesDummyChunks(res)
+      }
     }
 
     if (!chunkAbortCtl || typeof chunkTimeout !== "number") return res
