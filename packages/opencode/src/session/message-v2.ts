@@ -59,6 +59,9 @@ export const APIError = NamedError.create("APIError", {
   metadata: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 })
 export type APIError = Schema.Schema.Type<typeof APIError.Schema>
+export class RetryableProviderError extends Error {
+  override name = "RetryableProviderError"
+}
 export const ContextOverflowError = NamedError.create("ContextOverflowError", {
   message: Schema.String,
   responseBody: Schema.optional(Schema.String),
@@ -1115,13 +1118,6 @@ function fail(err: ProviderError.ParsedStreamError, cause: unknown) {
 // assistant doesn't get mistaken for the most recent turn. tasks are
 // compaction/subtask parts attached to user messages newer than the latest
 // finished assistant — i.e. unprocessed work.
-// filterCompacted reorders messages for model consumption
-// ([compaction-user, summary, ...retained tail..., continue-user]), so array
-// position is not chronological. Derive each binding by max id (MessageID
-// is monotonic via MessageID.ascending) so a pre-compaction overflowing tail
-// assistant doesn't get mistaken for the most recent turn. tasks are
-// compaction/subtask parts attached to user messages newer than the latest
-// finished assistant — i.e. unprocessed work.
 export function latest(msgs: WithParts[]) {
   let user: User | undefined
   let assistant: Assistant | undefined
@@ -1239,6 +1235,9 @@ export function fromError(
       ).toObject()
     }
     case e instanceof Error:
+      if (e instanceof RetryableProviderError) {
+        return new APIError({ message: errorMessage(e), isRetryable: true }, { cause: e }).toObject()
+      }
       if (TypeValidationError.isInstance(e)) {
         const parsed = ProviderError.parseStreamError(e.value)
         if (parsed) return fail(parsed, e)

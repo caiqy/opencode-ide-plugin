@@ -88,4 +88,19 @@ describe("session.message-v2 stream error recovery", () => {
     expect(MessageV2.APIError.isInstance(result)).toBe(true)
     expect(SessionRetry.retryable(result, retryProvider)).toEqual({ message: "stream_read_error" })
   })
+
+  test("serializes retryable provider errors as retryable APIError", () => {
+    const err = new MessageV2.RetryableProviderError("stream_read_error")
+
+    const result = MessageV2.fromError(err, { providerID })
+
+    expect(result).toStrictEqual({
+      name: "APIError",
+      data: {
+        message: "stream_read_error",
+        isRetryable: true,
+      },
+    })
+    expect(SessionRetry.retryable(result, retryProvider)).toEqual({ message: "stream_read_error" })
+  })
 })

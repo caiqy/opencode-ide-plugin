@@ -27,6 +27,16 @@ const OVERFLOW_PATTERNS = [
   /model_context_window_exceeded/i, // z.ai non-standard finish_reason surfaced as error text
 ]
 
+const TRANSIENT_STREAM_ERROR_CODES = new Set([
+  "connection_timeout",
+  "internal_error",
+  "rate_limit_exceeded",
+  "server_error",
+  "server_is_overloaded",
+  "stream_read_error",
+  "stream_timeout",
+])
+
 function isOpenAiErrorRetryable(e: APICallError) {
   const status = e.statusCode
   if (!status) return e.isRetryable
@@ -109,6 +119,10 @@ function json(input: unknown) {
   return undefined
 }
 
+function isTransientStreamErrorCode(code: unknown) {
+  return typeof code === "string" && TRANSIENT_STREAM_ERROR_CODES.has(code)
+}
+
 export type ParsedStreamError =
   | {
       type: "context_overflow"
@@ -130,6 +144,7 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
   const responseBody = JSON.stringify(body)
   if (body.type !== "error") {
     if (typeof body.error !== "string") return
+    if (!isTransientStreamErrorCode(body.error)) return
     return {
       type: "api_error",
       message: typeof body.message === "string" ? body.message : body.error,
@@ -138,16 +153,26 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
     }
   }
 
-  if (body?.error?.type === "upstream_error" && body?.error?.code === "stream_timeout") {
+  const code = body?.error?.code
+  const isUpstreamSignal = body?.error?.type === "upstream_error" || code === "upstream_error"
+  // Let permanent upstream-wrapped codes fall through to the specific
+  // non-retryable handlers below instead of retrying every upstream_error.
+  if (isTransientStreamErrorCode(code) || (isUpstreamSignal && (typeof code !== "string" || code === "upstream_error"))) {
+    const msg =
+      typeof body?.error?.message === "string"
+        ? body.error.message
+        : typeof code === "string"
+          ? code
+          : "upstream_error"
     return {
       type: "api_error",
-      message: typeof body?.error?.message === "string" ? body.error.message : "stream_timeout",
+      message: msg,
       isRetryable: true,
       responseBody,
     }
   }
 
-  switch (body?.error?.code) {
+  switch (code) {
     case "context_length_exceeded":
       return {
         type: "context_overflow",
@@ -169,9 +194,10 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
         responseBody,
       }
     case "invalid_prompt":
+    case "invalid_api_key":
       return {
         type: "api_error",
-        message: typeof body?.error?.message === "string" ? body?.error?.message : "Invalid prompt.",
+        message: typeof body?.error?.message === "string" ? body?.error?.message : "Invalid request.",
         isRetryable: false,
         responseBody,
       }

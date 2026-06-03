@@ -552,7 +552,7 @@ describe("OpenAI Responses route", () => {
         Effect.provide(fixedResponse(sseEvents({ type: "error", code: "rate_limit_exceeded", message: "Slow down" }))),
       )
 
-      expect(response.events).toEqual([{ type: "provider-error", message: "Slow down" }])
+      expect(response.events).toEqual([{ type: "provider-error", message: "Slow down", retryable: true }])
     }),
   )
 
@@ -562,7 +562,111 @@ describe("OpenAI Responses route", () => {
         Effect.provide(fixedResponse(sseEvents({ type: "error", code: "internal_error" }))),
       )
 
-      expect(response.events).toEqual([{ type: "provider-error", message: "internal_error" }])
+      expect(response.events).toEqual([{ type: "provider-error", message: "internal_error", retryable: true }])
+    }),
+  )
+
+  it.effect("marks nested upstream stream read errors as retryable", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({
+              type: "error",
+              sequence_number: 0,
+              error: { type: "upstream_error", code: "stream_read_error", message: "stream_read_error" },
+            }),
+          ),
+        ),
+      )
+
+      expect(response.events).toEqual([{ type: "provider-error", message: "stream_read_error", retryable: true }])
+    }),
+  )
+
+  it.effect("uses response.failed nested error details", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({
+              type: "response.failed",
+              response: {
+                error: { type: "upstream_error", code: "stream_timeout", message: "stream_timeout" },
+              },
+            }),
+          ),
+        ),
+      )
+
+      expect(response.events).toEqual([{ type: "provider-error", message: "stream_timeout", retryable: true }])
+    }),
+  )
+
+  it.effect("marks response failed upstream_error code as retryable", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({
+              type: "response.failed",
+              response: {
+                error: { code: "upstream_error", message: "The provider had an upstream failure" },
+              },
+            }),
+          ),
+        ),
+      )
+
+      expect(response.events).toEqual([
+        { type: "provider-error", message: "The provider had an upstream failure", retryable: true },
+      ])
+    }),
+  )
+
+  it.effect("does not mark invalid prompt stream errors as retryable", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(fixedResponse(sseEvents({ type: "error", code: "invalid_prompt", message: "Invalid prompt" }))),
+      )
+
+      expect(response.events).toEqual([{ type: "provider-error", message: "Invalid prompt" }])
+    }),
+  )
+
+  it.effect("does not mark upstream permanent stream errors as retryable", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({
+              type: "error",
+              error: { type: "upstream_error", code: "invalid_prompt", message: "Invalid prompt" },
+            }),
+          ),
+        ),
+      )
+
+      expect(response.events).toEqual([{ type: "provider-error", message: "Invalid prompt" }])
+    }),
+  )
+
+  it.effect("does not mark response failed permanent errors as retryable", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({
+              type: "response.failed",
+              response: {
+                error: { code: "invalid_api_key", message: "Invalid API key" },
+              },
+            }),
+          ),
+        ),
+      )
+
+      expect(response.events).toEqual([{ type: "provider-error", message: "Invalid API key" }])
     }),
   )
 

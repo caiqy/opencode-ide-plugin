@@ -24,13 +24,58 @@ describe("ProviderError.parseStreamError", () => {
     if (r.type === "api_error") expect(r.isRetryable).toBe(true)
   })
 
-  test("recognises any string error value, not just stream_read_error", () => {
+  test("recognises transient string error values beyond stream_read_error", () => {
     const result = ProviderError.parseStreamError({ error: "connection_timeout" })
     expect(result).toBeDefined()
     expect(result!.type).toBe("api_error")
     expect(result!.message).toContain("connection_timeout")
     const r = result!
     if (r.type === "api_error") expect(r.isRetryable).toBe(true)
+  })
+
+  test("ignores permanent non-standard string error values", () => {
+    expect(ProviderError.parseStreamError({ error: "invalid_api_key" })).toBeUndefined()
+  })
+
+  test("retries transient nested error codes without upstream_error type", () => {
+    const input = { type: "error", error: { code: "rate_limit_exceeded", message: "Slow down" } }
+    const result = ProviderError.parseStreamError(input)
+
+    expect(result).toStrictEqual({
+      type: "api_error",
+      message: "Slow down",
+      isRetryable: true,
+      responseBody: JSON.stringify(input),
+    })
+  })
+
+  test("retries upstream_error nested code without upstream_error type", () => {
+    const input = { type: "error", error: { code: "upstream_error", message: "Upstream failed" } }
+    const result = ProviderError.parseStreamError(input)
+
+    expect(result).toStrictEqual({
+      type: "api_error",
+      message: "Upstream failed",
+      isRetryable: true,
+      responseBody: JSON.stringify(input),
+    })
+  })
+
+  test("does not retry invalid_api_key nested error codes", () => {
+    expect(
+      ProviderError.parseStreamError({
+        type: "error",
+        error: { code: "invalid_api_key", message: "Invalid API key" },
+      }),
+    ).toStrictEqual({
+      type: "api_error",
+      message: "Invalid API key",
+      isRetryable: false,
+      responseBody: JSON.stringify({
+        type: "error",
+        error: { code: "invalid_api_key", message: "Invalid API key" },
+      }),
+    })
   })
 
   test("does not confuse {error: object} with new string branch", () => {
@@ -46,6 +91,23 @@ describe("ProviderError.parseStreamError", () => {
     const input = { error: "stream_read_error" }
     const result = ProviderError.parseStreamError(input)
     expect(result!.responseBody).toBe(JSON.stringify(input))
+  })
+
+  test("does not retry upstream errors with permanent codes", () => {
+    const result = ProviderError.parseStreamError({
+      type: "error",
+      error: { type: "upstream_error", code: "invalid_prompt", message: "Invalid prompt" },
+    })
+
+    expect(result).toStrictEqual({
+      type: "api_error",
+      message: "Invalid prompt",
+      isRetryable: false,
+      responseBody: JSON.stringify({
+        type: "error",
+        error: { type: "upstream_error", code: "invalid_prompt", message: "Invalid prompt" },
+      }),
+    })
   })
 })
 

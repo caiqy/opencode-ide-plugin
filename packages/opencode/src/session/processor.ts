@@ -552,6 +552,9 @@ export const layer = Layer.effect(
           }
 
           case "provider-error":
+            if (value.retryable) {
+              throw new MessageV2.RetryableProviderError(value.message || "provider error")
+            }
             throw new Error(value.message)
 
           case "step-start":

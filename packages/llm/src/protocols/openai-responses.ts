@@ -156,10 +156,15 @@ const OpenAIResponsesEvent = Schema.Struct({
       service_tier: Schema.optional(Schema.String),
       incomplete_details: optionalNull(Schema.Struct({ reason: Schema.String })),
       usage: optionalNull(OpenAIResponsesUsage),
+      error: Schema.optional(Schema.Unknown),
     }),
   ),
   code: Schema.optional(Schema.String),
   message: Schema.optional(Schema.String),
+  // Top-level error object for `type: "error"` events (e.g. upstream_error).
+  // Without this, Schema.Struct strips the nested error and we lose the actual
+  // error code/message needed for retry decisions.
+  error: Schema.optional(Schema.Unknown),
 })
 type OpenAIResponsesEvent = Schema.Schema.Type<typeof OpenAIResponsesEvent>
 
@@ -385,6 +390,16 @@ const NO_EVENTS: StepResult["1"] = []
 // the protocol's `terminal` predicate stay in sync.
 const TERMINAL_TYPES = new Set(["response.completed", "response.incomplete", "response.failed"])
 
+const TRANSIENT_ERROR_CODES = new Set([
+  "connection_timeout",
+  "internal_error",
+  "rate_limit_exceeded",
+  "server_error",
+  "server_is_overloaded",
+  "stream_read_error",
+  "stream_timeout",
+])
+
 const onOutputTextDelta = (state: ParserState, event: OpenAIResponsesEvent): StepResult => {
   if (!event.delta) return [state, NO_EVENTS]
   const events: LLMEvent[] = []
@@ -492,14 +507,52 @@ const onResponseFinish = (state: ParserState, event: OpenAIResponsesEvent): Step
   return [{ ...state, lifecycle }, events]
 }
 
+const errorFields = (event: OpenAIResponsesEvent) => {
+  const err = event.error ?? event.response?.error
+  if (!err || typeof err !== "object") return {}
+  return err as Record<string, unknown>
+}
+
+const extractErrorMessage = (event: OpenAIResponsesEvent): string => {
+  // Error details can arrive as top-level `error` events or nested under
+  // `response.error` in terminal `response.failed` events.
+  const err = errorFields(event)
+  if (typeof err.message === "string" && err.message.length > 0) return err.message
+  if (typeof err.code === "string" && err.code.length > 0) return err.code
+  return event.message ?? event.code ?? ""
+}
+
+const isRetryableError = (event: OpenAIResponsesEvent) => {
+  const err = errorFields(event)
+  const code = typeof err.code === "string" ? err.code : event.code
+  return (
+    TRANSIENT_ERROR_CODES.has(code ?? "") ||
+    // OpenAI upstream_error without a more concrete permanent code is a
+    // transient upstream failure signal; permanent codes must be explicit to
+    // avoid broad retries.
+    code === "upstream_error" ||
+    (err.type === "upstream_error" && code === undefined)
+  )
+}
+
 const onResponseFailed = (state: ParserState, event: OpenAIResponsesEvent): StepResult => [
   state,
-  [LLMEvent.providerError({ message: event.message ?? event.code ?? "OpenAI Responses response failed" })],
+  [
+    LLMEvent.providerError({
+      message: extractErrorMessage(event) || "OpenAI Responses response failed",
+      retryable: isRetryableError(event) ? true : undefined,
+    }),
+  ],
 ]
 
 const onError = (state: ParserState, event: OpenAIResponsesEvent): StepResult => [
   state,
-  [LLMEvent.providerError({ message: event.message ?? event.code ?? "OpenAI Responses stream error" })],
+  [
+    LLMEvent.providerError({
+      message: extractErrorMessage(event) || "OpenAI Responses stream error",
+      retryable: isRetryableError(event) ? true : undefined,
+    }),
+  ],
 ]
 
 const step = (state: ParserState, event: OpenAIResponsesEvent) => {
