@@ -20,7 +20,8 @@ function eventResponse(chunks: unknown[]) {
   const body = new ReadableStream({
     start(controller) {
       for (const chunk of chunks) {
-        controller.enqueue(new TextEncoder().encode(`event: ${chunk && typeof chunk === "object" ? (chunk as any).type : "message"}\n`))
+        const type = chunk && typeof chunk === "object" ? (chunk as any).type : undefined
+        controller.enqueue(new TextEncoder().encode(`event: ${typeof type === "string" ? type : "message"}\n`))
         controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`))
       }
       controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
@@ -31,6 +32,138 @@ function eventResponse(chunks: unknown[]) {
 }
 
 describe("OpenAIResponsesLanguageModel.doStream", () => {
+  test("ignores empty chat completion chunks before responses events", async () => {
+    const fetch = mock(async () =>
+      eventResponse([
+        {
+          id: "chatcmpl-dummy",
+          object: "chat.completion.chunk",
+          created: 1780451642,
+          model: "gpt-5.4",
+          choices: [{ index: 0, delta: { role: "assistant", content: "" } }],
+        },
+        {
+          id: "chatcmpl-dummy-2",
+          object: "chat.completion.chunk",
+          created: 1780451642,
+          model: "gpt-5.4",
+          choices: [{ index: 0, delta: { content: "", tool_calls: null } }],
+        },
+        {
+          type: "response.created",
+          response: {
+            id: "resp-dummy-prefix",
+            created_at: Math.floor(Date.now() / 1000),
+            model: "gpt-5.4",
+            service_tier: null,
+          },
+        },
+        {
+          type: "response.output_text.delta",
+          item_id: "msg_1",
+          delta: "Hello",
+        },
+        {
+          type: "response.completed",
+          response: {
+            incomplete_details: null,
+            usage: {
+              input_tokens: 1,
+              input_tokens_details: null,
+              output_tokens: 1,
+              output_tokens_details: null,
+            },
+            service_tier: null,
+          },
+        },
+      ]),
+    )
+    const model = new OpenAIResponsesLanguageModel("gpt-5.4", {
+      provider: "test.responses",
+      headers: () => ({}),
+      url: () => "http://localhost/responses",
+      fetch: fetch as any,
+    })
+
+    const { stream } = await model.doStream({ prompt })
+    const parts = await streamParts(stream)
+
+    expect(parts.some((part) => part.type === "error")).toBe(false)
+    expect(parts).toContainEqual({ type: "text-delta", id: "msg_1", delta: "Hello" })
+  })
+
+  test.each([
+    [
+      "content",
+      {
+        id: "chatcmpl-real-content",
+        object: "chat.completion.chunk",
+        created: 1780451642,
+        model: "gpt-5.4",
+        choices: [{ index: 0, delta: { content: "real text" }, finish_reason: null }],
+      },
+    ],
+    [
+      "tool calls",
+      {
+        id: "chatcmpl-real-tool-calls",
+        object: "chat.completion.chunk",
+        created: 1780451642,
+        model: "gpt-5.4",
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "search", arguments: "" },
+                },
+              ],
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+    ],
+    [
+      "finish reason",
+      {
+        id: "chatcmpl-real-finish",
+        object: "chat.completion.chunk",
+        created: 1780451642,
+        model: "gpt-5.4",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      },
+    ],
+  ])("surfaces chat completion chunks with %s as stream errors", async (_name, chunk) => {
+    const fetch = mock(async () =>
+      eventResponse([
+        {
+          id: "chatcmpl-dummy-before-real",
+          object: "chat.completion.chunk",
+          created: 1780451642,
+          model: "gpt-5.4",
+          choices: [{ index: 0, delta: { role: "assistant", content: "" } }],
+        },
+        chunk,
+      ]),
+    )
+    const model = new OpenAIResponsesLanguageModel("gpt-5.4", {
+      provider: "test.responses",
+      headers: () => ({}),
+      url: () => "http://localhost/responses",
+      fetch: fetch as any,
+    })
+
+    const { stream } = await model.doStream({ prompt })
+    const parts = await streamParts(stream)
+
+    expect(parts.some((part) => part.type === "error")).toBe(true)
+  })
+
   test("emits a tool result for final image_generation_call output", async () => {
     const fetch = mock(async () =>
       eventResponse([

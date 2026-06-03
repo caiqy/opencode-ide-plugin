@@ -877,6 +877,14 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV3 {
 
             const value = chunk.value
 
+            if (isEmptyChatCompletionChunk(value)) {
+              // Some Copilot Responses streams start with a protocol-bridging
+              // chat.completion.chunk that carries only role metadata. Drop only
+              // that empty dummy frame; real Chat Completions content must still
+              // fail validation so it is not silently lost on a Responses stream.
+              return
+            }
+
             if (isResponseOutputItemAddedChunk(value)) {
               if (value.item.type === "function_call") {
                 ongoingToolCalls[value.output_index] = {
@@ -1367,6 +1375,53 @@ const errorChunkSchema = z.object({
   sequence_number: z.number(),
 })
 
+function hasChatCompletionPayload(chunk: {
+  choices?: Array<{
+    delta?: {
+      content?: string | null
+      tool_calls?: unknown
+    }
+    finish_reason?: string | null
+  }>
+}) {
+  // These fields represent real Chat Completions stream payload. If any are
+  // present, the chunk must remain a parser error on a Responses stream.
+  return chunk.choices?.some((choice) => {
+    const delta = choice.delta
+    return (
+      (typeof delta?.content === "string" && delta.content.length > 0) ||
+      (Array.isArray(delta?.tool_calls) && delta.tool_calls.length > 0) ||
+      choice.finish_reason != null
+    )
+  })
+}
+
+const emptyChatCompletionChunkSchema = z
+  .object({
+    type: z.undefined().optional(),
+    object: z.literal("chat.completion.chunk"),
+    choices: z
+      .array(
+        z
+          .object({
+            delta: z
+              .object({
+                content: z.string().nullish(),
+                tool_calls: z.unknown().optional(),
+              })
+              .loose()
+              .optional(),
+            finish_reason: z.string().nullish().optional(),
+          })
+          .loose(),
+      )
+      .optional(),
+  })
+  .loose()
+  // The refinement deliberately rejects non-empty Chat Completions chunks so
+  // they keep surfacing as parser errors instead of being dropped as dummy data.
+  .refine((chunk) => !hasChatCompletionPayload(chunk), "Only empty chat completion chunks can be ignored")
+
 const responseFinishedChunkSchema = z.object({
   type: z.enum(["response.completed", "response.incomplete"]),
   response: z.object({
@@ -1557,6 +1612,9 @@ const openaiResponsesChunkSchema = z.union([
   responseReasoningSummaryPartAddedSchema,
   responseReasoningSummaryTextDeltaSchema,
   errorChunkSchema,
+  // Keep before the `{ type: string }` fallback and pair with the transform
+  // guard below: this schema is the only place that proves the chunk is empty.
+  emptyChatCompletionChunkSchema,
   z.object({ type: z.string() }).loose(), // fallback for unknown chunks
 ])
 
@@ -1566,6 +1624,14 @@ function isTextDeltaChunk(
   chunk: z.infer<typeof openaiResponsesChunkSchema>,
 ): chunk is z.infer<typeof textDeltaChunkSchema> {
   return chunk.type === "response.output_text.delta"
+}
+
+function isEmptyChatCompletionChunk(
+  chunk: z.infer<typeof openaiResponsesChunkSchema>,
+): chunk is { object: "chat.completion.chunk" } {
+  // This guard is only valid after `openaiResponsesChunkSchema` has accepted the
+  // value. Non-empty Chat Completions chunks are rejected by the schema above.
+  return !("type" in chunk) && "object" in chunk && chunk.object === "chat.completion.chunk"
 }
 
 function isResponseOutputItemDoneChunk(
