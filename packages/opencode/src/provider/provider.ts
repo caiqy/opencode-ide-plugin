@@ -170,6 +170,7 @@ function isEmptyChatCompletionFrame(data: string): boolean {
   } catch {
     return false
   }
+  if (json.id !== "chatcmpl-dummy") return false
   if (json.object !== "chat.completion.chunk") return false
   if (!Array.isArray(json.choices)) return false
   return !(json.choices as Array<Record<string, unknown>>).some((choice) => {
@@ -182,7 +183,7 @@ function isEmptyChatCompletionFrame(data: string): boolean {
   })
 }
 
-function filterResponsesDummyChunks(res: Response): Response {
+export function filterResponsesDummyChunks(res: Response): Response {
   if (!res.body) return res
   if (!res.headers.get("content-type")?.includes("text/event-stream")) return res
 
@@ -228,6 +229,24 @@ function filterResponsesDummyChunks(res: Response): Response {
     status: res.status,
     statusText: res.statusText,
   })
+}
+
+export function shouldFilterResponsesDummyChunks(modelApiNpm: string, input: unknown): boolean {
+  if (modelApiNpm !== "@ai-sdk/openai" && modelApiNpm !== "@ai-sdk/azure") return false
+  const inputUrl =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.href
+        : input && typeof input === "object" && "url" in input && typeof input.url === "string"
+          ? input.url
+          : ""
+  if (!inputUrl) return false
+  try {
+    return new URL(inputUrl).pathname.endsWith("/responses")
+  } catch {
+    return inputUrl.endsWith("/responses")
+  }
 }
 
 type BundledSDK = {
@@ -1760,20 +1779,8 @@ export const layer = Layer.effect(
 
           // Strip empty chat.completion.chunk dummy frames that third-party
           // proxies inject at the start of Responses SSE streams.
-          const inputUrl = typeof input === "string" ? input : input instanceof URL ? input.href : input?.url ?? ""
-          if (typeof inputUrl === "string") {
-            let pathname: string
-            try {
-              pathname = new URL(inputUrl).pathname
-            } catch {
-              pathname = inputUrl
-            }
-            if (
-              (model.api.npm === "@ai-sdk/openai" || model.api.npm === "@ai-sdk/azure") &&
-              pathname.endsWith("/responses")
-            ) {
-              res = filterResponsesDummyChunks(res)
-            }
+          if (shouldFilterResponsesDummyChunks(model.api.npm, input)) {
+            res = filterResponsesDummyChunks(res)
           }
 
           const out = model.api.npm === "@ai-sdk/anthropic" ? normalizeAnthropic(res) : res
