@@ -1,5 +1,6 @@
 import { afterEach, test, expect } from "bun:test"
 import { mkdir, unlink } from "fs/promises"
+import { pathToFileURL } from "url"
 import path from "path"
 
 import { disposeAllInstances, tmpdir, withTestInstance } from "../fixture/fixture"
@@ -741,6 +742,73 @@ test("explicit baseURL overrides api field", async () => {
       expect(providers[ProviderID.make("custom-api")].options.baseURL).toBe("https://custom.override.com/v1")
     },
   })
+})
+
+test("non-OpenAI Responses streams are not filtered", async () => {
+  const registry = globalThis as typeof globalThis & {
+    __opencodeProviderTestFetch?: typeof fetch
+  }
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () =>
+    new Response(
+      'data: {"id":"chatcmpl-dummy","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}\n\n',
+      { headers: { "content-type": "text/event-stream" } },
+    )) as unknown as typeof fetch
+
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        const providerPath = path.join(dir, "test-provider.mjs")
+        await Bun.write(
+          providerPath,
+          `export function createTestProvider(options) {
+            globalThis.__opencodeProviderTestFetch = options.fetch
+            return { languageModel() { return { specificationVersion: "v3", provider: "test", modelId: "model-1" } } }
+          }`,
+        )
+        await Bun.write(
+          path.join(dir, "opencode.json"),
+          JSON.stringify({
+            $schema: "https://opencode.ai/config.json",
+            provider: {
+              "custom-file-provider": {
+                name: "Custom File Provider",
+                npm: pathToFileURL(providerPath).href,
+                api: "https://api.example.com/v1",
+                env: [],
+                models: {
+                  "model-1": {
+                    name: "Model 1",
+                    tool_call: true,
+                    limit: { context: 8000, output: 2000 },
+                  },
+                },
+              },
+            },
+          }),
+        )
+      },
+    })
+    await withTestInstance({
+      directory: tmp.path,
+      fn: async (ctx) => {
+        await run(ctx, (provider) =>
+          Effect.gen(function* () {
+            const model = yield* provider.getModel(ProviderID.make("custom-file-provider"), ModelID.make("model-1"))
+            yield* provider.getLanguage(model)
+          }),
+        )
+
+        const response = await registry.__opencodeProviderTestFetch!("https://api.example.com/v1/responses", {
+          method: "POST",
+        })
+        expect(await response.text()).toContain('"object":"chat.completion.chunk"')
+      },
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+    delete registry.__opencodeProviderTestFetch
+  }
 })
 
 test("model inherits properties from existing database model", async () => {

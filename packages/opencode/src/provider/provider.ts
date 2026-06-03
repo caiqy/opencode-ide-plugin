@@ -1768,7 +1768,10 @@ export const layer = Layer.effect(
             } catch {
               pathname = inputUrl
             }
-            if (pathname.endsWith("/responses")) {
+            if (
+              (model.api.npm === "@ai-sdk/openai" || model.api.npm === "@ai-sdk/azure") &&
+              pathname.endsWith("/responses")
+            ) {
               res = filterResponsesDummyChunks(res)
             }
           }

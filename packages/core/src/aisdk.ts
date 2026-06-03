@@ -8,95 +8,6 @@ import { ProviderV2 } from "./provider"
 
 type SDK = any
 
-/**
- * Detect whether a single SSE `data:` payload is an empty chat.completion.chunk
- * dummy frame injected by third-party OpenAI-compatible proxies at the start of
- * a Responses stream. Only truly empty frames (no content, no tool_calls, no
- * finish_reason) return true — real Chat Completions content is preserved so it
- * still surfaces as a parser error on the Responses path.
- */
-export function isEmptyChatCompletionFrame(data: string): boolean {
-  if (data === "[DONE]") return false
-  let json: Record<string, unknown>
-  try {
-    const parsed = JSON.parse(data)
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
-    json = parsed
-  } catch {
-    return false
-  }
-  if (json.object !== "chat.completion.chunk") return false
-  // Only treat as empty dummy when choices is a present array with no real
-  // payload. Missing or malformed choices should pass through to the parser
-  // so protocol errors remain visible.
-  if (!Array.isArray(json.choices)) return false
-  return !(json.choices as Array<Record<string, unknown>>).some((choice) => {
-    const delta = choice?.delta as Record<string, unknown> | undefined
-    return (
-      (typeof delta?.content === "string" && (delta.content as string).length > 0) ||
-      (Array.isArray(delta?.tool_calls) && (delta.tool_calls as unknown[]).length > 0) ||
-      choice?.finish_reason != null
-    )
-  })
-}
-
-/**
- * Wrap a Responses SSE stream to drop empty chat.completion.chunk dummy frames
- * that some third-party proxies inject. Non-event-stream responses pass through
- * unchanged.
- */
-export function filterResponsesDummyChunks(res: Response): Response {
-  if (!res.body) return res
-  if (!res.headers.get("content-type")?.includes("text/event-stream")) return res
-
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  const encoder = new TextEncoder()
-  let buffer = ""
-
-  const body = new ReadableStream<Uint8Array>({
-    async pull(ctrl) {
-      const { done, value } = await reader.read()
-      if (done) {
-        // flush remaining buffer
-        if (buffer.trim().length > 0) {
-          ctrl.enqueue(encoder.encode(buffer))
-        }
-        ctrl.close()
-        return
-      }
-
-      buffer += decoder.decode(value, { stream: true })
-      // Support both LF (\n\n) and CRLF (\r\n\r\n) SSE frame separators
-      const parts = buffer.split(/\r?\n\r?\n/)
-      buffer = parts.pop() ?? ""
-
-      for (const part of parts) {
-        const trimmed = part.trim()
-        if (!trimmed) continue
-        // Extract the data line from the SSE frame
-        const dataLine = trimmed
-          .split(/\r?\n/)
-          .find((line) => line.startsWith("data: ") || line.startsWith("data:"))
-        if (dataLine) {
-          const payload = dataLine.startsWith("data: ") ? dataLine.slice(6) : dataLine.slice(5)
-          if (isEmptyChatCompletionFrame(payload)) continue
-        }
-        ctrl.enqueue(encoder.encode(part + "\n\n"))
-      }
-    },
-    async cancel(reason) {
-      await reader.cancel(reason)
-    },
-  })
-
-  return new Response(body, {
-    headers: new Headers(res.headers),
-    status: res.status,
-    statusText: res.statusText,
-  })
-}
-
 function wrapSSE(res: Response, ms: number, ctl: AbortController) {
   if (typeof ms !== "number" || ms <= 0) return res
   if (!res.body) return res
@@ -176,28 +87,10 @@ function prepareOptions(model: ModelV2.Info, pkg: string) {
       }
     }
 
-    let res = await (typeof customFetch === "function" ? customFetch : fetch)(input, {
+    const res = await (typeof customFetch === "function" ? customFetch : fetch)(input, {
       ...opts,
       timeout: false,
     })
-
-    // Strip empty chat.completion.chunk dummy frames that third-party proxies
-    // inject at the start of Responses SSE streams. Only applies when the URL
-    // pathname ends with /responses — never touches /chat/completions.
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as any).url ?? ""
-    if (typeof url === "string") {
-      const pathname = (() => {
-        try {
-          return new URL(url).pathname
-        } catch {
-          return url
-        }
-      })()
-      if (pathname.endsWith("/responses")) {
-        res = filterResponsesDummyChunks(res)
-      }
-    }
-
     if (!chunkAbortCtl || typeof chunkTimeout !== "number") return res
     return wrapSSE(res, chunkTimeout, chunkAbortCtl)
   }
