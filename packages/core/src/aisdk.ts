@@ -8,6 +8,90 @@ import { ProviderV2 } from "./provider"
 
 type SDK = any
 
+/**
+ * Detect whether a single SSE `data:` payload is an empty chat.completion.chunk
+ * dummy frame injected by third-party OpenAI-compatible proxies at the start of
+ * a Responses stream. Only truly empty frames (no content, no tool_calls, no
+ * finish_reason) return true — real Chat Completions content is preserved so it
+ * still surfaces as a parser error on the Responses path.
+ */
+export function isEmptyChatCompletionFrame(data: string): boolean {
+  if (data === "[DONE]") return false
+  let json: any
+  try {
+    json = JSON.parse(data)
+  } catch {
+    return false
+  }
+  if (!json || typeof json !== "object") return false
+  if (json.object !== "chat.completion.chunk") return false
+  if (!Array.isArray(json.choices)) return true // no choices = empty
+  return !json.choices.some((choice: any) => {
+    const delta = choice?.delta
+    return (
+      (typeof delta?.content === "string" && delta.content.length > 0) ||
+      (Array.isArray(delta?.tool_calls) && delta.tool_calls.length > 0) ||
+      choice?.finish_reason != null
+    )
+  })
+}
+
+/**
+ * Wrap a Responses SSE stream to drop empty chat.completion.chunk dummy frames
+ * that some third-party proxies inject. Non-event-stream responses pass through
+ * unchanged.
+ */
+export function filterResponsesDummyChunks(res: Response): Response {
+  if (!res.body) return res
+  if (!res.headers.get("content-type")?.includes("text/event-stream")) return res
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  const encoder = new TextEncoder()
+  let buffer = ""
+
+  const body = new ReadableStream<Uint8Array>({
+    async pull(ctrl) {
+      const { done, value } = await reader.read()
+      if (done) {
+        // flush remaining buffer
+        if (buffer.trim().length > 0) {
+          ctrl.enqueue(encoder.encode(buffer))
+        }
+        ctrl.close()
+        return
+      }
+
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split("\n\n")
+      buffer = parts.pop() ?? ""
+
+      for (const part of parts) {
+        const trimmed = part.trim()
+        if (!trimmed) continue
+        // Extract the data line from the SSE frame
+        const dataLine = trimmed
+          .split("\n")
+          .find((line) => line.startsWith("data: ") || line.startsWith("data:"))
+        if (dataLine) {
+          const payload = dataLine.startsWith("data: ") ? dataLine.slice(6) : dataLine.slice(5)
+          if (isEmptyChatCompletionFrame(payload)) continue
+        }
+        ctrl.enqueue(encoder.encode(part + "\n\n"))
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason)
+    },
+  })
+
+  return new Response(body, {
+    headers: new Headers(res.headers),
+    status: res.status,
+    statusText: res.statusText,
+  })
+}
+
 function wrapSSE(res: Response, ms: number, ctl: AbortController) {
   if (typeof ms !== "number" || ms <= 0) return res
   if (!res.body) return res
@@ -87,10 +171,19 @@ function prepareOptions(model: ModelV2.Info, pkg: string) {
       }
     }
 
-    const res = await (typeof customFetch === "function" ? customFetch : fetch)(input, {
+    let res = await (typeof customFetch === "function" ? customFetch : fetch)(input, {
       ...opts,
       timeout: false,
     })
+
+    // Strip empty chat.completion.chunk dummy frames that third-party proxies
+    // inject at the start of Responses SSE streams. Only applies when the URL
+    // path indicates the Responses API — never touches /chat/completions.
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as any).url ?? ""
+    if (typeof url === "string" && url.includes("/responses")) {
+      res = filterResponsesDummyChunks(res)
+    }
+
     if (!chunkAbortCtl || typeof chunkTimeout !== "number") return res
     return wrapSSE(res, chunkTimeout, chunkAbortCtl)
   }
