@@ -32,6 +32,7 @@ import * as ProviderTransform from "./transform"
 import { ModelID, ProviderID } from "./schema"
 import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { ResponsesFilter } from "./responses-filter"
 
 const log = Log.create({ service: "provider" })
 
@@ -158,95 +159,6 @@ function normalizeAnthropic(res: Response) {
     status: res.status,
     statusText: res.statusText,
   })
-}
-
-function isEmptyChatCompletionFrame(data: string): boolean {
-  if (data === "[DONE]") return false
-  let json: Record<string, unknown>
-  try {
-    const parsed = JSON.parse(data)
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
-    json = parsed
-  } catch {
-    return false
-  }
-  if (json.id !== "chatcmpl-dummy") return false
-  if (json.object !== "chat.completion.chunk") return false
-  if (!Array.isArray(json.choices)) return false
-  return !(json.choices as Array<Record<string, unknown>>).some((choice) => {
-    const delta = choice?.delta as Record<string, unknown> | undefined
-    return (
-      (typeof delta?.content === "string" && (delta.content as string).length > 0) ||
-      (Array.isArray(delta?.tool_calls) && (delta.tool_calls as unknown[]).length > 0) ||
-      choice?.finish_reason != null
-    )
-  })
-}
-
-export function filterResponsesDummyChunks(res: Response): Response {
-  if (!res.body) return res
-  if (!res.headers.get("content-type")?.includes("text/event-stream")) return res
-
-  let buf = ""
-  const body = res.body
-    .pipeThrough(new TextDecoderStream())
-    .pipeThrough(
-      new TransformStream<string, string>({
-        transform(chunk, ctrl) {
-          buf += chunk
-          const parts = buf.split(/\r?\n\r?\n/)
-          buf = parts.pop() ?? ""
-          for (const part of parts) {
-            const trimmed = part.trim()
-            if (!trimmed) continue
-            const dataLine = trimmed.split(/\r?\n/).find((line) => line.startsWith("data: ") || line.startsWith("data:"))
-            if (dataLine) {
-              const payload = dataLine.startsWith("data: ") ? dataLine.slice(6) : dataLine.slice(5)
-              if (isEmptyChatCompletionFrame(payload)) continue
-            }
-            ctrl.enqueue(`${part}\n\n`)
-          }
-        },
-        flush(ctrl) {
-          if (buf.trim().length > 0) {
-            const dataLine = buf
-              .trim()
-              .split(/\r?\n/)
-              .find((line) => line.startsWith("data: ") || line.startsWith("data:"))
-            if (dataLine) {
-              const payload = dataLine.startsWith("data: ") ? dataLine.slice(6) : dataLine.slice(5)
-              if (isEmptyChatCompletionFrame(payload)) return
-            }
-            ctrl.enqueue(buf)
-          }
-        },
-      }),
-    )
-    .pipeThrough(new TextEncoderStream())
-
-  return new Response(body, {
-    headers: new Headers(res.headers),
-    status: res.status,
-    statusText: res.statusText,
-  })
-}
-
-export function shouldFilterResponsesDummyChunks(modelApiNpm: string, input: unknown): boolean {
-  if (modelApiNpm !== "@ai-sdk/openai" && modelApiNpm !== "@ai-sdk/azure") return false
-  const inputUrl =
-    typeof input === "string"
-      ? input
-      : input instanceof URL
-        ? input.href
-        : input && typeof input === "object" && "url" in input && typeof input.url === "string"
-          ? input.url
-          : ""
-  if (!inputUrl) return false
-  try {
-    return new URL(inputUrl).pathname.endsWith("/responses")
-  } catch {
-    return inputUrl.endsWith("/responses")
-  }
 }
 
 type BundledSDK = {
@@ -1777,10 +1689,10 @@ export const layer = Layer.effect(
             timeout: false,
           })
 
-          // Strip empty chat.completion.chunk dummy frames that third-party
-          // proxies inject at the start of Responses SSE streams.
-          if (shouldFilterResponsesDummyChunks(model.api.npm, input)) {
-            res = filterResponsesDummyChunks(res)
+          // Strip Chat Completions-format frames that third-party proxies
+          // inject into Responses SSE streams.
+          if (ResponsesFilter.shouldApply(model.api.npm, input)) {
+            res = ResponsesFilter.stripChatCompletionFrames(res)
           }
 
           const out = model.api.npm === "@ai-sdk/anthropic" ? normalizeAnthropic(res) : res

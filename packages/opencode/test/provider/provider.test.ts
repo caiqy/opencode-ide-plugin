@@ -96,30 +96,6 @@ async function getSmallModel(providerID: ProviderID, ctx: InstanceContext) {
   return run(ctx, (provider) => provider.getSmallModel(providerID))
 }
 
-function providerSseResponse(frames: string[], separator = "\n\n") {
-  return new Response(
-    new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode(frames.join(separator) + separator))
-        controller.close()
-      },
-    }),
-    { headers: { "content-type": "text/event-stream" } },
-  )
-}
-
-async function readProviderSse(res: Response) {
-  const reader = res.body!.getReader()
-  const decoder = new TextDecoder()
-  let out = ""
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    out += decoder.decode(value, { stream: true })
-  }
-  return out
-}
-
 function paid(providers: Awaited<ReturnType<typeof list>>) {
   const item = providers[ProviderID.make("opencode")]
   expect(item).toBeDefined()
@@ -768,14 +744,14 @@ test("explicit baseURL overrides api field", async () => {
   })
 })
 
-test("non-OpenAI Responses streams are not filtered", async () => {
+test("custom provider Responses streams are not filtered", async () => {
   const registry = globalThis as typeof globalThis & {
     __opencodeProviderTestFetch?: typeof fetch
   }
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async () =>
     new Response(
-      'data: {"id":"chatcmpl-dummy","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}\n\n',
+      'data: {"id":"chatcmpl-real","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"custom text"}}]}\n\n',
       { headers: { "content-type": "text/event-stream" } },
     )) as unknown as typeof fetch
 
@@ -826,64 +802,13 @@ test("non-OpenAI Responses streams are not filtered", async () => {
         const response = await registry.__opencodeProviderTestFetch!("https://api.example.com/v1/responses", {
           method: "POST",
         })
-        expect(await response.text()).toContain('"object":"chat.completion.chunk"')
+        expect(await response.text()).toContain("custom text")
       },
     })
   } finally {
     globalThis.fetch = originalFetch
     delete registry.__opencodeProviderTestFetch
   }
-})
-
-test("dummy chunk filtering only targets OpenAI and Azure Responses requests", () => {
-  expect(Provider.shouldFilterResponsesDummyChunks("@ai-sdk/openai", "https://api.example.com/v1/responses")).toBe(
-    true,
-  )
-  expect(Provider.shouldFilterResponsesDummyChunks("@ai-sdk/azure", "https://api.example.com/openai/v1/responses")).toBe(
-    true,
-  )
-  expect(
-    Provider.shouldFilterResponsesDummyChunks("@ai-sdk/openai", "https://api.example.com/v1/chat/completions"),
-  ).toBe(false)
-  expect(
-    Provider.shouldFilterResponsesDummyChunks("@ai-sdk/openai-compatible", "https://api.example.com/v1/responses"),
-  ).toBe(false)
-})
-
-test("OpenAI Responses dummy chunk filter drops only chatcmpl-dummy frames", async () => {
-  const dummy = `data: ${JSON.stringify({
-    id: "chatcmpl-dummy",
-    object: "chat.completion.chunk",
-    choices: [{ index: 0, delta: { role: "assistant", content: "" } }],
-  })}`
-  const created = `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_1" } })}`
-  const textDelta = `data: ${JSON.stringify({ type: "response.output_text.delta", item_id: "msg_1", delta: "Hi" })}`
-
-  const out = await readProviderSse(
-    Provider.filterResponsesDummyChunks(providerSseResponse([dummy, created, textDelta])),
-  )
-  expect(out).not.toContain("chatcmpl-dummy")
-  expect(out).toContain("response.created")
-  expect(out).toContain("response.output_text.delta")
-})
-
-test("OpenAI Responses dummy chunk filter preserves non-dummy and real chat chunks", async () => {
-  const nonDummyEmpty = `data: ${JSON.stringify({
-    id: "chatcmpl-real-empty",
-    object: "chat.completion.chunk",
-    choices: [{ index: 0, delta: { role: "assistant", content: "" } }],
-  })}`
-  const realContent = `data: ${JSON.stringify({
-    id: "chatcmpl-dummy",
-    object: "chat.completion.chunk",
-    choices: [{ index: 0, delta: { content: "real text" }, finish_reason: null }],
-  })}`
-
-  const out = await readProviderSse(
-    Provider.filterResponsesDummyChunks(providerSseResponse([nonDummyEmpty, realContent])),
-  )
-  expect(out).toContain("chatcmpl-real-empty")
-  expect(out).toContain("real text")
 })
 
 test("model inherits properties from existing database model", async () => {
