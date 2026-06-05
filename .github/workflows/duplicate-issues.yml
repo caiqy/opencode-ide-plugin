@@ -2,8 +2,6 @@ name: duplicate-issues
 
 on:
   workflow_dispatch:
-  issues:
-    types: [opened, edited]
 
 jobs:
   check-duplicates:
