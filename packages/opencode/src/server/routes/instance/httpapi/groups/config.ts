@@ -1,5 +1,6 @@
 import { Config } from "@/config/config"
 import { Provider } from "@/provider/provider"
+import { ProviderID } from "@/provider/schema"
 import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
@@ -42,6 +43,18 @@ export const ConfigApi = HttpApi.make("config")
             identifier: "config.providers",
             summary: "List config providers",
             description: "Get a list of all configured AI providers and their default models.",
+          }),
+        ),
+        HttpApiEndpoint.get("providerModels", `${root}/providers/:providerID/models`, {
+          params: { providerID: ProviderID },
+          query: WorkspaceRoutingQuery,
+          success: described(Provider.ConfigProviderModelsResult, "List catalog models for a provider"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "config.provider.models",
+            summary: "List provider catalog models",
+            description:
+              "Get catalog models for one provider without applying config whitelist or blacklist filters, so configuration UIs can edit whitelists.",
           }),
         ),
       )

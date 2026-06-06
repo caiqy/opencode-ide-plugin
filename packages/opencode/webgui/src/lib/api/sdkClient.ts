@@ -52,6 +52,17 @@ interface ProvidersResponse {
   default: Record<string, string>
 }
 
+type ProviderCatalogModel = {
+  id: string
+  name: string
+  status: string
+}
+
+type ProviderCatalogModelsResult = {
+  providerID: string
+  models: ProviderCatalogModel[]
+}
+
 interface SkillsResponse {
   name: string
   description: string
@@ -153,6 +164,27 @@ async function globalConfigReplace(options: { body: Partial<Config> }): Promise<
     }
 
     const data = (await response.json()) as Config
+    return { data, error: null }
+  } catch (error) {
+    return {
+      error: { message: error instanceof Error ? error.message : "Unknown error" },
+      data: null,
+    }
+  }
+}
+
+async function configProviderModels(providerID: string): Promise<ApiResult<ProviderCatalogModelsResult>> {
+  try {
+    const response = await fetch(`/config/providers/${encodeURIComponent(providerID)}/models`)
+
+    if (!response.ok) {
+      return {
+        error: { message: "Failed to load provider catalog models" },
+        data: null,
+      }
+    }
+
+    const data = (await response.json()) as ProviderCatalogModelsResult
     return { data, error: null }
   } catch (error) {
     return {
@@ -429,6 +461,7 @@ export const sdk = {
     get: baseClient.config.get.bind(baseClient.config),
     update: baseClient.config.update.bind(baseClient.config),
     providers: baseClient.config.providers.bind(baseClient.config),
+    providerModels: configProviderModels,
     allProviders: async () => {
       try {
         const response = await baseClient.provider.list()

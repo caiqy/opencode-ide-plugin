@@ -29,7 +29,8 @@ export function ProviderSettingsTab({ formData, setFormData, onReloadConfig }: P
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null)
   const [draft, setDraft] = useState({ baseURL: "", apiKey: "", whitelist: [] as string[] })
   const [modelInput, setModelInput] = useState("")
-  const [knownModels, setKnownModels] = useState<string[]>([])
+  const [catalogModels, setCatalogModels] = useState<Array<{ id: string; name: string; status: string }>>([])
+  const [modelListOpen, setModelListOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [restartOpen, setRestartOpen] = useState(false)
@@ -38,19 +39,27 @@ export function ProviderSettingsTab({ formData, setFormData, onReloadConfig }: P
   const editingProvider = editingProviderId ? formData.provider?.[editingProviderId] : undefined
 
   useEffect(() => {
+    if (!editingProviderId) {
+      setCatalogModels([])
+      setModelListOpen(false)
+      return
+    }
     sdk.config
-      .providers()
-      .then((res) => {
-        const models = res.data?.providers.flatMap((provider) => Object.keys(provider.models ?? {})) ?? []
-        setKnownModels(Array.from(new Set(models)).sort())
-      })
-      .catch(() => setKnownModels([]))
-  }, [])
+      .providerModels(editingProviderId)
+      .then((res) => setCatalogModels(res.data?.models ?? []))
+      .catch(() => setCatalogModels([]))
+  }, [editingProviderId])
 
-  const modelOptions = useMemo(
-    () => knownModels.filter((model) => !draft.whitelist.includes(model)),
-    [knownModels, draft.whitelist],
-  )
+  const modelOptions = useMemo(() => {
+    const query = modelInput.trim().toLowerCase()
+    return catalogModels
+      .filter((model) => !draft.whitelist.includes(model.id))
+      .filter((model) => {
+        if (!query) return true
+        return model.id.toLowerCase().includes(query) || model.name.toLowerCase().includes(query)
+      })
+      .slice(0, 50)
+  }, [catalogModels, draft.whitelist, modelInput])
 
   const startEdit = (providerId: string) => {
     if (isSaving) return
@@ -63,6 +72,7 @@ export function ProviderSettingsTab({ formData, setFormData, onReloadConfig }: P
       whitelist: [...(provider.whitelist ?? [])],
     })
     setModelInput("")
+    setModelListOpen(false)
     setError(null)
   }
 
@@ -114,6 +124,7 @@ export function ProviderSettingsTab({ formData, setFormData, onReloadConfig }: P
     if (isSaving) return
     setDraft({ ...draft, whitelist: normalizeWhitelist([...draft.whitelist, modelInput]) })
     setModelInput("")
+    setModelListOpen(false)
   }
 
   const saveProvider = async () => {
@@ -177,19 +188,62 @@ export function ProviderSettingsTab({ formData, setFormData, onReloadConfig }: P
         <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">模型白名单</h4>
           <div className="mt-2 flex gap-2">
-            <input
-              className="flex-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-              list="provider-model-options"
-              placeholder="选择或输入模型，例如 gpt-4.1"
-              value={modelInput}
-              disabled={isSaving}
-              onChange={(event) => setModelInput(event.target.value)}
-            />
-            <datalist id="provider-model-options">
-              {modelOptions.map((model) => (
-                <option key={model} value={model} />
-              ))}
-            </datalist>
+            <div className="relative flex-1">
+              <input
+                aria-label="模型白名单输入"
+                aria-autocomplete="list"
+                aria-expanded={modelListOpen}
+                aria-controls="provider-model-options"
+                className="w-full rounded border border-gray-300 bg-white px-3 py-2 pr-8 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                placeholder="选择或输入模型，例如 gpt-4.1"
+                value={modelInput}
+                disabled={isSaving}
+                onFocus={() => setModelListOpen(true)}
+                onChange={(event) => {
+                  setModelInput(event.target.value)
+                  setModelListOpen(true)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && modelInput.trim()) {
+                    event.preventDefault()
+                    addModel()
+                  }
+                  if (event.key === "Escape") setModelListOpen(false)
+                }}
+              />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">▾</span>
+              {modelListOpen && !isSaving && (
+                <div
+                  id="provider-model-options"
+                  role="listbox"
+                  aria-label="模型候选"
+                  className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
+                >
+                  {modelOptions.map((model) => (
+                    <button
+                      key={model.id}
+                      type="button"
+                      role="option"
+                      className="flex w-full flex-col px-3 py-2 text-left hover:bg-blue-50 focus:bg-blue-50 dark:hover:bg-gray-800 dark:focus:bg-gray-800"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setModelInput(model.id)
+                        setModelListOpen(false)
+                      }}
+                    >
+                      <span className="font-mono text-gray-900 dark:text-gray-100">{model.id}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {model.name}
+                        {model.status !== "active" ? ` · ${model.status}` : ""}
+                      </span>
+                    </button>
+                  ))}
+                  {modelOptions.length === 0 && (
+                    <div className="px-3 py-2 text-gray-500 dark:text-gray-400">没有匹配的候选，可直接添加当前输入</div>
+                  )}
+                </div>
+              )}
+            </div>
             <Button variant="primary" onClick={addModel} disabled={isSaving || !modelInput.trim()}>
               添加模型
             </Button>

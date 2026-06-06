@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   configUpdate: vi.fn(),
   configReplace: vi.fn(),
   configProviders: vi.fn(),
+  configProviderModels: vi.fn(),
 }))
 
 vi.mock("../../lib/api/sdkClient", () => ({
@@ -17,7 +18,10 @@ vi.mock("../../lib/api/sdkClient", () => ({
         replace: (...args: unknown[]) => mocks.configReplace(...args),
       },
     },
-    config: { providers: (...args: unknown[]) => mocks.configProviders(...args) },
+    config: {
+      providers: (...args: unknown[]) => mocks.configProviders(...args),
+      providerModels: (...args: unknown[]) => mocks.configProviderModels(...args),
+    },
   },
 }))
 
@@ -47,6 +51,16 @@ describe("ProviderSettingsTab", () => {
       },
       error: null,
     })
+    mocks.configProviderModels.mockResolvedValue({
+      data: {
+        providerID: "openai",
+        models: [
+          { id: "gpt-4.1", name: "GPT 4.1", status: "active" },
+          { id: "gpt-4.1-mini", name: "GPT 4.1 Mini", status: "active" },
+        ],
+      },
+      error: null,
+    })
   })
 
   it("展示配置更新区域和 Provider 列表", async () => {
@@ -63,7 +77,7 @@ describe("ProviderSettingsTab", () => {
     expect(screen.getByText("openai")).toBeInTheDocument()
     expect(screen.getByText("https://api.openai.com/v1")).toBeInTheDocument()
     expect(screen.getByText("sk-1…cdef")).toBeInTheDocument()
-    await waitFor(() => expect(mocks.configProviders).toHaveBeenCalled())
+    expect(mocks.configProviderModels).not.toHaveBeenCalled()
   })
 
   it("编辑 Provider 后保存并显示重启提示", async () => {
@@ -134,6 +148,44 @@ describe("ProviderSettingsTab", () => {
         },
       })
     })
+  })
+
+  it("模型白名单使用自绘候选列表且不再渲染 datalist", async () => {
+    const user = userEvent.setup()
+    render(<ProviderSettingsTab formData={formData} setFormData={vi.fn()} onReloadConfig={vi.fn()} />)
+
+    await user.click(screen.getByRole("button", { name: "编辑" }))
+    expect(document.querySelector("datalist")).toBeNull()
+    await user.click(screen.getByPlaceholderText(/选择或输入模型/))
+
+    expect(await screen.findByRole("listbox", { name: "模型候选" })).toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: /gpt-4\.1$/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("option", { name: /gpt-4\.1-mini/ })).toBeInTheDocument()
+  })
+
+  it("可以从模型候选列表选择并添加 whitelist 外模型", async () => {
+    const user = userEvent.setup()
+    render(<ProviderSettingsTab formData={formData} setFormData={vi.fn()} onReloadConfig={vi.fn()} />)
+
+    await user.click(screen.getByRole("button", { name: "编辑" }))
+    await user.click(screen.getByPlaceholderText(/选择或输入模型/))
+    await user.click(await screen.findByRole("option", { name: /gpt-4\.1-mini/ }))
+    await user.click(screen.getByRole("button", { name: "添加模型" }))
+
+    expect(screen.getByDisplayValue("gpt-4.1-mini")).toBeInTheDocument()
+  })
+
+  it("模型候选为空时仍可手动添加输入值", async () => {
+    const user = userEvent.setup()
+    mocks.configProviderModels.mockResolvedValue({ data: { providerID: "openai", models: [] }, error: null })
+    render(<ProviderSettingsTab formData={formData} setFormData={vi.fn()} onReloadConfig={vi.fn()} />)
+
+    await user.click(screen.getByRole("button", { name: "编辑" }))
+    await user.type(screen.getByPlaceholderText(/选择或输入模型/), "custom-model")
+    expect(screen.getByText("没有匹配的候选，可直接添加当前输入")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "添加模型" }))
+
+    expect(screen.getByDisplayValue("custom-model")).toBeInTheDocument()
   })
 
   it("删除白名单模型", async () => {

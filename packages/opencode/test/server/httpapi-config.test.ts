@@ -254,4 +254,40 @@ describe("config HttpApi", () => {
       )
     }),
   )
+
+  it.live(
+    "serves provider catalog models without applying config whitelist",
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirEffect({
+        config: {
+          formatter: false,
+          lsp: false,
+          provider: {
+            anthropic: {
+              whitelist: ["claude-sonnet-4-20250514"],
+            },
+          },
+        },
+      })
+
+      const response = yield* Effect.promise(() =>
+        Promise.resolve(
+          app().request("/config/providers/anthropic/models", {
+            headers: {
+              "x-opencode-directory": tmp.path,
+            },
+          }),
+        ),
+      )
+
+      expect(response.status).toBe(200)
+      const body = (yield* Effect.promise(() => response.json())) as {
+        providerID: string
+        models: Array<{ id: string; name: string; status: string }>
+      }
+      expect(body.providerID).toBe("anthropic")
+      expect(body.models.some((model) => model.id === "claude-sonnet-4-20250514")).toBe(true)
+      expect(body.models.length).toBeGreaterThan(1)
+    }),
+  )
 })

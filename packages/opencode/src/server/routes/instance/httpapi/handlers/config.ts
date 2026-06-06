@@ -29,6 +29,14 @@ export const configHandlers = HttpApiBuilder.group(InstanceHttpApi, "config", (h
       }
     })
 
-    return handlers.handle("get", get).handle("update", update).handle("providers", providers)
+    const providerModels = Effect.fn("ConfigHttpApi.providerModels")(function* (ctx) {
+      return yield* providerSvc.catalogModels(ctx.params.providerID)
+    })
+
+    return handlers
+      .handle("get", get)
+      .handle("update", update)
+      .handle("providers", providers)
+      .handle("providerModels", providerModels)
   }),
 )

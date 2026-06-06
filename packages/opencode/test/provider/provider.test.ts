@@ -67,6 +67,25 @@ const providerLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
     Layer.provide(RuntimeFlags.layer(flags)),
   )
 
+const providerLayerWithModelsDev = (modelsDev: Record<string, ModelsDev.Provider>, flags: Partial<RuntimeFlags.Info> = {}) =>
+  Provider.layer.pipe(
+    Layer.provide(AppFileSystem.defaultLayer),
+    Layer.provide(Env.defaultLayer),
+    Layer.provide(Config.defaultLayer),
+    Layer.provide(Auth.defaultLayer),
+    Layer.provide(Plugin.defaultLayer),
+    Layer.provide(
+      Layer.succeed(
+        ModelsDev.Service,
+        ModelsDev.Service.of({
+          get: () => Effect.succeed(modelsDev),
+          refresh: () => Effect.void,
+        }),
+      ),
+    ),
+    Layer.provide(RuntimeFlags.layer(flags)),
+  )
+
 async function run<A, E>(ctx: InstanceContext, fn: (provider: Provider.Interface) => Effect.Effect<A, E, never>) {
   return AppRuntime.runPromise(
     Effect.gen(function* () {
@@ -118,6 +137,55 @@ test("gitlab discovery headers include OAuth token and user agent", () => {
 
 const it = testEffect(Provider.defaultLayer)
 const experimentalModels = testEffect(providerLayer({ enableExperimentalModels: true }))
+
+const catalogStatusModelsDev = {
+  "custom-provider": {
+    id: "custom-provider",
+    name: "Custom Provider",
+    env: [],
+    npm: "@ai-sdk/openai-compatible",
+    api: "https://api.custom.com/v1",
+    models: {
+      "active-model": {
+        id: "active-model",
+        name: "Active Model",
+        release_date: "2026-01-01",
+        attachment: false,
+        reasoning: false,
+        temperature: false,
+        tool_call: true,
+        limit: { context: 128000, output: 4096 },
+      },
+      "alpha-model": {
+        id: "alpha-model",
+        name: "Alpha Model",
+        release_date: "2026-01-01",
+        attachment: false,
+        reasoning: false,
+        temperature: false,
+        tool_call: true,
+        status: "alpha" as const,
+        limit: { context: 128000, output: 4096 },
+      },
+      "deprecated-model": {
+        id: "deprecated-model",
+        name: "Deprecated Model",
+        release_date: "2026-01-01",
+        attachment: false,
+        reasoning: false,
+        temperature: false,
+        tool_call: true,
+        status: "deprecated" as const,
+        limit: { context: 128000, output: 4096 },
+      },
+    },
+  },
+} satisfies Record<string, ModelsDev.Provider>
+
+const catalogStatusModels = testEffect(providerLayerWithModelsDev(catalogStatusModelsDev))
+const experimentalCatalogStatusModels = testEffect(
+  providerLayerWithModelsDev(catalogStatusModelsDev, { enableExperimentalModels: true }),
+)
 
 const alphaProviderConfig = {
   provider: {
@@ -313,6 +381,22 @@ experimentalModels.instance(
     expect(providers[ProviderID.make("custom-provider")].models["alpha-model"]).toBeDefined()
   }),
   { config: alphaProviderConfig },
+)
+
+catalogStatusModels.instance(
+  "catalog models exclude alpha by default and deprecated models",
+  Effect.gen(function* () {
+    const models = yield* Provider.Service.use((provider) => provider.catalogModels(ProviderID.make("custom-provider")))
+    expect(models.models.map((model) => model.id)).toEqual(["active-model"])
+  }),
+)
+
+experimentalCatalogStatusModels.instance(
+  "catalog models include alpha only when experimental models are enabled",
+  Effect.gen(function* () {
+    const models = yield* Provider.Service.use((provider) => provider.catalogModels(ProviderID.make("custom-provider")))
+    expect(models.models.map((model) => model.id)).toEqual(["active-model", "alpha-model"])
+  }),
 )
 
 it.instance(

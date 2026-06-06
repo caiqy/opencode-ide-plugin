@@ -1037,6 +1037,18 @@ export const ConfigProvidersResult = Schema.Struct({
 })
 export type ConfigProvidersResult = Types.DeepMutable<Schema.Schema.Type<typeof ConfigProvidersResult>>
 
+export const ConfigProviderModelsResult = Schema.Struct({
+  providerID: ProviderID,
+  models: Schema.Array(
+    Schema.Struct({
+      id: ModelID,
+      name: Schema.String,
+      status: ModelStatus,
+    }),
+  ),
+})
+export type ConfigProviderModelsResult = Types.DeepMutable<Schema.Schema.Type<typeof ConfigProviderModelsResult>>
+
 export function toPublicInfo(provider: Info): Info {
   return JSON.parse(
     JSON.stringify(provider, (_, value) => {
@@ -1075,6 +1087,7 @@ export type Error = ModelNotFoundError | InitError
 
 export interface Interface {
   readonly list: () => Effect.Effect<Record<ProviderID, Info>>
+  readonly catalogModels: (providerID: ProviderID) => Effect.Effect<ConfigProviderModelsResult>
   readonly getProvider: (providerID: ProviderID) => Effect.Effect<Info>
   readonly getModel: (providerID: ProviderID, modelID: ModelID) => Effect.Effect<Model, ModelNotFoundError>
   readonly getLanguage: (model: Model) => Effect.Effect<LanguageModelV3, ModelNotFoundError>
@@ -1592,6 +1605,19 @@ export const layer = Layer.effect(
 
     const list = Effect.fn("Provider.list")(() => InstanceState.use(state, (s) => s.providers))
 
+    const catalogModels = Effect.fn("Provider.catalogModels")(function* (providerID: ProviderID) {
+      const catalog = yield* InstanceState.use(state, (s) => s.catalog)
+      const provider = catalog[providerID]
+      const available = new Set(suggestionModelIDs(provider, runtimeFlags.enableExperimentalModels))
+      return {
+        providerID,
+        models: Object.values(provider?.models ?? {})
+          .filter((model) => available.has(model.id))
+          .map((model) => ({ id: model.id, name: model.name, status: model.status }))
+          .sort((a, b) => a.id.localeCompare(b.id)),
+      }
+    })
+
     async function resolveSDK(model: Model, s: State, envs: Record<string, string | undefined>) {
       try {
         using _ = log.time("getSDK", {
@@ -1901,7 +1927,7 @@ export const layer = Layer.effect(
       }
     })
 
-    return Service.of({ list, getProvider, getModel, getLanguage, closest, getSmallModel, defaultModel })
+    return Service.of({ list, catalogModels, getProvider, getModel, getLanguage, closest, getSmallModel, defaultModel })
   }),
 )
 
