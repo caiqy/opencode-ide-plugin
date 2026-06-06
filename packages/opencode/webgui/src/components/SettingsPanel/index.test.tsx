@@ -211,6 +211,24 @@ describe("SettingsPanel", () => {
     expect(mocks.authSet).not.toHaveBeenCalled()
   })
 
+  it("默认打开 Provider 设置", async () => {
+    mocks.useSettingsForm.mockReturnValue({
+      formData: { provider: { openai: { options: { apiKey: "sk-1234567890abcdef" } } } },
+      setFormData: vi.fn(),
+      originalFormData: { provider: { openai: { options: { apiKey: "sk-1234567890abcdef" } } } },
+      setOriginalFormData: vi.fn(),
+      isLoading: false,
+      error: null,
+    })
+
+    render(<SettingsPanel isOpen={true} onClose={vi.fn()} />)
+
+    expect(screen.getByRole("button", { name: /Provider 设置/ })).toBeInTheDocument()
+    expect(screen.getByText("配置更新")).toBeInTheDocument()
+    expect(screen.getByText("openai")).toBeInTheDocument()
+    await waitFor(() => expect(mocks.configProviders).toHaveBeenCalled())
+  })
+
   it("清空 Agent 模型时发送完整 agent 配置以删除旧字段", async () => {
     const setFormData = vi.fn()
     const setOriginalFormData = vi.fn()
@@ -250,7 +268,7 @@ describe("SettingsPanel", () => {
     })
   })
 
-  it("设置中不再显示 API 密钥与模型标签页", () => {
+  it("设置中不再显示 API 密钥与模型标签页", async () => {
     mocks.useSettingsForm.mockReturnValue({
       formData: {},
       setFormData: vi.fn(),
@@ -264,6 +282,7 @@ describe("SettingsPanel", () => {
 
     expect(screen.queryByRole("button", { name: /API\s*密钥/ })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /模型/ })).not.toBeInTheDocument()
+    await waitFor(() => expect(mocks.configProviders).toHaveBeenCalled())
   })
 
   it("可以切换到快捷短语标签页", async () => {

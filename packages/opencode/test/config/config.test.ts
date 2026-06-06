@@ -395,6 +395,190 @@ test("updates global agent config by replacing nested agent object in json", asy
   }
 })
 
+test("updates global provider config by replacing nested provider object in jsonc", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Filesystem.write(
+        path.join(dir, "opencode.jsonc"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          provider: {
+            openai: {
+              options: {
+                baseURL: "https://old.example.com/v1",
+                apiKey: "old-key",
+                timeout: 1000,
+              },
+              whitelist: ["old-model"],
+            },
+            stale: {
+              options: {
+                apiKey: "stale-key",
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  const prev = Global.Path.config
+  ;(Global.Path as { config: string }).config = tmp.path
+  await clear(true)
+
+  try {
+    await saveGlobal({
+      provider: {
+        openai: {
+          options: {
+            timeout: 2000,
+          },
+          whitelist: ["new-model"],
+        },
+      },
+    })
+
+    const file = path.join(tmp.path, "opencode.jsonc")
+    const writtenConfig = await Filesystem.readJson<{
+      provider?: Record<string, { options?: Record<string, unknown>; whitelist?: string[] }>
+    }>(file)
+    expect(writtenConfig.provider?.openai?.options?.baseURL).toBeUndefined()
+    expect(writtenConfig.provider?.openai?.options?.apiKey).toBeUndefined()
+    expect(writtenConfig.provider?.openai?.options?.timeout).toBe(2000)
+    expect(writtenConfig.provider?.openai?.whitelist).toEqual(["new-model"])
+    expect(writtenConfig.provider?.stale).toBeUndefined()
+  } finally {
+    ;(Global.Path as { config: string }).config = prev
+    await clear(true)
+  }
+})
+
+test("updates global agent and provider config by replacing both nested objects in jsonc", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Filesystem.write(
+        path.join(dir, "opencode.jsonc"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          agent: {
+            build: {
+              model: "openai/gpt-5.5",
+              prompt: "custom prompt",
+            },
+          },
+          provider: {
+            openai: {
+              options: {
+                baseURL: "https://old.example.com/v1",
+                apiKey: "old-key",
+                timeout: 1000,
+              },
+              whitelist: ["old-model"],
+            },
+            stale: {
+              options: {
+                apiKey: "stale-key",
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  const prev = Global.Path.config
+  ;(Global.Path as { config: string }).config = tmp.path
+  await clear(true)
+
+  try {
+    await saveGlobal({
+      agent: {
+        build: {
+          prompt: "custom prompt",
+        },
+      },
+      provider: {
+        openai: {
+          options: {
+            timeout: 2000,
+          },
+          whitelist: ["new-model"],
+        },
+      },
+    })
+
+    const file = path.join(tmp.path, "opencode.jsonc")
+    const writtenConfig = await Filesystem.readJson<{
+      agent?: { build?: { model?: string; prompt?: string } }
+      provider?: Record<string, { options?: Record<string, unknown>; whitelist?: string[] }>
+    }>(file)
+    expect(writtenConfig.agent?.build?.prompt).toBe("custom prompt")
+    expect(writtenConfig.agent?.build?.model).toBeUndefined()
+    expect(writtenConfig.provider?.openai?.options?.baseURL).toBeUndefined()
+    expect(writtenConfig.provider?.openai?.options?.apiKey).toBeUndefined()
+    expect(writtenConfig.provider?.openai?.options?.timeout).toBe(2000)
+    expect(writtenConfig.provider?.openai?.whitelist).toEqual(["new-model"])
+    expect(writtenConfig.provider?.stale).toBeUndefined()
+  } finally {
+    ;(Global.Path as { config: string }).config = prev
+    await clear(true)
+  }
+})
+
+test("updates global provider config by replacing nested provider object in json", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        provider: {
+          openai: {
+            options: {
+              baseURL: "https://old.example.com/v1",
+              apiKey: "old-key",
+              timeout: 1000,
+            },
+            whitelist: ["old-model"],
+          },
+          stale: {
+            options: {
+              apiKey: "stale-key",
+            },
+          },
+        },
+      })
+    },
+  })
+
+  const prev = Global.Path.config
+  ;(Global.Path as { config: string }).config = tmp.path
+  await clear(true)
+
+  try {
+    await saveGlobal({
+      provider: {
+        openai: {
+          options: {
+            timeout: 2000,
+          },
+          whitelist: ["new-model"],
+        },
+      },
+    })
+
+    const writtenConfig = await Filesystem.readJson<{
+      provider?: Record<string, { options?: Record<string, unknown>; whitelist?: string[] }>
+    }>(path.join(tmp.path, "opencode.json"))
+    expect(writtenConfig.provider?.openai?.options?.baseURL).toBeUndefined()
+    expect(writtenConfig.provider?.openai?.options?.apiKey).toBeUndefined()
+    expect(writtenConfig.provider?.openai?.options?.timeout).toBe(2000)
+    expect(writtenConfig.provider?.openai?.whitelist).toEqual(["new-model"])
+    expect(writtenConfig.provider?.stale).toBeUndefined()
+  } finally {
+    ;(Global.Path as { config: string }).config = prev
+    await clear(true)
+  }
+})
+
 it.instance(
   "loads formatter boolean config",
   Effect.gen(function* () {

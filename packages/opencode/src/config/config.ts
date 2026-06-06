@@ -393,6 +393,7 @@ export interface Interface {
   readonly patchProjectField: (field: string[], value: unknown) => Effect.Effect<void>
   readonly update: (config: Info) => Effect.Effect<void>
   readonly updateGlobal: (config: Info) => Effect.Effect<{ info: Info; changed: boolean }>
+  readonly replaceGlobal: (config: Info) => Effect.Effect<{ info: Info; changed: boolean }>
   readonly invalidate: () => Effect.Effect<void>
   readonly reload: () => Effect.Effect<void>
   readonly directories: () => Effect.Effect<string[]>
@@ -440,6 +441,9 @@ function mergeGlobalConfigForWrite(existing: Info, patch: Info): Info {
   // Replace top-level agent config instead of deep-merging so omitted nested fields
   // (for example a cleared `agent.build.model`) are removed from the persisted global config.
   if (Object.hasOwn(patch, "agent")) merged.agent = patch.agent
+  // Provider edits also need replacement semantics so clearing nested options
+  // and replacing the downloaded provider list do not leave stale provider fields behind.
+  if (Object.hasOwn(patch, "provider")) merged.provider = patch.provider
   return merged
 }
 
@@ -449,10 +453,15 @@ function patchGlobalJsonc(input: string, patch: Info): string {
     // Keep JSONC writes aligned with JSON writes: agent patches are replacement semantics,
     // otherwise clearing nested fields would leave stale values in place.
     next = replaceJsonc(next, patch.agent, ["agent"])
-    const { agent: _agent, ...rest } = patch
-    return patchJsonc(next, rest)
   }
-  return patchJsonc(next, patch)
+  if (Object.hasOwn(patch, "provider")) {
+    // Keep JSONC writes aligned with JSON writes: provider patches are replacement semantics,
+    // otherwise clearing nested options would leave stale keys in place.
+    next = replaceJsonc(next, patch.provider, ["provider"])
+  }
+  const { agent: _agent, provider: _provider, ...rest } = patch
+  if (Object.keys(rest).length > 0) return patchJsonc(next, rest)
+  return next
 }
 
 function writable(info: Info) {
@@ -959,6 +968,17 @@ export const layer = Layer.effect(
       return { info: next, changed }
     })
 
+    const replaceGlobal = Effect.fn("Config.replaceGlobal")(function* (config: Info) {
+      const file = globalConfigFile()
+      const before = (yield* readConfigFile(file)) ?? "{}"
+      const next = writableGlobal(config) as Info
+      const serialized = JSON.stringify(next, null, 2)
+      const changed = serialized !== before
+      if (changed) yield* fs.writeFileString(file, serialized).pipe(Effect.orDie)
+      if (changed) yield* invalidate()
+      return { info: next, changed }
+    })
+
     return Service.of({
       get,
       getGlobal,
@@ -966,6 +986,7 @@ export const layer = Layer.effect(
       patchProjectField,
       update,
       updateGlobal,
+      replaceGlobal,
       invalidate,
       reload,
       directories,

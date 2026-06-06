@@ -137,6 +137,31 @@ async function globalConfigUpdate(options: { body: Partial<Config> }): Promise<A
   }
 }
 
+async function globalConfigReplace(options: { body: Partial<Config> }): Promise<ApiResult<Config>> {
+  try {
+    const response = await fetch("/global/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options.body),
+    })
+
+    if (!response.ok) {
+      return {
+        error: { message: "Failed to replace global config" },
+        data: null,
+      }
+    }
+
+    const data = (await response.json()) as Config
+    return { data, error: null }
+  } catch (error) {
+    return {
+      error: { message: error instanceof Error ? error.message : "Unknown error" },
+      data: null,
+    }
+  }
+}
+
 async function sessionList(options: SessionListOptions = {}): Promise<ApiResult<Session[]>> {
   try {
     const query = new URLSearchParams()
@@ -308,6 +333,7 @@ export const sdk = {
     config: {
       get: globalConfigGet,
       update: globalConfigUpdate,
+      replace: globalConfigReplace,
     },
   }),
   session: Object.assign(baseClient.session, {

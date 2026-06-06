@@ -39,13 +39,14 @@ const LIGHTWEIGHT_FIELDS = new Set([
   "compaction",
 ])
 
-// Determine whether a config update payload contains changes that require
-// full instance disposal. Uses a two-pass strategy:
-// 1. If the payload only contains lightweight keys → no dispose needed
-// 2. If it contains heavy keys, compare their values against previous config
-//    to check if they actually changed (handles full-config-object payloads)
-function requiresDispose(previous: Record<string, unknown>, payload: Record<string, unknown>): boolean {
-  const keys = Object.keys(payload).filter((k) => k !== "$schema")
+// Determine whether changed keys require full instance disposal. PATCH only
+// checks keys present in the payload; PUT checks the union so deleted heavy
+// fields are treated as meaningful changes.
+function requiresDisposeForKeys(
+  previous: Record<string, unknown>,
+  next: Record<string, unknown>,
+  keys: string[],
+): boolean {
   if (keys.length === 0) return false
 
   // Fast path: if all keys are lightweight, no dispose needed regardless of values
@@ -55,10 +56,26 @@ function requiresDispose(previous: Record<string, unknown>, payload: Record<stri
   // Slow path: check if any heavy key actually changed
   for (const key of heavyKeys) {
     const prev = JSON.stringify(previous[key] ?? null)
-    const next = JSON.stringify(payload[key] ?? null)
-    if (prev !== next) return true
+    const value = JSON.stringify(next[key] ?? null)
+    if (prev !== value) return true
   }
   return false
+}
+
+function requiresDispose(previous: Record<string, unknown>, payload: Record<string, unknown>): boolean {
+  return requiresDisposeForKeys(
+    previous,
+    payload,
+    Object.keys(payload).filter((key) => key !== "$schema"),
+  )
+}
+
+function requiresDisposeForReplace(previous: Record<string, unknown>, replacement: Record<string, unknown>): boolean {
+  return requiresDisposeForKeys(
+    previous,
+    replacement,
+    Array.from(new Set([...Object.keys(previous), ...Object.keys(replacement)])).filter((key) => key !== "$schema"),
+  )
 }
 
 function eventData(data: unknown): Sse.Event {
@@ -153,6 +170,31 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       return result.info
     })
 
+    const configReplace = Effect.fn("GlobalHttpApi.configReplace")(function* (ctx) {
+      const previous = yield* config.getGlobal()
+      const result = yield* config.replaceGlobal(ctx.payload)
+      if (result.changed) {
+        const needsDispose = requiresDisposeForReplace(
+          previous as Record<string, unknown>,
+          ctx.payload as Record<string, unknown>,
+        )
+        if (needsDispose) {
+          log.info("config replace requires dispose")
+          bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
+        } else {
+          log.info("config replace lightweight, reloading agent config")
+          yield* instances.provideAll(agent.reloadModelConfig()).pipe(
+            Effect.catchCause((cause) =>
+              Effect.sync(() => {
+                log.warn("agent config reload failed", { cause })
+              }),
+            ),
+          )
+        }
+      }
+      return result.info
+    })
+
     const dispose = Effect.fn("GlobalHttpApi.dispose")(function* () {
       yield* disposeAllInstancesAndEmitGlobalDisposed()
       return true
@@ -214,6 +256,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       .handleRaw("event", event)
       .handle("configGet", configGet)
       .handle("configUpdate", configUpdate)
+      .handle("configReplace", configReplace)
       .handle("dispose", dispose)
       .handleRaw("upgrade", upgradeRaw)
   }),

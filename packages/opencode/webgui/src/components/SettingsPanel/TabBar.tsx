@@ -1,10 +1,11 @@
 interface TabBarProps {
-  activeTab: "general" | "agents" | "advanced" | "quick-phrases"
-  onTabChange: (tab: "general" | "agents" | "advanced" | "quick-phrases") => void
+  activeTab: "provider" | "general" | "agents" | "advanced" | "quick-phrases"
+  onTabChange: (tab: "provider" | "general" | "agents" | "advanced" | "quick-phrases") => void
 }
 
 export function TabBar({ activeTab, onTabChange }: TabBarProps) {
   const all: { id: typeof activeTab; label: string; icon: string }[] = [
+    { id: "provider", label: "Provider 设置", icon: "🔌" },
     { id: "agents", label: "Agent 配置", icon: "🤖" },
     { id: "quick-phrases", label: "快捷短语", icon: "🏷️" },
   ]

@@ -82,6 +82,17 @@ export const GlobalApi = HttpApi.make("global").add(
           description: "Update global OpenCode configuration settings and preferences.",
         }),
       ),
+      HttpApiEndpoint.put("configReplace", GlobalPaths.config, {
+        payload: Config.Info,
+        success: described(Config.Info, "Successfully replaced global config"),
+        error: HttpApiError.BadRequest,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "global.config.replace",
+          summary: "Replace global configuration",
+          description: "Replace global OpenCode configuration settings and preferences.",
+        }),
+      ),
       HttpApiEndpoint.post("dispose", GlobalPaths.dispose, {
         success: described(Schema.Boolean, "Global disposed"),
       }).annotateMerge(

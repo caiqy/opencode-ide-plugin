@@ -6,6 +6,7 @@ import { GeneralTab } from "../settings/GeneralTab"
 import { AgentConfigTab } from "../settings/AgentConfigTab"
 import { AdvancedTab } from "../settings/AdvancedTab"
 import { QuickPhrasesTab } from "../settings/QuickPhrasesTab"
+import { ProviderSettingsTab } from "../settings/ProviderSettingsTab"
 import { useSettingsForm } from "./hooks/useSettingsForm"
 import { useUnsavedChanges } from "./hooks/useUnsavedChanges"
 import { TabBar } from "./TabBar"
@@ -17,10 +18,10 @@ interface SettingsPanelProps {
   onClose: () => void
 }
 
-type TabType = "general" | "agents" | "advanced" | "quick-phrases"
+type TabType = "provider" | "general" | "agents" | "advanced" | "quick-phrases"
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
-  const [activeTab, setActiveTab] = useState<TabType>("agents")
+  const [activeTab, setActiveTab] = useState<TabType>("provider")
   const [isSaving, setIsSaving] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -122,6 +123,10 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               </div>
             ) : (
               <>
+                {activeTab === "provider" && (
+                  <ProviderSettingsTab formData={formData} setFormData={setFormData} onReloadConfig={setOriginalFormData} />
+                )}
+
                 {activeTab === "general" && <GeneralTab formData={formData} setFormData={setFormData} />}
 
                 {activeTab === "agents" && <AgentConfigTab formData={formData} setFormData={setFormData} onReloadConfig={setOriginalFormData} />}

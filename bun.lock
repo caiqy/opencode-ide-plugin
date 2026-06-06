@@ -531,6 +531,7 @@
         "@opencode-ai/sdk": "workspace:*",
         "diff": "^7.0.0",
         "fuzzysort": "catalog:",
+        "jsonc-parser": "3.3.1",
         "lexical": "0.37.0",
         "react": "^19.1.1",
         "react-dom": "^19.1.1",
