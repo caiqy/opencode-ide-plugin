@@ -37,6 +37,15 @@ export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 const mergeOptions = (target: Record<string, any>, source: Record<string, any> | undefined): Record<string, any> =>
   mergeDeep(target, source ?? {}) as Record<string, any>
 
+function includeRawChunks(model: Provider.Model, options: Record<string, any>) {
+  // @ai-sdk/openai exposes Responses API error details as top-level raw chunks.
+  // Azure switches to Chat Completions when useCompletionUrls is true, where we
+  // avoid enabling raw chunks unnecessarily.
+  if (model.api.npm === "@ai-sdk/openai") return true
+  if (model.api.npm === "@ai-sdk/azure") return options.useCompletionUrls !== true
+  return undefined
+}
+
 export type StreamInput = {
   user: MessageV2.User
   sessionID: string
@@ -432,6 +441,7 @@ const live: Layer.Layer<
           temperature: params.temperature,
           topP: params.topP,
           topK: params.topK,
+          includeRawChunks: includeRawChunks(input.model, params.options),
           providerOptions: ProviderTransform.providerOptions(input.model, params.options),
           activeTools: Object.keys(sortedTools).filter((x) => x !== "invalid"),
           tools: sortedTools,

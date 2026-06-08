@@ -522,6 +522,15 @@ const extractErrorMessage = (event: OpenAIResponsesEvent): string => {
   return event.message ?? event.code ?? ""
 }
 
+const CONTEXT_OVERFLOW_CODES = new Set(["context_too_large", "context_length_exceeded"])
+
+const extractContextOverflowCode = (event: OpenAIResponsesEvent): string | undefined => {
+  const err = errorFields(event)
+  const code = typeof err.code === "string" && err.code.length > 0 ? err.code : event.code
+  if (!code || !CONTEXT_OVERFLOW_CODES.has(code)) return undefined
+  return code
+}
+
 const isRetryableError = (event: OpenAIResponsesEvent) => {
   const err = errorFields(event)
   const code = typeof err.code === "string" ? err.code : event.code
@@ -540,6 +549,7 @@ const onResponseFailed = (state: ParserState, event: OpenAIResponsesEvent): Step
   [
     LLMEvent.providerError({
       message: extractErrorMessage(event) || "OpenAI Responses response failed",
+      code: extractContextOverflowCode(event),
       retryable: isRetryableError(event) ? true : undefined,
     }),
   ],
@@ -550,6 +560,7 @@ const onError = (state: ParserState, event: OpenAIResponsesEvent): StepResult =>
   [
     LLMEvent.providerError({
       message: extractErrorMessage(event) || "OpenAI Responses stream error",
+      code: extractContextOverflowCode(event),
       retryable: isRetryableError(event) ? true : undefined,
     }),
   ],

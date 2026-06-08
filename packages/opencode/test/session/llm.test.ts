@@ -387,6 +387,145 @@ describe("session.llm.ai-sdk adapter", () => {
     expect(stepFinish.usage).toBeUndefined()
   })
 
+  test("maps AI SDK finish-step errors to provider errors instead of empty assistant turns", async () => {
+    const events = await adapt([
+      {
+        type: "finish-step",
+        response: { id: "response-1", timestamp: new Date(0), modelId: "gpt-test" },
+        finishReason: "error",
+        rawFinishReason: "error",
+        providerMetadata: undefined,
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+      },
+    ])
+
+    expect(events).toEqual([
+      {
+        type: "provider-error",
+        message: "Provider stream finished with error",
+      },
+    ])
+  })
+
+  test("preserves OpenAI Responses raw failure details for AI SDK finish-step errors", async () => {
+    const events = await adapt([
+      uncheckedAdapterEvent({
+        type: "raw",
+        rawValue: {
+          type: "response.failed",
+          response: {
+            error: {
+              code: "context_too_large",
+              message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+            },
+          },
+        },
+      }),
+      {
+        type: "finish-step",
+        response: { id: "response-1", timestamp: new Date(0), modelId: "gpt-test" },
+        finishReason: "error",
+        rawFinishReason: "error",
+        providerMetadata: undefined,
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+      },
+    ])
+
+    expect(events).toEqual([
+      {
+        type: "provider-error",
+        message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+        code: "context_too_large",
+      },
+    ])
+  })
+
+  test("preserves OpenAI Responses top-level raw error details before finish-step errors", async () => {
+    const events = await adapt([
+      uncheckedAdapterEvent({
+        type: "raw",
+        rawValue: {
+          type: "error",
+          code: "context_too_large",
+          message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+          sequence_number: 0,
+        },
+      }),
+      {
+        type: "finish-step",
+        response: { id: "response-1", timestamp: new Date(0), modelId: "gpt-test" },
+        finishReason: "error",
+        rawFinishReason: "error",
+        providerMetadata: undefined,
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+      },
+    ])
+
+    expect(events).toEqual([
+      {
+        type: "provider-error",
+        message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+        code: "context_too_large",
+      },
+    ])
+  })
+
+  test("preserves code-only OpenAI Responses raw errors before finish-step errors", async () => {
+    const events = await adapt([
+      uncheckedAdapterEvent({
+        type: "raw",
+        rawValue: {
+          type: "response.failed",
+          response: {
+            error: {
+              code: "context_too_large",
+            },
+          },
+        },
+      }),
+      {
+        type: "finish-step",
+        response: { id: "response-1", timestamp: new Date(0), modelId: "gpt-test" },
+        finishReason: "error",
+        rawFinishReason: "error",
+        providerMetadata: undefined,
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+      },
+    ])
+
+    expect(events).toEqual([
+      {
+        type: "provider-error",
+        message: "context_too_large",
+        code: "context_too_large",
+      },
+    ])
+  })
+
   test("reuses adapter state cleanly across streams once finish has fired", async () => {
     // adapterState() is meant to be per-stream, but the only thing finish currently clears
     // is toolNames — step, text counters, and the current text/reasoning IDs all leak
@@ -1073,6 +1212,95 @@ describe("session.llm.stream", () => {
 
         const maxTokens = body.max_output_tokens as number | undefined
         expect(maxTokens).toBe(undefined) // match codex cli behavior
+      },
+    })
+  })
+
+  test("preserves top-level OpenAI Responses stream errors from AI SDK runtime", async () => {
+    const server = state.server
+    if (!server) throw new Error("Server not initialized")
+
+    const source = await loadFixture("openai", "gpt-5.2")
+    const model = source.model
+    const request = waitRequest(
+      "/responses",
+      createEventResponse(
+        [
+          {
+            type: "response.created",
+            response: {
+              id: "resp-error",
+              created_at: Math.floor(Date.now() / 1000),
+              model: model.id,
+              service_tier: null,
+            },
+          },
+          {
+            type: "error",
+            code: "context_too_large",
+            message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+            sequence_number: 0,
+          },
+          {
+            type: "response.failed",
+            response: {
+              id: "resp-error",
+              object: "response",
+              model: model.id,
+              status: "failed",
+              output: [],
+              error: { code: "upstream_error", message: "Upstream request failed" },
+            },
+          },
+        ],
+        true,
+      ),
+    )
+
+    await using tmp = await tmpdir({ config: openAIConfig(model, `${server.url.origin}/v1`) })
+
+    await withTestInstance({
+      directory: tmp.path,
+      fn: async (ctx) => {
+        const resolved = await getModel(ProviderID.openai, ModelID.make(model.id), ctx)
+        const sessionID = SessionID.make("session-test-top-level-error")
+        const agent = {
+          name: "test",
+          mode: "primary",
+          options: {},
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        } satisfies Agent.Info
+
+        const user = {
+          id: MessageID.make("msg_user-top-level-error"),
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerID: ProviderID.openai, modelID: resolved.id, variant: "high" },
+        } satisfies MessageV2.User
+
+        const events = await llm.runPromise((svc) =>
+          svc
+            .stream({
+              user,
+              sessionID,
+              model: resolved,
+              agent,
+              system: ["You are a helpful assistant."],
+              messages: [{ role: "user", content: "Hello" }],
+              tools: {},
+            })
+            .pipe(Stream.runCollect, Effect.map((items) => Array.from(items)), Effect.provideService(InstanceRef, ctx)),
+        )
+
+        await request
+
+        expect(events).toContainEqual({
+          type: "provider-error",
+          message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+          code: "context_too_large",
+        })
       },
     })
   })

@@ -603,6 +603,59 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
+  it.effect("preserves context_too_large code from stream error events", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({
+              type: "error",
+              code: "context_too_large",
+              message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+              sequence_number: 0,
+            }),
+          ),
+        ),
+      )
+
+      expect(response.events).toEqual([
+        {
+          type: "provider-error",
+          message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+          code: "context_too_large",
+        },
+      ])
+    }),
+  )
+
+  it.effect("preserves context_too_large code from response.failed error details", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({
+              type: "response.failed",
+              response: {
+                error: {
+                  code: "context_too_large",
+                  message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+                },
+              },
+            }),
+          ),
+        ),
+      )
+
+      expect(response.events).toEqual([
+        {
+          type: "provider-error",
+          message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+          code: "context_too_large",
+        },
+      ])
+    }),
+  )
+
   it.effect("marks response failed upstream_error code as retryable", () =>
     Effect.gen(function* () {
       const response = yield* LLMClient.generate(request).pipe(

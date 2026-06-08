@@ -328,9 +328,45 @@ const envWithFailingGeneratedImageFs = Layer.mergeAll(
   ),
 )
 
+const contextOverflowLLM = Layer.succeed(
+  LLM.Service,
+  LLM.Service.of({
+    stream: () =>
+      Stream.make({
+        type: "provider-error" as const,
+        message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+        code: "context_too_large",
+      }),
+  }),
+)
+
+const depsWithContextOverflowLLM = Layer.mergeAll(
+  Session.defaultLayer,
+  Snapshot.defaultLayer,
+  AgentSvc.defaultLayer,
+  Permission.defaultLayer,
+  Plugin.defaultLayer,
+  Config.defaultLayer,
+  contextOverflowLLM,
+  Provider.defaultLayer,
+  status,
+  SyncEvent.defaultLayer,
+  EventV2Bridge.defaultLayer,
+).pipe(Layer.provideMerge(infra))
+
+const contextOverflowEnv = SessionProcessor.layer.pipe(
+  Layer.provide(summaryScheduler),
+  Layer.provide(summary),
+  Layer.provide(Image.defaultLayer),
+  Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
+  Layer.provide(AppFileSystem.defaultLayer),
+  Layer.provideMerge(depsWithContextOverflowLLM),
+)
+
 const it = testEffect(env)
 const itWithFailingGeneratedImageFs = testEffect(envWithFailingGeneratedImageFs)
 const processorDefaultIt = testEffect(Layer.mergeAll(SessionProcessor.defaultLayer, mockSpawner()))
+const contextOverflowIt = testEffect(contextOverflowEnv)
 
 const boot = Effect.fn("test.boot")(function* () {
   const processors = yield* SessionProcessor.Service
@@ -1174,6 +1210,46 @@ it.live("requests compaction on structured context overflow", () =>
     { config: (url) => providerCfg(url) },
   ),
   15_000,
+)
+
+contextOverflowIt.live("requests compaction on OpenAI Responses context_too_large stream errors", () =>
+  provideTmpdirInstance(
+    (dir) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "compact responses")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: chat.id,
+          model: mdl,
+        })
+
+        const value = yield* handle.process({
+          user: {
+            id: parent.id,
+            sessionID: chat.id,
+            role: "user",
+            time: parent.time,
+            agent: parent.agent,
+            model: { providerID: ref.providerID, modelID: ref.modelID },
+          } satisfies MessageV2.User,
+          sessionID: chat.id,
+          model: mdl,
+          agent: agent(),
+          system: [],
+          messages: [{ role: "user", content: "compact responses" }],
+          tools: {},
+        })
+
+        expect(value).toBe("compact")
+        expect(handle.message.error).toBeUndefined()
+      }),
+    { config: providerCfg("http://localhost:1/v1") },
+  ),
 )
 
 it.live("suppresses session error when overflow transitions into compaction", () =>

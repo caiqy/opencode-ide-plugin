@@ -153,7 +153,8 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
     }
   }
 
-  const code = body?.error?.code
+  const code = typeof body?.error?.code === "string" ? body.error.code : typeof body.code === "string" ? body.code : undefined
+  const message = typeof body?.error?.message === "string" ? body.error.message : typeof body.message === "string" ? body.message : undefined
   const isUpstreamSignal = body?.error?.type === "upstream_error" || code === "upstream_error"
   // Let permanent upstream-wrapped codes fall through to the specific
   // non-retryable handlers below instead of retrying every upstream_error.
@@ -173,10 +174,11 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
   }
 
   switch (code) {
+    case "context_too_large":
     case "context_length_exceeded":
       return {
         type: "context_overflow",
-        message: "Input exceeds context window of this model",
+        message: message ?? "Input exceeds context window of this model",
         responseBody,
       }
     case "insufficient_quota":
@@ -231,7 +233,12 @@ export type ParsedAPICallError =
 export function parseAPICallError(input: { providerID: ProviderID; error: APICallError }): ParsedAPICallError {
   const m = message(input.providerID, input.error)
   const body = json(input.error.responseBody)
-  if (isOverflow(m) || input.error.statusCode === 413 || body?.error?.code === "context_length_exceeded") {
+  if (
+    isOverflow(m) ||
+    input.error.statusCode === 413 ||
+    body?.error?.code === "context_length_exceeded" ||
+    body?.error?.code === "context_too_large"
+  ) {
     return {
       type: "context_overflow",
       message: m,

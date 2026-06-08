@@ -478,6 +478,26 @@ describe("ProviderTransform.providerOptions", () => {
     })
   })
 
+  test("keeps OpenAI provider options under the OpenAI key", () => {
+    const model = createModel({ providerID: "openai" })
+
+    expect(ProviderTransform.providerOptions(model, { reasoningEffort: "high" })).toEqual({
+      openai: { reasoningEffort: "high" },
+    })
+  })
+
+  test("passes Azure options under both OpenAI and Azure keys", () => {
+    const model = createModel({
+      providerID: "azure",
+      api: { id: "gpt-5.5", url: "https://azure.test", npm: "@ai-sdk/azure" },
+    })
+
+    expect(ProviderTransform.providerOptions(model, { reasoningEffort: "high" })).toEqual({
+      openai: { reasoningEffort: "high" },
+      azure: { reasoningEffort: "high" },
+    })
+  })
+
   test("uses gateway model provider slug for gateway models", () => {
     const model = createModel({
       providerID: "vercel",

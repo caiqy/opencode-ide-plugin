@@ -14,6 +14,29 @@ export function adapterState() {
     currentTextID: undefined as string | undefined,
     currentReasoningID: undefined as string | undefined,
     toolNames: {} as Record<string, string>,
+    providerError: undefined as { message: string; code?: string } | undefined,
+  }
+}
+
+function recordProviderError(state: ReturnType<typeof adapterState>, raw: unknown) {
+  if (!raw || typeof raw !== "object") return
+  const item = raw as Record<string, unknown>
+  const source =
+    item.type === "response.failed" && item.response && typeof item.response === "object"
+      ? item.response
+      : item.type === "error"
+        ? item
+        : undefined
+  if (!source || typeof source !== "object") return
+  const data = source as Record<string, unknown>
+  const fields = data.error && typeof data.error === "object" ? (data.error as Record<string, unknown>) : data
+  const message = typeof fields.message === "string" && fields.message.length > 0 ? fields.message : undefined
+  const code = typeof fields.code === "string" && fields.code.length > 0 ? fields.code : undefined
+  if (!message && !code) return
+  if (state.providerError?.code && code === "upstream_error") return
+  state.providerError = {
+    message: message ?? code ?? "Provider stream finished with error",
+    code,
   }
 }
 
@@ -70,6 +93,16 @@ export function toLLMEvents(
       return Effect.succeed([LLMEvent.stepStart({ index: state.step })])
 
     case "finish-step":
+      if (event.finishReason === "error") {
+        const error = state.providerError
+        state.providerError = undefined
+        return Effect.succeed([
+          LLMEvent.providerError({
+            message: error?.message ?? "Provider stream finished with error",
+            code: error?.code,
+          }),
+        ])
+      }
       return Effect.sync(() => [
         LLMEvent.stepFinish({
           index: state.step++,
@@ -238,10 +271,18 @@ export function toLLMEvents(
     case "abort":
     case "source":
     case "file":
-    case "raw":
     case "tool-output-denied":
     case "tool-approval-request":
       return Effect.succeed([])
+
+    case "raw":
+      return Effect.sync(() => {
+        // @ai-sdk/openai emits raw Responses chunks before finish-step(error)
+        // when includeRawChunks is enabled. Keep provider error details so the
+        // later generic finish-step can surface the real upstream code/message.
+        recordProviderError(state, event.rawValue)
+        return []
+      })
 
     default: {
       const _exhaustive: never = event

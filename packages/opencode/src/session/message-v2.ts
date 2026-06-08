@@ -1148,6 +1148,8 @@ export function fromError(
           cause: e,
         },
       ).toObject()
+    case ContextOverflowError.isInstance(e):
+      return e
     case OutputLengthError.isInstance(e):
       return e
     case LoadAPIKeyError.isInstance(e):

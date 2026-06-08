@@ -87,6 +87,21 @@ describe("ProviderError.parseStreamError", () => {
     expect(result!.type).toBe("context_overflow")
   })
 
+  test("recognises OpenAI Responses context_too_large stream events as context overflow", () => {
+    const input = {
+      type: "error",
+      code: "context_too_large",
+      message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+      sequence_number: 0,
+    }
+
+    expect(ProviderError.parseStreamError(input)).toStrictEqual({
+      type: "context_overflow",
+      message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+      responseBody: JSON.stringify(input),
+    })
+  })
+
   test("includes responseBody in gateway string-error result", () => {
     const input = { error: "stream_read_error" }
     const result = ProviderError.parseStreamError(input)
@@ -128,5 +143,33 @@ describe("ProviderError.parseAPICallError", () => {
 
     expect(result.type).toBe("api_error")
     expect(result.message).toBe("Bad Request: no_kv_space")
+  })
+
+  test("recognises non-stream context_too_large API errors as context overflow", () => {
+    const responseBody = JSON.stringify({
+      error: {
+        code: "context_too_large",
+        message: "Upstream rejected this request.",
+      },
+    })
+
+    expect(
+      ProviderError.parseAPICallError({
+        providerID: ProviderID.make("openai"),
+        error: new APICallError({
+          message: "Bad Request",
+          url: "https://example.com",
+          requestBodyValues: {},
+          statusCode: 400,
+          responseHeaders: { "content-type": "application/json" },
+          responseBody,
+          isRetryable: false,
+        }),
+      }),
+    ).toStrictEqual({
+      type: "context_overflow",
+      message: "Bad Request: Upstream rejected this request.",
+      responseBody,
+    })
   })
 })

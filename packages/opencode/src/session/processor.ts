@@ -552,6 +552,13 @@ export const layer = Layer.effect(
           }
 
           case "provider-error":
+            if (value.code === "context_too_large" || value.code === "context_length_exceeded") {
+              return yield* Effect.fail(
+                new MessageV2.ContextOverflowError({
+                  message: value.message || "Input exceeds context window of this model",
+                }).toObject(),
+              )
+            }
             if (value.retryable) {
               throw new MessageV2.RetryableProviderError(value.message || "provider error")
             }
