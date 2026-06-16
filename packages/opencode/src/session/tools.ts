@@ -21,7 +21,6 @@ import { PartID } from "./schema"
 import * as Log from "@opencode-ai/core/util/log"
 import { EffectBridge } from "@/effect/bridge"
 import { buildToolPermissionAsk } from "./tool-permission"
-import { imageGeneration } from "@opencode-ai/core/github-copilot/responses/tool/image-generation"
 
 const log = Log.create({ service: "session.tools" })
 
@@ -213,15 +212,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     tools[key] = item
   }
 
-  if (supportsOpenAIImageGeneration(input.model) && !tools.image_generation) {
-    tools.image_generation = imageGeneration()
-  }
-
   return tools
 })
-
-function supportsOpenAIImageGeneration(model: Provider.Model) {
-  return model.api.npm === "@ai-sdk/openai" && (model.capabilities.output.image || /^gpt-5(\.|-|$)/.test(model.api.id))
-}
 
 export * as SessionTools from "./tools"

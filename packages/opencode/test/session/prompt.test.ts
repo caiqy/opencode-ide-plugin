@@ -606,32 +606,6 @@ const boot = Effect.fn("test.boot")(function* (input?: { title?: string }) {
 
 // Loop semantics
 
-it.live("adds OpenAI image generation provider tool for GPT image requests", () =>
-  provideTmpdirServer(
-    ({ llm }) =>
-      Effect.gen(function* () {
-        const prompt = yield* SessionPrompt.Service
-        const sessions = yield* Session.Service
-        const chat = yield* sessions.create({ title: "Pinned" })
-        yield* llm.text("ok")
-
-        yield* prompt.prompt({
-          sessionID: chat.id,
-          agent: "build",
-          model: { providerID: ProviderID.make("openai"), modelID: ModelID.make("gpt-5.5") },
-          parts: [{ type: "text", text: "生成一张猫咪照片" }],
-        })
-
-        const hits = yield* llm.hits
-        const request = hits.find((hit) => hit.url.pathname.endsWith("/responses") && !isTitleBody(hit.body))
-        const tools = request?.body.tools
-        expect(Array.isArray(tools)).toBe(true)
-        expect(tools).toContainEqual(expect.objectContaining({ type: "image_generation" }))
-      }),
-    { git: true, config: openaiProviderCfg },
-  ),
-)
-
 it.live("replays image_generation tool attachments into the next loop request context", () =>
   provideTmpdirServer(
     ({ llm }) =>
