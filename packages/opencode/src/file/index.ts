@@ -237,6 +237,8 @@ const text = new Set([
   "cfg",
   "conf",
   "env",
+  "diff",
+  "patch",
 ])
 
 const textName = new Set([

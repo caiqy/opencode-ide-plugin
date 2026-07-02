@@ -324,6 +324,21 @@ describe("file/index Filesystem patterns", () => {
       }),
     )
 
+    it.instance("treats .diff and .patch files as text", () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const diff = "diff --git a/a.txt b/a.txt\n-old\n+new"
+        yield* Effect.promise(() => fs.writeFile(path.join(test.directory, "change.diff"), diff, "utf-8"))
+        yield* Effect.promise(() => fs.writeFile(path.join(test.directory, "change.patch"), diff, "utf-8"))
+
+        for (const name of ["change.diff", "change.patch"]) {
+          const result = yield* read(name)
+          expect(result.type).toBe("text")
+          expect(result.content).toBe(diff)
+        }
+      }),
+    )
+
     it.instance("treats Dockerfile as text", () =>
       Effect.gen(function* () {
         const test = yield* TestInstance

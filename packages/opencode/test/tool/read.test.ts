@@ -618,6 +618,25 @@ describe("tool.read loaded instructions", () => {
 })
 
 describe("tool.read binary detection", () => {
+  it.live("reads .diff files as text", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const diff = [
+        "diff --git a/a.txt b/a.txt",
+        "--- a/a.txt",
+        "+++ b/a.txt",
+        "@@ -1 +1 @@",
+        "-old",
+        "+new",
+      ].join("\n")
+      yield* put(path.join(dir, "change.diff"), diff)
+
+      const result = yield* exec(dir, { filePath: path.join(dir, "change.diff") })
+      expect(result.output).toContain("diff --git")
+      expect(result.attachments).toBeUndefined()
+    }),
+  )
+
   it.live("rejects text extension files with null bytes", () =>
     Effect.gen(function* () {
       const dir = yield* tmpdirScoped()
