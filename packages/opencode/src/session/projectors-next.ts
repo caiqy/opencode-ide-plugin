@@ -12,6 +12,18 @@ import { Schema } from "effect"
 
 const decodeMessage = Schema.decodeUnknownSync(SessionMessage.Message)
 type SessionMessageData = NonNullable<(typeof SessionMessageTable.$inferInsert)["data"]>
+type RawSqliteStatement = {
+  all: (...params: unknown[]) => unknown[]
+  run: (...params: unknown[]) => unknown
+}
+type RawSqliteClient = {
+  prepare: (sql: string) => RawSqliteStatement
+}
+type TransactionSession = {
+  client?: RawSqliteClient
+}
+
+const legacySessionMessageSeqColumn = new WeakMap<object, boolean>()
 
 function encodeDateTimes(value: unknown): unknown {
   if (DateTime.isDateTime(value)) return DateTime.toEpochMillis(value)
@@ -24,6 +36,32 @@ function encodeDateTimes(value: unknown): unknown {
 
 function encodeMessageData(value: unknown): SessionMessageData {
   return encodeDateTimes(value) as SessionMessageData
+}
+
+function rawClient(db: Database.TxOrDb): RawSqliteClient | undefined {
+  const candidate = db as Database.TxOrDb & { $client?: RawSqliteClient; session?: TransactionSession }
+  return candidate.$client ?? candidate.session?.client
+}
+
+function hasLegacySessionMessageSeq(db: Database.TxOrDb) {
+  const client = rawClient(db)
+  if (!client) return false
+  const cached = legacySessionMessageSeqColumn.get(client)
+  if (cached !== undefined) return cached
+  const rows = client.prepare("PRAGMA table_info('session_message')").all() as Array<{ name?: unknown }>
+  const result = rows.some((row) => row.name === "seq")
+  legacySessionMessageSeqColumn.set(client, result)
+  return result
+}
+
+function nextLegacySessionMessageSeq(db: Database.TxOrDb, sessionID: SessionID) {
+  const client = rawClient(db)
+  if (!client) return 0
+  const rows = client
+    .prepare("SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM session_message WHERE session_id = ?")
+    .all(sessionID) as Array<{ next_seq?: unknown }>
+  const next = rows[0]?.next_seq
+  return typeof next === "number" ? next : 0
 }
 
 function sqlite(db: Database.TxOrDb, sessionID: SessionID): SessionMessageUpdater.Adapter<void> {
@@ -99,13 +137,30 @@ function sqlite(db: Database.TxOrDb, sessionID: SessionID): SessionMessageUpdate
     },
     appendMessage(message) {
       const { id, type, ...data } = message
+      const timeCreated = DateTime.toEpochMillis(message.time.created)
+      if (hasLegacySessionMessageSeq(db)) {
+        rawClient(db)
+          ?.prepare(
+            "INSERT INTO session_message (id, session_id, type, time_created, time_updated, data, seq) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          )
+          .run(
+            id,
+            sessionID,
+            type,
+            timeCreated,
+            timeCreated,
+            JSON.stringify(encodeMessageData(data)),
+            nextLegacySessionMessageSeq(db, sessionID),
+          )
+        return
+      }
       db.insert(SessionMessageTable)
         .values([
           {
             id,
             session_id: sessionID,
             type,
-            time_created: DateTime.toEpochMillis(message.time.created),
+            time_created: timeCreated,
             data: encodeMessageData(data),
           },
         ])
