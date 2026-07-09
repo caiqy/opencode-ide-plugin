@@ -13,7 +13,8 @@ function merge(rows: Message[], more: Message[]) {
 }
 
 export function useSessionActivation() {
-  const { currentSession, restoreSelections, resolveSelections, beginForegroundSession, endForegroundSession } = useSession()
+  const { currentSession, restoreSelections, resolveSelections, beginForegroundSession, endForegroundSession } =
+    useSession()
   const { ensureSession, scanOlder, getSessionCursor, getMessagesBySession } = useMessages()
   const lastActivatedSessionIDRef = useRef<string | null>(null)
   const activationTokenRef = useRef(0)

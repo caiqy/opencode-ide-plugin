@@ -119,9 +119,11 @@ suite("BackendLauncher Test Suite", () => {
       return timeout(callback, 1000)
     }) as typeof global.setTimeout
 
-    const promise = (launcher as unknown as {
-      parseConnectionInfo(process: typeof child): Promise<{ port: number; uiBase: string }>
-    }).parseConnectionInfo(child)
+    const promise = (
+      launcher as unknown as {
+        parseConnectionInfo(process: typeof child): Promise<{ port: number; uiBase: string }>
+      }
+    ).parseConnectionInfo(child)
 
     child.stdout.emit("data", Buffer.from("opencode server listening on http://127.0.0.1:4096\n"))
 

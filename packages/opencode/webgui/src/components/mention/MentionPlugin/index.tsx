@@ -111,7 +111,13 @@ export function MentionPlugin() {
 
   return showPopover
     ? createPortal(
-        <MentionPopover query={query} position={position} onSelect={insertMention} onClose={resetState} onReposition={handlePositionUpdate} />,
+        <MentionPopover
+          query={query}
+          position={position}
+          onSelect={insertMention}
+          onClose={resetState}
+          onReposition={handlePositionUpdate}
+        />,
         document.body,
       )
     : null

@@ -14,16 +14,16 @@
 
 ## 文件结构
 
-| 操作 | 路径 | 职责 |
-|------|------|------|
-| 改 | `packages/opencode/src/session/processor.ts` | `tool-input-delta` 分支累积到 `state.raw`，限定三件套 |
-| 新 | `packages/opencode/src/session/streamable-tools.ts` | 共享常量 `STREAMABLE_TOOLS`，避免前后端漂移 |
-| 新 | `packages/opencode/webgui/src/lib/partial-tool-input.ts` | partial JSON 解析、行数统计纯函数 |
-| 新 | `packages/opencode/webgui/src/components/parts/ToolPart/usePartialToolInput.ts` | hook，含 `useDeferredValue` 节流 |
-| 改 | `packages/opencode/webgui/src/components/parts/ToolPart/index.tsx` | 串联 partialInput / 行数 / 自动展开 / type 补 raw |
-| 新 | `packages/opencode/test/session/processor-streaming-input.test.ts` | processor 累积测试 |
-| 新 | `packages/opencode/webgui/src/lib/partial-tool-input.test.ts` | 解析与计数测试 |
-| 新 | `packages/opencode/webgui/src/components/parts/ToolPart/index.streaming.test.tsx` | UI 渲染测试 |
+| 操作 | 路径                                                                              | 职责                                                  |
+| ---- | --------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| 改   | `packages/opencode/src/session/processor.ts`                                      | `tool-input-delta` 分支累积到 `state.raw`，限定三件套 |
+| 新   | `packages/opencode/src/session/streamable-tools.ts`                               | 共享常量 `STREAMABLE_TOOLS`，避免前后端漂移           |
+| 新   | `packages/opencode/webgui/src/lib/partial-tool-input.ts`                          | partial JSON 解析、行数统计纯函数                     |
+| 新   | `packages/opencode/webgui/src/components/parts/ToolPart/usePartialToolInput.ts`   | hook，含 `useDeferredValue` 节流                      |
+| 改   | `packages/opencode/webgui/src/components/parts/ToolPart/index.tsx`                | 串联 partialInput / 行数 / 自动展开 / type 补 raw     |
+| 新   | `packages/opencode/test/session/processor-streaming-input.test.ts`                | processor 累积测试                                    |
+| 新   | `packages/opencode/webgui/src/lib/partial-tool-input.test.ts`                     | 解析与计数测试                                        |
+| 新   | `packages/opencode/webgui/src/components/parts/ToolPart/index.streaming.test.tsx` | UI 渲染测试                                           |
 
 DRY 关键：白名单只在一处定义（`streamable-tools.ts`），前后端各自 import。
 
@@ -32,6 +32,7 @@ DRY 关键：白名单只在一处定义（`streamable-tools.ts`），前后端�
 ## Task 1: 共享常量
 
 **Files:**
+
 - Create: `packages/opencode/src/session/streamable-tools.ts`
 
 - [ ] **Step 1.1: 写共享常量文件**
@@ -63,6 +64,7 @@ git commit -m "feat(session): add STREAMABLE_TOOLS shared constant"
 ## Task 2: Processor 累积 delta 到 state.raw（TDD）
 
 **Files:**
+
 - Modify: `packages/opencode/src/session/processor.ts:377-380`
 - Create: `packages/opencode/test/session/processor-streaming-input.test.ts`
 
@@ -264,6 +266,7 @@ git commit -m "feat(session): accumulate tool-input-delta into state.raw for wri
 ## Task 3: Webgui partial JSON 解析模块（TDD）
 
 **Files:**
+
 - Create: `packages/opencode/webgui/src/lib/partial-tool-input.ts`
 - Create: `packages/opencode/webgui/src/lib/partial-tool-input.test.ts`
 
@@ -353,9 +356,7 @@ export function parsePartialInput(raw: string): Record<string, unknown> {
   if (!raw) return {}
   try {
     const parsed = parse(raw, ALLOWED)
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {}
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
   } catch {
     return {}
   }
@@ -394,6 +395,7 @@ git commit -m "feat(webgui): add partial JSON parser for streaming tool args"
 ## Task 4: usePartialToolInput hook
 
 **Files:**
+
 - Create: `packages/opencode/webgui/src/components/parts/ToolPart/usePartialToolInput.ts`
 
 - [ ] **Step 4.1: 写实现**
@@ -443,6 +445,7 @@ git commit -m "feat(webgui): add usePartialToolInput hook"
 ## Task 5: ToolPart UI 串联（TDD）
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/parts/ToolPart/index.tsx`
 - Create: `packages/opencode/webgui/src/components/parts/ToolPart/index.streaming.test.tsx`
 
@@ -592,9 +595,7 @@ const displayInput = (partialInput ?? part.state.input ?? {}) as Record<string, 
 
 ```ts
 const showWriteContent =
-  part.tool === "write" &&
-  (part.state.status === "completed" || partialInput !== null) &&
-  Boolean(displayInput.content)
+  part.tool === "write" && (part.state.status === "completed" || partialInput !== null) && Boolean(displayInput.content)
 
 const showApplyPatchContent =
   part.tool === "apply_patch" &&
@@ -615,9 +616,11 @@ const showEditPartial =
 JSX 渲染区（紧跟现有 `{showDiff && <EditTool ... />}` 之后）加：
 
 ```tsx
-{showEditPartial && (
-  <WriteTool content={String(displayInput.newString)} filePath={String(displayInput.filePath ?? "")} />
-)}
+{
+  showEditPartial && (
+    <WriteTool content={String(displayInput.newString)} filePath={String(displayInput.filePath ?? "")} />
+  )
+}
 ```
 
 (f) header 行数：在组件顶部计算 `streamingLineCount`：

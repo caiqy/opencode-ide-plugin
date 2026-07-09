@@ -267,7 +267,14 @@ describe("ModelSelector favorites", () => {
   })
 
   it("dropdownPlacement='bottom' 时 dropdown 使用 top-full mt-1", async () => {
-    render(<ModelSelector selectedProviderId="openai" selectedModelId="gpt-4.1" onSelect={() => {}} dropdownPlacement="bottom" />)
+    render(
+      <ModelSelector
+        selectedProviderId="openai"
+        selectedModelId="gpt-4.1"
+        onSelect={() => {}}
+        dropdownPlacement="bottom"
+      />,
+    )
     await screen.findByText("GPT 4.1")
 
     const user = userEvent.setup()
@@ -326,7 +333,15 @@ describe("ModelSelector favorites", () => {
   })
 
   it("portal dropdown repositions on window scroll", async () => {
-    render(<ModelSelector selectedProviderId="openai" selectedModelId="gpt-4.1" onSelect={() => {}} renderInPortal dropdownPlacement="bottom" />)
+    render(
+      <ModelSelector
+        selectedProviderId="openai"
+        selectedModelId="gpt-4.1"
+        onSelect={() => {}}
+        renderInPortal
+        dropdownPlacement="bottom"
+      />,
+    )
     await screen.findByText("GPT 4.1")
 
     const button = screen.getByTitle("选择模型")
@@ -351,7 +366,15 @@ describe("ModelSelector favorites", () => {
   })
 
   it("portal dropdown repositions on window resize", async () => {
-    render(<ModelSelector selectedProviderId="openai" selectedModelId="gpt-4.1" onSelect={() => {}} renderInPortal dropdownPlacement="bottom" />)
+    render(
+      <ModelSelector
+        selectedProviderId="openai"
+        selectedModelId="gpt-4.1"
+        onSelect={() => {}}
+        renderInPortal
+        dropdownPlacement="bottom"
+      />,
+    )
     await screen.findByText("GPT 4.1")
 
     const button = screen.getByTitle("选择模型")
@@ -378,7 +401,13 @@ describe("ModelSelector favorites", () => {
   it("portal dropdown repositions on ancestor container scroll (capture)", async () => {
     const { container } = render(
       <div data-testid="scroll-container" style={{ overflow: "auto", height: "200px" }}>
-        <ModelSelector selectedProviderId="openai" selectedModelId="gpt-4.1" onSelect={() => {}} renderInPortal dropdownPlacement="bottom" />
+        <ModelSelector
+          selectedProviderId="openai"
+          selectedModelId="gpt-4.1"
+          onSelect={() => {}}
+          renderInPortal
+          dropdownPlacement="bottom"
+        />
       </div>,
     )
     await screen.findByText("GPT 4.1")

@@ -28,24 +28,24 @@ interface ToolPartProps {
     type: "tool"
     callID: string
     tool: string
-      state: {
-        status: "pending" | "running" | "completed" | "error"
-        input?: Record<string, unknown>
-        raw?: string
-        output?: string
-        title?: string
-        error?: string
-        attachments?: Array<{
-          id?: string
-          type?: "file"
-          mime?: string
-          filename?: string
-          url?: string
-        }>
-        metadata?: Record<string, unknown>
-        time?: {
-          start: number
-          end?: number
+    state: {
+      status: "pending" | "running" | "completed" | "error"
+      input?: Record<string, unknown>
+      raw?: string
+      output?: string
+      title?: string
+      error?: string
+      attachments?: Array<{
+        id?: string
+        type?: "file"
+        mime?: string
+        filename?: string
+        url?: string
+      }>
+      metadata?: Record<string, unknown>
+      time?: {
+        start: number
+        end?: number
       }
     }
     parsed?: {
@@ -117,9 +117,10 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     if (typeof patchText === "string") {
       patchText
         .split("\n")
-        .map((line) =>
-          line.match(/^\*\*\*\s+(?:Add|Update|Delete) File:\s+(.+?)\s*$/)?.[1] ??
-          line.match(/^\*\*\*\s+Move to:\s+(.+?)\s*$/)?.[1],
+        .map(
+          (line) =>
+            line.match(/^\*\*\*\s+(?:Add|Update|Delete) File:\s+(.+?)\s*$/)?.[1] ??
+            line.match(/^\*\*\*\s+Move to:\s+(.+?)\s*$/)?.[1],
         )
         .filter((path): path is string => Boolean(path))
         .forEach(add)
@@ -180,17 +181,12 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
   const showOutput = part.state.status === "completed" && Boolean(part.state.output)
   const showWriteContent =
-    part.tool === "write" &&
-    (part.state.status === "completed" || partialInput !== null) &&
-    writeContent.length > 0
+    part.tool === "write" && (part.state.status === "completed" || partialInput !== null) && writeContent.length > 0
   const showDiff =
     (part.tool === "edit" || part.tool === "multiedit") &&
     part.state.status === "completed" &&
     Boolean(part.state.metadata?.diff)
-  const showEditPartial =
-    part.tool === "edit" &&
-    partialInput !== null &&
-    editNewString.length > 0
+  const showEditPartial = part.tool === "edit" && partialInput !== null && editNewString.length > 0
   const showError = part.state.status === "error" && Boolean(part.state.error)
 
   const questionInput = useMemo(() => {
@@ -471,9 +467,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
           {/* Diff view for edit tool */}
           {showDiff && <EditTool diff={String(part.state.metadata?.diff)} />}
 
-          {showEditPartial && (
-            <WriteTool content={editNewString} />
-          )}
+          {showEditPartial && <WriteTool content={editNewString} />}
 
           {/* apply_patch: show patch content as additions */}
           {showApplyPatchContent && <WriteTool content={applyPatchContent} />}

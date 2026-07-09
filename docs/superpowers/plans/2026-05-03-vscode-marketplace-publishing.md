@@ -55,93 +55,93 @@ Error: missing job
 把下面这个 job 加到 `.github/workflows/release.yml` 中，位置放在 `publish-jetbrains-marketplace` 之前；同时把注释编号顺延为：`# 4. Publish VSCode Marketplace`、`# 5. Publish JetBrains Marketplace`、`# 6. Collect all artifacts...`、`# 7. Post-release artifact verification`。
 
 ```yml
-  # ---------------------------------------------------------------------------
-  # 4.  Publish VSCode Marketplace packages from existing VSIX artifacts
-  # ---------------------------------------------------------------------------
-  publish-vscode-marketplace:
-    needs: [preflight, build-vscode]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
-      VSCODE_VERSION: ${{ needs.preflight.outputs.vscode_version }}
-      VSCODE_PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+# ---------------------------------------------------------------------------
+# 4.  Publish VSCode Marketplace packages from existing VSIX artifacts
+# ---------------------------------------------------------------------------
+publish-vscode-marketplace:
+  needs: [preflight, build-vscode]
+  runs-on: ubuntu-latest
+  permissions:
+    contents: read
+  env:
+    VSCE_PAT: ${{ secrets.VSCE_PAT }}
+    VSCODE_VERSION: ${{ needs.preflight.outputs.vscode_version }}
+    VSCODE_PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
 
-      - name: Install vsce
-        run: npm install -g @vscode/vsce
+    - name: Install vsce
+      run: npm install -g @vscode/vsce
 
-      - name: Assert VSCode Marketplace secret is present
-        run: |
-          test -n "$VSCE_PAT" || { echo "::error::VSCE_PAT is required"; exit 1; }
+    - name: Assert VSCode Marketplace secret is present
+      run: |
+        test -n "$VSCE_PAT" || { echo "::error::VSCE_PAT is required"; exit 1; }
 
-      - name: Download VSCode artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: vscode-*
-          path: vscode-marketplace-artifacts
-          merge-multiple: true
+    - name: Download VSCode artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: vscode-*
+        path: vscode-marketplace-artifacts
+        merge-multiple: true
 
-      - name: Verify VSCode Marketplace publish inputs
-        run: |
-          python <<'PY'
-          import json
-          import os
-          import re
-          import zipfile
-          from pathlib import Path
+    - name: Verify VSCode Marketplace publish inputs
+      run: |
+        python <<'PY'
+        import json
+        import os
+        import re
+        import zipfile
+        from pathlib import Path
 
-          version = os.environ["VSCODE_VERSION"]
-          if not re.fullmatch(r"\d+\.\d+\.\d+", version):
-              raise SystemExit(f"VSCode Marketplace version must be major.minor.patch, got {version}")
+        version = os.environ["VSCODE_VERSION"]
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+            raise SystemExit(f"VSCode Marketplace version must be major.minor.patch, got {version}")
 
-          repo_pkg = json.loads(Path("hosts/vscode-plugin/package.json").read_text(encoding="utf-8"))
-          if repo_pkg.get("publisher") != "caiqy":
-              raise SystemExit(f"Unexpected publisher in hosts/vscode-plugin/package.json: {repo_pkg.get('publisher')}")
-          if repo_pkg.get("name") != "opencode-ui":
-              raise SystemExit(f"Unexpected extension name in hosts/vscode-plugin/package.json: {repo_pkg.get('name')}")
+        repo_pkg = json.loads(Path("hosts/vscode-plugin/package.json").read_text(encoding="utf-8"))
+        if repo_pkg.get("publisher") != "caiqy":
+            raise SystemExit(f"Unexpected publisher in hosts/vscode-plugin/package.json: {repo_pkg.get('publisher')}")
+        if repo_pkg.get("name") != "opencode-ui":
+            raise SystemExit(f"Unexpected extension name in hosts/vscode-plugin/package.json: {repo_pkg.get('name')}")
 
-          expected = {
-              "opencode-win32-x64.vsix": "resources/bin/windows/amd64/opencode.exe",
-              "opencode-darwin-x64.vsix": "resources/bin/macos/amd64/opencode",
-              "opencode-darwin-arm64.vsix": "resources/bin/macos/arm64/opencode",
-              "opencode-linux-x64.vsix": "resources/bin/linux/amd64/opencode",
-              "opencode-linux-arm64.vsix": "resources/bin/linux/arm64/opencode",
-          }
+        expected = {
+            "opencode-win32-x64.vsix": "resources/bin/windows/amd64/opencode.exe",
+            "opencode-darwin-x64.vsix": "resources/bin/macos/amd64/opencode",
+            "opencode-darwin-arm64.vsix": "resources/bin/macos/arm64/opencode",
+            "opencode-linux-x64.vsix": "resources/bin/linux/amd64/opencode",
+            "opencode-linux-arm64.vsix": "resources/bin/linux/arm64/opencode",
+        }
 
-          root = Path("vscode-marketplace-artifacts")
-          actual = {path.name for path in root.glob("*.vsix")}
-          if actual != set(expected):
-              raise SystemExit(f"Expected VSIX files {sorted(expected)}, got {sorted(actual)}")
+        root = Path("vscode-marketplace-artifacts")
+        actual = {path.name for path in root.glob("*.vsix")}
+        if actual != set(expected):
+            raise SystemExit(f"Expected VSIX files {sorted(expected)}, got {sorted(actual)}")
 
-          for name, binary in expected.items():
-              with zipfile.ZipFile(root / name) as archive:
-                  pkg = json.loads(archive.read("extension/package.json"))
-                  if pkg.get("publisher") != "caiqy":
-                      raise SystemExit(f"{name} has unexpected publisher {pkg.get('publisher')}")
-                  if pkg.get("name") != "opencode-ui":
-                      raise SystemExit(f"{name} has unexpected extension name {pkg.get('name')}")
-                  if pkg.get("version") != version:
-                      raise SystemExit(f"{name} has version {pkg.get('version')} but expected {version}")
+        for name, binary in expected.items():
+            with zipfile.ZipFile(root / name) as archive:
+                pkg = json.loads(archive.read("extension/package.json"))
+                if pkg.get("publisher") != "caiqy":
+                    raise SystemExit(f"{name} has unexpected publisher {pkg.get('publisher')}")
+                if pkg.get("name") != "opencode-ui":
+                    raise SystemExit(f"{name} has unexpected extension name {pkg.get('name')}")
+                if pkg.get("version") != version:
+                    raise SystemExit(f"{name} has version {pkg.get('version')} but expected {version}")
 
-                  entries = {
-                      item.removeprefix("extension/")
-                      for item in archive.namelist()
-                      if item.startswith("extension/resources/bin/") and not item.endswith("/")
-                  }
-                  if entries != {binary}:
-                      raise SystemExit(f"{name} should contain only {binary}, got {sorted(entries)}")
+                entries = {
+                    item.removeprefix("extension/")
+                    for item in archive.namelist()
+                    if item.startswith("extension/resources/bin/") and not item.endswith("/")
+                }
+                if entries != {binary}:
+                    raise SystemExit(f"{name} should contain only {binary}, got {sorted(entries)}")
 
-          print("vscode marketplace publish inputs ok")
-          PY
+        print("vscode marketplace publish inputs ok")
+        PY
 ```
 
 要求：
@@ -249,23 +249,23 @@ Error: missing publish step
 把下面这个步骤追加到 `Verify VSCode Marketplace publish inputs` 之后：
 
 ```yml
-      - name: Publish VSCode Marketplace packages
-        run: |
-          prerelease_args=()
-          if [ "$VSCODE_PRERELEASE" = "true" ]; then
-            prerelease_args+=(--pre-release)
-          fi
+- name: Publish VSCode Marketplace packages
+  run: |
+    prerelease_args=()
+    if [ "$VSCODE_PRERELEASE" = "true" ]; then
+      prerelease_args+=(--pre-release)
+    fi
 
-          for vsix in \
-            vscode-marketplace-artifacts/opencode-win32-x64.vsix \
-            vscode-marketplace-artifacts/opencode-darwin-x64.vsix \
-            vscode-marketplace-artifacts/opencode-darwin-arm64.vsix \
-            vscode-marketplace-artifacts/opencode-linux-x64.vsix \
-            vscode-marketplace-artifacts/opencode-linux-arm64.vsix
-          do
-            echo "Publishing $(basename "$vsix")"
-            vsce publish "${prerelease_args[@]}" --packagePath "$vsix"
-          done
+    for vsix in \
+      vscode-marketplace-artifacts/opencode-win32-x64.vsix \
+      vscode-marketplace-artifacts/opencode-darwin-x64.vsix \
+      vscode-marketplace-artifacts/opencode-darwin-arm64.vsix \
+      vscode-marketplace-artifacts/opencode-linux-x64.vsix \
+      vscode-marketplace-artifacts/opencode-linux-arm64.vsix
+    do
+      echo "Publishing $(basename "$vsix")"
+      vsce publish "${prerelease_args[@]}" --packagePath "$vsix"
+    done
 ```
 
 要求：

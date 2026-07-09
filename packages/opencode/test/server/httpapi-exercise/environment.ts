@@ -5,8 +5,7 @@ import path from "path"
 const tempRoot = process.env.TMPDIR ?? process.env.TEMP ?? process.env.TMP ?? "/tmp"
 const preserveExerciseGlobalRoot = !!process.env.OPENCODE_HTTPAPI_EXERCISE_GLOBAL
 export const exerciseGlobalRoot =
-  process.env.OPENCODE_HTTPAPI_EXERCISE_GLOBAL ??
-  path.join(tempRoot, `opencode-httpapi-global-${process.pid}`)
+  process.env.OPENCODE_HTTPAPI_EXERCISE_GLOBAL ?? path.join(tempRoot, `opencode-httpapi-global-${process.pid}`)
 process.env.XDG_DATA_HOME = path.join(exerciseGlobalRoot, "data")
 process.env.XDG_CONFIG_HOME = path.join(exerciseGlobalRoot, "config")
 process.env.XDG_STATE_HOME = path.join(exerciseGlobalRoot, "state")
@@ -17,8 +16,7 @@ export const exerciseDataDirectory = path.join(exerciseGlobalRoot, "data", "open
 
 const preserveExerciseDatabase = !!process.env.OPENCODE_HTTPAPI_EXERCISE_DB
 export const exerciseDatabasePath =
-  process.env.OPENCODE_HTTPAPI_EXERCISE_DB ??
-  path.join(tempRoot, `opencode-httpapi-exercise-${process.pid}.db`)
+  process.env.OPENCODE_HTTPAPI_EXERCISE_DB ?? path.join(tempRoot, `opencode-httpapi-exercise-${process.pid}.db`)
 process.env.OPENCODE_DB = exerciseDatabasePath
 Flag.OPENCODE_DB = exerciseDatabasePath
 

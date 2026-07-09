@@ -313,7 +313,9 @@ export function MarkdownRenderer({ children, inline, tone = "default" }: Markdow
   const project = useProjectOptional()
   const directory = project?.directory ?? project?.worktree ?? null
   const styles = tone === "muted" ? mutedStyles : defaultStyles
-  const components = inline ? createInlineComponents(styles, tone, directory) : createMarkdownComponents(styles, tone, directory)
+  const components = inline
+    ? createInlineComponents(styles, tone, directory)
+    : createMarkdownComponents(styles, tone, directory)
   const urlTransform = createUrlTransform()
   if (inline) {
     return (

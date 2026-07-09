@@ -6,13 +6,13 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| scoped storage 核心 | `packages/opencode/webgui/src/state/scopedStorage.ts` |
-| tabs/drafts/selection | `packages/opencode/webgui/src/state/repo/tabsRepo.ts`、`draftRepo.ts`、`selectionRepo.ts` |
+| 角色                      | 文件                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------- |
+| scoped storage 核心       | `packages/opencode/webgui/src/state/scopedStorage.ts`                                             |
+| tabs/drafts/selection     | `packages/opencode/webgui/src/state/repo/tabsRepo.ts`、`draftRepo.ts`、`selectionRepo.ts`         |
 | theme/model/quick phrases | `packages/opencode/webgui/src/state/repo/themeRepo.ts`、`modelPrefsRepo.ts`、`quickPhraseRepo.ts` |
-| 主题上下文 | `packages/opencode/webgui/src/state/ThemeContext.tsx` |
-| UI 设置上下文 | `packages/opencode/webgui/src/state/UISettingsContext.tsx` |
+| 主题上下文                | `packages/opencode/webgui/src/state/ThemeContext.tsx`                                             |
+| UI 设置上下文             | `packages/opencode/webgui/src/state/UISettingsContext.tsx`                                        |
 
 > 命名交叉核验（Step 5）：`scopedStorage.ts` 第 3 行定义 `StorageScope = "global" | "workspace" | "mem"`；各 repo 直接声明 `opencode:webgui:<scope>:<resource>:v<major>` key。
 

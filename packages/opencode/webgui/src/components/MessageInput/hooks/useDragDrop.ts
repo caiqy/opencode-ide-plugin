@@ -6,11 +6,7 @@ interface UseDragDropOptions {
   disabled?: boolean
 }
 
-export function useDragDrop({
-  contentEditableRef,
-  containerRef,
-  disabled = false,
-}: UseDragDropOptions) {
+export function useDragDrop({ contentEditableRef, containerRef, disabled = false }: UseDragDropOptions) {
   // Attach drag-and-drop to the contentEditable
   useEffect(() => {
     const el = contentEditableRef.current

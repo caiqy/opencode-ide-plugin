@@ -66,7 +66,9 @@ export function ImagePreview({
     )
   }
 
-  const overlay = preview ? <ImageOverlay url={src} alt={alt || name} filename={name} onClose={() => setPreview(false)} /> : null
+  const overlay = preview ? (
+    <ImageOverlay url={src} alt={alt || name} filename={name} onClose={() => setPreview(false)} />
+  ) : null
 
   return (
     <>

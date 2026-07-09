@@ -38,6 +38,7 @@
 ### Task 1: 先用测试锁定相对日期时间格式与 AssistantMeta 文案
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/utils/formatting.test.ts`
 - Modify: `packages/opencode/webgui/src/components/MessageList/AssistantMeta.test.tsx`
 - Modify: `packages/opencode/webgui/src/utils/formatting.ts`
@@ -250,6 +251,7 @@ Expected:
 ### Task 2: 让 MessageRow 把 assistant 完成时间透传给 AssistantMeta
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/MessageList/MessageRow.test.tsx`
 - Modify: `packages/opencode/webgui/src/components/MessageList/MessageRow.tsx`
 
@@ -332,16 +334,18 @@ Expected:
 把 `packages/opencode/webgui/src/components/MessageList/MessageRow.tsx` 中 `AssistantMeta` 调用点改成下面这样，只新增一行 `completedAt={assistantInfo?.time?.completed}`：
 
 ```tsx
-        {showMeta && isAssistant && (assistantInfo?.time?.completed || error?.name === "MessageAbortedError") && (
-          <AssistantMeta
-            agent={assistantInfo?.agent ?? ""}
-            modelName={resolveModelName(assistantInfo?.providerID ?? "", assistantInfo?.modelID ?? "")}
-            variant={assistantInfo?.variant || undefined}
-            durationMs={turnDurationMs}
-            completedAt={assistantInfo?.time?.completed}
-            interrupted={error?.name === "MessageAbortedError"}
-          />
-        )}
+{
+  showMeta && isAssistant && (assistantInfo?.time?.completed || error?.name === "MessageAbortedError") && (
+    <AssistantMeta
+      agent={assistantInfo?.agent ?? ""}
+      modelName={resolveModelName(assistantInfo?.providerID ?? "", assistantInfo?.modelID ?? "")}
+      variant={assistantInfo?.variant || undefined}
+      durationMs={turnDurationMs}
+      completedAt={assistantInfo?.time?.completed}
+      interrupted={error?.name === "MessageAbortedError"}
+    />
+  )
+}
 ```
 
 约束：

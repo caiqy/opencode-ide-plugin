@@ -48,7 +48,7 @@ describe("session tool permission payload", () => {
     expect(payload.metadata).toEqual({ filePath: "/tmp/a.ts" })
   })
 
-  test("buildToolPermissionAsk 将即时 overlay 规则放入 overrideRuleset", () => {
+  test("buildToolPermissionAsk 将即时 overlay 规则合并进 ruleset", () => {
     const ruleset = Permission.fromConfig({ skill: { brainstorming: "allow" } })
     const overlayRuleset = Permission.fromConfig({ skill: { brainstorming: "deny" } })
     const payload = buildToolPermissionAsk({
@@ -65,10 +65,8 @@ describe("session tool permission payload", () => {
       },
     })
 
-    expect(Permission.evaluate("skill", "brainstorming", payload.ruleset, [], payload.overrideRuleset ?? []).action).toBe(
-      "deny",
-    )
-    expect(payload.overrideRuleset?.at(-1)).toMatchObject({
+    expect(Permission.evaluate("skill", "brainstorming", payload.ruleset).action).toBe("deny")
+    expect(payload.ruleset.at(-1)).toMatchObject({
       permission: "skill",
       pattern: "brainstorming",
       action: "deny",

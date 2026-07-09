@@ -249,7 +249,13 @@ describe("ProviderSettingsTab", () => {
         }`,
       })),
     )
-    render(<ProviderSettingsTab formData={{ ...formData, username: "local-user" }} setFormData={vi.fn()} onReloadConfig={vi.fn()} />)
+    render(
+      <ProviderSettingsTab
+        formData={{ ...formData, username: "local-user" }}
+        setFormData={vi.fn()}
+        onReloadConfig={vi.fn()}
+      />,
+    )
 
     await user.click(screen.getByRole("radio", { name: /合并/ }))
     await user.click(screen.getByRole("button", { name: "更新配置" }))
@@ -277,7 +283,10 @@ describe("ProviderSettingsTab", () => {
 
   it("下载失败时显示错误且不保存", async () => {
     const user = userEvent.setup()
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 404 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 404 })),
+    )
     render(<ProviderSettingsTab formData={formData} setFormData={vi.fn()} onReloadConfig={vi.fn()} />)
 
     await user.click(screen.getByRole("button", { name: "更新配置" }))
@@ -289,7 +298,10 @@ describe("ProviderSettingsTab", () => {
 
   it("网络异常时显示下载失败且不保存", async () => {
     const user = userEvent.setup()
-    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new Error("Network down"))))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Promise.reject(new Error("Network down"))),
+    )
     render(<ProviderSettingsTab formData={formData} setFormData={vi.fn()} onReloadConfig={vi.fn()} />)
 
     await user.click(screen.getByRole("button", { name: "更新配置" }))

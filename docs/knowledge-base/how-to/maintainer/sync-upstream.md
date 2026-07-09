@@ -5,8 +5,8 @@
 ## 先读风险清单
 
 1. 打开 [upstream-compatibility](../../reference/business/upstream-compatibility.md)（同步风险总览、下游适配点、高风险文件、同步后最低验证）。
-3. 打开 `specs/000-existing-capabilities/regression-matrix.md`。
-4. 打开 `specs/000-existing-capabilities/validation.md`。
+2. 打开 `specs/000-existing-capabilities/regression-matrix.md`。
+3. 打开 `specs/000-existing-capabilities/validation.md`。
 
 ## 识别重叠文件
 

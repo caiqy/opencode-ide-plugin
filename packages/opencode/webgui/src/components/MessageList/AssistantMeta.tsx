@@ -15,7 +15,14 @@ export function AssistantMeta({ agent, modelName, variant, durationMs, completed
   const durationLabel = typeof durationMs === "number" && durationMs >= 0 ? formatDuration(durationMs) : ""
   const completedLabel = typeof completedAt === "number" ? formatRelativeDateTimeLabel(completedAt) : ""
 
-  const items = [agentLabel, modelName, variant || "", durationLabel, completedLabel, interrupted ? "interrupted" : ""].filter(Boolean)
+  const items = [
+    agentLabel,
+    modelName,
+    variant || "",
+    durationLabel,
+    completedLabel,
+    interrupted ? "interrupted" : "",
+  ].filter(Boolean)
 
   if (items.length === 0) return null
 

@@ -6,13 +6,15 @@ describe("QuestionOptions", () => {
   it("question 字段支持 Markdown 渲染", () => {
     render(
       <QuestionOptions
-        question={{
-          id: "q-markdown",
-          question: "请确认 **关键项**",
-          multiple: false,
-          custom: true,
-          options: [{ label: "确认" }],
-        } as any}
+        question={
+          {
+            id: "q-markdown",
+            question: "请确认 **关键项**",
+            multiple: false,
+            custom: true,
+            options: [{ label: "确认" }],
+          } as any
+        }
         answers={[]}
         customInput=""
         onToggleOption={vi.fn()}
@@ -31,13 +33,15 @@ describe("QuestionOptions", () => {
   it("自定义答案与提示文案为中文", () => {
     render(
       <QuestionOptions
-        question={{
-          id: "q1",
-          question: "请选择：",
-          multiple: true,
-          custom: true,
-          options: [{ label: "A" }, { label: "B" }],
-        } as any}
+        question={
+          {
+            id: "q1",
+            question: "请选择：",
+            multiple: true,
+            custom: true,
+            options: [{ label: "A" }, { label: "B" }],
+          } as any
+        }
         answers={[]}
         customInput=""
         onToggleOption={vi.fn()}
@@ -59,13 +63,15 @@ describe("QuestionOptions", () => {
   it("option.label 与 option.description 保持纯文本", () => {
     const { container } = render(
       <QuestionOptions
-        question={{
-          id: "q-option-plain",
-          question: "普通问题",
-          multiple: false,
-          custom: true,
-          options: [{ label: "**危险**", description: "`desc`" }],
-        } as any}
+        question={
+          {
+            id: "q-option-plain",
+            question: "普通问题",
+            multiple: false,
+            custom: true,
+            options: [{ label: "**危险**", description: "`desc`" }],
+          } as any
+        }
         answers={[]}
         customInput=""
         onToggleOption={vi.fn()}

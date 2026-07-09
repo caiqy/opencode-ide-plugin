@@ -107,7 +107,13 @@ export function CommandPlugin() {
 
   return showPopover
     ? createPortal(
-        <CommandPopover query={query} position={position} onSelect={insertCommand} onClose={resetState} onReposition={handlePositionUpdate} />,
+        <CommandPopover
+          query={query}
+          position={position}
+          onSelect={insertCommand}
+          onClose={resetState}
+          onReposition={handlePositionUpdate}
+        />,
         document.body,
       )
     : null

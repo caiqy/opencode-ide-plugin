@@ -6,16 +6,16 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| WebGUI 版本门禁 | `packages/opencode/webgui/src/components/VersionGate.tsx` |
-| WebGUI 更新状态 | `packages/opencode/webgui/src/state/UpdateContext.tsx` |
-| WebGUI 更新横幅 | `packages/opencode/webgui/src/components/UpdateBanner.tsx` |
-| VSCode Release 检查 | `hosts/vscode-plugin/src/update/ReleaseChecker.ts` |
-| VSCode VSIX 安装 | `hosts/vscode-plugin/src/update/UpdateInstaller.ts` |
-| VSCode 更新状态机 | `hosts/vscode-plugin/src/update/UpdateService.ts`、`hosts/vscode-plugin/src/update/version.ts` |
-| JetBrains Marketplace 查询 | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/MarketplaceVersionSource.kt` |
-| JetBrains 更新服务 | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/PluginUpdateService.kt`、`PluginUpdateModels.kt`、`PluginVersion.kt` |
+| 角色                       | 文件                                                                                                                                |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| WebGUI 版本门禁            | `packages/opencode/webgui/src/components/VersionGate.tsx`                                                                           |
+| WebGUI 更新状态            | `packages/opencode/webgui/src/state/UpdateContext.tsx`                                                                              |
+| WebGUI 更新横幅            | `packages/opencode/webgui/src/components/UpdateBanner.tsx`                                                                          |
+| VSCode Release 检查        | `hosts/vscode-plugin/src/update/ReleaseChecker.ts`                                                                                  |
+| VSCode VSIX 安装           | `hosts/vscode-plugin/src/update/UpdateInstaller.ts`                                                                                 |
+| VSCode 更新状态机          | `hosts/vscode-plugin/src/update/UpdateService.ts`、`hosts/vscode-plugin/src/update/version.ts`                                      |
+| JetBrains Marketplace 查询 | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/MarketplaceVersionSource.kt`                                         |
+| JetBrains 更新服务         | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/PluginUpdateService.kt`、`PluginUpdateModels.kt`、`PluginVersion.kt` |
 
 > 命名交叉核验（Step 5）：能力 I1/I2/I3 分别映射 WebGUI 展示层、VSCode GitHub Release + `.vsix` 更新、JetBrains Marketplace 手动更新；详见 [settings-panel](settings-panel.md) 与 [hosts-vscode-plugin 参考](../repositories/hosts-vscode-plugin.md)。
 

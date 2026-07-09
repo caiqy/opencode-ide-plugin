@@ -37,6 +37,7 @@
 ### Task 1: 配置 schema 支持 `image_model`
 
 **Files:**
+
 - Modify: `packages/opencode/src/config/config.ts:217-222`
 - Modify: `packages/opencode/src/config/permission.ts:24-42`
 - Test: `packages/opencode/test/tool/generate-image-config.test.ts`
@@ -172,6 +173,7 @@ git commit -m "feat: add image model config"
 ### Task 2: 文件名与输入图片纯函数
 
 **Files:**
+
 - Create: `packages/opencode/src/tool/generate-image/types.ts`
 - Create: `packages/opencode/src/tool/generate-image/filename.ts`
 - Create: `packages/opencode/src/tool/generate-image/input.ts`
@@ -202,10 +204,24 @@ describe("generate_image filename", () => {
 
   test("builds custom single and multi image names", () => {
     expect(
-      buildFilename({ messageID: "msg_test", index: 1, count: 1, mime: "image/png", random: "a1b2c3d4", filename: "poster" }),
+      buildFilename({
+        messageID: "msg_test",
+        index: 1,
+        count: 1,
+        mime: "image/png",
+        random: "a1b2c3d4",
+        filename: "poster",
+      }),
     ).toBe("poster-msg_test-a1b2c3d4.png")
     expect(
-      buildFilename({ messageID: "msg_test", index: 2, count: 3, mime: "image/jpeg", random: "a1b2c3d4", filename: "poster.webp" }),
+      buildFilename({
+        messageID: "msg_test",
+        index: 2,
+        count: 3,
+        mime: "image/jpeg",
+        random: "a1b2c3d4",
+        filename: "poster.webp",
+      }),
     ).toBe("poster-msg_test-2-a1b2c3d4.jpg")
   })
 })
@@ -239,9 +255,9 @@ describe("generate_image input", () => {
     const naked = await decodeImageInput({ root: process.cwd(), input: png })
     expect(naked.mime).toBe("image/png")
 
-    await expect(decodeImageInput({ root: process.cwd(), input: Buffer.from("not an image").toString("base64") })).rejects.toThrow(
-      "unable to detect image mime",
-    )
+    await expect(
+      decodeImageInput({ root: process.cwd(), input: Buffer.from("not an image").toString("base64") }),
+    ).rejects.toThrow("unable to detect image mime")
     await expect(decodeImageInput({ root: process.cwd(), input: "data:image/png;base64,%%%%" })).rejects.toThrow(
       "data URL base64 decode failed",
     )
@@ -260,7 +276,9 @@ describe("generate_image input", () => {
         await Bun.write(path.join(dir, "large.png"), new Uint8Array(10 * 1024 * 1024 + 1))
       },
     })
-    await expect(decodeImageInput({ root: tmp.path, input: "missing.png" })).rejects.toThrow("image file does not exist")
+    await expect(decodeImageInput({ root: tmp.path, input: "missing.png" })).rejects.toThrow(
+      "image file does not exist",
+    )
     await expect(decodeImageInput({ root: tmp.path, input: "note.txt" })).rejects.toThrow("unable to detect image mime")
     await expect(decodeImageInput({ root: tmp.path, input: "large.png" })).rejects.toThrow("image exceeds 10MB limit")
   })
@@ -301,7 +319,9 @@ describe("generate_image input", () => {
     const bytes = new Uint8Array(Buffer.from(png, "base64"))
     const image = { mime: "image/png" as const, bytes, filename: "image.png" }
     const jpeg = new Uint8Array([0xff, 0xd8, 0xff])
-    expect(() => validateMask([image], { mime: "image/jpeg", bytes: jpeg, filename: "mask.jpg" })).toThrow("mask mime must match all edit images")
+    expect(() => validateMask([image], { mime: "image/jpeg", bytes: jpeg, filename: "mask.jpg" })).toThrow(
+      "mask mime must match all edit images",
+    )
     expect(validateMask([image], { mime: "image/png", bytes, filename: "mask.png" })).toBeUndefined()
   })
 })
@@ -508,6 +528,7 @@ git commit -m "feat: add image tool input helpers"
 ### Task 3: provider/model 与 adapter 配置解析
 
 **Files:**
+
 - Create: `packages/opencode/src/tool/generate-image/config.ts`
 - Modify: `packages/opencode/test/tool/generate-image-config.test.ts`
 
@@ -516,18 +537,43 @@ git commit -m "feat: add image tool input helpers"
 Append to `packages/opencode/test/tool/generate-image-config.test.ts`:
 
 ```ts
-import { resolveModelParts, normalizeBaseURL, pickAdapter, resolveCredentials, resolveImageFieldStyle } from "../../src/tool/generate-image/config"
+import {
+  resolveModelParts,
+  normalizeBaseURL,
+  pickAdapter,
+  resolveCredentials,
+  resolveImageFieldStyle,
+} from "../../src/tool/generate-image/config"
 import { ProviderTest } from "../fake/provider"
 
 describe("generate_image config helpers", () => {
   test("resolves provider and model override matrix", () => {
-    expect(resolveModelParts({ imageModel: "openai/gpt-image-2" })).toEqual({ providerID: "openai", modelID: "gpt-image-2" })
-    expect(resolveModelParts({ imageModel: "openrouter/openai/gpt-image-2" })).toEqual({ providerID: "openrouter", modelID: "openai/gpt-image-2" })
-    expect(resolveModelParts({ imageModel: "openai/gpt-image-2", provider: "openai" })).toEqual({ providerID: "openai", modelID: "gpt-image-2" })
-    expect(resolveModelParts({ imageModel: "openai/gpt-image-2", model: "gpt-image-2" })).toEqual({ providerID: "openai", modelID: "gpt-image-2" })
-    expect(resolveModelParts({ imageModel: "openai/gpt-image-2", provider: "custom", model: "image-x" })).toEqual({ providerID: "custom", modelID: "image-x" })
-    expect(() => resolveModelParts({ provider: "openai" })).toThrow("model is required when image_model is not configured")
-    expect(() => resolveModelParts({ imageModel: "openai/gpt-image-2", provider: "custom" })).toThrow("model is required when provider overrides image_model provider")
+    expect(resolveModelParts({ imageModel: "openai/gpt-image-2" })).toEqual({
+      providerID: "openai",
+      modelID: "gpt-image-2",
+    })
+    expect(resolveModelParts({ imageModel: "openrouter/openai/gpt-image-2" })).toEqual({
+      providerID: "openrouter",
+      modelID: "openai/gpt-image-2",
+    })
+    expect(resolveModelParts({ imageModel: "openai/gpt-image-2", provider: "openai" })).toEqual({
+      providerID: "openai",
+      modelID: "gpt-image-2",
+    })
+    expect(resolveModelParts({ imageModel: "openai/gpt-image-2", model: "gpt-image-2" })).toEqual({
+      providerID: "openai",
+      modelID: "gpt-image-2",
+    })
+    expect(resolveModelParts({ imageModel: "openai/gpt-image-2", provider: "custom", model: "image-x" })).toEqual({
+      providerID: "custom",
+      modelID: "image-x",
+    })
+    expect(() => resolveModelParts({ provider: "openai" })).toThrow(
+      "model is required when image_model is not configured",
+    )
+    expect(() => resolveModelParts({ imageModel: "openai/gpt-image-2", provider: "custom" })).toThrow(
+      "model is required when provider overrides image_model provider",
+    )
   })
 
   test("normalizes OpenAI-compatible base URL", () => {
@@ -541,7 +587,9 @@ describe("generate_image config helpers", () => {
       key: "provider-key",
       options: { apiKey: "options-key", baseURL: "https://gateway.example.com" },
     })
-    const model = ProviderTest.model({ api: { id: "openai", url: "https://model.example.com/v1", npm: "@ai-sdk/openai" } })
+    const model = ProviderTest.model({
+      api: { id: "openai", url: "https://model.example.com/v1", npm: "@ai-sdk/openai" },
+    })
     expect(resolveCredentials({ provider, model }).apiKey).toBe("provider-key")
     expect(resolveCredentials({ provider, model }).baseURL).toBe("https://gateway.example.com/v1")
 
@@ -559,21 +607,40 @@ describe("generate_image config helpers", () => {
     const provider = ProviderTest.info({ key: undefined, options: {} })
     const model = ProviderTest.model({ api: { id: "openai", url: "", npm: "@ai-sdk/openai" } })
     expect(() => resolveCredentials({ provider, model })).toThrow("authenticate the provider or configure")
-    expect(() => resolveCredentials({ provider: ProviderTest.info({ key: "sk-test", options: {} }), model })).toThrow("configure provider")
+    expect(() => resolveCredentials({ provider: ProviderTest.info({ key: "sk-test", options: {} }), model })).toThrow(
+      "configure provider",
+    )
   })
 
   test("picks adapter from explicit options, npm package, or openai provider", () => {
-    expect(pickAdapter({ providerID: "x", providerOptions: { imageApi: "openai-compatible" }, modelOptions: {}, npm: "x" })).toBe("openai-compatible")
-    expect(pickAdapter({ providerID: "x", providerOptions: {}, modelOptions: {}, npm: "@ai-sdk/openai-compatible" })).toBe("openai-compatible")
-    expect(pickAdapter({ providerID: "openai", providerOptions: {}, modelOptions: {}, npm: "x" })).toBe("openai-compatible")
-    expect(() => pickAdapter({ providerID: "unknown", providerOptions: {}, modelOptions: {}, npm: "x" })).toThrow("No image adapter configured")
+    expect(
+      pickAdapter({ providerID: "x", providerOptions: { imageApi: "openai-compatible" }, modelOptions: {}, npm: "x" }),
+    ).toBe("openai-compatible")
+    expect(
+      pickAdapter({ providerID: "x", providerOptions: {}, modelOptions: {}, npm: "@ai-sdk/openai-compatible" }),
+    ).toBe("openai-compatible")
+    expect(pickAdapter({ providerID: "openai", providerOptions: {}, modelOptions: {}, npm: "x" })).toBe(
+      "openai-compatible",
+    )
+    expect(() => pickAdapter({ providerID: "unknown", providerOptions: {}, modelOptions: {}, npm: "x" })).toThrow(
+      "No image adapter configured",
+    )
   })
 
   test("resolves edit image field style", () => {
     expect(resolveImageFieldStyle({ providerOptions: {}, modelOptions: {} })).toBe("brackets")
-    expect(resolveImageFieldStyle({ providerOptions: { imageFieldStyle: "repeated" }, modelOptions: {} })).toBe("repeated")
-    expect(resolveImageFieldStyle({ providerOptions: { imageFieldStyle: "repeated" }, modelOptions: { imageFieldStyle: "brackets" } })).toBe("brackets")
-    expect(() => resolveImageFieldStyle({ providerOptions: { imageFieldStyle: "indexed" }, modelOptions: {} })).toThrow("Unsupported imageFieldStyle")
+    expect(resolveImageFieldStyle({ providerOptions: { imageFieldStyle: "repeated" }, modelOptions: {} })).toBe(
+      "repeated",
+    )
+    expect(
+      resolveImageFieldStyle({
+        providerOptions: { imageFieldStyle: "repeated" },
+        modelOptions: { imageFieldStyle: "brackets" },
+      }),
+    ).toBe("brackets")
+    expect(() => resolveImageFieldStyle({ providerOptions: { imageFieldStyle: "indexed" }, modelOptions: {} })).toThrow(
+      "Unsupported imageFieldStyle",
+    )
   })
 })
 ```
@@ -608,15 +675,25 @@ export function resolveModelParts(input: { imageModel?: string; provider?: strin
   if (input.provider && input.model) return { providerID: input.provider, modelID: input.model }
   const { defaultProvider, defaultModel } = parseImageModel(input.imageModel)
   if (!input.provider && !input.model) {
-    if (!defaultProvider || !defaultModel) throw new Error(`image_model is required when provider/model are not provided; configure { "image_model": "openai/gpt-image-2" } or pass provider and model`)
+    if (!defaultProvider || !defaultModel)
+      throw new Error(
+        `image_model is required when provider/model are not provided; configure { "image_model": "openai/gpt-image-2" } or pass provider and model`,
+      )
     return { providerID: defaultProvider, modelID: defaultModel }
   }
   if (input.provider) {
-    if (!defaultModel) throw new Error(`model is required when image_model is not configured; configure { "image_model": "openai/gpt-image-2" } or pass model`)
-    if (defaultProvider !== input.provider) throw new Error("model is required when provider overrides image_model provider")
+    if (!defaultModel)
+      throw new Error(
+        `model is required when image_model is not configured; configure { "image_model": "openai/gpt-image-2" } or pass model`,
+      )
+    if (defaultProvider !== input.provider)
+      throw new Error("model is required when provider overrides image_model provider")
     return { providerID: input.provider, modelID: defaultModel }
   }
-  if (!defaultProvider) throw new Error(`provider is required when image_model is not configured; configure { "image_model": "openai/gpt-image-2" } or pass provider`)
+  if (!defaultProvider)
+    throw new Error(
+      `provider is required when image_model is not configured; configure { "image_model": "openai/gpt-image-2" } or pass provider`,
+    )
   return { providerID: defaultProvider, modelID: input.model! }
 }
 
@@ -640,7 +717,10 @@ export function pickAdapter(input: {
 
 export type ImageFieldStyle = "brackets" | "repeated"
 
-export function resolveImageFieldStyle(input: { providerOptions: Record<string, unknown>; modelOptions: Record<string, unknown> }): ImageFieldStyle {
+export function resolveImageFieldStyle(input: {
+  providerOptions: Record<string, unknown>
+  modelOptions: Record<string, unknown>
+}): ImageFieldStyle {
   const value = input.modelOptions.imageFieldStyle ?? input.providerOptions.imageFieldStyle ?? "brackets"
   if (value === "brackets" || value === "repeated") return value
   throw new Error("Unsupported imageFieldStyle; expected brackets or repeated")
@@ -650,10 +730,14 @@ export function resolveCredentials(input: { provider: Provider.Info; model: Prov
   const apiKey = input.provider.key ?? input.provider.options.apiKey
   const baseURL = input.provider.options.baseURL ?? input.model.api.url
   if (typeof apiKey !== "string" || apiKey.length === 0) {
-    throw new Error(`Missing apiKey for image provider ${input.provider.id}; authenticate the provider or configure opencode.json like { "provider": { "${input.provider.id}": { "options": { "apiKey": "sk-..." } } } }`)
+    throw new Error(
+      `Missing apiKey for image provider ${input.provider.id}; authenticate the provider or configure opencode.json like { "provider": { "${input.provider.id}": { "options": { "apiKey": "sk-..." } } } }`,
+    )
   }
   if (typeof baseURL !== "string" || baseURL.length === 0) {
-    throw new Error(`Missing baseURL for image provider ${input.provider.id}; configure opencode.json like { "provider": { "${input.provider.id}": { "options": { "baseURL": "https://api.openai.com/v1" } } } } or set the model api url`)
+    throw new Error(
+      `Missing baseURL for image provider ${input.provider.id}; configure opencode.json like { "provider": { "${input.provider.id}": { "options": { "baseURL": "https://api.openai.com/v1" } } } } or set the model api url`,
+    )
   }
   return { apiKey, baseURL: normalizeBaseURL(baseURL) }
 }
@@ -681,6 +765,7 @@ git commit -m "feat: resolve image tool provider config"
 ### Task 4: OpenAI-compatible adapter
 
 **Files:**
+
 - Create: `packages/opencode/src/tool/generate-image/openai-compatible.ts`
 - Test: `packages/opencode/test/tool/generate-image-openai-compatible.test.ts`
 
@@ -729,7 +814,10 @@ describe("generate_image openai-compatible adapter", () => {
   })
 
   test("rejects remote url only responses", async () => {
-    using server = Bun.serve({ port: 0, fetch: () => Response.json({ data: [{ url: "https://example.com/image.png" }] }) })
+    using server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ data: [{ url: "https://example.com/image.png" }] }),
+    })
     await expect(
       run(
         callOpenAICompatible({
@@ -748,7 +836,10 @@ describe("generate_image openai-compatible adapter", () => {
   })
 
   test("parses data URL fields in response data array", async () => {
-    using server = Bun.serve({ port: 0, fetch: () => Response.json({ data: [{ url: `data:image/png;base64,${png}` }] }) })
+    using server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ data: [{ url: `data:image/png;base64,${png}` }] }),
+    })
     const images = await run(
       callOpenAICompatible({
         baseURL: `${server.url}v1`,
@@ -829,10 +920,13 @@ describe("generate_image openai-compatible adapter", () => {
 
   test("rejects invalid GPT image sizes before provider call", async () => {
     let called = false
-    using server = Bun.serve({ port: 0, fetch: () => {
-      called = true
-      return Response.json({ data: [{ b64_json: png }] })
-    } })
+    using server = Bun.serve({
+      port: 0,
+      fetch: () => {
+        called = true
+        return Response.json({ data: [{ b64_json: png }] })
+      },
+    })
     await expect(
       run(
         callOpenAICompatible({
@@ -852,7 +946,10 @@ describe("generate_image openai-compatible adapter", () => {
   })
 
   test("summarizes provider errors such as unsupported output format", async () => {
-    using server = Bun.serve({ port: 0, fetch: () => new Response(JSON.stringify({ error: { message: "unsupported output_format" } }), { status: 400 }) })
+    using server = Bun.serve({
+      port: 0,
+      fetch: () => new Response(JSON.stringify({ error: { message: "unsupported output_format" } }), { status: 400 }),
+    })
     await expect(
       run(
         callOpenAICompatible({
@@ -876,7 +973,11 @@ describe("generate_image openai-compatible adapter", () => {
       port: 0,
       fetch: async (req) => {
         const form = await req.formData()
-        fields = { images: form.getAll("image[]").length, hasMask: form.get("mask") instanceof File, format: form.get("output_format") }
+        fields = {
+          images: form.getAll("image[]").length,
+          hasMask: form.get("mask") instanceof File,
+          format: form.get("output_format"),
+        }
         return Response.json({ data: [{ b64_json: png }] })
       },
     })
@@ -951,7 +1052,7 @@ function validateSize(size: string, model: string) {
 }
 
 function parseImages(value: unknown) {
-  const items = Array.isArray((value as { data?: unknown })?.data) ? ((value as { data: unknown[] }).data) : []
+  const items = Array.isArray((value as { data?: unknown })?.data) ? (value as { data: unknown[] }).data : []
   return items.map((item) => {
     const record = item as Record<string, unknown>
     const raw = record.b64_json ?? record.b64Json ?? record.data ?? record.url
@@ -970,7 +1071,7 @@ function parseImages(value: unknown) {
 }
 
 function providerError(status: number, body: string) {
-  const message = body.match(/"message"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/)?.[1]?.replace(/\\"/g, "\"") ?? body.trim()
+  const message = body.match(/"message"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/)?.[1]?.replace(/\\"/g, '"') ?? body.trim()
   const summary = message.length > 500 ? `${message.slice(0, 500)}...` : message
   return new Error(`image provider returned HTTP ${status}${summary ? `: ${summary}` : ""}`)
 }
@@ -1009,7 +1110,8 @@ export const callOpenAICompatible = Effect.fn("GenerateImage.openaiCompatible")(
   form.set("output_format", input.format)
   form.set("n", String(input.n))
   const imageField = (input.imageFieldStyle ?? "brackets") === "brackets" ? "image[]" : "image"
-  for (const image of input.images ?? []) form.append(imageField, new Blob([image.bytes], { type: image.mime }), image.filename)
+  for (const image of input.images ?? [])
+    form.append(imageField, new Blob([image.bytes], { type: image.mime }), image.filename)
   if (input.mask) form.set("mask", new Blob([input.mask.bytes], { type: input.mask.mime }), input.mask.filename)
   const json = yield* Effect.tryPromise({
     try: async () => {
@@ -1045,6 +1147,7 @@ git commit -m "feat: add openai compatible image adapter"
 ### Task 5: 图片落盘与附件构造
 
 **Files:**
+
 - Create: `packages/opencode/src/tool/generate-image/persist.ts`
 - Test: `packages/opencode/test/tool/generate-image.test.ts`
 
@@ -1227,6 +1330,7 @@ git commit -m "feat: persist generated image tool outputs"
 ### Task 6: `generate_image` tool 与 registry 集成
 
 **Files:**
+
 - Create: `packages/opencode/src/tool/generate-image.ts`
 - Create: `packages/opencode/src/tool/generate-image.txt`
 - Modify: `packages/opencode/src/tool/registry.ts`
@@ -1240,15 +1344,15 @@ git commit -m "feat: persist generated image tool outputs"
 Append to `packages/opencode/test/tool/registry.test.ts`:
 
 ```ts
-  it.live("includes generate_image as builtin tool", () =>
-    provideTmpdirInstance(() =>
-      Effect.gen(function* () {
-        const registry = yield* ToolRegistry.Service
-        const ids = yield* registry.ids()
-        expect(ids).toContain("generate_image")
-      }),
-    ),
-  )
+it.live("includes generate_image as builtin tool", () =>
+  provideTmpdirInstance(() =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const ids = yield* registry.ids()
+      expect(ids).toContain("generate_image")
+    }),
+  ),
+)
 ```
 
 - [ ] **Step 2: 写 tool 参数 schema 失败测试**
@@ -1262,28 +1366,34 @@ import { Parameters as GenerateImage } from "../../src/tool/generate-image"
 Add to `describe("JSON Schema (wire shape)")`:
 
 ```ts
-    test("generate_image", () => expect(toJsonSchema(GenerateImage)).toMatchSnapshot())
+test("generate_image", () => expect(toJsonSchema(GenerateImage)).toMatchSnapshot())
 ```
 
 Add a new describe block near other tool parameter blocks:
 
 ```ts
-  describe("generate_image", () => {
-    test("accepts prompt-only and applies defaults", () => {
-      expect(parse(GenerateImage, { prompt: "draw" })).toMatchObject({ action: "generate", size: "auto", quality: "high", format: "png", n: 1 })
-    })
-    test("rejects fractional n", () => {
-      expect(accepts(GenerateImage, { prompt: "draw", n: 1.5 })).toBe(false)
-    })
-    test("rejects n outside 1..10", () => {
-      expect(accepts(GenerateImage, { prompt: "draw", n: 0 })).toBe(false)
-      expect(accepts(GenerateImage, { prompt: "draw", n: 11 })).toBe(false)
-    })
-    test("rejects empty or too long prompt", () => {
-      expect(accepts(GenerateImage, { prompt: "" })).toBe(false)
-      expect(accepts(GenerateImage, { prompt: "x".repeat(4001) })).toBe(false)
+describe("generate_image", () => {
+  test("accepts prompt-only and applies defaults", () => {
+    expect(parse(GenerateImage, { prompt: "draw" })).toMatchObject({
+      action: "generate",
+      size: "auto",
+      quality: "high",
+      format: "png",
+      n: 1,
     })
   })
+  test("rejects fractional n", () => {
+    expect(accepts(GenerateImage, { prompt: "draw", n: 1.5 })).toBe(false)
+  })
+  test("rejects n outside 1..10", () => {
+    expect(accepts(GenerateImage, { prompt: "draw", n: 0 })).toBe(false)
+    expect(accepts(GenerateImage, { prompt: "draw", n: 11 })).toBe(false)
+  })
+  test("rejects empty or too long prompt", () => {
+    expect(accepts(GenerateImage, { prompt: "" })).toBe(false)
+    expect(accepts(GenerateImage, { prompt: "x".repeat(4001) })).toBe(false)
+  })
+})
 ```
 
 - [ ] **Step 3: 写 tool 执行校验失败测试**
@@ -1315,19 +1425,34 @@ test("rejects generate action with images before provider call", async () => {
   await expect(
     GenerateImageTool.pipe(
       Effect.flatMap((info) => info.init()),
-      Effect.flatMap((tool) =>
-        tool.execute({ action: "generate", prompt: "draw", images: ["image.png"] }, ctx),
+      Effect.flatMap((tool) => tool.execute({ action: "generate", prompt: "draw", images: ["image.png"] }, ctx)),
+      Effect.provide(
+        Layer.mergeAll(Config.defaultLayer, ProviderTest.fake().layer, Truncate.defaultLayer, Agent.defaultLayer),
       ),
-      Effect.provide(Layer.mergeAll(Config.defaultLayer, ProviderTest.fake().layer, Truncate.defaultLayer, Agent.defaultLayer)),
       Effect.runPromise,
     ),
   ).rejects.toThrow("images can only be used with edit action")
 })
 
 test("requests generate_image permission with provider metadata", async () => {
-  using server = Bun.serve({ port: 0, fetch: () => Response.json({ data: [{ b64_json: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAF/gL+ee1vNwAAAABJRU5ErkJggg==" }] }) })
+  using server = Bun.serve({
+    port: 0,
+    fetch: () =>
+      Response.json({
+        data: [
+          {
+            b64_json:
+              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAF/gL+ee1vNwAAAABJRU5ErkJggg==",
+          },
+        ],
+      }),
+  })
   await using tmp = await tmpdir({ git: true, config: { image_model: "openai/gpt-image-2" } })
-  const model = ProviderTest.model({ id: ModelID.make("gpt-image-2"), providerID: ProviderID.make("openai"), api: { id: "openai", url: `${server.url}v1`, npm: "@ai-sdk/openai" } })
+  const model = ProviderTest.model({
+    id: ModelID.make("gpt-image-2"),
+    providerID: ProviderID.make("openai"),
+    api: { id: "openai", url: `${server.url}v1`, npm: "@ai-sdk/openai" },
+  })
   const fake = ProviderTest.fake({ model, info: ProviderTest.info({ key: "sk-test" }, model) })
   let asked: unknown
   const ctx = {
@@ -1338,9 +1463,10 @@ test("requests generate_image permission with provider metadata", async () => {
     abort: AbortSignal.any([]),
     messages: [],
     metadata: () => Effect.void,
-    ask: (input: unknown) => Effect.sync(() => {
-      asked = input
-    }),
+    ask: (input: unknown) =>
+      Effect.sync(() => {
+        asked = input
+      }),
   }
   await Instance.provide({
     directory: tmp.path,
@@ -1355,7 +1481,18 @@ test("requests generate_image permission with provider metadata", async () => {
   expect(asked).toMatchObject({
     permission: "generate_image",
     patterns: ["openai/gpt-image-2"],
-    metadata: { provider: "openai", model: "gpt-image-2", action: "generate", n: 1, size: "auto", quality: "high", format: "png", filename: false, images: false, mask: false },
+    metadata: {
+      provider: "openai",
+      model: "gpt-image-2",
+      action: "generate",
+      n: 1,
+      size: "auto",
+      quality: "high",
+      format: "png",
+      filename: false,
+      images: false,
+      mask: false,
+    },
   })
 })
 ```
@@ -1397,16 +1534,28 @@ import { pickAdapter, resolveCredentials, resolveImageFieldStyle, resolveModelPa
 import { MAX_PROMPT_LENGTH } from "./generate-image/types"
 
 export const Parameters = Schema.Struct({
-  action: Schema.Literals(["generate", "edit"]).pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("generate" as const))),
+  action: Schema.Literals(["generate", "edit"]).pipe(
+    Schema.optional,
+    Schema.withDecodingDefault(Effect.succeed("generate" as const)),
+  ),
   prompt: Schema.String.check(Schema.isLengthBetween(1, MAX_PROMPT_LENGTH)),
   provider: Schema.optional(Schema.String),
   model: Schema.optional(Schema.String),
   images: Schema.optional(Schema.Array(Schema.String)),
   mask: Schema.optional(Schema.String),
   size: Schema.String.pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("auto"))),
-  quality: Schema.Literals(["auto", "low", "medium", "high"]).pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("high" as const))),
-  format: Schema.Literals(["png", "jpeg", "webp"]).pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("png" as const))),
-  n: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(10)).pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed(1))),
+  quality: Schema.Literals(["auto", "low", "medium", "high"]).pipe(
+    Schema.optional,
+    Schema.withDecodingDefault(Effect.succeed("high" as const)),
+  ),
+  format: Schema.Literals(["png", "jpeg", "webp"]).pipe(
+    Schema.optional,
+    Schema.withDecodingDefault(Effect.succeed("png" as const)),
+  ),
+  n: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(10)).pipe(
+    Schema.optional,
+    Schema.withDecodingDefault(Effect.succeed(1)),
+  ),
   filename: Schema.optional(Schema.String),
 })
 
@@ -1435,29 +1584,88 @@ export const GenerateImageTool = Tool.define(
           }
 
           const cfg = yield* config.get()
-          const parts = resolveModelParts({ imageModel: cfg.image_model, provider: params.provider, model: params.model })
+          const parts = resolveModelParts({
+            imageModel: cfg.image_model,
+            provider: params.provider,
+            model: params.model,
+          })
           const provider = yield* providers.getProvider(ProviderID.make(parts.providerID))
           const model = yield* providers.getModel(ProviderID.make(parts.providerID), ModelID.make(parts.modelID))
-          const adapter = pickAdapter({ providerID: parts.providerID, providerOptions: provider.options, modelOptions: model.options, npm: model.api.npm })
-          const imageFieldStyle = resolveImageFieldStyle({ providerOptions: provider.options, modelOptions: model.options })
+          const adapter = pickAdapter({
+            providerID: parts.providerID,
+            providerOptions: provider.options,
+            modelOptions: model.options,
+            npm: model.api.npm,
+          })
+          const imageFieldStyle = resolveImageFieldStyle({
+            providerOptions: provider.options,
+            modelOptions: model.options,
+          })
           const creds = resolveCredentials({ provider, model })
 
-          const images = params.images ? yield* Effect.promise(() => Promise.all(params.images!.map((item) => decodeImageInput({ root: Instance.worktree, input: item })))) : undefined
-          const mask = params.mask ? yield* Effect.promise(() => decodeImageInput({ root: Instance.worktree, input: params.mask! })) : undefined
+          const images = params.images
+            ? yield* Effect.promise(() =>
+                Promise.all(params.images!.map((item) => decodeImageInput({ root: Instance.worktree, input: item }))),
+              )
+            : undefined
+          const mask = params.mask
+            ? yield* Effect.promise(() => decodeImageInput({ root: Instance.worktree, input: params.mask! }))
+            : undefined
           validateMask(images ?? [], mask)
 
           yield* ctx.ask({
             permission: "generate_image",
             patterns: [`${parts.providerID}/${parts.modelID}`],
             always: ["*"],
-            metadata: { provider: parts.providerID, model: parts.modelID, action: params.action, n: params.n, size: params.size, quality: params.quality, format: params.format, filename: Boolean(params.filename), images: Boolean(images?.length), mask: Boolean(mask) },
+            metadata: {
+              provider: parts.providerID,
+              model: parts.modelID,
+              action: params.action,
+              n: params.n,
+              size: params.size,
+              quality: params.quality,
+              format: params.format,
+              filename: Boolean(params.filename),
+              images: Boolean(images?.length),
+              mask: Boolean(mask),
+            },
           })
 
           if (adapter !== "openai-compatible") throw new Error(`Unsupported image adapter: ${adapter}`)
-          const generated = yield* callOpenAICompatible({ baseURL: creds.baseURL, apiKey: creds.apiKey, action: params.action, model: parts.modelID, prompt, size: params.size, quality: params.quality, format: params.format, n: params.n, images, mask, imageFieldStyle })
+          const generated = yield* callOpenAICompatible({
+            baseURL: creds.baseURL,
+            apiKey: creds.apiKey,
+            action: params.action,
+            model: parts.modelID,
+            prompt,
+            size: params.size,
+            quality: params.quality,
+            format: params.format,
+            n: params.n,
+            images,
+            mask,
+            imageFieldStyle,
+          })
           if (generated.length === 0) throw new Error("No image data returned from image provider")
-          const attachments = yield* Effect.promise(() => persistImages({ root: Instance.worktree, messageID: ctx.messageID, filename: params.filename, images: generated }))
-          return { title: "generate_image", output: `已生成 ${attachments.length} 张图片：`, metadata: { provider: parts.providerID, model: parts.modelID, action: params.action, count: attachments.length }, attachments }
+          const attachments = yield* Effect.promise(() =>
+            persistImages({
+              root: Instance.worktree,
+              messageID: ctx.messageID,
+              filename: params.filename,
+              images: generated,
+            }),
+          )
+          return {
+            title: "generate_image",
+            output: `已生成 ${attachments.length} 张图片：`,
+            metadata: {
+              provider: parts.providerID,
+              model: parts.modelID,
+              action: params.action,
+              count: attachments.length,
+            },
+            attachments,
+          }
         }),
     }
   }),
@@ -1485,7 +1693,7 @@ import { GenerateImageTool } from "./generate-image"
 Add initialization near other builtin tools:
 
 ```ts
-    const generateImage = yield* GenerateImageTool
+const generateImage = yield * GenerateImageTool
 ```
 
 Add to `Effect.all`:
@@ -1522,6 +1730,7 @@ git commit -m "feat: register generate image tool"
 ### Task 7: 回归验证与收尾
 
 **Files:**
+
 - Modify: `packages/opencode/test/tool/generate-image.test.ts`
 - Existing tests: `packages/opencode/test/session/generated-image.test.ts`, `packages/opencode/test/session/processor-effect.test.ts`, `packages/opencode/test/session/prompt.test.ts`, `packages/opencode/test/provider/copilot/openai-responses-language-model.test.ts`
 

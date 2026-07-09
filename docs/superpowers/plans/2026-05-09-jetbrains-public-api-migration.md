@@ -51,6 +51,7 @@ The skill normally asks for frequent commits. In this repository, do not run `gi
 ### Task 1: Add public Marketplace version source
 
 **Files:**
+
 - Create: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/MarketplaceVersionSource.kt`
 - Create: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/update/MarketplaceVersionSourceTest.kt`
 
@@ -205,6 +206,7 @@ If commit permission has not been granted, skip this step.
 ### Task 2: Replace internal update service logic with manual update metadata
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/PluginUpdateModels.kt`
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/PluginUpdateService.kt`
 - Modify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/update/PluginUpdateServiceTest.kt`
@@ -543,6 +545,7 @@ Otherwise skip.
 ### Task 3: Add public Plugins settings opener and bridge action
 
 **Files:**
+
 - Create: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/OpenPluginSettings.kt`
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt`
 - Modify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt`
@@ -714,6 +717,7 @@ Otherwise skip.
 ### Task 4: Update WebGUI banner for manual JetBrains updates
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/state/UpdateContext.tsx`
 - Modify: `packages/opencode/webgui/src/components/UpdateBanner.tsx`
 - Modify: `packages/opencode/webgui/src/state/UpdateContext.test.tsx`
@@ -869,7 +873,9 @@ const title = isManual && update.status === "available" ? "发现新版本，请
 Change button text:
 
 ```tsx
-{isManual ? "打开插件管理" : "立即更新"}
+{
+  isManual ? "打开插件管理" : "立即更新"
+}
 ```
 
 Keep the click handler calling `update.installUpdate(update.latest!.version)` so VSCode/automatic paths still share the existing button wiring.
@@ -900,6 +906,7 @@ Otherwise skip.
 ### Task 5: Replace deprecated `HideableTitledPanel`
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt`
 - Modify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt`
 
@@ -992,6 +999,7 @@ Otherwise skip.
 ### Task 6: Raise IntelliJ target and migrate Terminal tab creation
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/build.gradle.kts`
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/BackendLauncher.kt`
 
@@ -1135,6 +1143,7 @@ Otherwise skip.
 ### Task 7: Remove internal API imports and run final verifier
 
 **Files:**
+
 - Verify all modified files.
 - Modify tests only if final compile exposes legitimate type mismatches.
 

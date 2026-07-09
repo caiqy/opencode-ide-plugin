@@ -160,7 +160,7 @@ describe("saveImage", () => {
 
     const result = await (fileUtils as FileUtilsWithSaveImage).saveImage(
       "https://example.com/image.png",
-      ' bad:name.png ',
+      " bad:name.png ",
     )
 
     expect(request).toHaveBeenCalledWith("saveImage", {
@@ -194,7 +194,10 @@ describe("saveImage", () => {
     })
 
     try {
-      const result = await (fileUtils as FileUtilsWithSaveImage).saveImage("https://example.com/image.png", "sample.png")
+      const result = await (fileUtils as FileUtilsWithSaveImage).saveImage(
+        "https://example.com/image.png",
+        "sample.png",
+      )
 
       expect(result).toEqual({ cancelled: false })
     } finally {

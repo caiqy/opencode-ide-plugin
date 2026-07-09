@@ -3,20 +3,21 @@ import type {
   Command,
   Config,
   LspStatus,
+  McpResource,
   McpStatus,
   Message,
   Part,
   Path,
   PermissionRequest,
-  ProviderListResponse,
   QuestionRequest,
+  ReferenceInfo,
   Session,
   SessionStatus,
   SnapshotFileDiff,
   Todo,
   VcsInfo,
 } from "@opencode-ai/sdk/v2/client"
-import type { PathKey } from "@/utils/path-key"
+import { NormalizedProviderListResponse } from "@opencode-ai/session-ui/context"
 import type { Accessor } from "solid-js"
 import type { SetStoreFunction, Store } from "solid-js/store"
 
@@ -35,11 +36,12 @@ export type State = {
   status: "loading" | "partial" | "complete"
   agent: Agent[]
   command: Command[]
+  reference: ReferenceInfo[]
   project: string
   projectMeta: ProjectMeta | undefined
   icon: string | undefined
   provider_ready: boolean
-  provider: ProviderListResponse
+  provider: NormalizedProviderListResponse
   config: Config
   path: Path
   session: Session[]
@@ -63,6 +65,9 @@ export type State = {
   mcp_ready: boolean
   mcp: {
     [name: string]: McpStatus
+  }
+  mcp_resource: {
+    [key: string]: McpResource
   }
   lsp_ready: boolean
   lsp: LspStatus[]
@@ -99,23 +104,7 @@ export type IconCache = {
 
 export type ChildOptions = {
   bootstrap?: boolean
-}
-
-export type GlobalProviderSource = {
-  provider: () => ProviderListResponse
-}
-
-export type QueryOptionsApi = {
-  globalConfig: () => ReturnType<typeof import("./bootstrap").loadGlobalConfigQuery>
-  projects: () => ReturnType<typeof import("./bootstrap").loadProjectsQuery>
-  providers: (directory: PathKey | null) => ReturnType<typeof import("./bootstrap").loadProvidersQuery>
-  path: (directory: PathKey | null) => ReturnType<typeof import("./bootstrap").loadPathQuery>
-  agents: (directory: PathKey) => ReturnType<typeof import("./bootstrap").loadAgentsQuery>
-  mcp: (directory: PathKey) => ReturnType<typeof import("./bootstrap").loadMcpQuery>
-  lsp: (directory: PathKey) => ReturnType<typeof import("./bootstrap").loadLspQuery>
-  sessions: (directory: PathKey) => {
-    queryKey: readonly [PathKey, "loadSessions"]
-  }
+  mcp?: boolean
 }
 
 export type DirState = {

@@ -101,7 +101,10 @@ export function ModelSelector({
   const hasExplicitPlaceholder = placeholder !== undefined
   const effectivePlaceholder = placeholder ?? "选择模型"
   const portalRef = useRef<HTMLDivElement>(null)
-  const excludeRefs = useMemo(() => (renderInPortal ? [portalRef as React.RefObject<HTMLElement>] : undefined), [renderInPortal])
+  const excludeRefs = useMemo(
+    () => (renderInPortal ? [portalRef as React.RefObject<HTMLElement>] : undefined),
+    [renderInPortal],
+  )
   const { isOpen, searchTerm, setSearchTerm, dropdownRef, close, toggle } = useDropdown({
     excludeRefs,
   })
@@ -133,10 +136,10 @@ export function ModelSelector({
     async function load() {
       if (!providersData) setIsLoading(true)
       try {
-        const tasks: [Promise<Awaited<ReturnType<typeof sdk.config.providers>>> | undefined, Promise<{ recent: ModelEntry[]; favorite: ModelEntry[] }>] = [
-          providersData ? undefined : sdk.config.providers(),
-          loadModelPrefs(),
-        ]
+        const tasks: [
+          Promise<Awaited<ReturnType<typeof sdk.config.providers>>> | undefined,
+          Promise<{ recent: ModelEntry[]; favorite: ModelEntry[] }>,
+        ] = [providersData ? undefined : sdk.config.providers(), loadModelPrefs()]
         const [provRes, modelPrefs] = await Promise.all(tasks)
 
         if (!active) return
@@ -174,12 +177,16 @@ export function ModelSelector({
   useEffect(() => {
     if (!isOpen) return
     let active = true
-    loadModelPrefs().then((prefs) => {
-      if (!active) return
-      setRecent(prefs.recent.slice(0, MAX_RECENT))
-      setFavorite(prefs.favorite)
-    }).catch(() => {})
-    return () => { active = false }
+    loadModelPrefs()
+      .then((prefs) => {
+        if (!active) return
+        setRecent(prefs.recent.slice(0, MAX_RECENT))
+        setFavorite(prefs.favorite)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
   }, [isOpen])
 
   const updatePortalPosition = useCallback(() => {
@@ -213,7 +220,7 @@ export function ModelSelector({
 
   const getCurrentDisplay = () => {
     if (!selectedProviderId || !selectedModelId) {
-      if (hasExplicitPlaceholder || !selectedProviderId && !selectedModelId) {
+      if (hasExplicitPlaceholder || (!selectedProviderId && !selectedModelId)) {
         if (hasExplicitPlaceholder) return effectivePlaceholder
         const pid = defaultIds.provider
         const mid = defaultIds.model
@@ -352,7 +359,8 @@ export function ModelSelector({
     buttonClassName ||
     "h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
 
-  const dropdownBase = "min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
+  const dropdownBase =
+    "min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
   const inlineDropdownClasses =
     dropdownPlacement === "bottom"
       ? `absolute left-0 ${dropdownBase} top-full mt-1`

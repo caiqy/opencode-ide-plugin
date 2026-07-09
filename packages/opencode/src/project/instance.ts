@@ -1,5 +1,5 @@
 import { AppRuntime } from "@/effect/app-runtime"
-import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { FSUtil } from "@opencode-ai/core/fs-util"
 import { InstanceStore } from "./instance-store"
 import { containsPath as containsPathInContext, context } from "./instance-context"
 import type { InstanceContext } from "./instance-context"
@@ -15,7 +15,7 @@ export const Instance = {
     project?: InstanceStore.LoadInput["project"]
     fn: () => R
   }): Promise<R> {
-    const directory = AppFileSystem.resolve(input.directory)
+    const directory = FSUtil.resolve(input.directory)
     const ctx = await AppRuntime.runPromise(
       InstanceStore.Service.use((store) =>
         store.load({
@@ -70,7 +70,7 @@ export const Instance = {
     return context.provide(ctx, fn)
   },
   async reload(input: { directory: string; init?: () => Promise<any>; project?: Project.Info; worktree?: string }) {
-    const directory = AppFileSystem.resolve(input.directory)
+    const directory = FSUtil.resolve(input.directory)
     const ctx = await AppRuntime.runPromise(
       InstanceStore.Service.use((store) =>
         store.reload({

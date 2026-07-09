@@ -21,6 +21,7 @@
 ### Task 1: 重写共享 Markdown 文案源
 
 **Files:**
+
 - Modify: `docs/release-content/README.shared.md`
 - Modify: `docs/release-content/description.shared.md`
 
@@ -126,6 +127,7 @@ git commit -m "docs(release): refresh shared plugin copy for image workflows"
 ### Task 2: 同步并检查平台产物
 
 **Files:**
+
 - Modify: `hosts/vscode-plugin/README.md`
 - Modify: `hosts/jetbrains-plugin/README.md`
 - Modify: `hosts/jetbrains-plugin/description.html`
@@ -163,7 +165,8 @@ This package is published as a VSCode extension and integrates OpenCode into the
 需要在 `hosts/jetbrains-plugin/description.html` 中确认至少出现以下内容：
 
 ```html
-OpenCode UI (unofficial) brings local OpenCode AI workflows into IDEs with chat, context management, image generation, and bundled backend binaries.
+OpenCode UI (unofficial) brings local OpenCode AI workflows into IDEs with chat, context management, image generation,
+and bundled backend binaries.
 
 <h2>生图配置要点</h2>
 ```
@@ -194,6 +197,7 @@ git commit -m "docs(release): sync generated marketplace content"
 ### Task 3: 回归验证发布内容链路
 
 **Files:**
+
 - Test: `script/release-content.test.ts`
 
 - [ ] **Step 1: 运行发布内容渲染测试**

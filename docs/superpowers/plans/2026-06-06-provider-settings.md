@@ -44,6 +44,7 @@
 ### Task 1: 添加 JSONC 解析依赖
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/package.json`
 
 - [ ] **Step 1: 添加直接依赖**
@@ -95,6 +96,7 @@ Expected: `TabBar.test.tsx` 测试通过。
 ### Task 2: 实现 Provider 设置纯逻辑
 
 **Files:**
+
 - Create: `packages/opencode/webgui/src/components/settings/providerSettingsUtils.ts`
 - Create: `packages/opencode/webgui/src/components/settings/providerSettingsUtils.test.ts`
 
@@ -129,10 +131,7 @@ describe("maskApiKey", () => {
 
 describe("normalizeWhitelist", () => {
   it("去空、trim、去重并保留首次出现顺序", () => {
-    expect(normalizeWhitelist([" gpt-4.1 ", "", "gpt-4.1", "claude-opus"])).toEqual([
-      "gpt-4.1",
-      "claude-opus",
-    ])
+    expect(normalizeWhitelist([" gpt-4.1 ", "", "gpt-4.1", "claude-opus"])).toEqual(["gpt-4.1", "claude-opus"])
   })
 })
 
@@ -389,6 +388,7 @@ Expected: PASS。
 ### Task 3: 添加 Provider 设置 tab UI 与单测
 
 **Files:**
+
 - Create: `packages/opencode/webgui/src/components/settings/ProviderSettingsTab.tsx`
 - Create: `packages/opencode/webgui/src/components/settings/ProviderSettingsTab.test.tsx`
 
@@ -642,7 +642,9 @@ export function ProviderSettingsTab({ formData, setFormData, onReloadConfig }: P
             <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">编辑 Provider</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">提供商不可修改，其余字段保存到全局配置。</p>
           </div>
-          <Button variant="secondary" onClick={() => setEditingProviderId(null)}>返回列表</Button>
+          <Button variant="secondary" onClick={() => setEditingProviderId(null)}>
+            返回列表
+          </Button>
         </div>
 
         {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
@@ -683,9 +685,13 @@ export function ProviderSettingsTab({ formData, setFormData, onReloadConfig }: P
               onChange={(event) => setModelInput(event.target.value)}
             />
             <datalist id="provider-model-options">
-              {modelOptions.map((model) => <option key={model} value={model} />)}
+              {modelOptions.map((model) => (
+                <option key={model} value={model} />
+              ))}
             </datalist>
-            <Button variant="primary" onClick={addModel} disabled={!modelInput.trim()}>添加模型</Button>
+            <Button variant="primary" onClick={addModel} disabled={!modelInput.trim()}>
+              添加模型
+            </Button>
           </div>
           <table className="mt-3 w-full text-xs">
             <tbody>
@@ -720,8 +726,12 @@ export function ProviderSettingsTab({ formData, setFormData, onReloadConfig }: P
         </div>
 
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setEditingProviderId(null)}>取消</Button>
-          <Button variant="primary" onClick={saveProvider} loading={isSaving}>保存 Provider</Button>
+          <Button variant="secondary" onClick={() => setEditingProviderId(null)}>
+            取消
+          </Button>
+          <Button variant="primary" onClick={saveProvider} loading={isSaving}>
+            保存 Provider
+          </Button>
         </div>
         <RestartRequiredModal isOpen={restartOpen} onClose={() => setRestartOpen(false)} />
       </div>
@@ -733,26 +743,47 @@ export function ProviderSettingsTab({ formData, setFormData, onReloadConfig }: P
       <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
         <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">配置更新</h3>
         <div className="mt-2 flex gap-2">
-          <input className="flex-1 rounded border px-3 py-2 text-sm" value={configUrl} onChange={(event) => setConfigUrl(event.target.value)} />
-          <Button variant="primary" onClick={updateFromUrl} loading={isSaving}>更新配置</Button>
+          <input
+            className="flex-1 rounded border px-3 py-2 text-sm"
+            value={configUrl}
+            onChange={(event) => setConfigUrl(event.target.value)}
+          />
+          <Button variant="primary" onClick={updateFromUrl} loading={isSaving}>
+            更新配置
+          </Button>
         </div>
         <div className="mt-2 flex gap-4 text-sm text-gray-600 dark:text-gray-400">
-          <label><input type="radio" checked={updateMode === "replace"} onChange={() => setUpdateMode("replace")} /> 覆盖</label>
-          <label><input type="radio" checked={updateMode === "merge"} onChange={() => setUpdateMode("merge")} /> 合并</label>
+          <label>
+            <input type="radio" checked={updateMode === "replace"} onChange={() => setUpdateMode("replace")} /> 覆盖
+          </label>
+          <label>
+            <input type="radio" checked={updateMode === "merge"} onChange={() => setUpdateMode("merge")} /> 合并
+          </label>
         </div>
       </div>
       {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
       <div>
         <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Provider 列表</h3>
         <table className="mt-2 w-full text-xs">
-          <thead><tr><th>提供商</th><th>接口地址</th><th>API 密钥</th><th>操作</th></tr></thead>
+          <thead>
+            <tr>
+              <th>提供商</th>
+              <th>接口地址</th>
+              <th>API 密钥</th>
+              <th>操作</th>
+            </tr>
+          </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.id}>
                 <td>{row.id}</td>
                 <td>{row.baseURL ?? "未配置"}</td>
                 <td>{row.maskedApiKey}</td>
-                <td><Button variant="secondary" onClick={() => startEdit(row.id)}>编辑</Button></td>
+                <td>
+                  <Button variant="secondary" onClick={() => startEdit(row.id)}>
+                    编辑
+                  </Button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -779,6 +810,7 @@ Expected: PASS。
 ### Task 4: 添加重启提示弹窗
 
 **Files:**
+
 - Create: `packages/opencode/webgui/src/components/settings/RestartRequiredModal.tsx`
 - Create: `packages/opencode/webgui/src/components/settings/RestartRequiredModal.test.tsx`
 
@@ -885,8 +917,12 @@ export function RestartRequiredModal({ isOpen, onClose }: RestartRequiredModalPr
         </div>
         {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={restarting}>暂不重启</Button>
-          <Button variant="primary" onClick={restart} loading={restarting}>立即重启</Button>
+          <Button variant="secondary" onClick={onClose} disabled={restarting}>
+            暂不重启
+          </Button>
+          <Button variant="primary" onClick={restart} loading={restarting}>
+            立即重启
+          </Button>
         </div>
       </div>
     </Modal>
@@ -909,6 +945,7 @@ Expected: PASS。
 ### Task 5: 接入 SettingsPanel 与 TabBar
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/SettingsPanel/TabBar.tsx`
 - Modify: `packages/opencode/webgui/src/components/SettingsPanel/TabBar.test.tsx`
 - Modify: `packages/opencode/webgui/src/components/SettingsPanel/index.tsx`
@@ -1027,9 +1064,11 @@ const [activeTab, setActiveTab] = useState<TabType>("provider")
 在内容区增加：
 
 ```tsx
-{activeTab === "provider" && (
-  <ProviderSettingsTab formData={formData} setFormData={setFormData} onReloadConfig={setOriginalFormData} />
-)}
+{
+  activeTab === "provider" && (
+    <ProviderSettingsTab formData={formData} setFormData={setFormData} onReloadConfig={setOriginalFormData} />
+  )
+}
 ```
 
 - [ ] **Step 7: 运行接入测试并确认通过**
@@ -1047,6 +1086,7 @@ Expected: PASS。
 ### Task 6: 覆盖远程配置下载流程
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/settings/ProviderSettingsTab.test.tsx`
 - Modify: `packages/opencode/webgui/src/components/settings/ProviderSettingsTab.tsx`
 
@@ -1098,7 +1138,10 @@ it("覆盖更新会下载 JSONC 并保留本地同名 provider 的 baseURL/apiKe
 ```tsx
 it("下载失败时显示错误且不保存", async () => {
   const user = userEvent.setup()
-  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 404 })))
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({ ok: false, status: 404 })),
+  )
   render(<ProviderSettingsTab formData={formData} setFormData={vi.fn()} onReloadConfig={vi.fn()} />)
 
   await user.click(screen.getByRole("button", { name: "更新配置" }))
@@ -1128,6 +1171,7 @@ setError(err instanceof Error && err.message.startsWith("配置下载失败") ? 
 ### Task 7: 全量验证
 
 **Files:**
+
 - Verify only
 
 - [ ] **Step 1: 运行相关单测**

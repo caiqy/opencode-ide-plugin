@@ -247,7 +247,9 @@ async function sessionRegenerateTitle(options: { path: { sessionID: string } }):
   }
 }
 
-async function sessionSyncVisible(options: { body: { sessionIDs: string[] } }): Promise<ApiResult<{ sessionIDs: string[] }>> {
+async function sessionSyncVisible(options: {
+  body: { sessionIDs: string[] }
+}): Promise<ApiResult<{ sessionIDs: string[] }>> {
   try {
     const response = await fetch("/session/visibility", {
       method: "PUT",

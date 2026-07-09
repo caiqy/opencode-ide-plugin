@@ -1,0 +1,23 @@
+# sync-opencode-webgui subagent progress
+
+- current_task: Task 5: 尽量全量验证
+- mapped_openspec_tasks:
+  - 5.1 运行相关 opencode typecheck/test/build 验证。
+  - 5.2 运行覆盖 session、message streaming、provider/model selection、permission/question 和 IDE bridge flows 的 WebGUI 验证。
+  - 5.3 运行相关 VSCode 和 JetBrains packaging 或 bridge 验证。
+  - 5.4 进入 verify 阶段前记录任何剩余上游兼容风险。
+- stage: final-review
+- review_mode: thorough
+- changed_files:
+  - openspec/changes/sync-opencode-webgui/.comet/task-5-report.md
+  - openspec/changes/sync-opencode-webgui/.comet/build/merge-evidence.md
+- red_green_evidence: WebGUI/VSCode/SDK passed; opencode and JetBrains recorded as failing/environment-blocked; reviewer approved DONE_WITH_CONCERNS checkoff
+- review_round: 1
+- risk_signals:
+  - packages/opencode remains red
+  - JetBrains requires Java 17+
+  - WebGUI flow coverage substituted by build/tests/host checks
+- notes: Task 5 已通过 reviewer；允许以 DONE_WITH_CONCERNS 进入 Comet verify。因仓库安全规则未提交 commit。
+- final_review: PASS with concerns; stale production log imports were fixed after pause and current-platform opencode build passed.
+- build_guard: recovering; `build_command` now points to `bun run --cwd packages/opencode build --single --skip-install` instead of default root `npm run build` probing.
+- remaining_risks: `packages/opencode` typecheck/test/httpapi drift remains red; JetBrains still requires Java 17+.

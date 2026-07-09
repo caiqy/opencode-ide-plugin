@@ -313,10 +313,22 @@ export function ProviderSettingsTab({ formData, setFormData, onReloadConfig }: P
         </div>
         <div className="mt-2 flex gap-4 text-sm text-gray-600 dark:text-gray-400">
           <label className="inline-flex items-center gap-1">
-            <input type="radio" checked={updateMode === "replace"} disabled={isSaving} onChange={() => setUpdateMode("replace")} /> 覆盖
+            <input
+              type="radio"
+              checked={updateMode === "replace"}
+              disabled={isSaving}
+              onChange={() => setUpdateMode("replace")}
+            />{" "}
+            覆盖
           </label>
           <label className="inline-flex items-center gap-1">
-            <input type="radio" checked={updateMode === "merge"} disabled={isSaving} onChange={() => setUpdateMode("merge")} /> 合并
+            <input
+              type="radio"
+              checked={updateMode === "merge"}
+              disabled={isSaving}
+              onChange={() => setUpdateMode("merge")}
+            />{" "}
+            合并
           </label>
         </div>
       </div>

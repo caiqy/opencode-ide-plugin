@@ -1,5 +1,7 @@
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { afterEach, describe, expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
 import path from "path"
 import { Instance } from "../../src/project/instance"
 import { Permission } from "../../src/permission"
@@ -7,9 +9,15 @@ import { Server } from "../../src/server/server"
 import { Skill } from "../../src/skill"
 import { Log } from "../../src/util/log"
 import { resetDatabase } from "../fixture/db"
-import { provideInstance, tmpdir } from "../fixture/fixture"
+import { provideInstance, testInstanceStoreLayer, tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
+
+const skillLayer = Layer.mergeAll(
+  LayerNode.compile(Skill.node),
+  LayerNode.compile(CrossSpawnSpawner.node),
+  testInstanceStoreLayer,
+)
 
 afterEach(async () => {
   await Instance.disposeAll()
@@ -54,11 +62,11 @@ describe("skill enabled route", () => {
     expect(await response.json()).toBe(true)
     expect(await Bun.file(path.join(tmp.path, "opencode.json")).json()).toMatchObject({
       permission: {
-          skill: {
-            "route-skill": "deny",
-          },
+        skill: {
+          "route-skill": "deny",
         },
-      })
+      },
+    })
 
     const config = await Server.createApp({}).request("/config", {
       headers: { "x-opencode-directory": tmp.path },
@@ -115,18 +123,16 @@ describe("skill enabled route", () => {
     })
 
     const names = await Effect.runPromise(
-      provideInstance(tmp.path)(
-        Effect.gen(function* () {
-          const skill = yield* Skill.Service
-          const list = yield* skill.available({
-            name: "build",
-            mode: "primary",
-            permission: Permission.fromConfig({ skill: "deny" }),
-            options: {},
-          })
-          return list.map((item) => item.name)
-        }).pipe(Effect.provide(Skill.defaultLayer)),
-      ),
+      Effect.gen(function* () {
+        const skill = yield* Skill.Service
+        const list = yield* skill.available({
+          name: "build",
+          mode: "primary",
+          permission: Permission.fromConfig({ skill: "deny" }),
+          options: {},
+        })
+        return list.map((item) => item.name)
+      }).pipe(provideInstance(tmp.path), Effect.provide(skillLayer)),
     )
 
     expect(names).toContain("route-skill")
@@ -182,18 +188,16 @@ describe("skill enabled route", () => {
     expect(response.status).toBe(200)
 
     const names = await Effect.runPromise(
-      provideInstance(tmp.path)(
-        Effect.gen(function* () {
-          const skill = yield* Skill.Service
-          const list = yield* skill.available({
-            name: "build",
-            mode: "primary",
-            permission: [],
-            options: {},
-          })
-          return list.map((item) => item.name)
-        }).pipe(Effect.provide(Skill.defaultLayer)),
-      ),
+      Effect.gen(function* () {
+        const skill = yield* Skill.Service
+        const list = yield* skill.available({
+          name: "build",
+          mode: "primary",
+          permission: [],
+          options: {},
+        })
+        return list.map((item) => item.name)
+      }).pipe(provideInstance(tmp.path), Effect.provide(skillLayer)),
     )
 
     expect(names).not.toContain("route-skill")
@@ -207,18 +211,16 @@ describe("skill enabled route", () => {
     })
 
     const snapshots = await Effect.runPromise(
-      provideInstance(tmp.path)(
-        Effect.gen(function* () {
-          const skill = yield* Skill.Service
-          const agent = { name: "build", mode: "primary" as const, permission: [], options: {} }
-          const before = (yield* skill.available(agent)).map((item) => item.name)
-          const disabled = yield* Effect.promise(() => patchSkill(tmp.path, "route-skill", false))
-          const afterDisable = (yield* skill.available(agent)).map((item) => item.name)
-          const enabled = yield* Effect.promise(() => patchSkill(tmp.path, "route-skill", true))
-          const afterEnable = (yield* skill.available(agent)).map((item) => item.name)
-          return { before, disabled: disabled.status, afterDisable, enabled: enabled.status, afterEnable }
-        }).pipe(Effect.provide(Skill.defaultLayer)),
-      ),
+      Effect.gen(function* () {
+        const skill = yield* Skill.Service
+        const agent = { name: "build", mode: "primary" as const, permission: [], options: {} }
+        const before = (yield* skill.available(agent)).map((item) => item.name)
+        const disabled = yield* Effect.promise(() => patchSkill(tmp.path, "route-skill", false))
+        const afterDisable = (yield* skill.available(agent)).map((item) => item.name)
+        const enabled = yield* Effect.promise(() => patchSkill(tmp.path, "route-skill", true))
+        const afterEnable = (yield* skill.available(agent)).map((item) => item.name)
+        return { before, disabled: disabled.status, afterDisable, enabled: enabled.status, afterEnable }
+      }).pipe(provideInstance(tmp.path), Effect.provide(skillLayer)),
     )
 
     expect(snapshots.before).toContain("route-skill")

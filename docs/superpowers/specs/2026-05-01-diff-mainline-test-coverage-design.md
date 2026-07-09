@@ -260,6 +260,7 @@
 - `session.diff.status -> sessionDiffStatus` 映射
 
 #### `packages/opencode/webgui/src/components/MessageInput/FooterPanels.test.tsx`
+
 #### `packages/opencode/webgui/src/components/FileChangesPanel.test.tsx`
 
 重点检查：

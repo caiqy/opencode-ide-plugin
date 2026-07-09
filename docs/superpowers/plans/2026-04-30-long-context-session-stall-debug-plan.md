@@ -44,6 +44,7 @@
 ### Task 1: 建立调试 helper 与回归测试
 
 **Files:**
+
 - Create: `packages/opencode/src/util/debug-session-trace.ts`
 - Test: `packages/opencode/test/util/debug-session-trace.test.ts`
 
@@ -53,10 +54,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import path from "node:path"
 import { tmpdir } from "../fixture/fixture"
-import {
-  createDebugSessionTrace,
-  TARGET_DEBUG_SESSION_ID,
-} from "../../src/util/debug-session-trace"
+import { createDebugSessionTrace, TARGET_DEBUG_SESSION_ID } from "../../src/util/debug-session-trace"
 
 describe("debug-session-trace", () => {
   test("ignores non-target sessions and writes target events", async () => {
@@ -96,7 +94,10 @@ describe("debug-session-trace", () => {
     await trace.flush()
 
     const text = await Bun.file(trace.file).text()
-    const rows = text.trim().split("\n").map((line) => JSON.parse(line))
+    const rows = text
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
 
     expect(rows).toEqual([
       expect.objectContaining({
@@ -139,11 +140,7 @@ type WindowState = {
   fields: Record<string, number>
 }
 
-export function createDebugSessionTrace(input?: {
-  directory?: string
-  sessionID?: string
-  now?: () => number
-}) {
+export function createDebugSessionTrace(input?: { directory?: string; sessionID?: string; now?: () => number }) {
   const now = input?.now ?? Date.now
   const root = input?.directory ?? process.cwd()
   const file = path.join(root, ".opencode-debug", `debug-session-trace-${Date.now()}.jsonl`)
@@ -215,6 +212,7 @@ Expected: PASS。
 ### Task 2: 给 HTTP 入口与会话主链路接入 trace
 
 **Files:**
+
 - Modify: `packages/opencode/src/server/routes/instance/session.ts`
 - Modify: `packages/opencode/src/server/routes/instance/httpapi/session.ts`
 - Modify: `packages/opencode/src/session/prompt.ts`
@@ -233,9 +231,12 @@ test("writes trace rows for target session message reads", async () => {
 
   process.env.OPENCODE_DEBUG_SESSION_TRACE = session.id
 
-  const response = await app().request(pathFor(SessionPaths.message, { sessionID: session.id, messageID: message.info.id }), {
-    headers,
-  })
+  const response = await app().request(
+    pathFor(SessionPaths.message, { sessionID: session.id, messageID: message.info.id }),
+    {
+      headers,
+    },
+  )
 
   expect(response.status).toBe(200)
   const debugDir = path.join(tmp.path, ".opencode-debug")
@@ -284,29 +285,34 @@ try {
 }
 
 // prompt.ts
-yield* Effect.promise(() =>
-  DebugSessionTrace.event({
-    tag: "prompt.enter",
-    sessionID: input.sessionID,
-    meta: { messageCount: input.messages.length, partCount: input.messages.reduce((sum, item) => sum + item.parts.length, 0) },
-  }),
-)
+yield *
+  Effect.promise(() =>
+    DebugSessionTrace.event({
+      tag: "prompt.enter",
+      sessionID: input.sessionID,
+      meta: {
+        messageCount: input.messages.length,
+        partCount: input.messages.reduce((sum, item) => sum + item.parts.length, 0),
+      },
+    }),
+  )
 
 // processor.ts
 const startedAt = Date.now()
-yield* Effect.promise(() => DebugSessionTrace.event({ tag: "step.start", sessionID, step }))
-yield* stepEffect.pipe(
-  Effect.ensuring(
-    Effect.promise(() =>
-      DebugSessionTrace.event({ tag: "step.finish", sessionID, step, durationMs: Date.now() - startedAt }),
+yield * Effect.promise(() => DebugSessionTrace.event({ tag: "step.start", sessionID, step }))
+yield *
+  stepEffect.pipe(
+    Effect.ensuring(
+      Effect.promise(() =>
+        DebugSessionTrace.event({ tag: "step.finish", sessionID, step, durationMs: Date.now() - startedAt }),
+      ),
     ),
-  ),
-)
+  )
 
 // summary.ts
-yield* Effect.promise(() => DebugSessionTrace.event({ tag: "summary.start", sessionID }))
+yield * Effect.promise(() => DebugSessionTrace.event({ tag: "summary.start", sessionID }))
 // summary work...
-yield* Effect.promise(() => DebugSessionTrace.event({ tag: "summary.finish", sessionID, durationMs }))
+yield * Effect.promise(() => DebugSessionTrace.event({ tag: "summary.finish", sessionID, durationMs }))
 ```
 
 - [ ] **Step 4: 再跑 HTTP API 测试，确认 trace 文件生成且原测试仍通过**
@@ -320,6 +326,7 @@ Expected: PASS。
 ### Task 3: 给 LLM 流、高频事件窗口与 ACP 反查链接入 trace
 
 **Files:**
+
 - Modify: `packages/opencode/src/session/llm.ts`
 - Modify: `packages/opencode/src/session/session.ts`
 - Modify: `packages/opencode/src/session/message-v2.ts`
@@ -342,10 +349,16 @@ test("records acp fetch timing and aggregate counters", async () => {
   now = 21_500
   await trace.flush()
 
-  const rows = (await Bun.file(trace.file).text()).trim().split("\n").map((line) => JSON.parse(line))
+  const rows = (await Bun.file(trace.file).text())
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line))
   expect(rows).toEqual([
     expect.objectContaining({ tag: "acp.sessionMessage.fetch", durationMs: 42 }),
-    expect.objectContaining({ tag: "acp.window", meta: expect.objectContaining({ fetchCount: 1, fetchDurationMs: 42 }) }),
+    expect.objectContaining({
+      tag: "acp.window",
+      meta: expect.objectContaining({ fetchCount: 1, fetchDurationMs: 42 }),
+    }),
   ])
 })
 ```
@@ -410,7 +423,12 @@ await DebugSessionTrace.event({
   meta: { messageID: props.messageID },
 })
 await DebugSessionTrace.count({ sessionID: props.sessionID, bucket: "acp.window", field: "fetchCount", value: 1 })
-await DebugSessionTrace.count({ sessionID: props.sessionID, bucket: "acp.window", field: "fetchDurationMs", value: Date.now() - fetchStartedAt })
+await DebugSessionTrace.count({
+  sessionID: props.sessionID,
+  bucket: "acp.window",
+  field: "fetchDurationMs",
+  value: Date.now() - fetchStartedAt,
+})
 ```
 
 - [ ] **Step 4: 再跑 helper 测试，确认事件/ACP 聚合格式通过**
@@ -424,6 +442,7 @@ Expected: PASS。
 ### Task 4: 全量验证、生成物检查与手工复现说明
 
 **Files:**
+
 - Verify only
 
 - [ ] **Step 1: 运行受影响测试集**

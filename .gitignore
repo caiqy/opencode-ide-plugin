@@ -15,6 +15,8 @@ ts-dist
 .turbo
 **/.serena
 .serena/
+**/.omo
+.omo/
 /result
 refs
 Session.vim
@@ -50,6 +52,7 @@ target
 # ---- Java/Kotlin/Gradle ----
 .gradle/
 build/
+!openspec/changes/sync-opencode-webgui/.comet/build/
 out/
 .kotlinc/
 *.class

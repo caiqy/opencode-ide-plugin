@@ -141,11 +141,14 @@ export function useMessageScroll(
 
   const hasUserIntent = useCallback(() => Date.now() - lastUserIntent.current <= USER_INTENT_TTL, [])
 
-  const update = useCallback((el: HTMLElement, nextMode = mode.current) => {
-    const at = distanceFromBottom(el) <= BOTTOM_THRESHOLD
-    syncLast(el)
-    commitView(at ? "following" : nextMode, at)
-  }, [commitView, syncLast])
+  const update = useCallback(
+    (el: HTMLElement, nextMode = mode.current) => {
+      const at = distanceFromBottom(el) <= BOTTOM_THRESHOLD
+      syncLast(el)
+      commitView(at ? "following" : nextMode, at)
+    },
+    [commitView, syncLast],
+  )
 
   const markProgram = useCallback((cause: ScrollCause, top: number, target: number | null) => {
     program.current = { cause, top, target, time: Date.now() }
@@ -278,7 +281,8 @@ export function useMessageScroll(
 
     const dimensionsChanged = el.scrollHeight !== prevHeight || el.clientHeight !== prevClient
     const wasAtBottom = prevHeight - prevClient - prevTop <= BOTTOM_THRESHOLD
-    const keepsBottomAnchor = item?.cause === "send-message" || item?.cause === "auto-follow" || item?.cause === "button-seek"
+    const keepsBottomAnchor =
+      item?.cause === "send-message" || item?.cause === "auto-follow" || item?.cause === "button-seek"
     if (item?.cause === "button-seek" && !dimensionsChanged && !hasUserIntent()) {
       pinBottom("button-seek", "auto")
       return

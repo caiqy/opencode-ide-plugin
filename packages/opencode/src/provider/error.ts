@@ -1,41 +1,24 @@
 import { APICallError } from "ai"
 import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
-import type { ProviderID } from "./schema"
+import type { ProviderV2 } from "@opencode-ai/core/provider"
+import { isContextOverflow } from "@opencode-ai/llm"
 
-// Adapted from overflow detection patterns in:
-// https://github.com/badlogic/pi-mono/blob/main/packages/ai/src/utils/overflow.ts
-const OVERFLOW_PATTERNS = [
-  /prompt is too long/i, // Anthropic
-  /input is too long for requested model/i, // Amazon Bedrock
-  /exceeds the context window/i, // OpenAI (Completions + Responses API message text)
-  /input token count.*exceeds the maximum/i, // Google (Gemini)
-  /maximum prompt length is \d+/i, // xAI (Grok)
-  /reduce the length of the messages/i, // Groq
-  /maximum context length is \d+ tokens/i, // OpenRouter, DeepSeek, vLLM
-  /exceeds the limit of \d+/i, // GitHub Copilot
-  /exceeds the available context size/i, // llama.cpp server
-  /greater than the context length/i, // LM Studio
-  /context window exceeds limit/i, // MiniMax
-  /exceeded model token limit/i, // Kimi For Coding, Moonshot
-  /context[_ ]length[_ ]exceeded/i, // Generic fallback
-  /request entity too large/i, // HTTP 413
-  /context length is only \d+ tokens/i, // vLLM
-  /input length.*exceeds.*context length/i, // vLLM
-  /prompt too long; exceeded (?:max )?context length/i, // Ollama explicit overflow error
-  /too large for model with \d+ maximum context length/i, // Mistral
-  /model_context_window_exceeded/i, // z.ai non-standard finish_reason surfaced as error text
-]
+export class HeaderTimeoutError extends Error {
+  public override readonly name = "ProviderHeaderTimeoutError"
 
-const TRANSIENT_STREAM_ERROR_CODES = new Set([
-  "connection_timeout",
-  "internal_error",
-  "rate_limit_exceeded",
-  "server_error",
-  "server_is_overloaded",
-  "stream_read_error",
-  "stream_timeout",
-])
+  constructor(public readonly ms: number) {
+    super(`Provider response headers timed out after ${ms}ms`)
+  }
+}
+
+export class ResponseStreamError extends Error {
+  public override readonly name = "ProviderResponseStreamError"
+
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+  }
+}
 
 function isOpenAiErrorRetryable(e: APICallError) {
   const status = e.statusCode
@@ -46,16 +29,7 @@ function isOpenAiErrorRetryable(e: APICallError) {
 
 // Providers not reliably handled in this function:
 // - z.ai: can accept overflow silently (needs token-count/context-window checks)
-function isOverflow(message: string) {
-  if (OVERFLOW_PATTERNS.some((p) => p.test(message))) return true
-
-  // Providers/status patterns handled outside of regex list:
-  // - Cerebras: often returns "400 (no body)" / "413 (no body)"
-  // - Mistral: often returns "400 (no body)" / "413 (no body)"
-  return /^4(00|13)\s*(status code)?\s*\(no body\)/i.test(message)
-}
-
-function message(providerID: ProviderID, e: APICallError) {
+function message(providerID: ProviderV2.ID, e: APICallError) {
   return iife(() => {
     const msg = e.message
     if (msg === "") {
@@ -74,14 +48,7 @@ function message(providerID: ProviderID, e: APICallError) {
     try {
       const body = JSON.parse(e.responseBody)
       // try to extract common error message fields
-      const errMsg =
-        typeof body.message === "string"
-          ? body.message
-          : typeof body.error?.message === "string"
-            ? body.error.message
-            : typeof body.error === "string"
-              ? body.error
-              : undefined
+      const errMsg = body.message || body.error || body.error?.message
       if (errMsg && typeof errMsg === "string") {
         return `${msg}: ${errMsg}`
       }
@@ -119,10 +86,6 @@ function json(input: unknown) {
   return undefined
 }
 
-function isTransientStreamErrorCode(code: unknown) {
-  return typeof code === "string" && TRANSIENT_STREAM_ERROR_CODES.has(code)
-}
-
 export type ParsedStreamError =
   | {
       type: "context_overflow"
@@ -142,43 +105,13 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
   if (!body) return
 
   const responseBody = JSON.stringify(body)
-  if (body.type !== "error") {
-    if (typeof body.error !== "string") return
-    if (!isTransientStreamErrorCode(body.error)) return
-    return {
-      type: "api_error",
-      message: typeof body.message === "string" ? body.message : body.error,
-      isRetryable: true,
-      responseBody,
-    }
-  }
+  if (body.type !== "error") return
 
-  const code = typeof body?.error?.code === "string" ? body.error.code : typeof body.code === "string" ? body.code : undefined
-  const message = typeof body?.error?.message === "string" ? body.error.message : typeof body.message === "string" ? body.message : undefined
-  const isUpstreamSignal = body?.error?.type === "upstream_error" || code === "upstream_error"
-  // Let permanent upstream-wrapped codes fall through to the specific
-  // non-retryable handlers below instead of retrying every upstream_error.
-  if (isTransientStreamErrorCode(code) || (isUpstreamSignal && (typeof code !== "string" || code === "upstream_error"))) {
-    const msg =
-      typeof body?.error?.message === "string"
-        ? body.error.message
-        : typeof code === "string"
-          ? code
-          : "upstream_error"
-    return {
-      type: "api_error",
-      message: msg,
-      isRetryable: true,
-      responseBody,
-    }
-  }
-
-  switch (code) {
-    case "context_too_large":
+  switch (body?.error?.code) {
     case "context_length_exceeded":
       return {
         type: "context_overflow",
-        message: message ?? "Input exceeds context window of this model",
+        message: "Input exceeds context window of this model",
         responseBody,
       }
     case "insufficient_quota":
@@ -196,10 +129,9 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
         responseBody,
       }
     case "invalid_prompt":
-    case "invalid_api_key":
       return {
         type: "api_error",
-        message: typeof body?.error?.message === "string" ? body?.error?.message : "Invalid request.",
+        message: typeof body?.error?.message === "string" ? body?.error?.message : "Invalid prompt.",
         isRetryable: false,
         responseBody,
       }
@@ -230,19 +162,35 @@ export type ParsedAPICallError =
       metadata?: Record<string, string>
     }
 
-export function parseAPICallError(input: { providerID: ProviderID; error: APICallError }): ParsedAPICallError {
+export function parseAPICallError(input: { providerID: ProviderV2.ID; error: APICallError }): ParsedAPICallError {
   const m = message(input.providerID, input.error)
-  const body = json(input.error.responseBody)
-  if (
-    isOverflow(m) ||
-    input.error.statusCode === 413 ||
-    body?.error?.code === "context_length_exceeded" ||
-    body?.error?.code === "context_too_large"
-  ) {
+  const body = json(input.error.responseBody) ?? json(input.error.cause)
+  const responseBody = input.error.responseBody ?? (body ? JSON.stringify(body) : undefined)
+  const parsed = parseStreamError(body)
+  if (parsed?.type === "context_overflow") {
+    return {
+      type: "context_overflow",
+      message: parsed.message,
+      responseBody: parsed.responseBody,
+    }
+  }
+  if (parsed?.type === "api_error") {
+    const metadata = input.error.url ? { url: input.error.url } : undefined
+    return {
+      type: "api_error",
+      message: parsed.message,
+      statusCode: input.error.statusCode,
+      isRetryable: parsed.isRetryable,
+      responseHeaders: input.error.responseHeaders,
+      responseBody: parsed.responseBody,
+      metadata,
+    }
+  }
+  if (isContextOverflow(m) || input.error.statusCode === 413 || body?.error?.code === "context_length_exceeded") {
     return {
       type: "context_overflow",
       message: m,
-      responseBody: input.error.responseBody,
+      responseBody,
     }
   }
 
@@ -253,7 +201,7 @@ export function parseAPICallError(input: { providerID: ProviderID; error: APICal
     statusCode: input.error.statusCode,
     isRetryable: input.providerID.startsWith("openai") ? isOpenAiErrorRetryable(input.error) : input.error.isRetryable,
     responseHeaders: input.error.responseHeaders,
-    responseBody: input.error.responseBody,
+    responseBody,
     metadata,
   }
 }

@@ -6,13 +6,13 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| 抽屉状态上下文 | `packages/opencode/webgui/src/state/SubtaskDrawerContext.tsx` |
-| 抽屉壳层与拖拽宽度 | `packages/opencode/webgui/src/components/SubtaskDrawer/SubtaskDrawer.tsx` |
-| 子会话消息列表 | `packages/opencode/webgui/src/components/SubtaskDrawer/SubtaskMessageList.tsx` |
-| task 工具卡内容 | `packages/opencode/webgui/src/components/parts/ToolPart/TaskTool.tsx` |
-| task 工具入口与阻塞态 | `packages/opencode/webgui/src/components/parts/ToolPart/index.tsx` |
+| 角色                  | 文件                                                                           |
+| --------------------- | ------------------------------------------------------------------------------ |
+| 抽屉状态上下文        | `packages/opencode/webgui/src/state/SubtaskDrawerContext.tsx`                  |
+| 抽屉壳层与拖拽宽度    | `packages/opencode/webgui/src/components/SubtaskDrawer/SubtaskDrawer.tsx`      |
+| 子会话消息列表        | `packages/opencode/webgui/src/components/SubtaskDrawer/SubtaskMessageList.tsx` |
+| task 工具卡内容       | `packages/opencode/webgui/src/components/parts/ToolPart/TaskTool.tsx`          |
+| task 工具入口与阻塞态 | `packages/opencode/webgui/src/components/parts/ToolPart/index.tsx`             |
 
 ## 意图
 

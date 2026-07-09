@@ -2,14 +2,13 @@ import { Effect, Option, Schema, Scope, Stream } from "effect"
 import { NonNegativeInt } from "@opencode-ai/core/schema"
 import * as path from "path"
 import * as Tool from "./tool"
-import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { FSUtil } from "@opencode-ai/core/fs-util"
 import { LSP } from "@/lsp/lsp"
 import DESCRIPTION from "./read.txt"
 import { InstanceState } from "@/effect/instance-state"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { Instruction } from "../session/instruction"
-import { classifyAttachment } from "@/util/media"
-import { Reference } from "@/reference/reference"
+import { isPdfAttachment, sniffAttachmentMime } from "@/util/media"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -36,13 +35,42 @@ export const Parameters = Schema.Struct({
   }),
 })
 
-export const ReadTool = Tool.define(
+type Display =
+  | {
+      type: "directory"
+      path: string
+      entries: string[]
+      offset: number
+      totalEntries: number
+      truncated: boolean
+    }
+  | {
+      type: "file"
+      path: string
+      text: string
+      lineStart: number
+      lineEnd: number
+      totalLines: number
+      truncated: boolean
+    }
+
+type Metadata = {
+  preview: string
+  truncated: boolean
+  loaded: string[]
+  display?: Display
+}
+
+export const ReadTool = Tool.define<
+  typeof Parameters,
+  Metadata,
+  FSUtil.Service | Instruction.Service | LSP.Service | Scope.Scope
+>(
   "read",
   Effect.gen(function* () {
-    const fs = yield* AppFileSystem.Service
+    const fs = yield* FSUtil.Service
     const instruction = yield* Instruction.Service
     const lsp = yield* LSP.Service
-    const reference = yield* Reference.Service
     const scope = yield* Scope.Scope
 
     const miss = Effect.fn("ReadTool.miss")(function* (filepath: string) {
@@ -87,7 +115,8 @@ export const ReadTool = Tool.define(
     })
 
     const warm = Effect.fn("ReadTool.warm")(function* (filepath: string) {
-      yield* lsp.touchFile(filepath).pipe(Effect.ignore, Effect.forkIn(scope))
+      // LSP warm-up is optional; do not let a background defect fail an otherwise successful read.
+      yield* lsp.touchFile(filepath).pipe(Effect.ignoreCause, Effect.forkIn(scope))
     })
 
     const readSample = Effect.fn("ReadTool.readSample")(function* (
@@ -196,9 +225,10 @@ export const ReadTool = Tool.define(
 
       return nonPrintableCount / bytes.length > 0.3
     }
+
     const run = Effect.fn("ReadTool.execute")(function* (
       params: Schema.Schema.Type<typeof Parameters>,
-      ctx: Tool.Context,
+      ctx: Tool.Context<Metadata>,
     ) {
       const instance = yield* InstanceState.context
       let filepath = params.filePath
@@ -206,9 +236,8 @@ export const ReadTool = Tool.define(
         filepath = path.resolve(instance.directory, filepath)
       }
       if (process.platform === "win32") {
-        filepath = AppFileSystem.normalizePath(filepath)
+        filepath = FSUtil.normalizePath(filepath)
       }
-      yield* reference.ensure(filepath)
       const title = path.relative(instance.worktree, filepath)
 
       const stat = yield* fs.stat(filepath).pipe(
@@ -219,7 +248,7 @@ export const ReadTool = Tool.define(
       )
 
       yield* assertExternalDirectoryEffect(ctx, filepath, {
-        bypass: Boolean(ctx.extra?.["bypassCwdCheck"]) || (yield* reference.contains(filepath)),
+        bypass: Boolean(ctx.extra?.["bypassCwdCheck"]),
         kind: stat?.type === "Directory" ? "directory" : "file",
       })
 
@@ -256,6 +285,14 @@ export const ReadTool = Tool.define(
             preview: sliced.slice(0, 20).join("\n"),
             truncated,
             loaded: [] as string[],
+            display: {
+              type: "directory" as const,
+              path: filepath,
+              entries: sliced,
+              offset,
+              totalEntries: items.length,
+              truncated,
+            },
           },
         }
       }
@@ -263,10 +300,12 @@ export const ReadTool = Tool.define(
       const loaded = yield* instruction.resolve(ctx.messages, filepath, ctx.messageID)
       const sample = yield* readSample(filepath, Number(stat.size), SAMPLE_BYTES)
 
-      const classified = classifyAttachment(filepath, sample, AppFileSystem.mimeType(filepath))
-      if (classified.kind === "pdf" || (classified.kind === "image" && SUPPORTED_IMAGE_MIMES.has(classified.mime))) {
+      const mime = sniffAttachmentMime(sample, FSUtil.mimeType(filepath))
+      const isImage = SUPPORTED_IMAGE_MIMES.has(mime)
+
+      if (isImage || isPdfAttachment(mime)) {
         const bytes = yield* fs.readFile(filepath)
-        const msg = classified.kind === "pdf" ? "PDF read successfully" : "Image read successfully"
+        const msg = isPdfAttachment(mime) ? "PDF read successfully" : "Image read successfully"
         return {
           title,
           output: msg,
@@ -278,14 +317,14 @@ export const ReadTool = Tool.define(
           attachments: [
             {
               type: "file" as const,
-              mime: classified.mime,
-              url: `data:${classified.mime};base64,${Buffer.from(bytes).toString("base64")}`,
+              mime,
+              url: `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`,
             },
           ],
         }
       }
 
-      if (classified.kind === "binary") {
+      if (isBinaryFile(filepath, sample)) {
         return yield* Effect.fail(new Error(`Cannot read binary file: ${filepath}`))
       }
 
@@ -324,6 +363,15 @@ export const ReadTool = Tool.define(
           preview: file.raw.slice(0, 20).join("\n"),
           truncated,
           loaded: loaded.map((item) => item.filepath),
+          display: {
+            type: "file" as const,
+            path: filepath,
+            text: file.raw.join("\n"),
+            lineStart: file.offset,
+            lineEnd: last,
+            totalLines: file.count,
+            truncated,
+          },
         },
       }
     })
@@ -331,7 +379,7 @@ export const ReadTool = Tool.define(
     return {
       description: DESCRIPTION,
       parameters: Parameters,
-      execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
+      execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context<Metadata>) =>
         run(params, ctx).pipe(Effect.orDie),
     }
   }),

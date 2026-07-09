@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test"
-import * as Log from "@opencode-ai/core/util/log"
+import { Log } from "../../src/util/log"
 import type { Session as SessionNS } from "../../src/session/session"
 import { SessionID, type SessionID as SessionIDType } from "../../src/session/schema"
 import { resetDatabase } from "../fixture/db"
@@ -39,6 +39,7 @@ const { setStandardForegroundReadTestGate } = await import("../../src/server/rou
 const { SessionPaths } = await import("../../src/server/routes/instance/httpapi/groups/session")
 const { Session } = await import("../../src/session/session")
 const { Instance } = await import("../../src/project/instance")
+const { AppRuntime } = await import("../../src/effect/app-runtime")
 
 function pathFor(template: string, params: Record<string, string>) {
   return Object.entries(params).reduce((result, [key, value]) => result.replace(`:${key}`, value), template)
@@ -47,7 +48,7 @@ function pathFor(template: string, params: Record<string, string>) {
 async function createSessionInDirectory(directory: string, input?: SessionNS.CreateInput) {
   return Instance.provide({
     directory,
-    fn: () => Session.create(input),
+    fn: () => AppRuntime.runPromise(Session.Service.use((session) => session.create(input))),
   })
 }
 
@@ -79,7 +80,9 @@ async function assertReadDoesNotGrowForegroundState(input: {
   })
 
   try {
-    const responsePromise = Promise.resolve().then(() => Server.Default().app.request(input.path, { method: "GET", headers }))
+    const responsePromise = Promise.resolve().then(() =>
+      Server.Default().app.request(input.path, { method: "GET", headers }),
+    )
     let responded = false
     void responsePromise.then(
       () => {

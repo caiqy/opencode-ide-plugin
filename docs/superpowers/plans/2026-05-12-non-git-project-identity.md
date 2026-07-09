@@ -32,6 +32,7 @@
 ### Task 1: 先锁定 non-git 项目身份与会话归属
 
 **Files:**
+
 - Modify: `packages/opencode/test/project/project.test.ts`
 - Modify: `packages/opencode/test/server/global-session-list.test.ts`
 
@@ -120,6 +121,7 @@ git commit -m "test: lock non-git project identity semantics"
 ### Task 2: 锁定 non-git 下的 generated image 与 config 边界
 
 **Files:**
+
 - Modify: `packages/opencode/test/server/generated-image-route.test.ts`
 - Modify: `packages/opencode/test/config/config.test.ts`
 
@@ -193,6 +195,7 @@ git commit -m "test: lock non-git path boundaries"
 ### Task 3: 实现 non-git 稳定 `ProjectID` 与 legacy global session 迁移
 
 **Files:**
+
 - Modify: `packages/opencode/src/project/schema.ts`
 - Modify: `packages/opencode/src/project/project.ts`
 - Create: `packages/opencode/migration/20260512170000_non_git_project_identity/migration.sql`
@@ -288,10 +291,11 @@ const migrateLegacyGlobalSessions = Effect.fn("Project.migrateLegacyGlobalSessio
 
 ```ts
 if (ProjectID.isNonGit(result.id)) {
-  yield* migrateLegacyGlobalSessions({
-    directory: data.sandbox,
-    projectID: result.id,
-  })
+  yield *
+    migrateLegacyGlobalSessions({
+      directory: data.sandbox,
+      projectID: result.id,
+    })
 }
 ```
 
@@ -380,6 +384,7 @@ git commit -m "feat: give non-git directories stable project identities"
 ### Task 4: 清理 `"/"` 哨兵消费者并完成全链路回归
 
 **Files:**
+
 - Modify: `packages/opencode/src/project/instance.ts`
 - Modify: `packages/opencode/src/lsp/lsp.ts`
 - Modify: `packages/opencode/src/plugin/install.ts`
@@ -515,6 +520,7 @@ git commit -m "refactor: remove non-git worktree sentinel paths"
 ### Task 5: 补齐 non-git plan 路径与 legacy 一次性迁移缺口
 
 **Files:**
+
 - Modify: `packages/opencode/src/session/session.ts`
 - Modify: `packages/opencode/test/session/session.test.ts`
 - Modify: `packages/opencode/migration/20260512170000_non_git_project_identity/migration.sql`

@@ -22,6 +22,7 @@
 ### Task 1: 用 JetBrains 单测锁定“空结果算最新版”的边界
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/update/PluginUpdateServiceTest.kt`
 - Test: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/update/PluginUpdateServiceTest.kt`
 
@@ -138,6 +139,7 @@ Expected: 只看到新增测试，没有对已有异常边界测试做语义性�
 ### Task 2: 修正 `PluginUpdateService` 的 strict fallback 语义
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/PluginUpdateService.kt`
 - Test: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/update/PluginUpdateServiceTest.kt`
 

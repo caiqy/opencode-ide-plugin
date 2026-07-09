@@ -11,9 +11,9 @@ export function isUnsupportedNativeSystemFileDrop(input: { types: readonly strin
   return input.paths.length === 0 && input.types.includes("Files") && !hasUriListType(input.types)
 }
 
-export function isUnsupportedForwardedSystemFileDrop(input:
-  | { dataTransfer?: { types?: readonly string[]; data?: Record<string, string> } }
-  | undefined) {
+export function isUnsupportedForwardedSystemFileDrop(
+  input: { dataTransfer?: { types?: readonly string[]; data?: Record<string, string> } } | undefined,
+) {
   const types = input?.dataTransfer?.types ?? []
   const data = input?.dataTransfer?.data ?? {}
   return types.includes("Files") && !data["application/vnd.code.uri-list"] && !data["text/uri-list"]

@@ -23,24 +23,25 @@
 
 本次改动涉及以下文件，按职责划分：
 
-| 文件 | 职责 | 改动 |
-|------|------|------|
-| `src/state/repo/quickPhraseRepo.ts` | 快捷短语持久化与归一化 | 删除 `mode` 类型/字段/解析/`setQuickPhraseMode` |
-| `src/state/repo/quickPhraseRepo.test.ts` | repo 单测 | 删除 3 处 `mode` 断言 |
-| `src/components/settings/QuickPhrasesTab.tsx` | 设置页快捷短语管理 | 删除输入模式下拉与 `mode` state |
-| `src/components/settings/QuickPhrasesTab.test.tsx` | 设置页单测 | 删除"可以切换输入模式"用例与相关 mock |
-| `src/components/MessageInput/QuickPhraseBar.tsx` | 短语栏渲染与交互 | 用 `onSend`/`onFill` 替代 `onActivate`，加右键双击检测 |
-| `src/components/MessageInput/QuickPhraseBar.test.tsx` | 短语栏单测 | 改 props 签名，加左/右键双击与禁用用例 |
-| `src/components/MessageInput/index.tsx` | 输入区主组件 | 删除 mode 分发与确认弹窗，接 `onSend`/`onFill` |
-| `src/components/MessageInput/index.test.tsx` | 主组件单测 | 重写 6 个 mode 用例为 onSend/onFill |
-| `docs/repowiki/06-settings-update-localization.md` | 文档 | 更新模式描述为固定行为 |
-| `docs/repowiki/04-session-chat.md` | 文档 | 更新模式描述为固定行为 |
+| 文件                                                  | 职责                   | 改动                                                   |
+| ----------------------------------------------------- | ---------------------- | ------------------------------------------------------ |
+| `src/state/repo/quickPhraseRepo.ts`                   | 快捷短语持久化与归一化 | 删除 `mode` 类型/字段/解析/`setQuickPhraseMode`        |
+| `src/state/repo/quickPhraseRepo.test.ts`              | repo 单测              | 删除 3 处 `mode` 断言                                  |
+| `src/components/settings/QuickPhrasesTab.tsx`         | 设置页快捷短语管理     | 删除输入模式下拉与 `mode` state                        |
+| `src/components/settings/QuickPhrasesTab.test.tsx`    | 设置页单测             | 删除"可以切换输入模式"用例与相关 mock                  |
+| `src/components/MessageInput/QuickPhraseBar.tsx`      | 短语栏渲染与交互       | 用 `onSend`/`onFill` 替代 `onActivate`，加右键双击检测 |
+| `src/components/MessageInput/QuickPhraseBar.test.tsx` | 短语栏单测             | 改 props 签名，加左/右键双击与禁用用例                 |
+| `src/components/MessageInput/index.tsx`               | 输入区主组件           | 删除 mode 分发与确认弹窗，接 `onSend`/`onFill`         |
+| `src/components/MessageInput/index.test.tsx`          | 主组件单测             | 重写 6 个 mode 用例为 onSend/onFill                    |
+| `docs/repowiki/06-settings-update-localization.md`    | 文档                   | 更新模式描述为固定行为                                 |
+| `docs/repowiki/04-session-chat.md`                    | 文档                   | 更新模式描述为固定行为                                 |
 
 ---
 
 ## Task 1: 数据层移除 mode 概念
 
 **Files:**
+
 - Modify: `src/state/repo/quickPhraseRepo.ts`
 - Test: `src/state/repo/quickPhraseRepo.test.ts`
 
@@ -51,16 +52,16 @@
 第一个用例（第 25-35 行）改名并删除 mode 断言：
 
 ```typescript
-  it("loadQuickPhraseState 在空存储时注入预置", async () => {
-    vi.mocked(scopedStateGetJSON).mockResolvedValue(null)
+it("loadQuickPhraseState 在空存储时注入预置", async () => {
+  vi.mocked(scopedStateGetJSON).mockResolvedValue(null)
 
-    const value = await loadQuickPhraseState()
+  const value = await loadQuickPhraseState()
 
-    expect(value.preset_version).toBe(quick_phrase_preset.version)
-    expect(value.order).toEqual(quick_phrase_preset.items.map((item) => item.id))
-    expect(Object.values(value.items).map((item) => item.source)).toEqual(quick_phrase_preset.items.map(() => "preset"))
-    expect(scopedStateGetJSON).toHaveBeenCalledWith("global", "opencode:webgui:global:quick_phrase:v1", null)
-  })
+  expect(value.preset_version).toBe(quick_phrase_preset.version)
+  expect(value.order).toEqual(quick_phrase_preset.items.map((item) => item.id))
+  expect(Object.values(value.items).map((item) => item.source)).toEqual(quick_phrase_preset.items.map(() => "preset"))
+  expect(scopedStateGetJSON).toHaveBeenCalledWith("global", "opencode:webgui:global:quick_phrase:v1", null)
+})
 ```
 
 第二个用例（第 37-77 行）：删除存储输入里的 `mode: "confirm_send",` 这一行（第 40 行），并删除断言 `expect(value.mode).toBe("confirm_send")`（第 70 行）。其余断言保留。
@@ -68,13 +69,13 @@
 第三个用例（第 79-107 行）`saveQuickPhraseState 写入 global quick_phrase key`：删除 `saveQuickPhraseState` 入参对象里的 `mode: "fill_input",`（第 83 行），并把断言里的 `expect.objectContaining({ mode: "fill_input", preset_version: ... })` 改为只断言 `preset_version`：
 
 ```typescript
-    expect(scopedStateSetJSON).toHaveBeenCalledWith(
-      "global",
-      "opencode:webgui:global:quick_phrase:v1",
-      expect.objectContaining({
-        preset_version: quick_phrase_preset.version,
-      }),
-    )
+expect(scopedStateSetJSON).toHaveBeenCalledWith(
+  "global",
+  "opencode:webgui:global:quick_phrase:v1",
+  expect.objectContaining({
+    preset_version: quick_phrase_preset.version,
+  }),
+)
 ```
 
 - [ ] **Step 2: 运行 repo 测试，确认因 ts/类型或断言失败**
@@ -87,11 +88,13 @@ Expected: 仍 PASS（此步只改了测试，实现还在），因为删除断�
 打开 `src/state/repo/quickPhraseRepo.ts`：
 
 删除第 6 行类型导出：
+
 ```typescript
 export type QuickPhraseMode = "double_send" | "confirm_send" | "fill_input"
 ```
 
 从 `QuickPhraseState`（第 18-23 行）删除 `mode: QuickPhraseMode` 字段，改为：
+
 ```typescript
 export type QuickPhraseState = {
   preset_version: number
@@ -101,6 +104,7 @@ export type QuickPhraseState = {
 ```
 
 删除第 27-30 行的内部 `mode` 辅助函数：
+
 ```typescript
 function mode(input: unknown): QuickPhraseMode {
   if (input === "double_send" || input === "confirm_send" || input === "fill_input") return input
@@ -109,12 +113,13 @@ function mode(input: unknown): QuickPhraseMode {
 ```
 
 在 `normalize()` 的返回对象（第 99-104 行）删除 `mode: mode((raw as { mode?: unknown }).mode),` 这一行，改为：
+
 ```typescript
-  return {
-    preset_version: quick_phrase_preset.version,
-    order: [...new Set([...base, ...rest])],
-    items,
-  }
+return {
+  preset_version: quick_phrase_preset.version,
+  order: [...new Set([...base, ...rest])],
+  items,
+}
 ```
 
 删除 `setQuickPhraseMode` 函数（第 146-156 行）整段。
@@ -136,6 +141,7 @@ git commit -m "refactor(webgui): remove quick phrase mode from repo"
 ## Task 2: 设置页移除输入模式下拉
 
 **Files:**
+
 - Modify: `src/components/settings/QuickPhrasesTab.tsx`
 - Test: `src/components/settings/QuickPhrasesTab.test.tsx`
 
@@ -146,6 +152,7 @@ git commit -m "refactor(webgui): remove quick phrase mode from repo"
 从 `vi.hoisted` mock 对象（第 4-12 行）删除 `setQuickPhraseMode: vi.fn(),`。
 
 从 `vi.mock("../../state/repo/quickPhraseRepo", ...)`（第 14-23 行）删除这一行：
+
 ```typescript
   setQuickPhraseMode: (mode: "double_send" | "confirm_send" | "fill_input") => mocks.setQuickPhraseMode(mode),
 ```
@@ -166,6 +173,7 @@ Expected: 仍 PASS（删了用例和 mock，实现还在旧版，未引用已删
 打开 `src/components/settings/QuickPhrasesTab.tsx`：
 
 修改 import（第 2-12 行），删除 `setQuickPhraseMode,` 与 `type QuickPhraseMode,`：
+
 ```typescript
 import {
   addCustomQuickPhrase,
@@ -181,12 +189,13 @@ import {
 删除第 16 行 `const [mode, setMode] = useState<QuickPhraseMode>("fill_input")`。
 
 在 `apply()`（第 27-32 行）删除 `setMode(state.mode)`，改为：
+
 ```typescript
-  function apply(state: QuickPhraseState) {
-    setOrder(state.order)
-    setItems(state.items)
-    window.dispatchEvent(new Event(quick_phrase_updated_event))
-  }
+function apply(state: QuickPhraseState) {
+  setOrder(state.order)
+  setItems(state.items)
+  window.dispatchEvent(new Event(quick_phrase_updated_event))
+}
 ```
 
 删除整个输入模式区块（第 72-90 行 `<div>` 含 `<label htmlFor="quick-phrase-mode">` 与 `<select id="quick-phrase-mode">`）。
@@ -210,6 +219,7 @@ git commit -m "refactor(webgui): remove input mode dropdown from quick phrases s
 ## Task 3: QuickPhraseBar 改为左/右键双击交互
 
 **Files:**
+
 - Modify: `src/components/MessageInput/QuickPhraseBar.tsx`
 - Test: `src/components/MessageInput/QuickPhraseBar.test.tsx`
 
@@ -479,6 +489,7 @@ git commit -m "feat(webgui): quick phrase bar uses left/right double-click"
 ## Task 4: MessageInput 接入 onSend/onFill 并删除确认弹窗
 
 **Files:**
+
 - Modify: `src/components/MessageInput/index.tsx`
 - Test: `src/components/MessageInput/index.test.tsx`
 
@@ -487,6 +498,7 @@ git commit -m "feat(webgui): quick phrase bar uses left/right double-click"
 打开 `src/components/MessageInput/index.test.tsx`：
 
 (a) `mocks.loadQuickPhraseState` 默认值（第 30-45 行）删除 `mode: "fill_input",`：
+
 ```typescript
     loadQuickPhraseState: vi.fn(async () => ({
       preset_version: 1,
@@ -508,6 +520,7 @@ git commit -m "feat(webgui): quick phrase bar uses left/right double-click"
 (b) 顶层 `quick` 常量（第 240-255 行）删除 `mode: "fill_input",`。
 
 (c) 删除"会在输入框上方渲染快捷短语栏"用例里对 mode 的断言（第 288 行 `expect(lastQuickPhraseBarProps.mode).toBe("fill_input")`），保留对 items 的断言。改为：
+
 ```typescript
   it("会在输入框上方渲染快捷短语栏", async () => {
     mocks.loadQuickPhraseState.mockResolvedValue(quick)
@@ -527,6 +540,7 @@ git commit -m "feat(webgui): quick phrase bar uses left/right double-click"
 ```
 
 (d) 替换"fill_input 模式双击仅回填不发送"用例（第 300-321 行）为右键回填语义：
+
 ```typescript
   it("onFill 回调仅回填不发送", async () => {
     mocks.loadQuickPhraseState.mockResolvedValue(quick)
@@ -553,6 +567,7 @@ git commit -m "feat(webgui): quick phrase bar uses left/right double-click"
 ```
 
 (e) 替换"double_send 模式双击会直接发送"用例（第 323-359 行）为 onSend 语义。删除 mock state 里的 `mode` 字段，并改用 `onSend`：
+
 ```typescript
   it("onSend 回调会直接发送", async () => {
     const onSendIntent = vi.fn()
@@ -593,6 +608,7 @@ git commit -m "feat(webgui): quick phrase bar uses left/right double-click"
 ```
 
 (f) 替换"double_send 模式发送不应回填输入框"用例（第 361-393 行）：删除 mock 的 `mode` 字段，改用 `onSend`，断言不回填：
+
 ```typescript
   it("onSend 发送不应回填输入框", async () => {
     mocks.loadQuickPhraseState.mockResolvedValue({
@@ -629,6 +645,7 @@ git commit -m "feat(webgui): quick phrase bar uses left/right double-click"
 ```
 
 (g) 替换"double_send 模式遇到空正文时不应发送"用例（第 395-430 行）：删除 mock 的 `mode` 字段，改用 `onSend`，断言空正文不发送：
+
 ```typescript
   it("onSend 遇到空正文时不应发送", async () => {
     const onSendIntent = vi.fn()
@@ -670,6 +687,7 @@ git commit -m "feat(webgui): quick phrase bar uses left/right double-click"
 (h) 删除整个"confirm_send 模式双击需确认后发送"用例（第 432-476 行）。确认弹窗已移除，此用例不再适用。
 
 (i) 替换"没有 session 时 double_send 不应触发发送意图"用例（第 478-512 行）：删除 mock 的 `mode` 字段，改用 `onSend`：
+
 ```typescript
   it("没有 session 时 onSend 不应触发发送意图", async () => {
     const onSendIntent = vi.fn()
@@ -723,45 +741,44 @@ Expected: FAIL（测试改用 `onSend`/`onFill`，但旧实现仍传 `onActivate
 打开 `src/components/MessageInput/index.tsx`：
 
 删除第 76 行 phraseConfirm state：
+
 ```typescript
-  const [phraseConfirm, setPhraseConfirm] = useState<{ title: string; body: string } | null>(null)
+const [phraseConfirm, setPhraseConfirm] = useState<{ title: string; body: string } | null>(null)
 ```
 
 删除第 442-444 行重置 phraseConfirm 的 effect：
+
 ```typescript
-  useEffect(() => {
-    setPhraseConfirm(null)
-  }, [sessionID])
+useEffect(() => {
+  setPhraseConfirm(null)
+}, [sessionID])
 ```
 
 删除 `onActivatePhrase`（第 446-461 行）整段，替换为两个轻量回调：
-```typescript
-  const onSendPhrase = useCallback(
-    (item: { id: string; title: string; body: string }) => {
-      sendPhrase(item.body)
-    },
-    [sendPhrase],
-  )
 
-  const onFillPhrase = useCallback(
-    (item: { id: string; title: string; body: string }) => {
-      if (isDisabled) return
-      fillPhrase(item.body)
-    },
-    [fillPhrase, isDisabled],
-  )
+```typescript
+const onSendPhrase = useCallback(
+  (item: { id: string; title: string; body: string }) => {
+    sendPhrase(item.body)
+  },
+  [sendPhrase],
+)
+
+const onFillPhrase = useCallback(
+  (item: { id: string; title: string; body: string }) => {
+    if (isDisabled) return
+    fillPhrase(item.body)
+  },
+  [fillPhrase, isDisabled],
+)
 ```
 
 删除 `onConfirmPhrase`（第 463-468 行）整段。
 
 修改 `<QuickPhraseBar>` 调用（第 482-487 行），删除 `mode` prop，改传 `onSend`/`onFill`：
+
 ```tsx
-        <QuickPhraseBar
-          items={phraseItems}
-          disabled={isDisabled}
-          onSend={onSendPhrase}
-          onFill={onFillPhrase}
-        />
+<QuickPhraseBar items={phraseItems} disabled={isDisabled} onSend={onSendPhrase} onFill={onFillPhrase} />
 ```
 
 删除短语确认的 `<ConfirmModal>`（第 520-529 行，`title="确认发送快捷短语"` 那个）整段。保留精简会话历史的 `<ConfirmModal>`（第 531-541 行）。
@@ -790,23 +807,28 @@ git commit -m "feat(webgui): wire quick phrase send/fill, drop confirm modal"
 ## Task 5: 更新文档
 
 **Files:**
+
 - Modify: `docs/repowiki/06-settings-update-localization.md`
 - Modify: `docs/repowiki/04-session-chat.md`
 
 - [ ] **Step 1: 更新 06-settings-update-localization.md**
 
 把第 38 行中：
+
 > ...并为每条短语选择执行模式：填入输入框、确认后发送或双击发送。
 
 改为：
+
 > ...每条短语固定通过左键双击立即发送、右键双击回填输入框。
 
 - [ ] **Step 2: 更新 04-session-chat.md**
 
 把第 142 行：
+
 > - 快捷短语，支持填入输入框、确认后发送、双击发送等模式。
 
 改为：
+
 > - 快捷短语，左键双击立即发送、右键双击回填输入框。
 
 - [ ] **Step 3: 提交**

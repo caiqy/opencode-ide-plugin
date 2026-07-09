@@ -17,8 +17,9 @@ export async function readGeneratedImage(pathname: string) {
     return HttpServerResponse.jsonUnsafe({ error: "Forbidden" }, { status: 403 })
   }
 
-  const filePath = path.resolve(Instance.worktree, relativePath)
-  const generatedImagesDir = path.resolve(Instance.worktree, ".opencode", "generated-images")
+  const root = Instance.worktree === "/" ? Instance.directory : Instance.worktree
+  const filePath = path.resolve(root, relativePath)
+  const generatedImagesDir = path.resolve(root, ".opencode", "generated-images")
   const relativeToGeneratedImages = path.relative(generatedImagesDir, filePath)
   if (relativeToGeneratedImages.startsWith("..") || path.isAbsolute(relativeToGeneratedImages)) {
     return HttpServerResponse.jsonUnsafe({ error: "Forbidden" }, { status: 403 })
@@ -29,7 +30,7 @@ export async function readGeneratedImage(pathname: string) {
   let realFilePath: string
   try {
     ;[realWorktree, realGeneratedImagesDir, realFilePath] = await Promise.all([
-      fs.realpath(Instance.worktree),
+      fs.realpath(root),
       fs.realpath(generatedImagesDir),
       fs.realpath(filePath),
     ])

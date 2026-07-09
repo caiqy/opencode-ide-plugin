@@ -6,14 +6,14 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| ToolPart 分发与组合 | `packages/opencode/webgui/src/components/parts/ToolPart/index.tsx` |
-| 标题与中文名规则 | `packages/opencode/webgui/src/components/parts/ToolPart/utils.tsx` |
-| 卡片头部与文件链接 | `packages/opencode/webgui/src/components/parts/ToolPart/ToolHeader.tsx` |
-| 前端流式输入 hook | `packages/opencode/webgui/src/components/parts/ToolPart/usePartialToolInput.ts` |
-| partial JSON 解析 | `packages/opencode/webgui/src/lib/partial-tool-input.ts` |
-| 后端流式工具常量 | `packages/opencode/src/session/streamable-tools.ts` |
+| 角色                | 文件                                                                            |
+| ------------------- | ------------------------------------------------------------------------------- |
+| ToolPart 分发与组合 | `packages/opencode/webgui/src/components/parts/ToolPart/index.tsx`              |
+| 标题与中文名规则    | `packages/opencode/webgui/src/components/parts/ToolPart/utils.tsx`              |
+| 卡片头部与文件链接  | `packages/opencode/webgui/src/components/parts/ToolPart/ToolHeader.tsx`         |
+| 前端流式输入 hook   | `packages/opencode/webgui/src/components/parts/ToolPart/usePartialToolInput.ts` |
+| partial JSON 解析   | `packages/opencode/webgui/src/lib/partial-tool-input.ts`                        |
+| 后端流式工具常量    | `packages/opencode/src/session/streamable-tools.ts`                             |
 
 ## 意图
 

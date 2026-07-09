@@ -13,10 +13,7 @@ type Opts = {
 }
 
 const busy = (err: unknown) =>
-  typeof err === "object" &&
-  err !== null &&
-  "code" in err &&
-  (err.code === "EBUSY" || err.code === "ENOTEMPTY")
+  typeof err === "object" && err !== null && "code" in err && (err.code === "EBUSY" || err.code === "ENOTEMPTY")
 
 const side = (file: string) => file.endsWith("-wal") || file.endsWith("-shm")
 

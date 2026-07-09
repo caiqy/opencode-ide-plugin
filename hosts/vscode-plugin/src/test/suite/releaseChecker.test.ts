@@ -170,13 +170,11 @@ suite("ReleaseChecker Test Suite", () => {
   })
 
   test("ReleaseChecker.getLatest 在 GitHub 非 2xx 时抛错", async () => {
-    const checker = new ReleaseChecker(
-      { owner: "qtkj", name: "opencode-ui" },
-      async () =>
-        testResponse("rate limited", {
-          status: 503,
-          headers: { "Content-Type": "text/plain" },
-        }),
+    const checker = new ReleaseChecker({ owner: "qtkj", name: "opencode-ui" }, async () =>
+      testResponse("rate limited", {
+        status: 503,
+        headers: { "Content-Type": "text/plain" },
+      }),
     )
 
     await assert.rejects(() => checker.getLatest("26.4.1400"), /GitHub release request failed: 503/)

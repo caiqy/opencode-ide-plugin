@@ -128,9 +128,7 @@ export function DiffModal({ isOpen, onClose, sessionID, messageID, patchHash }: 
         <div className="px-4 py-3 bg-gray-50 dark:bg-gray-950 rounded-b-lg border-t border-gray-200 dark:border-gray-800">
           <div className="flex items-center justify-between">
             <div className="text-xs text-gray-500 dark:text-gray-400">
-              {!isLoading && diffs.length > 0 && (
-                <span>{`${diffs.length} 个文件变更`}</span>
-              )}
+              {!isLoading && diffs.length > 0 && <span>{`${diffs.length} 个文件变更`}</span>}
             </div>
             <button
               onClick={onClose}

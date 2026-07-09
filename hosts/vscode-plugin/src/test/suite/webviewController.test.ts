@@ -65,7 +65,8 @@ suite("WebviewController Test Suite", () => {
       bridgeSend,
       writeFile,
       receiveMessage: (message: any) => receiveMessage?.(message),
-      saveImage: (handlers as { saveImage?: (url: string, filename: string) => Promise<{ cancelled: boolean }> }).saveImage,
+      saveImage: (handlers as { saveImage?: (url: string, filename: string) => Promise<{ cancelled: boolean }> })
+        .saveImage,
     }
   }
 
@@ -271,7 +272,10 @@ suite("WebviewController Test Suite", () => {
 
       assert.ok(saveImage)
 
-      const result = await saveImage!("/generated-image?path=.opencode%2Fgenerated-images%2Ffoo.png", "relative-image.png")
+      const result = await saveImage!(
+        "/generated-image?path=.opencode%2Fgenerated-images%2Ffoo.png",
+        "relative-image.png",
+      )
 
       assert.ok(showSaveDialog.calledOnce)
       assert.ok(writeFile.calledOnce)

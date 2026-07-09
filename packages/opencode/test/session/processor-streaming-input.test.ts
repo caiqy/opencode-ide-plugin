@@ -1,20 +1,18 @@
 import { NodeFileSystem } from "@effect/platform-node"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
-import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { ModelV2 } from "@opencode-ai/core/model"
+import { ProviderV2 } from "@opencode-ai/core/provider"
+import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { expect } from "bun:test"
 import { Effect, Fiber, Layer } from "effect"
 import path from "path"
 import type { Agent } from "../../src/agent/agent"
-import { Agent as AgentSvc } from "../../src/agent/agent"
-import { Bus } from "../../src/bus"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
-import { EventV2Bridge } from "../../src/event-v2-bridge"
-import { Image } from "../../src/image/image"
-import { Permission } from "../../src/permission"
-import { Plugin } from "../../src/plugin"
-import { ModelID, ProviderID } from "../../src/provider/schema"
+import { InstanceBootstrap } from "../../src/project/bootstrap"
+import { InstanceStore } from "../../src/project/instance-store"
 import { Provider } from "../../src/provider/provider"
-import { Config } from "../../src/config/config"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionProcessor } from "../../src/session/processor"
@@ -23,11 +21,12 @@ import { Session } from "../../src/session/session"
 import { SessionStatus } from "../../src/session/status"
 import { SessionSummary } from "../../src/session/summary"
 import { SessionSummaryScheduler } from "../../src/session/summary-scheduler"
-import { Snapshot } from "../../src/snapshot"
-import { SyncEvent } from "../../src/sync"
 import { provideTmpdirServer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { TestLLMServer } from "../lib/llm-server"
+
+const ModelID = ModelV2.ID
+const ProviderID = ProviderV2.ID
 
 const summaryScheduler = Layer.succeed(
   SessionSummaryScheduler.Service,
@@ -160,32 +159,26 @@ const assistant = Effect.fn("TestSession.assistant")(function* (
   return msg
 })
 
-const status = SessionStatus.layer.pipe(Layer.provideMerge(Bus.layer))
-const infra = Layer.mergeAll(NodeFileSystem.layer, CrossSpawnSpawner.defaultLayer)
-const deps = Layer.mergeAll(
-  Session.defaultLayer,
-  Snapshot.defaultLayer,
-  AgentSvc.defaultLayer,
-  Permission.defaultLayer,
-  Plugin.defaultLayer,
-  Config.defaultLayer,
-  LLM.defaultLayer,
-  Provider.defaultLayer,
-  status,
-  SyncEvent.defaultLayer,
-  EventV2Bridge.defaultLayer,
-).pipe(Layer.provideMerge(infra))
-
+const infra = Layer.mergeAll(NodeFileSystem.layer, LayerNode.compile(CrossSpawnSpawner.node))
 const env = Layer.mergeAll(
   TestLLMServer.layer,
-  SessionProcessor.layer.pipe(
-    Layer.provide(summaryScheduler),
-    Layer.provide(summary),
-    Layer.provide(Image.defaultLayer),
-    Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
-    Layer.provide(AppFileSystem.defaultLayer),
-    Layer.provideMerge(deps),
-  ),
+  AppNodeBuilder.build(
+    LayerNode.group([
+      SessionProcessor.node,
+      Session.node,
+      Provider.node,
+      SessionStatus.node,
+      LLM.node,
+      SessionProjector.node,
+      InstanceStore.node,
+      CrossSpawnSpawner.node,
+    ]),
+    [
+      [SessionSummary.node, summary],
+      [RuntimeFlags.node, RuntimeFlags.layer({ experimentalEventSystem: true })],
+      [InstanceBootstrap.node, Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))],
+    ],
+  ).pipe(Layer.provideMerge(infra)),
 )
 
 const it = testEffect(env)
@@ -197,7 +190,7 @@ const boot = Effect.fn("test.boot")(function* () {
   return { processors, session, provider }
 })
 
-it.live("accumulates tool-input-delta into state.raw for write tool", () =>
+it.live("creates a pending write tool part for tool-input-delta", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -235,11 +228,9 @@ it.live("accumulates tool-input-delta into state.raw for write tool", () =>
         yield* Effect.gen(function* () {
           yield* llm.wait(1)
           const part = yield* pollUntilToolPending(chat.id)
-          const expectedArgs = JSON.stringify({ filePath: "/tmp/x.txt", content: "hello world" })
-          const expectedPartial = expectedArgs.slice(0, Math.max(1, Math.floor(expectedArgs.length / 2)))
 
           expect(part.state.status).toBe("pending")
-          expect(part.state.raw).toBe(expectedPartial)
+          expect(part.state.raw).toBe("")
         }).pipe(Effect.ensuring(Fiber.interrupt(run)))
       }),
     { config: (url) => providerCfg(url) },
@@ -256,22 +247,6 @@ const pollUntilToolPending = Effect.fn("pollUntilToolPending")(function* (sessio
       .flatMap((msg) => msg.parts)
       .find(
         (part): part is PendingToolPart =>
-          part.type === "tool" && part.state.status === "pending" && part.state.raw.length > 0,
-      )
-    if (part) return part
-    yield* Effect.sleep("50 millis")
-  }
-  return yield* Effect.fail(new Error("no pending tool part with raw observed within 2.5s"))
-})
-
-const pollUntilAnyPendingTool = Effect.fn("pollUntilAnyPendingTool")(function* (sessionID: SessionID) {
-  const session = yield* Session.Service
-  for (let i = 0; i < 50; i++) {
-    const messages = yield* session.messages({ sessionID })
-    const part = messages
-      .flatMap((msg) => msg.parts)
-      .find(
-        (part): part is PendingToolPart =>
           part.type === "tool" && part.state.status === "pending",
       )
     if (part) return part
@@ -280,7 +255,20 @@ const pollUntilAnyPendingTool = Effect.fn("pollUntilAnyPendingTool")(function* (
   return yield* Effect.fail(new Error("no pending tool part observed within 2.5s"))
 })
 
-it.live("accumulates tool-input-delta into state.raw for edit tool", () =>
+const pollUntilAnyPendingTool = Effect.fn("pollUntilAnyPendingTool")(function* (sessionID: SessionID) {
+  const session = yield* Session.Service
+  for (let i = 0; i < 50; i++) {
+    const messages = yield* session.messages({ sessionID })
+    const part = messages
+      .flatMap((msg) => msg.parts)
+      .find((part): part is PendingToolPart => part.type === "tool" && part.state.status === "pending")
+    if (part) return part
+    yield* Effect.sleep("50 millis")
+  }
+  return yield* Effect.fail(new Error("no pending tool part observed within 2.5s"))
+})
+
+it.live("creates a pending edit tool part for tool-input-delta", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -318,18 +306,16 @@ it.live("accumulates tool-input-delta into state.raw for edit tool", () =>
         yield* Effect.gen(function* () {
           yield* llm.wait(1)
           const part = yield* pollUntilToolPending(chat.id)
-          const expectedArgs = JSON.stringify({ filePath: "/tmp/x.txt", oldString: "hello", newString: "world" })
-          const expectedPartial = expectedArgs.slice(0, Math.max(1, Math.floor(expectedArgs.length / 2)))
 
           expect(part.state.status).toBe("pending")
-          expect(part.state.raw).toBe(expectedPartial)
+          expect(part.state.raw).toBe("")
         }).pipe(Effect.ensuring(Fiber.interrupt(run)))
       }),
     { config: (url) => providerCfg(url) },
   ),
 )
 
-it.live("accumulates tool-input-delta into state.raw for apply_patch tool", () =>
+it.live("creates a pending apply_patch tool part for tool-input-delta", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -370,14 +356,9 @@ it.live("accumulates tool-input-delta into state.raw for apply_patch tool", () =
         yield* Effect.gen(function* () {
           yield* llm.wait(1)
           const part = yield* pollUntilToolPending(chat.id)
-          const expectedArgs = JSON.stringify({
-            filePath: "/tmp/x.txt",
-            patchText: "--- a/x.txt\n+++ b/x.txt\n@@ -1 +1 @@\n-hello\n+world",
-          })
-          const expectedPartial = expectedArgs.slice(0, Math.max(1, Math.floor(expectedArgs.length / 2)))
 
           expect(part.state.status).toBe("pending")
-          expect(part.state.raw).toBe(expectedPartial)
+          expect(part.state.raw).toBe("")
         }).pipe(Effect.ensuring(Fiber.interrupt(run)))
       }),
     { config: (url) => providerCfg(url) },

@@ -49,6 +49,7 @@ opencode/26.5.700 gitlab-ai-provider/<version> opencode-ui/26.5.700 (codex app; 
 ### Task 1: Add centralized User-Agent builder
 
 **Files:**
+
 - Modify: `packages/opencode/src/installation/index.ts:1-60`
 - Test: `packages/opencode/test/installation/installation.test.ts`
 
@@ -64,29 +65,31 @@ import { Flag } from "@opencode-ai/core/flag/flag"
 Add these tests before the existing `describe("latest", ...)` block inside `describe("installation", () => {`:
 
 ```ts
-  describe("userAgent", () => {
-    test("builds the default opencode UI user agent", () => {
-      expect(Installation.userAgent()).toBe(`opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (codex app)`)
-    })
-
-    test("builds the installation-scoped user agent", () => {
-      expect(Installation.USER_AGENT).toBe(
-        `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/${InstallationVersion} (codex app)`,
-      )
-    })
-
-    test("keeps provider integration products before the UI product", () => {
-      expect(Installation.userAgent({ products: ["gitlab-ai-provider/1.2.3"] })).toBe(
-        `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/${InstallationVersion} (codex app)`,
-      )
-    })
-
-    test("adds system details to the comment", () => {
-      expect(Installation.userAgent({ system: true })).toBe(
-        `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (codex app; ${os.platform()} ${os.release()}; ${os.arch()})`,
-      )
-    })
+describe("userAgent", () => {
+  test("builds the default opencode UI user agent", () => {
+    expect(Installation.userAgent()).toBe(
+      `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (codex app)`,
+    )
   })
+
+  test("builds the installation-scoped user agent", () => {
+    expect(Installation.USER_AGENT).toBe(
+      `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/${InstallationVersion} (codex app)`,
+    )
+  })
+
+  test("keeps provider integration products before the UI product", () => {
+    expect(Installation.userAgent({ products: ["gitlab-ai-provider/1.2.3"] })).toBe(
+      `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/${InstallationVersion} (codex app)`,
+    )
+  })
+
+  test("adds system details to the comment", () => {
+    expect(Installation.userAgent({ system: true })).toBe(
+      `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (codex app; ${os.platform()} ${os.release()}; ${os.arch()})`,
+    )
+  })
+})
 ```
 
 Also add this import to the existing version import line:
@@ -124,10 +127,7 @@ const USER_AGENT_COMMENT = "codex app"
 export function userAgent(options?: { base?: "default" | "installation"; products?: string[]; system?: boolean }) {
   const base = options?.base === "installation" ? INSTALLATION_USER_AGENT_PRODUCT : OPENCODE_USER_AGENT_PRODUCT
   const products = [base, ...(options?.products ?? []), UI_USER_AGENT_PRODUCT]
-  const comments = [
-    USER_AGENT_COMMENT,
-    ...(options?.system ? [`${os.platform()} ${os.release()}`, os.arch()] : []),
-  ]
+  const comments = [USER_AGENT_COMMENT, ...(options?.system ? [`${os.platform()} ${os.release()}`, os.arch()] : [])]
 
   return `${products.join(" ")} (${comments.join("; ")})`
 }
@@ -148,6 +148,7 @@ Expected: PASS.
 ### Task 2: Use helper in chat/session and plugins
 
 **Files:**
+
 - Modify: `packages/opencode/src/session/llm.ts:22-23,370-383`
 - Modify: `packages/opencode/src/plugin/codex.ts:3-6,522-551,607-611`
 - Modify: `packages/opencode/src/plugin/github-copilot/copilot.ts:3-4,69-74,150-154,224-230,254-260`
@@ -244,6 +245,7 @@ Expected: PASS. If it fails with unused imports, remove the reported import and 
 ### Task 3: Use helper in provider-specific headers
 
 **Files:**
+
 - Modify: `packages/opencode/src/provider/provider.ts:1-15,623-625,772-778,841-849`
 - Test: existing typecheck coverage
 
@@ -311,6 +313,7 @@ Expected: PASS.
 ### Task 4: Verify focused tests and final status
 
 **Files:**
+
 - Verify only; no new files.
 
 - [ ] **Step 1: Run focused installation tests**

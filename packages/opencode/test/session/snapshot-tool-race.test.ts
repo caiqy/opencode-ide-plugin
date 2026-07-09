@@ -13,71 +13,36 @@
  */
 import { expect } from "bun:test"
 import { Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import type * as PlatformError from "effect/PlatformError"
-import type * as Scope from "effect/Scope"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import fs from "fs/promises"
 import path from "path"
 import { Session } from "@/session/session"
-import { LLM } from "../../src/session/llm"
 import { SessionPrompt } from "../../src/session/prompt"
-import { SessionRevert } from "../../src/session/revert"
 import { SessionSummary } from "../../src/session/summary"
-import { SessionSummaryScheduler } from "../../src/session/summary-scheduler"
 import { MessageV2 } from "../../src/session/message-v2"
-import * as Log from "@opencode-ai/core/util/log"
+import { SessionV1 } from "@opencode-ai/core/v1/session"
+import { Database } from "@opencode-ai/core/database/database"
+import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { provideTmpdirServer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { TestLLMServer } from "../lib/llm-server"
 
-// Same layer setup as prompt-effect.test.ts
-import { NodeFileSystem } from "@effect/platform-node"
-import { Agent as AgentSvc } from "../../src/agent/agent"
-import { BackgroundJob } from "@/background/job"
-import { Git } from "../../src/git"
-import { Bus } from "../../src/bus"
-import { Command } from "../../src/command"
-import { Config } from "@/config/config"
 import { LSP } from "@/lsp/lsp"
 import { MCP } from "../../src/mcp"
-import { Permission } from "../../src/permission"
-import { Plugin } from "../../src/plugin"
-import { Provider as ProviderSvc } from "@/provider/provider"
-import { Env } from "../../src/env"
-import { Question } from "../../src/question"
-import { Image } from "../../src/image/image"
-import { Skill } from "../../src/skill"
-import { SystemPrompt } from "../../src/session/system"
-import { Todo } from "../../src/session/todo"
-import { SessionCompaction } from "../../src/session/compaction"
-import { Instruction } from "../../src/session/instruction"
-import { SessionProcessor } from "../../src/session/processor"
-import { SessionRunState } from "../../src/session/run-state"
-import { SessionStatus } from "../../src/session/status"
-import { Snapshot } from "../../src/snapshot"
-import { ToolRegistry } from "@/tool/registry"
-import { Truncate } from "@/tool/truncate"
-import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
-import { Ripgrep } from "../../src/file/ripgrep"
-import { Format } from "../../src/format"
-import { Reference } from "../../src/reference/reference"
-import { RepositoryCache } from "../../src/reference/repository-cache"
-import { SyncEvent } from "@/sync"
 import { RuntimeFlags } from "@/effect/runtime-flags"
-import { EventV2Bridge } from "@/event-v2-bridge"
-
-void Log.init({ print: false })
 
 const mcp = Layer.succeed(
   MCP.Service,
   MCP.Service.of({
     status: () => Effect.succeed({}),
     clients: () => Effect.succeed({}),
+    instructions: () => Effect.succeed([]),
     tools: () => Effect.succeed({}),
     toolsByServer: () => Effect.succeed({ connected: false, tools: [] }),
     prompts: () => Effect.succeed({}),
     resources: () => Effect.succeed({}),
+    resourceTemplates: () => Effect.succeed({}),
     add: () => Effect.succeed({ status: { status: "disabled" as const } }),
     setEnabled: () => Effect.void,
     setToolEnabled: () => Effect.void,
@@ -115,86 +80,22 @@ const lsp = Layer.succeed(
   }),
 )
 
-const status = SessionStatus.layer.pipe(Layer.provideMerge(Bus.layer))
-const run = SessionRunState.layer.pipe(Layer.provide(status))
-const infra = Layer.mergeAll(NodeFileSystem.layer, CrossSpawnSpawner.defaultLayer)
-
-function makeHttp() {
-  const deps = Layer.mergeAll(
-    Session.defaultLayer,
-    Snapshot.defaultLayer,
-    LLM.defaultLayer,
-    Env.defaultLayer,
-    AgentSvc.defaultLayer,
-    Command.defaultLayer,
-    Permission.defaultLayer,
-    Plugin.defaultLayer,
-    Config.defaultLayer,
-    ProviderSvc.defaultLayer,
-    lsp,
-    mcp,
-    AppFileSystem.defaultLayer,
-    BackgroundJob.defaultLayer,
-    status,
-    SyncEvent.defaultLayer,
-    EventV2Bridge.defaultLayer,
-  ).pipe(Layer.provideMerge(infra))
-  const question = Question.layer.pipe(Layer.provideMerge(deps))
-  const todo = Todo.layer.pipe(Layer.provideMerge(deps))
-  const registry = ToolRegistry.layer.pipe(
-    Layer.provide(Skill.defaultLayer),
-    Layer.provide(FetchHttpClient.layer),
-    Layer.provide(CrossSpawnSpawner.defaultLayer),
-    Layer.provide(RepositoryCache.defaultLayer),
-    Layer.provide(Git.defaultLayer),
-    Layer.provide(Reference.defaultLayer),
-    Layer.provide(Ripgrep.defaultLayer),
-    Layer.provide(Format.defaultLayer),
-    Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
-    Layer.provideMerge(todo),
-    Layer.provideMerge(question),
-    Layer.provideMerge(deps),
-  )
-  const trunc = Truncate.layer.pipe(Layer.provideMerge(deps))
-  const summary = SessionSummary.defaultLayer
-  const summaryScheduler = SessionSummaryScheduler.defaultLayer
-  const proc = SessionProcessor.layer.pipe(
-    Layer.provide(summaryScheduler),
-    Layer.provide(summary),
-    Layer.provide(Image.defaultLayer),
-    Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
-    Layer.provideMerge(deps),
-  )
-  const compact = SessionCompaction.layer.pipe(
-    Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
-    Layer.provideMerge(proc),
-    Layer.provideMerge(deps),
-  )
-  return Layer.mergeAll(
-    TestLLMServer.layer,
-    summary,
-    SessionPrompt.layer.pipe(
-      Layer.provide(SessionRevert.defaultLayer),
-      Layer.provide(summaryScheduler),
-      Layer.provide(summary),
-      Layer.provide(Image.defaultLayer),
-      Layer.provide(Reference.defaultLayer),
-      Layer.provideMerge(run),
-      Layer.provideMerge(compact),
-      Layer.provideMerge(proc),
-      Layer.provideMerge(registry),
-      Layer.provideMerge(trunc),
-      Layer.provide(Instruction.defaultLayer),
-      Layer.provide(SystemPrompt.defaultLayer),
-      Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
-      Layer.provideMerge(deps),
-    ),
-  ).pipe(Layer.provide(summaryScheduler), Layer.provide(summary))
-}
-
-type HttpEnv = ReturnType<typeof makeHttp> extends Layer.Layer<infer R, infer _E, infer _RIn> ? R : never
-
-const it = testEffect(makeHttp())
+const root = LayerNode.group([
+  SessionPrompt.node,
+  Session.node,
+  SessionProjector.node,
+  SessionSummary.node,
+  Database.node,
+  CrossSpawnSpawner.node,
+  LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] }),
+])
+const it = testEffect(
+  LayerNode.compile(root, [
+    [MCP.node, mcp],
+    [LSP.node, lsp],
+    [RuntimeFlags.node, RuntimeFlags.layer({ experimentalEventSystem: true })],
+  ]),
+)
 
 const providerCfg = (url: string) => ({
   provider: {
@@ -225,10 +126,9 @@ const providerCfg = (url: string) => ({
   },
 })
 
-const runSnapshotRace = (): Effect.Effect<void, PlatformError.PlatformError, HttpEnv | Scope.Scope> =>
+it.live("tool execution produces non-empty session diff (snapshot race)", () =>
   provideTmpdirServer(
-    ({ dir, llm }) =>
-      Effect.gen(function* () {
+    Effect.fnUntraced(function* ({ dir, llm }) {
       const prompt = yield* SessionPrompt.Service
       const sessions = yield* Session.Service
       const summary = yield* SessionSummary.Service
@@ -242,7 +142,6 @@ const runSnapshotRace = (): Effect.Effect<void, PlatformError.PlatformError, Htt
       const command = `echo 'snapshot race test content' > ${path.join(dir, "race-test.txt")}`
       yield* llm.toolMatch((hit) => JSON.stringify(hit.body).includes("create the file"), "bash", {
         command,
-        description: "create test file",
       })
       yield* llm.textMatch((hit) => JSON.stringify(hit.body).includes("bash"), "done")
 
@@ -270,21 +169,24 @@ const runSnapshotRace = (): Effect.Effect<void, PlatformError.PlatformError, Htt
 
       // Verify the tool call completed (in the first assistant message)
       const allMsgs = yield* MessageV2.filterCompactedEffect(session.id)
+      const user = allMsgs.find(
+        (msg): msg is SessionV1.WithParts & { info: SessionV1.User } => msg.info.role === "user",
+      )
       const tool = allMsgs
         .flatMap((m) => m.parts)
-        .find((p): p is MessageV2.ToolPart => p.type === "tool" && p.tool === "bash")
+        .find((p): p is SessionV1.ToolPart => p.type === "tool" && p.tool === "bash")
       expect(tool?.state.status).toBe("completed")
+      if (!user) throw new Error("Expected user message")
 
-      // Poll for diff — summarize() is fire-and-forget
+      // Poll for the turn diff — summarize() is fire-and-forget.
       let diff: Array<{ file?: string }> = []
       for (let i = 0; i < 50; i++) {
-        diff = yield* summary.diff({ sessionID: session.id })
+        diff = yield* summary.diff({ sessionID: session.id, messageID: user.info.id })
         if (diff.length > 0) break
         yield* Effect.sleep("100 millis")
       }
       expect(diff.length).toBeGreaterThan(0)
-      }),
+    }),
     { git: true, config: providerCfg },
-  ) as Effect.Effect<void, PlatformError.PlatformError, HttpEnv | Scope.Scope>
-
-it.live("tool execution produces non-empty session diff (snapshot race)", runSnapshotRace)
+  ),
+)

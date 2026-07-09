@@ -35,6 +35,7 @@
 ### Task 1: 保留嵌套型 `stream_timeout` 解析回归测试
 
 **Files:**
+
 - Modify/Test: `packages/opencode/test/session/message-v2.stream-error.test.ts:33-81`
 
 - [ ] **Step 1: 确认并保留截图中的嵌套型 `stream_timeout` 解析测试**
@@ -42,33 +43,33 @@
 确认 `packages/opencode/test/session/message-v2.stream-error.test.ts` 中保留下面这个测试，用于覆盖用户截图中的原始嵌套 SSE error event 证据：
 
 ```ts
-  test("serializes upstream stream_timeout frames as retryable APIError", () => {
-    const input = {
-      type: "error",
-      sequence_number: 0,
-      error: {
-        type: "upstream_error",
-        code: "stream_timeout",
-        message: "stream_timeout",
-      },
-    }
-    const err = new TypeValidationError({
-      value: input,
-      cause: new Error("bad chunk"),
-    })
-
-    const result = MessageV2.fromError(err, { providerID })
-
-    expect(result).toStrictEqual({
-      name: "APIError",
-      data: {
-        message: "stream_timeout",
-        isRetryable: true,
-        responseBody: JSON.stringify(input),
-      },
-    })
-    expect(SessionRetry.retryable(result)).toBe("stream_timeout")
+test("serializes upstream stream_timeout frames as retryable APIError", () => {
+  const input = {
+    type: "error",
+    sequence_number: 0,
+    error: {
+      type: "upstream_error",
+      code: "stream_timeout",
+      message: "stream_timeout",
+    },
+  }
+  const err = new TypeValidationError({
+    value: input,
+    cause: new Error("bad chunk"),
   })
+
+  const result = MessageV2.fromError(err, { providerID })
+
+  expect(result).toStrictEqual({
+    name: "APIError",
+    data: {
+      message: "stream_timeout",
+      isRetryable: true,
+      responseBody: JSON.stringify(input),
+    },
+  })
+  expect(SessionRetry.retryable(result)).toBe("stream_timeout")
+})
 ```
 
 - [ ] **Step 2: 运行测试，确认这组回归覆盖保持通过**
@@ -92,6 +93,7 @@ Expected: PASS，这组测试只用于保留原始嵌套证据的解析覆盖，
 ### Task 2: 添加 `SessionRetry` 真实链路 message 红灯测试
 
 **Files:**
+
 - Modify/Test: `packages/opencode/test/session/retry.test.ts:126-233`
 
 - [ ] **Step 1: 写入失败测试，锁定真实链路里的 `stream_timeout` 文本应触发自动重试**
@@ -99,15 +101,15 @@ Expected: PASS，这组测试只用于保留原始嵌套证据的解析覆盖，
 把下面两个测试插入到 `packages/opencode/test/session/retry.test.ts` 的 `describe("session.retry.retryable", ...)` 中：
 
 ```ts
-  test("retries plain text stream_timeout errors", () => {
-    const error = wrap("stream_timeout")
-    expect(SessionRetry.retryable(error)).toBe("stream_timeout")
-  })
+test("retries plain text stream_timeout errors", () => {
+  const error = wrap("stream_timeout")
+  expect(SessionRetry.retryable(error)).toBe("stream_timeout")
+})
 
-  test("retries json-stringified stream_timeout errors", () => {
-    const error = wrap(JSON.stringify("stream_timeout"))
-    expect(SessionRetry.retryable(error)).toBe("stream_timeout")
-  })
+test("retries json-stringified stream_timeout errors", () => {
+  const error = wrap(JSON.stringify("stream_timeout"))
+  expect(SessionRetry.retryable(error)).toBe("stream_timeout")
+})
 ```
 
 - [ ] **Step 2: 运行测试，确认它们先失败**
@@ -131,6 +133,7 @@ Expected: FAIL，新增的 `stream_timeout` 文本用例当前会返回 `undefin
 ### Task 3: 保留 `SessionProcessor` 的原始证据链回归覆盖
 
 **Files:**
+
 - Modify/Test: `packages/opencode/test/session/processor-effect.test.ts:681-862`
 
 - [ ] **Step 1: 保留嵌套型 SSE / event 行的集成覆盖**
@@ -310,6 +313,7 @@ Expected: PASS，并证明本次实现确实锁住了 1/A，而不是仅依赖�
 ### Task 4: 在 `SessionRetry` 层实现最小修复
 
 **Files:**
+
 - Modify: `packages/opencode/src/session/retry.ts:54-103`
 - Test: `packages/opencode/test/session/message-v2.stream-error.test.ts`
 - Test: `packages/opencode/test/session/retry.test.ts`
@@ -402,6 +406,7 @@ Expected: PASS，新的 `retries upstream stream_timeout structured errors` 用�
 ### Task 5: 回归验证并提交最终改动
 
 **Files:**
+
 - Modify/Test: `packages/opencode/test/session/retry.test.ts`
 - Verify: `packages/opencode/test/session/retry.test.ts`
 - Verify: `packages/opencode/test/session/message-v2.stream-error.test.ts`
@@ -424,25 +429,25 @@ Expected: PASS，现有 `server_error`、`ECONNRESET`、`ZlibError`、5xx 和非
 建议测试内容：
 
 ```ts
-  test("does not retry unrelated plain text errors", () => {
-    const result = wrap("plain_failure")
-    expect(SessionRetry.retryable(result)).toBeUndefined()
-  })
+test("does not retry unrelated plain text errors", () => {
+  const result = wrap("plain_failure")
+  expect(SessionRetry.retryable(result)).toBeUndefined()
+})
 
-  test("does not retry quoted unrelated plain text errors", () => {
-    const result = wrap(JSON.stringify("plain_failure"))
-    expect(SessionRetry.retryable(result)).toBeUndefined()
-  })
+test("does not retry quoted unrelated plain text errors", () => {
+  const result = wrap(JSON.stringify("plain_failure"))
+  expect(SessionRetry.retryable(result)).toBeUndefined()
+})
 
-  test("does not retry messages that only contain stream_timeout as a substring", () => {
-    const result = wrap("before stream_timeout after")
-    expect(SessionRetry.retryable(result)).toBeUndefined()
-  })
+test("does not retry messages that only contain stream_timeout as a substring", () => {
+  const result = wrap("before stream_timeout after")
+  expect(SessionRetry.retryable(result)).toBeUndefined()
+})
 
-  test("does not retry json objects with stream_timeout code", () => {
-    const result = wrap(JSON.stringify({ code: "stream_timeout" }))
-    expect(SessionRetry.retryable(result)).toBeUndefined()
-  })
+test("does not retry json objects with stream_timeout code", () => {
+  const result = wrap(JSON.stringify({ code: "stream_timeout" }))
+  expect(SessionRetry.retryable(result)).toBeUndefined()
+})
 ```
 
 Run:

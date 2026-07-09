@@ -6,13 +6,13 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| 工具中文名表 | `packages/opencode/webgui/src/components/parts/ToolPart/utils.tsx` |
-| 设置与快捷短语文案 | `packages/opencode/webgui/src/components/settings/` |
-| 输入区文案 | `packages/opencode/webgui/src/components/MessageInput/` |
-| 选择器文案 | `packages/opencode/webgui/src/components/ModelSelector.tsx`、`AgentSelector.tsx`、`VariantSelector.tsx` |
-| 全站 UI 文案 | `packages/opencode/webgui/src/` |
+| 角色               | 文件                                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------- |
+| 工具中文名表       | `packages/opencode/webgui/src/components/parts/ToolPart/utils.tsx`                                      |
+| 设置与快捷短语文案 | `packages/opencode/webgui/src/components/settings/`                                                     |
+| 输入区文案         | `packages/opencode/webgui/src/components/MessageInput/`                                                 |
+| 选择器文案         | `packages/opencode/webgui/src/components/ModelSelector.tsx`、`AgentSelector.tsx`、`VariantSelector.tsx` |
+| 全站 UI 文案       | `packages/opencode/webgui/src/`                                                                         |
 
 > 命名交叉核验（Step 5）：`ToolPart/utils.tsx` 第 3-29 行是工具展示名集中表，`getToolLabel` 第 31-33 行确认未收录工具回退原始 tool id。
 

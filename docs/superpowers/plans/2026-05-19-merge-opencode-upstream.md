@@ -73,6 +73,7 @@
 ### Task 1: 固定基线并执行 merge
 
 **Files:**
+
 - Inspect: `docs/superpowers/specs/2026-05-19-merge-opencode-upstream-design.md`
 - Inspect: `docs/upstream-sync-checklist.md`
 - Inspect: `packages/opencode/src/tool/generate-image.ts`
@@ -141,6 +142,7 @@ Expected: 输出本次真实冲突文件列表；后续任务只处理这份清�
 ### Task 2: 处理 opencode core / server / tool 冲突
 
 **Files:**
+
 - Modify if conflicted: `packages/opencode/src/project/project.ts`
 - Modify if conflicted: `packages/opencode/src/server/routes/instance/generated-image.ts`
 - Modify if conflicted: `packages/opencode/src/server/routes/instance/httpapi/session.ts`
@@ -217,6 +219,7 @@ Expected: PASS。若失败，优先修正刚处理过的冲突文件，不扩散
 ### Task 3: 处理 WebGUI 冲突
 
 **Files:**
+
 - Modify if conflicted: `packages/opencode/webgui/src/App.tsx`
 - Modify if conflicted: `packages/opencode/webgui/src/components/CompactHeader/index.tsx`
 - Modify if conflicted: `packages/opencode/webgui/src/components/MarkdownRenderer.tsx`
@@ -293,6 +296,7 @@ Expected: PASS。若失败，先修正当前冲突处理引入的问题，再决
 ### Task 4: 处理 VSCode 与 JetBrains 宿主冲突
 
 **Files:**
+
 - Modify if conflicted: `hosts/vscode-plugin/src/backend/BackendLauncher.ts`
 - Modify if conflicted: `hosts/vscode-plugin/src/extension.ts`
 - Modify if conflicted: `hosts/vscode-plugin/src/ui/IdeBridgeServer.ts`
@@ -379,6 +383,7 @@ Expected: 对应单测通过；如果当前 Gradle 配置不支持该过滤参�
 ### Task 5: 完成 merge、验证并整理需要维护者决策的事项
 
 **Files:**
+
 - Inspect: `packages/opencode/src/**`
 - Inspect: `packages/opencode/webgui/src/**`
 - Inspect: `hosts/vscode-plugin/src/**`

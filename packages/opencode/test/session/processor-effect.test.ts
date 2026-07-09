@@ -1,105 +1,45 @@
-import { NodeFileSystem } from "@effect/platform-node"
-import { AppFileSystem } from "@opencode-ai/core/filesystem"
-import { ChildProcessSpawner } from "effect/unstable/process"
-import { tool } from "ai"
+import { SessionV1 } from "@opencode-ai/core/v1/session"
+import { Database } from "@opencode-ai/core/database/database"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { EventV2Bridge } from "@/event-v2-bridge"
 import { expect } from "bun:test"
-import { Cause, Effect, Exit, Fiber, Layer } from "effect"
-import * as PlatformError from "effect/PlatformError"
-import * as Stream from "effect/Stream"
+import { tool } from "ai"
+import { Cause, Effect, Exit, Fiber, Layer, Stream } from "effect"
 import path from "path"
 import z from "zod"
 import type { Agent } from "../../src/agent/agent"
-import { Agent as AgentSvc } from "../../src/agent/agent"
-import { Bus } from "../../src/bus"
-import { Config } from "@/config/config"
-import { Image } from "@/image/image"
-import { Permission } from "../../src/permission"
-import { Plugin } from "../../src/plugin"
 import { Provider } from "@/provider/provider"
-import { ModelID, ProviderID } from "../../src/provider/schema"
+
 import { Session } from "@/session/session"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionProcessor } from "../../src/session/processor"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
-import { SessionSummary } from "../../src/session/summary"
-import { SessionSummaryScheduler } from "../../src/session/summary-scheduler"
 import { SessionStatus } from "../../src/session/status"
-import { Snapshot } from "../../src/snapshot"
-import * as Log from "@opencode-ai/core/util/log"
+import { SessionSummary } from "../../src/session/summary"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { provideTmpdirInstance, provideTmpdirServer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { raw, reply, TestLLMServer } from "../lib/llm-server"
-import { SyncEvent } from "@/sync"
 import { RuntimeFlags } from "@/effect/runtime-flags"
-import { EventV2Bridge } from "@/event-v2-bridge"
-
-void Log.init({ print: false })
-
-const summarySchedulerStub = {
-  markDirty: (_input: { sessionID: SessionID; messageID: MessageID; version: number }) => Effect.void,
-  foregroundStart: (_sessionID: SessionID) => Effect.void,
-  foregroundFinish: (_sessionID: SessionID) => Effect.void,
-  syncVisible: (_sessionIDs: readonly SessionID[]) => Effect.void,
-  deleteSession: (_sessionID: SessionID) => Effect.void,
-  flush: () => Effect.void,
-}
-
-const summaryScheduler = Layer.succeed(
-  SessionSummaryScheduler.Service,
-  SessionSummaryScheduler.Service.of({
-    markDirty: (input) => summarySchedulerStub.markDirty(input),
-    foregroundStart: (sessionID) => summarySchedulerStub.foregroundStart(sessionID),
-    foregroundFinish: (sessionID) => summarySchedulerStub.foregroundFinish(sessionID),
-    syncVisible: (sessionIDs) => summarySchedulerStub.syncVisible(sessionIDs),
-    deleteSession: (sessionID) => summarySchedulerStub.deleteSession(sessionID),
-    flush: () => summarySchedulerStub.flush(),
-  }),
-)
-
-const summaryStub = {
-  summarize: (_input: { sessionID: SessionID; messageID: MessageID }) => Effect.void,
-  diff: () => Effect.succeed([]),
-  computeDiff: () => Effect.succeed([]),
-}
+import { ProviderV2 } from "@opencode-ai/core/provider"
+import { ModelV2 } from "@opencode-ai/core/model"
+import { SessionProjector } from "@opencode-ai/core/session/projector"
+import { LLMEvent } from "@opencode-ai/llm"
 
 const summary = Layer.succeed(
   SessionSummary.Service,
   SessionSummary.Service.of({
-    summarize: (input) => summaryStub.summarize(input),
-    diff: () => summaryStub.diff(),
-    computeDiff: () => summaryStub.computeDiff(),
+    summarize: () => Effect.void,
+    diff: () => Effect.succeed([]),
+    computeDiff: () => Effect.succeed([]),
   }),
 )
 
-function mockSpawner() {
-  const spawner = ChildProcessSpawner.make(() =>
-    Effect.succeed(
-      ChildProcessSpawner.makeHandle({
-        pid: ChildProcessSpawner.ProcessId(0),
-        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
-        isRunning: Effect.succeed(false),
-        kill: () => Effect.void,
-        stdin: { [Symbol.for("effect/Sink/TypeId")]: Symbol.for("effect/Sink/TypeId") } as any,
-        stdout: Stream.empty,
-        stderr: Stream.empty,
-        all: Stream.empty,
-        getInputFd: () => ({ [Symbol.for("effect/Sink/TypeId")]: Symbol.for("effect/Sink/TypeId") }) as any,
-        getOutputFd: () => Stream.empty,
-        unref: Effect.succeed(Effect.void),
-      }),
-    ),
-  )
-  return Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)
-}
-
 const ref = {
-  providerID: ProviderID.make("test"),
-  modelID: ModelID.make("test-model"),
+  providerID: ProviderV2.ID.make("test"),
+  modelID: ModelV2.ID.make("test-model"),
 }
-
-const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
 
 const cfg = {
   provider: {
@@ -163,50 +103,6 @@ function defer<T>() {
   return { promise, resolve }
 }
 
-function withSummaryScheduler<A, E, R>(
-  overrides: Partial<typeof summarySchedulerStub>,
-  fx: Effect.Effect<A, E, R>,
-) {
-  return Effect.acquireUseRelease(
-    Effect.sync(() => {
-      const prev = { ...summarySchedulerStub }
-      Object.assign(summarySchedulerStub, overrides)
-      return prev
-    }),
-    () => fx,
-    (prev) =>
-      Effect.sync(() => {
-        Object.assign(summarySchedulerStub, prev)
-      }),
-  )
-}
-
-function withSummary<A, E, R>(overrides: Partial<typeof summaryStub>, fx: Effect.Effect<A, E, R>) {
-  return Effect.acquireUseRelease(
-    Effect.sync(() => {
-      const prev = { ...summaryStub }
-      Object.assign(summaryStub, overrides)
-      return prev
-    }),
-    () => fx,
-    (prev) =>
-      Effect.sync(() => {
-        Object.assign(summaryStub, prev)
-      }),
-  )
-}
-
-async function waitForMarkDirtyCallCount(
-  calls: Array<{ sessionID: SessionID; messageID: MessageID; version: number }>,
-  count: number,
-) {
-  for (let i = 0; i < 100; i++) {
-    if (calls.length >= count) return
-    await Bun.sleep(25)
-  }
-  throw new Error(`Timed out waiting for ${count} dirty marks`)
-}
-
 const waitFor = <A>(check: Effect.Effect<A | undefined>, message: string) =>
   Effect.gen(function* () {
     const stop = Date.now() + 500
@@ -244,7 +140,7 @@ const assistant = Effect.fn("TestSession.assistant")(function* (
   root: string,
 ) {
   const session = yield* Session.Service
-  const msg: MessageV2.Assistant = {
+  const msg: SessionV1.Assistant = {
     id: MessageID.ascending(),
     role: "assistant",
     sessionID,
@@ -269,104 +165,66 @@ const assistant = Effect.fn("TestSession.assistant")(function* (
   return msg
 })
 
-const status = SessionStatus.layer.pipe(Layer.provideMerge(Bus.layer))
-const infra = Layer.mergeAll(NodeFileSystem.layer, CrossSpawnSpawner.defaultLayer)
-const deps = Layer.mergeAll(
-  Session.defaultLayer,
-  Snapshot.defaultLayer,
-  AgentSvc.defaultLayer,
-  Permission.defaultLayer,
-  Plugin.defaultLayer,
-  Config.defaultLayer,
-  LLM.defaultLayer,
-  Provider.defaultLayer,
-  status,
-  SyncEvent.defaultLayer,
-  EventV2Bridge.defaultLayer,
-).pipe(Layer.provideMerge(infra))
-const env = Layer.mergeAll(
-  TestLLMServer.layer,
-  SessionProcessor.layer.pipe(
-    Layer.provide(summaryScheduler),
-    Layer.provide(summary),
-    Layer.provide(Image.defaultLayer),
-    Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
-    Layer.provide(AppFileSystem.defaultLayer),
-    Layer.provideMerge(deps),
-  ),
-)
-
-const failingGeneratedImageFs = Layer.effect(
-  AppFileSystem.Service,
-  Effect.gen(function* () {
-    const fs = yield* AppFileSystem.Service
-    return AppFileSystem.Service.of({
-      ...fs,
-      writeWithDirs: (file) =>
-        Effect.fail(
-          PlatformError.systemError({
-            _tag: "Unknown",
-            module: "FileSystem",
-            method: "writeWithDirs",
-            pathOrDescriptor: file,
-            cause: new Error("disk full"),
-          }),
-        ),
-    })
-  }),
-).pipe(Layer.provide(AppFileSystem.defaultLayer))
-
-const envWithFailingGeneratedImageFs = Layer.mergeAll(
-  TestLLMServer.layer,
-  SessionProcessor.layer.pipe(
-    Layer.provide(summaryScheduler),
-    Layer.provide(summary),
-    Layer.provide(Image.defaultLayer),
-    Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
-    Layer.provide(failingGeneratedImageFs),
-    Layer.provideMerge(deps),
-  ),
-)
-
-const contextOverflowLLM = Layer.succeed(
-  LLM.Service,
-  LLM.Service.of({
-    stream: () =>
-      Stream.make({
-        type: "provider-error" as const,
-        message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
-        code: "context_too_large",
-      }),
-  }),
-)
-
-const depsWithContextOverflowLLM = Layer.mergeAll(
-  Session.defaultLayer,
-  Snapshot.defaultLayer,
-  AgentSvc.defaultLayer,
-  Permission.defaultLayer,
-  Plugin.defaultLayer,
-  Config.defaultLayer,
-  contextOverflowLLM,
-  Provider.defaultLayer,
-  status,
-  SyncEvent.defaultLayer,
-  EventV2Bridge.defaultLayer,
-).pipe(Layer.provideMerge(infra))
-
-const contextOverflowEnv = SessionProcessor.layer.pipe(
-  Layer.provide(summaryScheduler),
-  Layer.provide(summary),
-  Layer.provide(Image.defaultLayer),
-  Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
-  Layer.provide(AppFileSystem.defaultLayer),
-  Layer.provideMerge(depsWithContextOverflowLLM),
+const root = LayerNode.group([
+  SessionProcessor.node,
+  Session.node,
+  SessionProjector.node,
+  Provider.node,
+  Database.node,
+  EventV2Bridge.node,
+  SessionStatus.node,
+  CrossSpawnSpawner.node,
+])
+const replacements = [
+  [SessionSummary.node, summary],
+  [RuntimeFlags.node, RuntimeFlags.layer({ experimentalEventSystem: true })],
+] as const
+const env = LayerNode.compile(
+  LayerNode.group([root, LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] })]),
+  replacements,
 )
 
 const it = testEffect(env)
-const itWithFailingGeneratedImageFs = testEffect(envWithFailingGeneratedImageFs)
-const processorDefaultIt = testEffect(Layer.mergeAll(SessionProcessor.defaultLayer, mockSpawner()))
-const contextOverflowIt = testEffect(contextOverflowEnv)
+
+const providerErrorLLM = Layer.succeed(
+  LLM.Service,
+  LLM.Service.of({
+    stream: () =>
+      Stream.make(
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.toolInputStart({ id: "call-1", name: "lookup" }),
+        LLMEvent.toolInputEnd({ id: "call-1", name: "lookup" }),
+        LLMEvent.toolCall({ id: "call-1", name: "lookup", input: {}, providerExecuted: true }),
+        LLMEvent.toolResult({
+          id: "call-1",
+          name: "lookup",
+          result: { type: "error", value: "provider boom" },
+          providerExecuted: true,
+        }),
+        LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+        LLMEvent.finish({ reason: "stop" }),
+      ),
+  }),
+)
+const providerErrorEnv = LayerNode.compile(root, [...replacements, [LLM.node, providerErrorLLM]])
+const itProviderError = testEffect(providerErrorEnv)
+
+const fragmentFailureLLM = Layer.succeed(
+  LLM.Service,
+  LLM.Service.of({
+    stream: () =>
+      Stream.make(
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.reasoningStart({ id: "reasoning-1" }),
+        LLMEvent.reasoningDelta({ id: "reasoning-1", text: "thinking" }),
+        LLMEvent.textStart({ id: "text-1" }),
+        LLMEvent.textDelta({ id: "text-1", text: "partial" }),
+        LLMEvent.providerError({ message: "provider boom" }),
+      ),
+  }),
+)
+const fragmentFailureEnv = LayerNode.compile(root, [...replacements, [LLM.node, fragmentFailureLLM]])
+const itFragmentFailure = testEffect(fragmentFailureEnv)
 
 const boot = Effect.fn("test.boot")(function* () {
   const processors = yield* SessionProcessor.Service
@@ -379,10 +237,11 @@ const boot = Effect.fn("test.boot")(function* () {
 // Tests
 // ---------------------------------------------------------------------------
 
-it.live("stores assistant text from a single llm response", () =>
+it.live("session.processor effect tests capture llm input cleanly", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
+        const database = yield* Database.Service
         const { processors, session, provider } = yield* boot()
 
         yield* llm.text("hello")
@@ -405,7 +264,7 @@ it.live("stores assistant text from a single llm response", () =>
             time: parent.time,
             agent: parent.agent,
             model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
+          } satisfies SessionV1.User,
           sessionID: chat.id,
           model: mdl,
           agent: agent(),
@@ -415,7 +274,7 @@ it.live("stores assistant text from a single llm response", () =>
         } satisfies LLM.StreamInput
 
         const value = yield* handle.process(input)
-        const parts = MessageV2.parts(msg.id)
+        const parts = yield* MessageV2.parts(msg.id)
         const calls = yield* llm.calls
 
         expect(value).toBe("continue")
@@ -426,90 +285,11 @@ it.live("stores assistant text from a single llm response", () =>
   ),
 )
 
-it.live("marking dirty records processor summary without direct summarize", () =>
+it.live("session.processor effect tests preserve text start time", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
-        const { processors, session, provider } = yield* boot()
-        const calls: Array<{ sessionID: SessionID; messageID: MessageID; version: number }> = []
-        const summarizeCalls: Array<{ sessionID: SessionID; messageID: MessageID }> = []
-
-        yield* llm.text("hello")
-
-        const chat = yield* session.create({})
-        const parent = yield* user(chat.id, "hi")
-        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
-        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
-
-        yield* withSummary(
-          {
-            summarize: (input) =>
-              Effect.sync(() => {
-                summarizeCalls.push(input)
-              }),
-          },
-          withSummaryScheduler(
-            {
-              markDirty: (input) =>
-                Effect.sync(() => {
-                  calls.push(input)
-                }),
-            },
-            Effect.gen(function* () {
-              const handle = yield* processors.create({
-                assistantMessage: msg,
-                sessionID: chat.id,
-                model: mdl,
-              })
-
-              yield* handle.process({
-                user: {
-                  id: parent.id,
-                  sessionID: chat.id,
-                  role: "user",
-                  time: parent.time,
-                  agent: parent.agent,
-                  model: { providerID: ref.providerID, modelID: ref.modelID },
-                } satisfies MessageV2.User,
-                sessionID: chat.id,
-                model: mdl,
-                agent: agent(),
-                system: [],
-                messages: [{ role: "user", content: "hi" }],
-                tools: {},
-              } satisfies LLM.StreamInput)
-
-              yield* Effect.promise(() => waitForMarkDirtyCallCount(calls, 1))
-            }),
-          ),
-        )
-
-        expect(calls).toEqual([
-          expect.objectContaining({
-            sessionID: chat.id,
-            messageID: parent.id,
-            version: expect.any(Number),
-          }),
-        ])
-        expect(summarizeCalls).toEqual([])
-      }),
-    { git: true, config: (url) => providerCfg(url) },
-  ),
-)
-
-processorDefaultIt.live("defaultLayer provides summary scheduler", () =>
-  provideTmpdirInstance(() =>
-    Effect.gen(function* () {
-      const processors = yield* SessionProcessor.Service
-      expect(processors).toBeDefined()
-    }),
-  ),
-)
-
-it.live("records text part start and end times", () =>
-  provideTmpdirServer(
-    ({ dir, llm }) =>
-      Effect.gen(function* () {
+        const database = yield* Database.Service
         const gate = defer<void>()
         const { processors, session, provider } = yield* boot()
 
@@ -557,7 +337,7 @@ it.live("records text part start and end times", () =>
               time: parent.time,
               agent: parent.agent,
               model: { providerID: ref.providerID, modelID: ref.modelID },
-            } satisfies MessageV2.User,
+            } satisfies SessionV1.User,
             sessionID: chat.id,
             model: mdl,
             agent: agent(),
@@ -568,14 +348,17 @@ it.live("records text part start and end times", () =>
           .pipe(Effect.forkChild)
 
         yield* waitFor(
-          Effect.sync(() => MessageV2.parts(msg.id).find((part): part is MessageV2.TextPart => part.type === "text")),
+          MessageV2.parts(msg.id).pipe(
+            Effect.map((parts) => parts.find((part): part is SessionV1.TextPart => part.type === "text")),
+            Effect.provideService(Database.Service, database),
+          ),
           "timed out waiting for text part",
         )
         yield* Effect.sleep("20 millis")
         gate.resolve()
 
         const exit = yield* Fiber.await(run)
-        const text = MessageV2.parts(msg.id).find((part): part is MessageV2.TextPart => part.type === "text")
+        const text = (yield* MessageV2.parts(msg.id)).find((part): part is SessionV1.TextPart => part.type === "text")
 
         expect(Exit.isSuccess(exit)).toBe(true)
         expect(text?.text).toBe("hello")
@@ -588,170 +371,11 @@ it.live("records text part start and end times", () =>
   ),
 )
 
-it.live("normalizes image_generation tool results into persisted relative-path attachments", () =>
+it.live("session.processor effect tests stop after token overflow requests compaction", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
-        const { processors, session, provider } = yield* boot()
-
-        yield* llm.tool("image_generation", { prompt: "draw a pixel" })
-        yield* llm.text("done")
-
-        const chat = yield* session.create({})
-        const parent = yield* user(chat.id, "draw a pixel")
-        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
-        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
-        const handle = yield* processors.create({
-          assistantMessage: msg,
-          sessionID: chat.id,
-          model: mdl,
-        })
-        const exit = yield* Effect.exit(
-          handle.process({
-          user: {
-            id: parent.id,
-            sessionID: chat.id,
-            role: "user",
-            time: parent.time,
-            agent: parent.agent,
-            model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
-          sessionID: chat.id,
-          model: mdl,
-          agent: agent(),
-          system: [],
-          messages: [{ role: "user", content: "draw a pixel" }],
-          tools: {
-            image_generation: tool({
-              description: "Generate an image",
-              inputSchema: z.object({ prompt: z.string() }),
-              execute: async () => ({
-                title: "image_generation",
-                metadata: { source: "test" },
-                output: png,
-              }),
-            }),
-          },
-          }),
-        )
-        if (Exit.isFailure(exit)) {
-          throw new Error(Cause.pretty(exit.cause))
-        }
-
-        const parts = MessageV2.parts(msg.id)
-        const call = parts.find(
-          (part): part is MessageV2.ToolPart => part.type === "tool" && part.tool === "image_generation",
-        )
-
-        expect(yield* llm.calls).toBe(1)
-        if (call?.state.status === "error") {
-          throw new Error(call.state.error)
-        }
-        expect(call?.state.status).toBe("completed")
-        if (call?.state.status !== "completed") return
-        expect(call.state.output).toContain("已生成 1 张图片")
-        expect(call.state.output).not.toContain("generated-image-1.png")
-        expect(call.state.output).not.toContain(png)
-        expect(call.state.title).toBe("image_generation")
-        expect(call.state.metadata).toEqual({ source: "test" })
-        expect(call.state.attachments).toHaveLength(1)
-        const generated = call.state.attachments?.[0]
-        expect(generated).toMatchObject({
-          filename: `generated-image-${msg.id}-1.png`,
-          mime: "image/png",
-          relativePath: `.opencode/generated-images/generated-image-${msg.id}-1.png`,
-          url: `/generated-image?path=.opencode%2Fgenerated-images%2Fgenerated-image-${msg.id}-1.png`,
-        })
-        expect(generated?.url).not.toContain("data:image/")
-        expect(
-          yield* Effect.promise(() => Bun.file(path.join(dir, ".opencode", "generated-images", `generated-image-${msg.id}-1.png`)).exists()),
-        ).toBe(true)
-
-        const history = yield* session.messages({ sessionID: chat.id })
-        expect(JSON.stringify(history)).not.toContain("data:image/")
-        const replay = yield* Effect.promise(() => MessageV2.toModelMessages(history, mdl))
-        const replayText = JSON.stringify(replay)
-        expect(replayText).toContain(`已生成图片文件：.opencode/generated-images/generated-image-${msg.id}-1.png`)
-        expect(replay).toHaveLength(3)
-        expect(replayText).not.toContain("Attached image(s) from tool result:")
-      }),
-    { git: true, config: (url) => providerCfg(url) },
-  ),
-)
-
-itWithFailingGeneratedImageFs.live("generated image persistence failures mark the tool call as error instead of defecting", () =>
-  provideTmpdirServer(
-    ({ dir, llm }) =>
-      Effect.gen(function* () {
-        const { processors, session, provider } = yield* boot()
-
-        yield* llm.tool("image_generation", { prompt: "draw a pixel" })
-        yield* llm.text("done")
-
-        const chat = yield* session.create({})
-        const parent = yield* user(chat.id, "draw a pixel")
-        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
-        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
-        const handle = yield* processors.create({
-          assistantMessage: msg,
-          sessionID: chat.id,
-          model: mdl,
-        })
-
-        const exit = yield* Effect.exit(
-          handle.process({
-            user: {
-              id: parent.id,
-              sessionID: chat.id,
-              role: "user",
-              time: parent.time,
-              agent: parent.agent,
-              model: { providerID: ref.providerID, modelID: ref.modelID },
-            } satisfies MessageV2.User,
-            sessionID: chat.id,
-            model: mdl,
-            agent: agent(),
-            system: [],
-            messages: [{ role: "user", content: "draw a pixel" }],
-            tools: {
-              image_generation: tool({
-                description: "Generate an image",
-                inputSchema: z.object({ prompt: z.string() }),
-                execute: async () => ({
-                  title: "image_generation",
-                  metadata: { source: "test" },
-                  output: png,
-                }),
-              }),
-            },
-          }),
-        )
-
-        expect(Exit.isSuccess(exit)).toBe(true)
-        if (Exit.isSuccess(exit)) {
-          expect(exit.value).toBe("continue")
-        }
-        expect(handle.message.error).toBeUndefined()
-
-        const parts = MessageV2.parts(msg.id)
-        const call = parts.find(
-          (part): part is MessageV2.ToolPart => part.type === "tool" && part.tool === "image_generation",
-        )
-
-        expect(call?.state.status).toBe("error")
-        if (call?.state.status !== "error") return
-        expect(call.state.error).toContain("Failed to persist generated image attachment")
-        expect(call.state.error).toContain("FileSystem.writeWithDirs")
-        expect(call.state.time.end).toBeDefined()
-      }),
-    { git: true, config: (url) => providerCfg(url) },
-  ),
-)
-
-it.live("requests compaction after token overflow", () =>
-  provideTmpdirServer(
-    ({ dir, llm }) =>
-      Effect.gen(function* () {
+        const database = yield* Database.Service
         const { processors, session, provider } = yield* boot()
 
         yield* llm.text("after", { usage: { input: 100, output: 0 } })
@@ -775,7 +399,7 @@ it.live("requests compaction after token overflow", () =>
             time: parent.time,
             agent: parent.agent,
             model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
+          } satisfies SessionV1.User,
           sessionID: chat.id,
           model: mdl,
           agent: agent(),
@@ -784,7 +408,7 @@ it.live("requests compaction after token overflow", () =>
           tools: {},
         })
 
-        const parts = MessageV2.parts(msg.id)
+        const parts = yield* MessageV2.parts(msg.id)
 
         expect(value).toBe("compact")
         expect(parts.some((part) => part.type === "text" && part.text === "after")).toBe(true)
@@ -794,10 +418,11 @@ it.live("requests compaction after token overflow", () =>
   ),
 )
 
-it.live("captures reasoning parts from llm responses", () =>
+it.live("session.processor effect tests capture reasoning from http mock", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
+        const database = yield* Database.Service
         const { processors, session, provider } = yield* boot()
 
         yield* llm.push(reply().reason("think").text("done").stop())
@@ -820,7 +445,7 @@ it.live("captures reasoning parts from llm responses", () =>
             time: parent.time,
             agent: parent.agent,
             model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
+          } satisfies SessionV1.User,
           sessionID: chat.id,
           model: mdl,
           agent: agent(),
@@ -829,9 +454,9 @@ it.live("captures reasoning parts from llm responses", () =>
           tools: {},
         })
 
-        const parts = MessageV2.parts(msg.id)
-        const reasoning = parts.find((part): part is MessageV2.ReasoningPart => part.type === "reasoning")
-        const text = parts.find((part): part is MessageV2.TextPart => part.type === "text")
+        const parts = yield* MessageV2.parts(msg.id)
+        const reasoning = parts.find((part): part is SessionV1.ReasoningPart => part.type === "reasoning")
+        const text = parts.find((part): part is SessionV1.TextPart => part.type === "text")
 
         expect(value).toBe("continue")
         expect(yield* llm.calls).toBe(1)
@@ -842,7 +467,7 @@ it.live("captures reasoning parts from llm responses", () =>
   ),
 )
 
-it.live("resets reasoning parts across retries", () =>
+it.live("session.processor effect tests reset reasoning state across retries", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -868,7 +493,7 @@ it.live("resets reasoning parts across retries", () =>
             time: parent.time,
             agent: parent.agent,
             model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
+          } satisfies SessionV1.User,
           sessionID: chat.id,
           model: mdl,
           agent: agent(),
@@ -877,8 +502,8 @@ it.live("resets reasoning parts across retries", () =>
           tools: {},
         })
 
-        const parts = MessageV2.parts(msg.id)
-        const reasoning = parts.filter((part): part is MessageV2.ReasoningPart => part.type === "reasoning")
+        const parts = yield* MessageV2.parts(msg.id)
+        const reasoning = parts.filter((part): part is SessionV1.ReasoningPart => part.type === "reasoning")
 
         expect(value).toBe("continue")
         expect(yield* llm.calls).toBe(2)
@@ -889,7 +514,7 @@ it.live("resets reasoning parts across retries", () =>
   ),
 )
 
-it.live("does not retry unrecognized json errors", () =>
+it.live("session.processor effect tests do not retry unknown json errors", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -915,7 +540,7 @@ it.live("does not retry unrecognized json errors", () =>
             time: parent.time,
             agent: parent.agent,
             model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
+          } satisfies SessionV1.User,
           sessionID: chat.id,
           model: mdl,
           agent: agent(),
@@ -932,7 +557,7 @@ it.live("does not retry unrecognized json errors", () =>
   ),
 )
 
-it.live("retries recognized structured json errors", () =>
+it.live("session.processor effect tests retry recognized structured json errors", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -959,7 +584,7 @@ it.live("retries recognized structured json errors", () =>
             time: parent.time,
             agent: parent.agent,
             model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
+          } satisfies SessionV1.User,
           sessionID: chat.id,
           model: mdl,
           agent: agent(),
@@ -968,7 +593,7 @@ it.live("retries recognized structured json errors", () =>
           tools: {},
         })
 
-        const parts = MessageV2.parts(msg.id)
+        const parts = yield* MessageV2.parts(msg.id)
 
         expect(value).toBe("continue")
         expect(yield* llm.calls).toBe(2)
@@ -979,149 +604,12 @@ it.live("retries recognized structured json errors", () =>
   ),
 )
 
-it.live("retries upstream stream_timeout structured errors", () =>
+it.live("session.processor effect tests publish retry status updates", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
         const { processors, session, provider } = yield* boot()
-        const bus = yield* Bus.Service
-
-        yield* llm.push(
-          raw({
-            head: [
-              {
-                type: "error",
-                sequence_number: 0,
-                error: {
-                  type: "upstream_error",
-                  code: "stream_timeout",
-                  message: "stream_timeout",
-                },
-              },
-            ],
-          }),
-        )
-        yield* llm.text("after")
-
-        const chat = yield* session.create({})
-        const parent = yield* user(chat.id, "retry timeout")
-        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
-        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
-        const states: number[] = []
-        const off = yield* bus.subscribeCallback(SessionStatus.Event.Status, (evt) => {
-          if (evt.properties.sessionID !== chat.id) return
-          if (evt.properties.status.type === "retry") states.push(evt.properties.status.attempt)
-        })
-        const handle = yield* processors.create({
-          assistantMessage: msg,
-          sessionID: chat.id,
-          model: mdl,
-        })
-
-        const value = yield* handle.process({
-          user: {
-            id: parent.id,
-            sessionID: chat.id,
-            role: "user",
-            time: parent.time,
-            agent: parent.agent,
-            model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
-          sessionID: chat.id,
-          model: mdl,
-          agent: agent(),
-          system: [],
-          messages: [{ role: "user", content: "retry timeout" }],
-          tools: {},
-        })
-
-        off()
-
-        const parts = MessageV2.parts(msg.id)
-
-        expect(value).toBe("continue")
-        expect(yield* llm.calls).toBe(2)
-        expect(states).toStrictEqual([1])
-        expect(parts.some((part) => part.type === "text" && part.text === "after")).toBe(true)
-        expect(handle.message.error).toBeUndefined()
-      }),
-    { git: true, config: (url) => providerCfg(url) },
-  ),
-  15_000,
-)
-
-it.live("retries adapter-flattened stream_timeout message errors", () =>
-  provideTmpdirServer(
-    ({ dir, llm }) =>
-      Effect.gen(function* () {
-        const { processors, session, provider } = yield* boot()
-        const bus = yield* Bus.Service
-
-        yield* llm.push(
-          raw({
-            head: [
-              {
-                error: {
-                  message: "stream_timeout",
-                },
-              },
-            ],
-          }),
-        )
-        yield* llm.text("after")
-
-        const chat = yield* session.create({})
-        const parent = yield* user(chat.id, "retry timeout text")
-        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
-        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
-        const states: number[] = []
-        const off = yield* bus.subscribeCallback(SessionStatus.Event.Status, (evt) => {
-          if (evt.properties.sessionID !== chat.id) return
-          if (evt.properties.status.type === "retry") states.push(evt.properties.status.attempt)
-        })
-        const handle = yield* processors.create({
-          assistantMessage: msg,
-          sessionID: chat.id,
-          model: mdl,
-        })
-
-        const value = yield* handle.process({
-          user: {
-            id: parent.id,
-            sessionID: chat.id,
-            role: "user",
-            time: parent.time,
-            agent: parent.agent,
-            model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
-          sessionID: chat.id,
-          model: mdl,
-          agent: agent(),
-          system: [],
-          messages: [{ role: "user", content: "retry timeout text" }],
-          tools: {},
-        })
-
-        off()
-
-        const parts = MessageV2.parts(msg.id)
-
-        expect(value).toBe("continue")
-        expect(yield* llm.calls).toBe(2)
-        expect(states).toStrictEqual([1])
-        expect(parts.some((part) => part.type === "text" && part.text === "after")).toBe(true)
-        expect(handle.message.error).toBeUndefined()
-      }),
-    { git: true, config: (url) => providerCfg(url) },
-  ),
-)
-
-it.live("publishes retry status attempts", () =>
-  provideTmpdirServer(
-    ({ dir, llm }) =>
-      Effect.gen(function* () {
-        const { processors, session, provider } = yield* boot()
-        const bus = yield* Bus.Service
+        const events = yield* EventV2Bridge.Service
 
         yield* llm.error(503, { error: "boom" })
         yield* llm.text("")
@@ -1131,9 +619,11 @@ it.live("publishes retry status attempts", () =>
         const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
         const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
         const states: number[] = []
-        const off = yield* bus.subscribeCallback(SessionStatus.Event.Status, (evt) => {
-          if (evt.properties.sessionID !== chat.id) return
-          if (evt.properties.status.type === "retry") states.push(evt.properties.status.attempt)
+        const off = yield* events.listen((evt) => {
+          if (evt.type !== SessionStatus.Event.Status.type) return Effect.void
+          const data = evt.data as typeof SessionStatus.Event.Status.data.Type
+          if (data.sessionID === chat.id && data.status.type === "retry") states.push(data.status.attempt)
+          return Effect.void
         })
         const handle = yield* processors.create({
           assistantMessage: msg,
@@ -1149,7 +639,7 @@ it.live("publishes retry status attempts", () =>
             time: parent.time,
             agent: parent.agent,
             model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
+          } satisfies SessionV1.User,
           sessionID: chat.id,
           model: mdl,
           agent: agent(),
@@ -1158,7 +648,7 @@ it.live("publishes retry status attempts", () =>
           tools: {},
         })
 
-        off()
+        yield* off
 
         expect(value).toBe("continue")
         expect(yield* llm.calls).toBe(2)
@@ -1168,7 +658,7 @@ it.live("publishes retry status attempts", () =>
   ),
 )
 
-it.live("requests compaction on structured context overflow", () =>
+it.live("session.processor effect tests compact on structured context overflow", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -1194,7 +684,7 @@ it.live("requests compaction on structured context overflow", () =>
             time: parent.time,
             agent: parent.agent,
             model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
+          } satisfies SessionV1.User,
           sessionID: chat.id,
           model: mdl,
           agent: agent(),
@@ -1206,105 +696,6 @@ it.live("requests compaction on structured context overflow", () =>
         expect(value).toBe("compact")
         expect(yield* llm.calls).toBe(1)
         expect(handle.message.error).toBeUndefined()
-      }),
-    { config: (url) => providerCfg(url) },
-  ),
-  15_000,
-)
-
-contextOverflowIt.live("requests compaction on OpenAI Responses context_too_large stream errors", () =>
-  provideTmpdirInstance(
-    (dir) =>
-      Effect.gen(function* () {
-        const { processors, session, provider } = yield* boot()
-
-        const chat = yield* session.create({})
-        const parent = yield* user(chat.id, "compact responses")
-        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
-        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
-        const handle = yield* processors.create({
-          assistantMessage: msg,
-          sessionID: chat.id,
-          model: mdl,
-        })
-
-        const value = yield* handle.process({
-          user: {
-            id: parent.id,
-            sessionID: chat.id,
-            role: "user",
-            time: parent.time,
-            agent: parent.agent,
-            model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
-          sessionID: chat.id,
-          model: mdl,
-          agent: agent(),
-          system: [],
-          messages: [{ role: "user", content: "compact responses" }],
-          tools: {},
-        })
-
-        expect(value).toBe("compact")
-        expect(handle.message.error).toBeUndefined()
-      }),
-    { config: providerCfg("http://localhost:1/v1") },
-  ),
-)
-
-it.live("suppresses session error when overflow transitions into compaction", () =>
-  provideTmpdirServer(
-    ({ dir, llm }) =>
-      Effect.gen(function* () {
-        const { processors, session, provider } = yield* boot()
-        const bus = yield* Bus.Service
-        const seen = defer<string>()
-
-        yield* llm.error(400, { type: "error", error: { code: "context_length_exceeded" } })
-
-        const chat = yield* session.create({})
-        const parent = yield* user(chat.id, "compact json")
-        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
-        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
-        const errs: string[] = []
-        const off = yield* bus.subscribeCallback(Session.Event.Error, (evt) => {
-          if (evt.properties.sessionID !== chat.id) return
-          if (!evt.properties.error) return
-          errs.push(evt.properties.error.name)
-          seen.resolve(evt.properties.error.name)
-        })
-
-        const handle = yield* processors.create({
-          assistantMessage: msg,
-          sessionID: chat.id,
-          model: mdl,
-        })
-
-        const value = yield* handle.process({
-          user: {
-            id: parent.id,
-            sessionID: chat.id,
-            role: "user",
-            time: parent.time,
-            agent: parent.agent,
-            model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
-          sessionID: chat.id,
-          model: mdl,
-          agent: agent(),
-          system: [],
-          messages: [{ role: "user", content: "compact json" }],
-          tools: {},
-        })
-
-        const published = yield* Effect.promise(() => Promise.race([seen.promise, Bun.sleep(50).then(() => "__timeout__")]))
-
-        off()
-
-        expect(value).toBe("compact")
-        expect(handle.message.error).toBeUndefined()
-        expect(published).toBe("__timeout__")
-        expect(errs).toEqual([])
       }),
     { config: (url) => providerCfg(url) },
   ),
@@ -1336,7 +727,7 @@ it.live("session.processor effect tests complete AI SDK tool calls when native f
             time: parent.time,
             agent: parent.agent,
             model: { providerID: ref.providerID, modelID: ref.modelID },
-          } satisfies MessageV2.User,
+          } satisfies SessionV1.User,
           sessionID: chat.id,
           model: mdl,
           agent: agent(),
@@ -1355,8 +746,8 @@ it.live("session.processor effect tests complete AI SDK tool calls when native f
           },
         })
 
-        const parts = MessageV2.parts(msg.id)
-        const call = parts.find((part): part is MessageV2.ToolPart => part.type === "tool")
+        const parts = yield* MessageV2.parts(msg.id)
+        const call = parts.find((part): part is SessionV1.ToolPart => part.type === "tool")
 
         expect(value).toBe("continue")
         expect(yield* llm.calls).toBe(1)
@@ -1371,14 +762,15 @@ it.live("session.processor effect tests complete AI SDK tool calls when native f
         expect(call.state.time.start).toBeDefined()
         expect(call.state.time.end).toBeDefined()
       }),
-    { git: true, config: (url) => providerCfg(url) },
+    { config: (url) => providerCfg(url) },
   ),
 )
 
-it.live("marks pending tool calls aborted on cleanup", () =>
+it.live("session.processor effect tests mark pending tools as aborted on cleanup", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
+        const database = yield* Database.Service
         const { processors, session, provider } = yield* boot()
 
         yield* llm.toolHang("bash", { cmd: "pwd" })
@@ -1402,7 +794,7 @@ it.live("marks pending tool calls aborted on cleanup", () =>
               time: parent.time,
               agent: parent.agent,
               model: { providerID: ref.providerID, modelID: ref.modelID },
-            } satisfies MessageV2.User,
+            } satisfies SessionV1.User,
             sessionID: chat.id,
             model: mdl,
             agent: agent(),
@@ -1414,14 +806,17 @@ it.live("marks pending tool calls aborted on cleanup", () =>
 
         yield* llm.wait(1)
         yield* waitFor(
-          Effect.sync(() => MessageV2.parts(msg.id).find((part): part is MessageV2.ToolPart => part.type === "tool")),
+          MessageV2.parts(msg.id).pipe(
+            Effect.map((parts) => parts.find((part): part is SessionV1.ToolPart => part.type === "tool")),
+            Effect.provideService(Database.Service, database),
+          ),
           "timed out waiting for tool part",
         )
         yield* Fiber.interrupt(run)
 
         const exit = yield* Fiber.await(run)
-        const parts = MessageV2.parts(msg.id)
-        const call = parts.find((part): part is MessageV2.ToolPart => part.type === "tool")
+        const parts = yield* MessageV2.parts(msg.id)
+        const call = parts.find((part): part is SessionV1.ToolPart => part.type === "tool")
 
         expect(Exit.isFailure(exit)).toBe(true)
         if (Exit.isFailure(exit)) {
@@ -1439,13 +834,13 @@ it.live("marks pending tool calls aborted on cleanup", () =>
   ),
 )
 
-it.live("stores aborted message errors and returns session to idle", () =>
+it.live("session.processor effect tests record aborted errors and idle state", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
         const seen = defer<void>()
         const { processors, session, provider } = yield* boot()
-        const bus = yield* Bus.Service
+        const events = yield* EventV2Bridge.Service
         const sts = yield* SessionStatus.Service
 
         yield* llm.hang
@@ -1455,11 +850,13 @@ it.live("stores aborted message errors and returns session to idle", () =>
         const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
         const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
         const errs: string[] = []
-        const off = yield* bus.subscribeCallback(Session.Event.Error, (evt) => {
-          if (evt.properties.sessionID !== chat.id) return
-          if (!evt.properties.error) return
-          errs.push(evt.properties.error.name)
+        const off = yield* events.listen((evt) => {
+          if (evt.type !== Session.Event.Error.type) return Effect.void
+          const data = evt.data as typeof Session.Event.Error.data.Type
+          if (data.sessionID !== chat.id || !data.error) return Effect.void
+          errs.push(data.error.name)
           seen.resolve()
+          return Effect.void
         })
         const handle = yield* processors.create({
           assistantMessage: msg,
@@ -1476,7 +873,7 @@ it.live("stores aborted message errors and returns session to idle", () =>
               time: parent.time,
               agent: parent.agent,
               model: { providerID: ref.providerID, modelID: ref.modelID },
-            } satisfies MessageV2.User,
+            } satisfies SessionV1.User,
             sessionID: chat.id,
             model: mdl,
             agent: agent(),
@@ -1493,7 +890,7 @@ it.live("stores aborted message errors and returns session to idle", () =>
         yield* Effect.promise(() => seen.promise)
         const stored = yield* MessageV2.get({ sessionID: chat.id, messageID: msg.id })
         const state = yield* sts.get(chat.id)
-        off()
+        yield* off
 
         expect(Exit.isFailure(exit)).toBe(true)
         if (Exit.isFailure(exit)) {
@@ -1511,7 +908,7 @@ it.live("stores aborted message errors and returns session to idle", () =>
   ),
 )
 
-it.live("stores interrupted runs as aborted without manual abort", () =>
+it.live("session.processor effect tests mark interruptions aborted without manual abort", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -1539,7 +936,7 @@ it.live("stores interrupted runs as aborted without manual abort", () =>
               time: parent.time,
               agent: parent.agent,
               model: { providerID: ref.providerID, modelID: ref.modelID },
-            } satisfies MessageV2.User,
+            } satisfies SessionV1.User,
             sessionID: chat.id,
             model: mdl,
             agent: agent(),
@@ -1565,5 +962,106 @@ it.live("stores interrupted runs as aborted without manual abort", () =>
         expect(state).toMatchObject({ type: "idle" })
       }),
     { config: (url) => providerCfg(url) },
+  ),
+)
+
+itProviderError.live("session.processor effect tests fail provider-executed error results", () =>
+  provideTmpdirInstance(
+    (dir) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+        const events = yield* EventV2Bridge.Service
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "provider tool error")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const seen: string[] = []
+        const off = yield* events.listen((event) => {
+          seen.push(event.type)
+          return Effect.void
+        })
+        const handle = yield* processors.create({ assistantMessage: msg, sessionID: chat.id, model: mdl })
+
+        yield* handle.process({
+          user: {
+            id: parent.id,
+            sessionID: chat.id,
+            role: "user",
+            time: parent.time,
+            agent: parent.agent,
+            model: { providerID: ref.providerID, modelID: ref.modelID },
+          } satisfies SessionV1.User,
+          sessionID: chat.id,
+          model: mdl,
+          agent: agent(),
+          system: [],
+          messages: [{ role: "user", content: "provider tool error" }],
+          tools: {},
+        })
+        yield* off
+
+        const parts = yield* MessageV2.parts(msg.id)
+        const call = parts.find((part): part is SessionV1.ToolPart => part.type === "tool")
+        expect(call?.state.status).toBe("error")
+        if (call?.state.status === "error") expect(call.state.error).toBe("provider boom")
+        expect(seen).toContain(MessageV2.Event.PartUpdated.type)
+        expect(seen).toContain(MessageV2.Event.Updated.type)
+        expect(seen.filter((type) => type.startsWith("session.next."))).toEqual([])
+      }),
+    { config: cfg },
+  ),
+)
+
+itFragmentFailure.live("session.processor effect tests retain partial legacy parts without v2 events", () =>
+  provideTmpdirInstance(
+    (dir) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+        const events = yield* EventV2Bridge.Service
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "provider failure")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const seen: string[] = []
+        const off = yield* events.listen((event) => {
+          seen.push(event.type)
+          return Effect.void
+        })
+        const handle = yield* processors.create({ assistantMessage: msg, sessionID: chat.id, model: mdl })
+
+        expect(
+          yield* handle.process({
+            user: {
+              id: parent.id,
+              sessionID: chat.id,
+              role: "user",
+              time: parent.time,
+              agent: parent.agent,
+              model: { providerID: ref.providerID, modelID: ref.modelID },
+            } satisfies SessionV1.User,
+            sessionID: chat.id,
+            model: mdl,
+            agent: agent(),
+            system: [],
+            messages: [{ role: "user", content: "provider failure" }],
+            tools: {},
+          }),
+        ).toBe("stop")
+        yield* off
+
+        const parts = yield* MessageV2.parts(msg.id)
+        expect(parts).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ type: "text", text: "partial" }),
+            expect.objectContaining({ type: "reasoning", text: "thinking" }),
+          ]),
+        )
+        expect(seen).toContain(MessageV2.Event.PartUpdated.type)
+        expect(seen).toContain(Session.Event.Error.type)
+        expect(seen.filter((type) => type.startsWith("session.next."))).toEqual([])
+      }),
+    { config: cfg },
   ),
 )

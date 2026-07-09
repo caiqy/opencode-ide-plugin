@@ -1,15 +1,15 @@
-import { Permission } from "@/permission"
+import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import type { MessageID, SessionID } from "./schema"
 
-type AskInput = Permission.AskInput
+type AskInput = PermissionV1.AskInput
 
 export function buildToolPermissionAsk(input: {
   sessionID: SessionID
   messageID: MessageID
   callID: string
   ruleset: AskInput["ruleset"]
-  overlayRuleset?: AskInput["overrideRuleset"]
-  req: Omit<AskInput, "sessionID" | "tool" | "ruleset" | "overrideRuleset">
+  overlayRuleset?: AskInput["ruleset"]
+  req: Omit<AskInput, "sessionID" | "tool" | "ruleset">
 }): AskInput {
   return {
     ...input.req,
@@ -18,7 +18,6 @@ export function buildToolPermissionAsk(input: {
       messageID: input.messageID,
       callID: input.callID,
     },
-    ruleset: input.ruleset,
-    overrideRuleset: input.overlayRuleset,
+    ruleset: input.overlayRuleset ? [...input.ruleset, ...input.overlayRuleset] : input.ruleset,
   }
 }

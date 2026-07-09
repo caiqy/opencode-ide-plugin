@@ -54,6 +54,7 @@
 ### Task 1: 删除运行时代码里的 debug 开关与 trace helper 引用
 
 **Files:**
+
 - Modify: `packages/opencode/src/session/prompt.ts`
 - Modify: `packages/opencode/src/session/processor.ts`
 - Modify: `packages/opencode/src/session/summary.ts`
@@ -75,7 +76,8 @@ it.live("prompt step 1 always marks dirty without debug env branches", () =>
       const scheduler = Layer.succeed(
         SessionSummaryScheduler.Service,
         SessionSummaryScheduler.Service.of({
-          markDirty: (input) => Effect.sync(() => void marked.push({ sessionID: input.sessionID, messageID: input.messageID })),
+          markDirty: (input) =>
+            Effect.sync(() => void marked.push({ sessionID: input.sessionID, messageID: input.messageID })),
           foregroundStart: () => Effect.void,
           foregroundFinish: () => Effect.void,
           syncVisible: () => Effect.void,
@@ -88,12 +90,14 @@ it.live("prompt step 1 always marks dirty without debug env branches", () =>
       const session = yield* Session.Service
       const chat = yield* session.create({ title: "cleanup prompt" })
 
-      yield* prompt.prompt({
-        sessionID: chat.id,
-        parts: [{ type: "text", text: "继续" }],
-        model: ref,
-        agent: "build",
-      }).pipe(Effect.provide(scheduler))
+      yield* prompt
+        .prompt({
+          sessionID: chat.id,
+          parts: [{ type: "text", text: "继续" }],
+          model: ref,
+          agent: "build",
+        })
+        .pipe(Effect.provide(scheduler))
 
       expect(marked.length).toBeGreaterThan(0)
     }),
@@ -101,17 +105,18 @@ it.live("prompt step 1 always marks dirty without debug env branches", () =>
 )
 
 it.live("summary always computes diff without skip-summary-diff env path", () =>
-  provideTmpdirInstance((dir) =>
-    Effect.gen(function* () {
-      const summary = yield* SessionSummary.Service
-      const session = yield* Session.Service
-      const chat = yield* session.create({ title: "cleanup summary" })
-      const user = yield* seedConversation(chat.id, dir)
+  provideTmpdirInstance(
+    (dir) =>
+      Effect.gen(function* () {
+        const summary = yield* SessionSummary.Service
+        const session = yield* Session.Service
+        const chat = yield* session.create({ title: "cleanup summary" })
+        const user = yield* seedConversation(chat.id, dir)
 
-      yield* summary.summarize({ sessionID: chat.id, messageID: user.id })
+        yield* summary.summarize({ sessionID: chat.id, messageID: user.id })
 
-      expect((yield* summary.diff({ sessionID: chat.id }))).toEqual(fileDiffs)
-    }),
+        expect(yield* summary.diff({ sessionID: chat.id })).toEqual(fileDiffs)
+      }),
     { git: true },
   ),
 )
@@ -196,6 +201,7 @@ git commit -m "refactor: remove debug trace runtime branches"
 ### Task 2: 删除 debug-only 测试并补齐正式回归断言
 
 **Files:**
+
 - Modify: `packages/opencode/test/session/prompt.test.ts`
 - Modify: `packages/opencode/test/session/processor-effect.test.ts`
 - Modify: `packages/opencode/test/session/summary.test.ts`
@@ -231,21 +237,22 @@ it.live("step 1 marks dirty and never falls back to direct summarize", () =>
 
 // summary.test.ts
 it.live("scheduler markDirty auto-runs real summarize and writes summary plus diff", () =>
-  provideTmpdirInstance((dir) =>
-    Effect.gen(function* () {
-      const session = yield* Session.Service
-      const scheduler = yield* SessionSummaryScheduler.Service
-      const summary = yield* SessionSummary.Service
-      const chat = yield* session.create({ title: "real auto summarize" })
-      const user = yield* seedConversation(chat.id, dir)
+  provideTmpdirInstance(
+    (dir) =>
+      Effect.gen(function* () {
+        const session = yield* Session.Service
+        const scheduler = yield* SessionSummaryScheduler.Service
+        const summary = yield* SessionSummary.Service
+        const chat = yield* session.create({ title: "real auto summarize" })
+        const user = yield* seedConversation(chat.id, dir)
 
-      yield* scheduler.syncVisible([chat.id])
-      yield* scheduler.markDirty({ sessionID: chat.id, messageID: user.id, version: Date.now() })
-      yield* waitForSummary(chat.id)
+        yield* scheduler.syncVisible([chat.id])
+        yield* scheduler.markDirty({ sessionID: chat.id, messageID: user.id, version: Date.now() })
+        yield* waitForSummary(chat.id)
 
-      expect((yield* session.get(chat.id)).summary).toEqual(expect.objectContaining({ files: 1 }))
-      expect((yield* summary.diff({ sessionID: chat.id }))).toEqual(fileDiffs)
-    }),
+        expect((yield* session.get(chat.id)).summary).toEqual(expect.objectContaining({ files: 1 }))
+        expect(yield* summary.diff({ sessionID: chat.id })).toEqual(fileDiffs)
+      }),
     { git: true },
   ),
 )
@@ -311,6 +318,7 @@ git commit -m "test: remove debug-only summary trace coverage"
 ### Task 3: 删除调试产物并做最终验证
 
 **Files:**
+
 - Delete local artifact: `.opencode-debug/`
 
 - [ ] **Step 1: grep 仓库确认无 debug 残留**

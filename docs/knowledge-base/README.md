@@ -33,35 +33,35 @@ knowledge-base/
 
 ## 速查表
 
-| 想了解 | 看 |
-|---|---|
-| 架构 | [architecture-overview](explanation/architecture-overview.md) |
-| 能力总览 | [capabilities-index](reference/capabilities-index.md) |
-| 仓库结构 | [packages-opencode](reference/repositories/packages-opencode.md)、[hosts-vscode-plugin](reference/repositories/hosts-vscode-plugin.md)、[hosts-jetbrains-plugin](reference/repositories/hosts-jetbrains-plugin.md) |
-| WebGUI 如何工作 | [embedded-webgui-serving](reference/business/embedded-webgui-serving.md)、[ADR 001](adr/001-webgui-local-hosting.md) |
-| IDE Bridge | [ide-bridge-design](explanation/ide-bridge-design.md)、[ide-bridge](reference/business/ide-bridge.md)、[ADR 002](adr/002-ide-bridge-protocol.md) |
-| 上游同步 | [upstream-adaptation-strategy](explanation/upstream-adaptation-strategy.md)、[sync-upstream](how-to/maintainer/sync-upstream.md)、[upstream-compatibility](reference/business/upstream-compatibility.md) |
-| 如何打包发布 | [package-and-release](how-to/maintainer/package-and-release.md)、[packaging-release](reference/business/packaging-release.md) |
-| 设置 Provider | [provider-settings](reference/business/provider-settings.md)、[settings-panel](reference/business/settings-panel.md) |
-| 开发新能力 | [add-webgui-capability](how-to/frontend/add-webgui-capability.md)、[capabilities-index](reference/capabilities-index.md) |
-| 新手入门 | [architecture-overview](explanation/architecture-overview.md)、[glossary](reference/glossary.md)、[capabilities-index](reference/capabilities-index.md) |
+| 想了解          | 看                                                                                                                                                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 架构            | [architecture-overview](explanation/architecture-overview.md)                                                                                                                                                      |
+| 能力总览        | [capabilities-index](reference/capabilities-index.md)                                                                                                                                                              |
+| 仓库结构        | [packages-opencode](reference/repositories/packages-opencode.md)、[hosts-vscode-plugin](reference/repositories/hosts-vscode-plugin.md)、[hosts-jetbrains-plugin](reference/repositories/hosts-jetbrains-plugin.md) |
+| WebGUI 如何工作 | [embedded-webgui-serving](reference/business/embedded-webgui-serving.md)、[ADR 001](adr/001-webgui-local-hosting.md)                                                                                               |
+| IDE Bridge      | [ide-bridge-design](explanation/ide-bridge-design.md)、[ide-bridge](reference/business/ide-bridge.md)、[ADR 002](adr/002-ide-bridge-protocol.md)                                                                   |
+| 上游同步        | [upstream-adaptation-strategy](explanation/upstream-adaptation-strategy.md)、[sync-upstream](how-to/maintainer/sync-upstream.md)、[upstream-compatibility](reference/business/upstream-compatibility.md)           |
+| 如何打包发布    | [package-and-release](how-to/maintainer/package-and-release.md)、[packaging-release](reference/business/packaging-release.md)                                                                                      |
+| 设置 Provider   | [provider-settings](reference/business/provider-settings.md)、[settings-panel](reference/business/settings-panel.md)                                                                                               |
+| 开发新能力      | [add-webgui-capability](how-to/frontend/add-webgui-capability.md)、[capabilities-index](reference/capabilities-index.md)                                                                                           |
+| 新手入门        | [architecture-overview](explanation/architecture-overview.md)、[glossary](reference/glossary.md)、[capabilities-index](reference/capabilities-index.md)                                                            |
 
 ## 能力分组
 
 全量能力见 [capabilities-index](reference/capabilities-index.md)。
 
-| 组 | 代表能力 |
-|---|---|
-| A. WebGUI 托管与运行时 | 嵌入式 WebGUI `/app` 托管、浏览器/IDE 双模式、中文本地化 |
-| B. 会话与聊天体验 | 会话生命周期、消息流分页、多标签页会话工作台 |
-| C. 工具、子任务与可视化 | ToolPart 渲染、流式工具预览、Diff / 文件变更浏览 |
-| D. 状态面板与运行时开关 | 状态面板、MCP 启停、Skills runtime overlay |
-| E. 设置、Provider、Agent | Provider 设置页、Agent 配置热重载、模型/Agent/Variant 选择器 |
-| F. 状态持久化 | scoped storage、non-git 项目目录隔离 |
-| G. IDE Bridge 与宿主能力 | IDE Bridge 协议、IDE 上下文插入、宿主动作 |
-| H. 宿主生命周期与集成 | 后端启动生命周期、Webview/JCEF 承载、JetBrains 后端日志懒显示 |
-| I. 版本、更新与发布 | 版本门禁、VSCode 更新、插件打包 |
-| J. 上游适配边界 | 前台读取优先、流错误恢复、工具外部目录安全边界 |
+| 组                       | 代表能力                                                      |
+| ------------------------ | ------------------------------------------------------------- |
+| A. WebGUI 托管与运行时   | 嵌入式 WebGUI `/app` 托管、浏览器/IDE 双模式、中文本地化      |
+| B. 会话与聊天体验        | 会话生命周期、消息流分页、多标签页会话工作台                  |
+| C. 工具、子任务与可视化  | ToolPart 渲染、流式工具预览、Diff / 文件变更浏览              |
+| D. 状态面板与运行时开关  | 状态面板、MCP 启停、Skills runtime overlay                    |
+| E. 设置、Provider、Agent | Provider 设置页、Agent 配置热重载、模型/Agent/Variant 选择器  |
+| F. 状态持久化            | scoped storage、non-git 项目目录隔离                          |
+| G. IDE Bridge 与宿主能力 | IDE Bridge 协议、IDE 上下文插入、宿主动作                     |
+| H. 宿主生命周期与集成    | 后端启动生命周期、Webview/JCEF 承载、JetBrains 后端日志懒显示 |
+| I. 版本、更新与发布      | 版本门禁、VSCode 更新、插件打包                               |
+| J. 上游适配边界          | 前台读取优先、流错误恢复、工具外部目录安全边界                |
 
 ## 文档组织
 

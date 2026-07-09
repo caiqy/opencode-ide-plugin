@@ -30,6 +30,7 @@
 ### Task 1: 补齐 JetBrains `getExtensionVersion` bridge
 
 **Files:**
+
 - Create: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/PluginVersion.kt`
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/PluginUpdateService.kt`
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt`
@@ -220,6 +221,7 @@ git commit -m "fix(jetbrains): expose installed plugin version to webgui"
 ### Task 2: 对齐 JetBrains plugin vendor metadata
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/src/main/resources/META-INF/plugin.xml`
 - Modify: `hosts/jetbrains-plugin/build.gradle.kts`
 
@@ -282,6 +284,7 @@ git commit -m "fix(jetbrains): align vendor metadata with Caiqy"
 ### Task 3: 在 release workflow 注入 WebGUI fallback 版本并锁定 Marketplace metadata
 
 **Files:**
+
 - Modify: `.github/workflows/release.yml`
 
 - [ ] **Step 1: 先写一个本地 workflow 约束校验命令，确认当前 release.yml 还缺少 WebGUI 版本注入与 vendor 校验**
@@ -299,18 +302,18 @@ Expected: FAIL，报 `missing webgui injection step`、`missing webgui package m
 在 `.github/workflows/release.yml` 的 `Inject JetBrains version` 之后、`Build single-target backend binary` 之前插入新步骤：
 
 ```yml
-      - name: Inject WebGUI version for JetBrains build
-        run: |
-          RAW_VERSION="${{ needs.preflight.outputs.version }}"
-          CLEAN_VERSION="${RAW_VERSION#v}"
-          node -e '
-            const fs = require("fs");
-            const path = "packages/opencode/webgui/package.json";
-            const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
-            pkg.version = process.argv[1];
-            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
-            console.log("Updated " + path + " to version " + process.argv[1]);
-          ' "$CLEAN_VERSION"
+- name: Inject WebGUI version for JetBrains build
+  run: |
+    RAW_VERSION="${{ needs.preflight.outputs.version }}"
+    CLEAN_VERSION="${RAW_VERSION#v}"
+    node -e '
+      const fs = require("fs");
+      const path = "packages/opencode/webgui/package.json";
+      const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
+      pkg.version = process.argv[1];
+      fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
+      console.log("Updated " + path + " to version " + process.argv[1]);
+    ' "$CLEAN_VERSION"
 ```
 
 - [ ] **Step 3: 把 Marketplace metadata 校验扩展到 vendor，并新增 WebGUI 版本注入校验**
@@ -325,19 +328,19 @@ Expected: FAIL，报 `missing webgui injection step`、`missing webgui package m
 再在 `Verify Marketplace distribution channel metadata` 之前插入一个新步骤，并直接使用 tag clean version 作为校验值：
 
 ```yml
-      - name: Verify JetBrains build WebGUI version injection
-        run: |
-          RAW_VERSION="${{ needs.preflight.outputs.version }}"
-          CLEAN_VERSION="${RAW_VERSION#v}"
-          node -e '
-            const fs = require("fs");
-            const expected = process.argv[1];
-            const pkg = JSON.parse(fs.readFileSync("packages/opencode/webgui/package.json", "utf8"));
-            if (pkg.version !== expected) {
-              throw new Error(`webgui version ${pkg.version} does not match ${expected}`)
-            }
-            console.log("jetbrains webgui version injection ok")
-          ' "$CLEAN_VERSION"
+- name: Verify JetBrains build WebGUI version injection
+  run: |
+    RAW_VERSION="${{ needs.preflight.outputs.version }}"
+    CLEAN_VERSION="${RAW_VERSION#v}"
+    node -e '
+      const fs = require("fs");
+      const expected = process.argv[1];
+      const pkg = JSON.parse(fs.readFileSync("packages/opencode/webgui/package.json", "utf8"));
+      if (pkg.version !== expected) {
+        throw new Error(`webgui version ${pkg.version} does not match ${expected}`)
+      }
+      console.log("jetbrains webgui version injection ok")
+    ' "$CLEAN_VERSION"
 ```
 
 - [ ] **Step 4: 重跑本地 workflow 约束校验命令，确认 release.yml 已覆盖新要求**

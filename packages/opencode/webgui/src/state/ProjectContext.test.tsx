@@ -36,7 +36,13 @@ describe("ProjectContext", () => {
       error: null,
     } as never)
     vi.mocked(sdk.path.get).mockResolvedValue({
-      data: { state: "ready", config: "cfg", configFile: "cfg/opencode.json", worktree: "D:/repo", directory: "D:/repo/sub" },
+      data: {
+        state: "ready",
+        config: "cfg",
+        configFile: "cfg/opencode.json",
+        worktree: "D:/repo",
+        directory: "D:/repo/sub",
+      },
       error: null,
     } as never)
 

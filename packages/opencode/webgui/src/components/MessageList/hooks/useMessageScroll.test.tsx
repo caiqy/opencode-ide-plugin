@@ -246,14 +246,28 @@ describe("useMessageScroll", () => {
 
   it("滚动容器延迟挂载后仍会绑定滚动与自动跟随监听", () => {
     const { rerender, getByTestId } = render(
-      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls showContainer={false} />,
+      <Harness
+        sessionID="s1"
+        sortedMessages={textMessage("a")}
+        isIdle={false}
+        isReasoning={false}
+        controls
+        showContainer={false}
+      />,
     )
 
     const parent = getByTestId("scroll-parent")
     const tracker = makeScrollTracker(parent)
 
     rerender(
-      <Harness sessionID="s1" sortedMessages={textMessage("a")} isIdle={false} isReasoning={false} controls showContainer />,
+      <Harness
+        sessionID="s1"
+        sortedMessages={textMessage("a")}
+        isIdle={false}
+        isReasoning={false}
+        controls
+        showContainer
+      />,
     )
 
     const tail = getByTestId("tail-box")
@@ -984,9 +998,7 @@ describe("useMessageScroll", () => {
         showContainer={false}
       />,
     )
-    rerender(
-      <Harness sessionID="s2" sortedMessages={textMessage("b")} isIdle={false} isReasoning={false} settling />,
-    )
+    rerender(<Harness sessionID="s2" sortedMessages={textMessage("b")} isIdle={false} isReasoning={false} settling />)
 
     expect(tracker.getTop()).toBe(500)
   })

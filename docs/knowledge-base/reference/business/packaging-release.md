@@ -6,15 +6,15 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| VSCode 打包脚本 | `hosts/scripts/build_vscode.sh` |
-| VSCode Marketplace 元数据 | `hosts/vscode-plugin/package.json` |
-| JetBrains Gradle 构建 | `hosts/jetbrains-plugin/build.gradle.kts` |
-| 发布内容共享真源 | `docs/release-content/manifest.json`、`README.shared.md`、`description.shared.md`、`CHANGELOG.md` |
-| 发布内容同步 | `script/release-content.ts`、`script/release-content-sync.ts` |
-| 自动发布入口 | `.github/workflows/release.yml` |
-| 本地打包记忆 | `memory/context/vscode-packaging.md`、`memory/context/gradle.md`、`memory/context/versioning.md` |
+| 角色                      | 文件                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------- |
+| VSCode 打包脚本           | `hosts/scripts/build_vscode.sh`                                                                   |
+| VSCode Marketplace 元数据 | `hosts/vscode-plugin/package.json`                                                                |
+| JetBrains Gradle 构建     | `hosts/jetbrains-plugin/build.gradle.kts`                                                         |
+| 发布内容共享真源          | `docs/release-content/manifest.json`、`README.shared.md`、`description.shared.md`、`CHANGELOG.md` |
+| 发布内容同步              | `script/release-content.ts`、`script/release-content-sync.ts`                                     |
+| 自动发布入口              | `.github/workflows/release.yml`                                                                   |
+| 本地打包记忆              | `memory/context/vscode-packaging.md`、`memory/context/gradle.md`、`memory/context/versioning.md`  |
 
 > 命名交叉核验（Step 5）：能力 I4/I5 对应 [hosts-vscode-plugin 参考](../repositories/hosts-vscode-plugin.md)，代码真源集中在 release-content、host package metadata 与 release workflow。
 

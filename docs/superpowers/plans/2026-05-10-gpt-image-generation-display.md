@@ -79,6 +79,7 @@
 ### Task 1: 后端图片生成结果纯函数
 
 **Files:**
+
 - Create: `packages/opencode/src/session/generated-image.ts`
 - Test: `packages/opencode/test/session/generated-image.test.ts`
 
@@ -130,10 +131,7 @@ describe("normalizeImageGenerationOutput", () => {
       output: output(JSON.stringify({ data: [{ b64_json: png }, { b64_json: png }] })),
     })
 
-    expect(result.attachments?.map((item) => item.filename)).toEqual([
-      "generated-image-1.png",
-      "generated-image-2.png",
-    ])
+    expect(result.attachments?.map((item) => item.filename)).toEqual(["generated-image-1.png", "generated-image-2.png"])
     expect(result.output).toContain("已生成 2 张图片")
     expect(result.output).toContain("Image #2 generated-image-2.png")
   })
@@ -315,6 +313,7 @@ Expected: PASS。
 ### Task 2: 接入 SessionProcessor 完成态写入
 
 **Files:**
+
 - Modify: `packages/opencode/src/session/processor.ts`
 - Test: `packages/opencode/test/session/generated-image.test.ts`
 
@@ -323,26 +322,26 @@ Expected: PASS。
 在 `generated-image.test.ts` 的 `describe` 中追加：
 
 ```ts
-  test("生成图片附件会保留已有附件并追加在后面", () => {
-    const existing = {
-      id: "prt_existing" as any,
-      sessionID,
-      messageID,
-      type: "file" as const,
-      mime: "image/png",
-      filename: "existing.png",
-      url: `data:image/png;base64,${png}`,
-    }
+test("生成图片附件会保留已有附件并追加在后面", () => {
+  const existing = {
+    id: "prt_existing" as any,
+    sessionID,
+    messageID,
+    type: "file" as const,
+    mime: "image/png",
+    filename: "existing.png",
+    url: `data:image/png;base64,${png}`,
+  }
 
-    const result = normalizeImageGenerationOutput({
-      tool: "image_generation",
-      sessionID,
-      messageID,
-      output: { ...output(png), attachments: [existing] },
-    })
-
-    expect(result.attachments?.map((item) => item.filename)).toEqual(["existing.png", "generated-image-1.png"])
+  const result = normalizeImageGenerationOutput({
+    tool: "image_generation",
+    sessionID,
+    messageID,
+    output: { ...output(png), attachments: [existing] },
   })
+
+  expect(result.attachments?.map((item) => item.filename)).toEqual(["existing.png", "generated-image-1.png"])
+})
 ```
 
 - [ ] **Step 2: 运行测试确认当前 helper 行为通过**
@@ -366,24 +365,25 @@ import { normalizeImageGenerationOutput } from "./generated-image"
 将 `completeToolCall` 中的 `session.updatePart` 前增加规范化变量，并替换写入字段：
 
 ```ts
-        const normalized = normalizeImageGenerationOutput({
-          tool: match.part.tool,
-          sessionID: match.part.sessionID,
-          messageID: match.part.messageID,
-          output,
-        })
-        yield* session.updatePart({
-          ...match.part,
-          state: {
-            status: "completed",
-            input: match.part.state.input,
-            output: normalized.output,
-            metadata: normalized.metadata,
-            title: normalized.title,
-            time: { start: match.part.state.time.start, end: Date.now() },
-            attachments: normalized.attachments,
-          },
-        })
+const normalized = normalizeImageGenerationOutput({
+  tool: match.part.tool,
+  sessionID: match.part.sessionID,
+  messageID: match.part.messageID,
+  output,
+})
+yield *
+  session.updatePart({
+    ...match.part,
+    state: {
+      status: "completed",
+      input: match.part.state.input,
+      output: normalized.output,
+      metadata: normalized.metadata,
+      title: normalized.title,
+      time: { start: match.part.state.time.start, end: Date.now() },
+      attachments: normalized.attachments,
+    },
+  })
 ```
 
 - [ ] **Step 4: 运行后端相关测试和类型检查**
@@ -402,6 +402,7 @@ Expected: 两个命令均成功。
 ### Task 3: WebGUI 图片附件网格组件
 
 **Files:**
+
 - Create: `packages/opencode/webgui/src/components/parts/ToolPart/ToolImageAttachments.tsx`
 - Modify: `packages/opencode/webgui/src/components/parts/ToolPart/index.test.tsx`
 
@@ -410,52 +411,52 @@ Expected: 两个命令均成功。
 在 `packages/opencode/webgui/src/components/parts/ToolPart/index.test.tsx` 的 `describe("ToolPart", ...)` 中追加：
 
 ```tsx
-  it("completed tool 的图片附件应显示为 Image 编号缩略图", () => {
-    const part = {
-      id: "p-image",
-      type: "tool",
-      callID: "c-image",
-      tool: "image_generation",
-      state: {
-        status: "completed",
-        input: {},
-        output: "已生成 2 张图片",
-        title: "image_generation",
-        metadata: {},
-        time: { start: 1, end: 2 },
-        attachments: [
-          {
-            id: "f1",
-            type: "file",
-            mime: "image/png",
-            filename: "generated-image-1.png",
-            url: "data:image/png;base64,abc",
-          },
-          {
-            id: "f2",
-            type: "file",
-            mime: "image/png",
-            filename: "generated-image-2.png",
-            url: "data:image/png;base64,def",
-          },
-          {
-            id: "f3",
-            type: "file",
-            mime: "text/plain",
-            filename: "notes.txt",
-            url: "data:text/plain;base64,bm90ZXM=",
-          },
-        ],
-      },
-    } as any
+it("completed tool 的图片附件应显示为 Image 编号缩略图", () => {
+  const part = {
+    id: "p-image",
+    type: "tool",
+    callID: "c-image",
+    tool: "image_generation",
+    state: {
+      status: "completed",
+      input: {},
+      output: "已生成 2 张图片",
+      title: "image_generation",
+      metadata: {},
+      time: { start: 1, end: 2 },
+      attachments: [
+        {
+          id: "f1",
+          type: "file",
+          mime: "image/png",
+          filename: "generated-image-1.png",
+          url: "data:image/png;base64,abc",
+        },
+        {
+          id: "f2",
+          type: "file",
+          mime: "image/png",
+          filename: "generated-image-2.png",
+          url: "data:image/png;base64,def",
+        },
+        {
+          id: "f3",
+          type: "file",
+          mime: "text/plain",
+          filename: "notes.txt",
+          url: "data:text/plain;base64,bm90ZXM=",
+        },
+      ],
+    },
+  } as any
 
-    render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+  render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
 
-    expect(screen.getByText("Image #1")).toBeInTheDocument()
-    expect(screen.getByText("Image #2")).toBeInTheDocument()
-    expect(screen.getByText("generated-image-1.png")).toBeInTheDocument()
-    expect(screen.queryByText("notes.txt")).not.toBeInTheDocument()
-  })
+  expect(screen.getByText("Image #1")).toBeInTheDocument()
+  expect(screen.getByText("Image #2")).toBeInTheDocument()
+  expect(screen.getByText("generated-image-1.png")).toBeInTheDocument()
+  expect(screen.queryByText("notes.txt")).not.toBeInTheDocument()
+})
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -513,7 +514,11 @@ export function ToolImageAttachments({ attachments }: Props) {
               onClick={() => setPreview({ url: image.url, alt: filename })}
             >
               <div className="aspect-video bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                <img src={image.url} alt={filename} className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]" />
+                <img
+                  src={image.url}
+                  alt={filename}
+                  className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
+                />
               </div>
               <div className="px-3 py-2">
                 <div className="text-xs font-semibold text-blue-600 dark:text-blue-300">{label}</div>
@@ -546,6 +551,7 @@ Expected: FAIL，仍找不到 `Image #1`，因为 `ToolPart` 还未渲染新组�
 ### Task 4: ToolPart 接入图片附件网格
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/parts/ToolPart/index.tsx`
 - Test: `packages/opencode/webgui/src/components/parts/ToolPart/index.test.tsx`
 
@@ -574,7 +580,9 @@ import { ToolImageAttachments } from "./ToolImageAttachments"
 在 root JSX 中，放在 expanded content 之后、read tool error 之前：
 
 ```tsx
-      {part.state.status === "completed" && <ToolImageAttachments attachments={part.state.attachments} />}
+{
+  part.state.status === "completed" && <ToolImageAttachments attachments={part.state.attachments} />
+}
 ```
 
 - [ ] **Step 3: 运行 ToolPart 测试**
@@ -592,6 +600,7 @@ Expected: PASS。
 ### Task 5: 图片保存工具函数
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/lib/fileUtils.ts`
 - Test: `packages/opencode/webgui/src/components/parts/ImageOverlay.test.tsx`
 
@@ -643,6 +652,7 @@ Expected: build 成功。
 ### Task 6: 增强 ImageOverlay 查看器
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/parts/ImageOverlay.tsx`
 - Create: `packages/opencode/webgui/src/components/parts/ImageOverlay.test.tsx`
 
@@ -804,15 +814,60 @@ export function ImageOverlay({ url, alt, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-black/40 px-4 py-3" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="flex items-center justify-between gap-3 border-b border-white/10 bg-black/40 px-4 py-3"
+        onClick={(event) => event.stopPropagation()}
+      >
         <span className="min-w-0 truncate font-mono text-sm text-white/80">{alt}</span>
         <div className="flex shrink-0 items-center gap-2">
-          <button type="button" onClick={zoomOut} className="rounded bg-white/10 px-2 py-1 text-sm text-white hover:bg-white/20" aria-label="缩小">−</button>
-          <button type="button" onClick={reset} className="rounded bg-white/10 px-2 py-1 text-sm text-white hover:bg-white/20" aria-label="重置缩放">{percent}</button>
-          <button type="button" onClick={zoomIn} className="rounded bg-white/10 px-2 py-1 text-sm text-white hover:bg-white/20" aria-label="放大">＋</button>
-          <button type="button" onClick={fitWindow} className="rounded bg-white/10 px-2 py-1 text-sm text-white hover:bg-white/20" aria-label="适应窗口">适应</button>
-          <button type="button" onClick={save} className="rounded bg-blue-600 px-2 py-1 text-sm text-white hover:bg-blue-500" aria-label="保存图片">保存</button>
-          <button type="button" onClick={onClose} className="rounded bg-white/10 px-2 py-1 text-sm text-white hover:bg-white/20" aria-label="关闭">×</button>
+          <button
+            type="button"
+            onClick={zoomOut}
+            className="rounded bg-white/10 px-2 py-1 text-sm text-white hover:bg-white/20"
+            aria-label="缩小"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onClick={reset}
+            className="rounded bg-white/10 px-2 py-1 text-sm text-white hover:bg-white/20"
+            aria-label="重置缩放"
+          >
+            {percent}
+          </button>
+          <button
+            type="button"
+            onClick={zoomIn}
+            className="rounded bg-white/10 px-2 py-1 text-sm text-white hover:bg-white/20"
+            aria-label="放大"
+          >
+            ＋
+          </button>
+          <button
+            type="button"
+            onClick={fitWindow}
+            className="rounded bg-white/10 px-2 py-1 text-sm text-white hover:bg-white/20"
+            aria-label="适应窗口"
+          >
+            适应
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            className="rounded bg-blue-600 px-2 py-1 text-sm text-white hover:bg-blue-500"
+            aria-label="保存图片"
+          >
+            保存
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded bg-white/10 px-2 py-1 text-sm text-white hover:bg-white/20"
+            aria-label="关闭"
+          >
+            ×
+          </button>
         </div>
       </div>
       <div
@@ -827,7 +882,11 @@ export function ImageOverlay({ url, alt, onClose }: Props) {
         <img
           src={url}
           alt={alt}
-          className={fit ? "max-h-[88vh] max-w-[94vw] rounded object-contain shadow-2xl" : "max-h-none max-w-none rounded shadow-2xl"}
+          className={
+            fit
+              ? "max-h-[88vh] max-w-[94vw] rounded object-contain shadow-2xl"
+              : "max-h-none max-w-none rounded shadow-2xl"
+          }
           style={{ transform, transformOrigin: "center", transition: drag ? "none" : "transform 120ms ease" }}
           draggable={false}
         />
@@ -852,6 +911,7 @@ Expected: PASS。
 ### Task 7: 完整前端验证
 
 **Files:**
+
 - Verify: `packages/opencode/webgui/src/components/parts/ToolPart/index.test.tsx`
 - Verify: `packages/opencode/webgui/src/components/parts/ImageOverlay.test.tsx`
 
@@ -880,6 +940,7 @@ Expected: `tsc -b` 和 `vite build` 均成功。
 ### Task 8: 端到端静态验证与回归检查
 
 **Files:**
+
 - Verify: `packages/opencode/src/session/generated-image.ts`
 - Verify: `packages/opencode/src/session/processor.ts`
 - Verify: `packages/opencode/webgui/src/components/parts/ToolPart/ToolImageAttachments.tsx`

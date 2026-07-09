@@ -107,14 +107,14 @@ interface AssistantMetaProps {
 
 ### 数据来源
 
-| 字段 | 来源 | 是否已有 |
-| --- | --- | --- |
-| Agent | `assistantInfo.agent` | ✅ |
-| ModelName | `resolveModelName(providerID, modelID)` | ✅ |
-| Variant | `assistantInfo.variant` | ✅ |
-| Duration | 现有 `turnDurationMs` | ✅ |
-| CompletedAt | `assistantInfo.time.completed` | ✅ |
-| Interrupted | `error?.name === "MessageAbortedError"` | ✅ |
+| 字段        | 来源                                    | 是否已有 |
+| ----------- | --------------------------------------- | -------- |
+| Agent       | `assistantInfo.agent`                   | ✅       |
+| ModelName   | `resolveModelName(providerID, modelID)` | ✅       |
+| Variant     | `assistantInfo.variant`                 | ✅       |
+| Duration    | 现有 `turnDurationMs`                   | ✅       |
+| CompletedAt | `assistantInfo.time.completed`          | ✅       |
+| Interrupted | `error?.name === "MessageAbortedError"` | ✅       |
 
 **无需后端改动。** 本次所需数据都已在现有消息结构中提供。
 

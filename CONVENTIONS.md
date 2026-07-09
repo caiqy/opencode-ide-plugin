@@ -35,18 +35,18 @@
 
 ### 文件
 
-| 区域 | 规则 | 示例 |
-|------|------|------|
-| WebGUI 组件 | PascalCase | `MessageInput.tsx`、`SubtaskDrawer/` |
-| WebGUI hooks | camelCase + `use` 前缀 | `useDebounce.ts` |
-| WebGUI 状态 | Context=PascalCase, store=camelCase | `SessionContext.tsx`、`tabStore.ts` |
-| WebGUI lib/utils | camelCase | `ideBridge.ts`、`formatting.ts` |
-| WebGUI repos | camelCase + `Repo` 后缀 | `draftRepo.ts`、`tabsRepo.ts` |
-| VSCode 插件类 | PascalCase | `BackendLauncher.ts`、`WebviewManager.ts` |
-| VSCode 命令 | PascalCase | `AddToContextCommand.ts` |
-| 测试文件 | 同名 + `.test.ts(x)` | `tabPolicy.test.ts` |
-| 测试（主题范围） | 点分隔主题 | `MessagesContext.questions.test.tsx` |
-| 上游 schema | snake_case + `.sql.ts` | `session.sql.ts` |
+| 区域             | 规则                                | 示例                                      |
+| ---------------- | ----------------------------------- | ----------------------------------------- |
+| WebGUI 组件      | PascalCase                          | `MessageInput.tsx`、`SubtaskDrawer/`      |
+| WebGUI hooks     | camelCase + `use` 前缀              | `useDebounce.ts`                          |
+| WebGUI 状态      | Context=PascalCase, store=camelCase | `SessionContext.tsx`、`tabStore.ts`       |
+| WebGUI lib/utils | camelCase                           | `ideBridge.ts`、`formatting.ts`           |
+| WebGUI repos     | camelCase + `Repo` 后缀             | `draftRepo.ts`、`tabsRepo.ts`             |
+| VSCode 插件类    | PascalCase                          | `BackendLauncher.ts`、`WebviewManager.ts` |
+| VSCode 命令      | PascalCase                          | `AddToContextCommand.ts`                  |
+| 测试文件         | 同名 + `.test.ts(x)`                | `tabPolicy.test.ts`                       |
+| 测试（主题范围） | 点分隔主题                          | `MessagesContext.questions.test.tsx`      |
+| 上游 schema      | snake_case + `.sql.ts`              | `session.sql.ts`                          |
 
 ### 变量和函数
 
@@ -92,11 +92,11 @@ function requireConfig(input: unknown) { ... }
 
 ### 错误处理
 
-| 层 | 策略 |
-|----|------|
-| WebGUI | SDK 返回 `{ data, error }` 元组；`useToast()` 显示错误；`ErrorBoundary` 兜底 |
-| VSCode | 集中式 `ErrorHandler`，分类错误（`ErrorCategory`、`ErrorSeverity`） |
-| 上游 opencode | Effect `Schema.TaggedErrorClass`；`yield* new MyError(...)` 提前失败 |
+| 层            | 策略                                                                         |
+| ------------- | ---------------------------------------------------------------------------- |
+| WebGUI        | SDK 返回 `{ data, error }` 元组；`useToast()` 显示错误；`ErrorBoundary` 兜底 |
+| VSCode        | 集中式 `ErrorHandler`，分类错误（`ErrorCategory`、`ErrorSeverity`）          |
+| 上游 opencode | Effect `Schema.TaggedErrorClass`；`yield* new MyError(...)` 提前失败         |
 
 ### 导入/导出
 

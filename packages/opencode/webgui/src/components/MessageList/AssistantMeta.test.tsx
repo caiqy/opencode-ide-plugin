@@ -20,7 +20,15 @@ describe("AssistantMeta", () => {
   it("有 completedAt 时追加完整结束时间", () => {
     const completedAt = new Date(2026, 4, 5, 14, 23, 18).getTime()
 
-    render(<AssistantMeta agent="code" modelName="Claude Sonnet 4" variant="high" durationMs={23000} completedAt={completedAt} />)
+    render(
+      <AssistantMeta
+        agent="code"
+        modelName="Claude Sonnet 4"
+        variant="high"
+        durationMs={23000}
+        completedAt={completedAt}
+      />,
+    )
 
     expect(screen.getByTestId("assistant-meta")).toHaveTextContent(
       "Code · Claude Sonnet 4 · high · 23s · 今天 14:23:18",

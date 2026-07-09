@@ -6,16 +6,16 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| VSCode webview controller | `hosts/vscode-plugin/src/ui/WebviewController.ts` |
-| VSCode webview manager | `hosts/vscode-plugin/src/ui/WebviewManager.ts` |
-| VSCode activity bar provider | `hosts/vscode-plugin/src/ui/ActivityBarProvider.ts` |
-| VSCode iframe shell | `hosts/vscode-plugin/resources/webview/index.html` |
-| VSCode communication bridge | `hosts/vscode-plugin/src/ui/CommunicationBridge.ts` |
-| JetBrains JCEF tool window | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt` |
+| 角色                              | 文件                                                                                                                      |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| VSCode webview controller         | `hosts/vscode-plugin/src/ui/WebviewController.ts`                                                                         |
+| VSCode webview manager            | `hosts/vscode-plugin/src/ui/WebviewManager.ts`                                                                            |
+| VSCode activity bar provider      | `hosts/vscode-plugin/src/ui/ActivityBarProvider.ts`                                                                       |
+| VSCode iframe shell               | `hosts/vscode-plugin/resources/webview/index.html`                                                                        |
+| VSCode communication bridge       | `hosts/vscode-plugin/src/ui/CommunicationBridge.ts`                                                                       |
+| JetBrains JCEF tool window        | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt`                                      |
 | JetBrains backend logs visibility | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/BackendLogsVisibilityController.kt`、`BackendLogsErrorView.kt` |
-| JetBrains terminal output capture | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/TerminalOutputCapture.kt` |
+| JetBrains terminal output capture | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/TerminalOutputCapture.kt`                          |
 
 > 命名交叉核验（Step 5）：能力索引 H2/H3 的 Webview/JCEF 和 backend logs 在 VSCode `WebviewController`、JetBrains `ChatToolWindowFactory`、`BackendLogsVisibilityController` 中分别有直接承载代码。
 
@@ -46,16 +46,16 @@
 
 ## 代码锚点速查
 
-| 契约 | 锚点 |
-|------|------|
-| VSCode iframe shell | `resources/webview/index.html:101-107` |
-| VSCode asExternalUri | `WebviewController.ts:229-238` |
-| VSCode query 注入 | `WebviewController.ts:236-239` |
-| VSCode CSP 构造 | `WebviewController.ts:472-513` |
-| VSCode SW 外层重试 | `WebviewManager.ts:159-220` |
-| ActivityBar webview options | `ActivityBarProvider.ts:92-102` |
-| JetBrains JCEF 创建 | `ChatToolWindowFactory.kt:163-170` |
-| JetBrains logs reveal | `BackendLogsErrorView.kt:8-15` |
+| 契约                        | 锚点                                   |
+| --------------------------- | -------------------------------------- |
+| VSCode iframe shell         | `resources/webview/index.html:101-107` |
+| VSCode asExternalUri        | `WebviewController.ts:229-238`         |
+| VSCode query 注入           | `WebviewController.ts:236-239`         |
+| VSCode CSP 构造             | `WebviewController.ts:472-513`         |
+| VSCode SW 外层重试          | `WebviewManager.ts:159-220`            |
+| ActivityBar webview options | `ActivityBarProvider.ts:92-102`        |
+| JetBrains JCEF 创建         | `ChatToolWindowFactory.kt:163-170`     |
+| JetBrains logs reveal       | `BackendLogsErrorView.kt:8-15`         |
 
 ## 运行时待核验
 

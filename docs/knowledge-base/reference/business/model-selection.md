@@ -6,16 +6,16 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| 从消息提取历史选择 | `packages/opencode/webgui/src/lib/selection/selectionFromMessages.ts` |
-| workspace 选择持久化 | `packages/opencode/webgui/src/state/repo/selectionRepo.ts` |
-| 会话激活恢复链路 | `packages/opencode/webgui/src/state/useSessionActivation.ts` |
-| 选择状态与 fallback | `packages/opencode/webgui/src/state/SessionContext.tsx` |
-| 模型选择器 | `packages/opencode/webgui/src/components/ModelSelector.tsx` |
-| Agent 选择器 | `packages/opencode/webgui/src/components/AgentSelector.tsx` |
-| Variant 选择器 | `packages/opencode/webgui/src/components/VariantSelector.tsx` |
-| recent/favorite 偏好 | `packages/opencode/webgui/src/state/repo/modelPrefsRepo.ts` |
+| 角色                 | 文件                                                                  |
+| -------------------- | --------------------------------------------------------------------- |
+| 从消息提取历史选择   | `packages/opencode/webgui/src/lib/selection/selectionFromMessages.ts` |
+| workspace 选择持久化 | `packages/opencode/webgui/src/state/repo/selectionRepo.ts`            |
+| 会话激活恢复链路     | `packages/opencode/webgui/src/state/useSessionActivation.ts`          |
+| 选择状态与 fallback  | `packages/opencode/webgui/src/state/SessionContext.tsx`               |
+| 模型选择器           | `packages/opencode/webgui/src/components/ModelSelector.tsx`           |
+| Agent 选择器         | `packages/opencode/webgui/src/components/AgentSelector.tsx`           |
+| Variant 选择器       | `packages/opencode/webgui/src/components/VariantSelector.tsx`         |
+| recent/favorite 偏好 | `packages/opencode/webgui/src/state/repo/modelPrefsRepo.ts`           |
 
 > 命名交叉核验（Step 5）：`selectionFromMessages` 返回 provider/model/agent/variant（第 30-48 行），与 `selectionRepo` 的 workspace key `opencode:webgui:workspace:last_selection:v1` 字段对应（`selectionRepo.ts` 第 3-12 行）。
 

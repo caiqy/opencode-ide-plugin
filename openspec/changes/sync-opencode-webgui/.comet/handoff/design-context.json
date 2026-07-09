@@ -1,0 +1,26 @@
+{
+  "change": "sync-opencode-webgui",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "759a4f55b93f07f4baebc396905a534524b0f37c2291b8801e915c4f1fa820ac",
+  "files": [
+    {
+      "path": "openspec/changes/sync-opencode-webgui/proposal.md",
+      "sha256": "68ef666e5f0a134f868fb9068087537c2623748f417578bcb0b556078f5b9e6d"
+    },
+    {
+      "path": "openspec/changes/sync-opencode-webgui/design.md",
+      "sha256": "71e824d64b6a9de4b7fbdfbe3a54789392e1f35ffe23250cb08d541f16c9d627"
+    },
+    {
+      "path": "openspec/changes/sync-opencode-webgui/tasks.md",
+      "sha256": "16299b4bdc743a4b83f75f86f39f2ba20d46f52e33478d92eb05dadf46d5f349"
+    },
+    {
+      "path": "openspec/changes/sync-opencode-webgui/specs/webgui-upstream-compatibility/spec.md",
+      "sha256": "fad963bb7e71bae22bdfaa05646b17775b45a6df1f831bcc9aa905bf7be85365"
+    }
+  ]
+}

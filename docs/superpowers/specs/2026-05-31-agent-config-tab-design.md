@@ -75,6 +75,7 @@ TabBar 中新增：`{ id: "agents", label: "Agent 配置", icon: "🤖" }`
 ### AgentConfigTab 组件
 
 Props：
+
 ```typescript
 interface AgentConfigTabProps {
   formData: Partial<Config>
@@ -83,6 +84,7 @@ interface AgentConfigTabProps {
 ```
 
 内部状态：
+
 - `agents: Agent[]` — 系统已知 agent 列表
 - `providers: Provider[]` — 可用 provider/model 列表
 - `isLoading: boolean`
@@ -97,6 +99,7 @@ interface AgentConfigTabProps {
 - `renderInPortal`：避免设置面板滚动容器裁剪下拉列表
 
 选中 model 后：
+
 1. 从 providers 数据中找到该 model 的 `variants` 字段
 2. 更新对应行的 variant 下拉选项
 3. 如果当前 variant 不在新 model 的 variants 列表中，重置为 undefined（默认）
@@ -110,6 +113,7 @@ interface AgentConfigTabProps {
 保存时通过 `sdk.global.config.update` 提交实际变化的顶层字段。Agent 配置变更时，前端提交完整顶层 `agent` 对象；后端对顶层 `agent` 使用 replace 语义写入，而不是 deep merge。这样用户把某个 agent 的 model 改回「默认」时，旧的 `agent.<name>.model` 能从 JSON/JSONC 全局配置中删除。
 
 具体逻辑：
+
 - 遍历表格中所有 agent
 - 如果用户设置了 model 或 variant（非「默认」），则在 `formData.agent[name]` 中设置 `{ model, variant }`
 - 如果用户将已配置的 agent 改回「默认」，前端从该 agent 配置中移除 `model` / 不兼容的 `variant`；保存时通过顶层 `agent` replace 语义删除旧字段
@@ -122,6 +126,7 @@ interface AgentConfigTabProps {
 后端没有独立的 invalidate 端点，但 `updateGlobal` 保存后会自动 invalidate 同一 server 的缓存，并对 active instances 热更新 agent model 配置。
 
 重新加载按钮的实现：
+
 1. 重新调用 `sdk.global.config.get()` 拉取最新全局配置
 2. 重新调用 `sdk.app.agents()` 和 `sdk.config.providers()` 刷新 agent/model 列表
 3. 用最新数据重置 UI 表格状态，并同步 SettingsPanel 的 original form data，避免重新加载后误判存在未保存更改
@@ -130,15 +135,15 @@ interface AgentConfigTabProps {
 
 ## 文件变更清单
 
-| 文件 | 变更 |
-|------|------|
-| `src/components/SettingsPanel/TabBar.tsx` | 新增 "agents" tab |
-| `src/components/SettingsPanel/index.tsx` | 导入并渲染 AgentConfigTab |
-| `src/components/settings/AgentConfigTab.tsx` | 新建，Agent 配置表格组件 |
-| `src/components/ModelSelector.tsx` | 扩展为支持默认/清空、预加载 provider 数据、portal 渲染、下拉定位更新 |
-| `src/hooks/useClickOutside.ts` | Escape 在 capture 阶段关闭子下拉，避免同时关闭 SettingsPanel |
-| `src/server/routes/instance/httpapi/handlers/global.ts` | Agent 配置保存不 dispose instance，改为热更新 agent model cache |
-| `src/config/config.ts` | 顶层 `agent` patch 使用 replace 语义以支持删除旧 model 字段 |
+| 文件                                                    | 变更                                                                 |
+| ------------------------------------------------------- | -------------------------------------------------------------------- |
+| `src/components/SettingsPanel/TabBar.tsx`               | 新增 "agents" tab                                                    |
+| `src/components/SettingsPanel/index.tsx`                | 导入并渲染 AgentConfigTab                                            |
+| `src/components/settings/AgentConfigTab.tsx`            | 新建，Agent 配置表格组件                                             |
+| `src/components/ModelSelector.tsx`                      | 扩展为支持默认/清空、预加载 provider 数据、portal 渲染、下拉定位更新 |
+| `src/hooks/useClickOutside.ts`                          | Escape 在 capture 阶段关闭子下拉，避免同时关闭 SettingsPanel         |
+| `src/server/routes/instance/httpapi/handlers/global.ts` | Agent 配置保存不 dispose instance，改为热更新 agent model cache      |
+| `src/config/config.ts`                                  | 顶层 `agent` patch 使用 replace 语义以支持删除旧 model 字段          |
 
 ## 不在范围内
 

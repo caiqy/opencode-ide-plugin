@@ -144,7 +144,7 @@ type SseFn = <
   TResponseStyle extends ResponseStyle = "fields",
 >(
   options: Omit<RequestOptions<TData, TResponseStyle, ThrowOnError>, "method">,
-) => Promise<ServerSentEventsResult<TData, TError>>
+) => Promise<ServerSentEventsResult<TData> & (TError extends unknown ? unknown : never)>
 
 type RequestFn = <
   TData = unknown,

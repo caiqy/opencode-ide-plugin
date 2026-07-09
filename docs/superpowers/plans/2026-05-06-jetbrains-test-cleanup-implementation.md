@@ -13,6 +13,7 @@
 ### Task 1: 删除重复的旧测试文件
 
 **Files:**
+
 - Delete: `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt`
 - Verify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt`
 
@@ -58,6 +59,7 @@ Expected: `BUILD SUCCESSFUL`
 ### Task 2: 修正文档里的当前入口说明
 
 **Files:**
+
 - Modify: `docs/superpowers/specs/2026-05-06-jetbrains-test-layering-design.md`
 - Modify: `docs/repowiki/07-host-plugins.md`（仅当当前说明需要补一句“旧重复文件已清理”时才修改）
 
@@ -102,6 +104,7 @@ Expected: 只允许命中历史 `Delete:` / `Move:` 记录；不应再命中“�
 ### Task 3: 最终组合验证
 
 **Files:**
+
 - Verify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt`
 - Verify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/update/PluginUpdateServiceTest.kt`
 - Verify: `docs/superpowers/specs/2026-05-06-jetbrains-test-layering-design.md`

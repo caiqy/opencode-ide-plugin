@@ -194,7 +194,10 @@ type BackendTarget = {
   probe: string
 }
 
-function headerValue(headers: { get?: (name: string) => string | null } | Record<string, string> | undefined, name: string) {
+function headerValue(
+  headers: { get?: (name: string) => string | null } | Record<string, string> | undefined,
+  name: string,
+) {
   if (!headers) return ""
   if (typeof headers.get === "function") return headers.get(name) ?? ""
   const found = headers[name] ?? headers[name.toLowerCase()]

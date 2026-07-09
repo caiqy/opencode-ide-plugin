@@ -12,9 +12,7 @@ export function parsePartialInput(raw: string): Record<string, unknown> {
   if (!raw) return {}
   try {
     const parsed = parse(raw, ALLOWED)
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {}
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
   } catch {
     return {}
   }

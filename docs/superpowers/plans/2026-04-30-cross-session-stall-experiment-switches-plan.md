@@ -30,6 +30,7 @@
 ### Task 1: 先用测试锁定实验开关行为
 
 **Files:**
+
 - Modify: `packages/opencode/test/util/debug-session-trace.test.ts`
 - Modify: `packages/opencode/test/server/httpapi-session.test.ts`
 
@@ -87,6 +88,7 @@ Expected: PASS 或仅新断言失败。
 ### Task 2: 实现“禁用 summary”实验开关
 
 **Files:**
+
 - Modify: `packages/opencode/src/session/prompt.ts`
 - Modify: `packages/opencode/src/session/processor.ts`
 - Modify: `packages/opencode/src/session/summary.ts`
@@ -104,7 +106,7 @@ if (step === 1) {
       meta: { reason: "disabled-in-prompt", step },
     })
   } else {
-    yield* summary.summarize({ sessionID, messageID: lastUser.id }).pipe(Effect.ignore, Effect.forkIn(scope))
+    yield * summary.summarize({ sessionID, messageID: lastUser.id }).pipe(Effect.ignore, Effect.forkIn(scope))
   }
 }
 ```
@@ -122,12 +124,13 @@ if (disableSummary) {
     meta: { reason: "disabled-in-processor", messageID: ctx.assistantMessage.parentID },
   })
 } else {
-  yield* summary
-    .summarize({
-      sessionID: ctx.sessionID,
-      messageID: ctx.assistantMessage.parentID,
-    })
-    .pipe(Effect.ignore, Effect.forkIn(scope))
+  yield *
+    summary
+      .summarize({
+        sessionID: ctx.sessionID,
+        messageID: ctx.assistantMessage.parentID,
+      })
+      .pipe(Effect.ignore, Effect.forkIn(scope))
 }
 ```
 
@@ -142,6 +145,7 @@ Expected: PASS。
 ### Task 3: 实现“只跳过 summary diff”实验开关
 
 **Files:**
+
 - Modify: `packages/opencode/src/session/summary.ts`
 
 - [ ] **Step 1: 在 `summary.summarize()` 内为 `diffFull` 加实验判断**
@@ -150,30 +154,32 @@ Expected: PASS。
 const skipSummaryDiff =
   process.env.OPENCODE_DEBUG_SKIP_SUMMARY_DIFF === "1" && trace.shouldTrace({ sessionID: input.sessionID })
 
-const diffs = skipSummaryDiff ? [] : yield* computeDiff({ messages: all })
+const diffs = skipSummaryDiff ? [] : yield * computeDiff({ messages: all })
 
 if (skipSummaryDiff) {
-  yield* Effect.sync(() => {
-    void trace.event({
-      tag: "summary.diff.skipped",
-      sessionID: input.sessionID,
-      meta: { messageID: input.messageID },
+  yield *
+    Effect.sync(() => {
+      void trace.event({
+        tag: "summary.diff.skipped",
+        sessionID: input.sessionID,
+        meta: { messageID: input.messageID },
+      })
     })
-  })
 }
 ```
 
 - [ ] **Step 2: 保持 `summary.start/finish` 与后续写入逻辑可观测**
 
 ```ts
-yield* Effect.sync(() => {
-  void trace.event({
-    tag: "summary.finish",
-    sessionID: input.sessionID,
-    durationMs: Date.now() - startedAt,
-    meta: { messageID: input.messageID, diffFiles: diffs.length },
+yield *
+  Effect.sync(() => {
+    void trace.event({
+      tag: "summary.finish",
+      sessionID: input.sessionID,
+      durationMs: Date.now() - startedAt,
+      meta: { messageID: input.messageID, diffFiles: diffs.length },
+    })
   })
-})
 ```
 
 - [ ] **Step 3: 回归运行关键测试**
@@ -187,6 +193,7 @@ Expected: PASS。
 ### Task 4: 做最终验证并准备 3 轮实验
 
 **Files:**
+
 - Modify: `packages/opencode/src/util/debug-session-trace.ts`
 - Modify: `packages/opencode/src/session/prompt.ts`
 - Modify: `packages/opencode/src/session/processor.ts`

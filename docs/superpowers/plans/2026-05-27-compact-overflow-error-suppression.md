@@ -13,6 +13,7 @@
 ### Task 1: 锁定回归测试
 
 **Files:**
+
 - Modify: `packages/opencode/test/session/processor-effect.test.ts`
 - Test: `packages/opencode/test/session/processor-effect.test.ts`
 
@@ -97,6 +98,7 @@ git commit -m "test(session): cover suppressed overflow error before compaction"
 ### Task 2: 最小实现后端抑制逻辑
 
 **Files:**
+
 - Modify: `packages/opencode/src/session/processor.ts`
 - Test: `packages/opencode/test/session/processor-effect.test.ts`
 
@@ -107,7 +109,7 @@ git commit -m "test(session): cover suppressed overflow error before compaction"
 ```ts
 if (MessageV2.ContextOverflowError.isInstance(error)) {
   ctx.needsCompaction = true
-  yield* bus.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
+  yield * bus.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
   return
 }
 ```
@@ -153,6 +155,7 @@ git commit -m "fix(session): suppress overflow error during auto compaction"
 ### Task 3: 跑回归并确认边界
 
 **Files:**
+
 - Test: `packages/opencode/test/session/compaction.test.ts`
 - Test: `packages/opencode/test/session/message-v2.stream-error.test.ts`
 - Test: `packages/opencode/webgui/src/state/MessagesContext.session-error.test.tsx`

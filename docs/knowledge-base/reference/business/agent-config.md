@@ -6,10 +6,10 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| Agent 设置页 | `packages/opencode/webgui/src/components/settings/AgentConfigTab.tsx` |
-| 全局配置保存/热重载 | `packages/opencode/src/server/routes/instance/httpapi/handlers/global.ts` |
+| 角色                  | 文件                                                                        |
+| --------------------- | --------------------------------------------------------------------------- |
+| Agent 设置页          | `packages/opencode/webgui/src/components/settings/AgentConfigTab.tsx`       |
+| 全局配置保存/热重载   | `packages/opencode/src/server/routes/instance/httpapi/handlers/global.ts`   |
 | Instance dispose 入口 | `packages/opencode/src/server/routes/instance/httpapi/handlers/instance.ts` |
 
 > 命名交叉核验（Step 5）：`SettingsPanel/index.tsx` 第 132 行把 `activeTab === "agents"` 绑定到 `AgentConfigTab`；服务端实际热重载逻辑在 `handlers/global.ts` 第 151-168 行。

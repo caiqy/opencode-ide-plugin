@@ -36,7 +36,12 @@ function requestViaApp(directory: string, imagePath: string) {
   })
 }
 
-async function requestViaListener(listener: { url: URL }, directory: string, imagePath: string, route = "/generated-image") {
+async function requestViaListener(
+  listener: { url: URL },
+  directory: string,
+  imagePath: string,
+  route = "/generated-image",
+) {
   const url = new URL(route, listener.url)
   url.searchParams.set("path", imagePath)
 

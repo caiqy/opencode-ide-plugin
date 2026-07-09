@@ -57,8 +57,12 @@ export function getUserTextCopySelection(input: { text: string; wrapper: HTMLEle
 
     const first = index === 0
     const last = index === end - start
-    const localStart = first && contains(range.startContainer, part) ? offsetWithin(part, range.startContainer, range.startOffset) : 0
-    const localEnd = last && contains(range.endContainer, part) ? offsetWithin(part, range.endContainer, range.endOffset) : partEnd - partStart
+    const localStart =
+      first && contains(range.startContainer, part) ? offsetWithin(part, range.startContainer, range.startOffset) : 0
+    const localEnd =
+      last && contains(range.endContainer, part)
+        ? offsetWithin(part, range.endContainer, range.endOffset)
+        : partEnd - partStart
     const boundedStart = Math.max(0, Math.min(localStart, partEnd - partStart))
     const boundedEnd = Math.max(0, Math.min(localEnd, partEnd - partStart))
 

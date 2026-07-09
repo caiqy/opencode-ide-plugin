@@ -13,6 +13,7 @@
 ### Task 1: 用失败测试锁定 stop 行为
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt`
 
 - [ ] **Step 1: 添加 SSE 断开测试**
@@ -40,6 +41,7 @@ Expected: FAIL，表现为 SSE reader 未在 `stop()` 后及时退出。
 ### Task 2: 修复 stop 资源回收
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt`
 
 - [ ] **Step 1: 抽取 session 客户端关闭 helper**
@@ -87,6 +89,7 @@ Expected: PASS
 ### Task 3: 回归验证相关 IdeBridge 测试
 
 **Files:**
+
 - Test: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt`
 - Test: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt`
 - Test: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeStorageScopeTest.kt`
@@ -103,6 +106,7 @@ Expected: BUILD SUCCESSFUL
 ### Task 4: 将轻量 IdeBridge 测试迁出 TestIdeTask
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/build.gradle.kts`
 - Create: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt`
 - Create: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt`
@@ -141,6 +145,7 @@ build {
 - [ ] **Step 3: 将 3 个 IdeBridge 测试迁到 `src/unitTest/kotlin/paviko/opencode/ui/`**
 
 要求：
+
 - 包名保持 `paviko.opencode.ui`
 - 测试内容保持一致
 - 继续使用 JUnit 5 + Mockito

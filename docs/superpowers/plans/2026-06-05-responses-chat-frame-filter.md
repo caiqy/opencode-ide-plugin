@@ -13,6 +13,7 @@
 ### Task 1: Extract Responses filter Module
 
 **Files:**
+
 - Create: `packages/opencode/src/provider/responses-filter.ts`
 - Modify: `packages/opencode/src/provider/provider.ts`
 - Modify: `packages/opencode/test/provider/provider.test.ts`
@@ -64,9 +65,7 @@ test("non-SSE responses are not filtered", async () => {
 test("filter only targets OpenAI and Azure /responses requests", () => {
   expect(ResponsesFilter.shouldApply("@ai-sdk/openai", "https://api.example.com/v1/responses")).toBe(true)
   expect(ResponsesFilter.shouldApply("@ai-sdk/azure", "https://api.example.com/openai/v1/responses")).toBe(true)
-  expect(ResponsesFilter.shouldApply("@ai-sdk/openai", new URL("https://api.example.com/v1/responses"))).toBe(
-    true,
-  )
+  expect(ResponsesFilter.shouldApply("@ai-sdk/openai", new URL("https://api.example.com/v1/responses"))).toBe(true)
   expect(ResponsesFilter.shouldApply("@ai-sdk/openai", { url: "https://api.example.com/v1/responses" })).toBe(true)
   expect(
     ResponsesFilter.shouldApply(
@@ -92,7 +91,9 @@ test("Responses filter drops chat completion frames and preserves Responses even
   const created = `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_1" } })}`
   const textDelta = `data: ${JSON.stringify({ type: "response.output_text.delta", item_id: "msg_1", delta: "Hi" })}`
 
-  const out = await readProviderSse(ResponsesFilter.stripChatCompletionFrames(providerSseResponse([chat, created, textDelta])))
+  const out = await readProviderSse(
+    ResponsesFilter.stripChatCompletionFrames(providerSseResponse([chat, created, textDelta])),
+  )
   expect(out).not.toContain("chatcmpl-example")
   expect(out).toContain("response.created")
   expect(out).toContain("response.output_text.delta")
@@ -172,7 +173,9 @@ export function stripChatCompletionFrames(res: Response): Response {
           for (const part of parts) {
             const trimmed = part.trim()
             if (!trimmed) continue
-            const dataLine = trimmed.split(/\r?\n/).find((line) => line.startsWith("data: ") || line.startsWith("data:"))
+            const dataLine = trimmed
+              .split(/\r?\n/)
+              .find((line) => line.startsWith("data: ") || line.startsWith("data:"))
             if (dataLine) {
               const payload = dataLine.startsWith("data: ") ? dataLine.slice(6) : dataLine.slice(5)
               if (isChatCompletionFrame(payload)) continue
@@ -284,6 +287,7 @@ bun run typecheck
 ```
 
 Expected:
+
 - `responses-filter.test.ts`: all pass
 - `provider.test.ts`: all pass
 - `typecheck`: exits successfully

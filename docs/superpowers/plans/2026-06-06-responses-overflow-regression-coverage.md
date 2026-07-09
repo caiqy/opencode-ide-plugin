@@ -13,6 +13,7 @@
 ### Task 1: 锁定非流式 `context_too_large` overflow 回归
 
 **Files:**
+
 - Modify: `packages/opencode/test/provider/error.test.ts`
 - Modify: `packages/opencode/src/provider/error.ts`
 - Test: `packages/opencode/test/provider/error.test.ts`
@@ -96,6 +97,7 @@ Expected: PASS。
 ### Task 2: 锁定 `includeRawChunks` 顶层契约与 Azure Responses 分叉
 
 **Files:**
+
 - Modify: `packages/opencode/test/session/llm.test.ts`
 - Test: `packages/opencode/test/session/llm.test.ts`
 
@@ -156,6 +158,7 @@ Expected: PASS。
 ### Task 3: 锁定 WebGUI 不残留泛化错误文案
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/state/MessagesContext.session-error.test.tsx`
 - Test: `packages/opencode/webgui/src/state/MessagesContext.session-error.test.tsx`
 
@@ -215,6 +218,7 @@ Expected: PASS；如果失败，只修测试或最小状态逻辑，不扩大 UI
 ### Task 4: 回归验证与收尾检查
 
 **Files:**
+
 - Test: `packages/opencode/test/provider/error.test.ts`
 - Test: `packages/opencode/test/session/llm.test.ts`
 - Test: `packages/opencode/test/session/processor-effect.test.ts`

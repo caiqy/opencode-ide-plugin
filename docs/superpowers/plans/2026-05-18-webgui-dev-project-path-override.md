@@ -143,7 +143,10 @@ it("在 serve 模式下存在目录 override 时会为代理请求注入 x-openc
   }))
 
   const { default: config } = await import("./vite.config")
-  const proxy = config.server?.proxy as Record<string, { configure?: (proxy: { on: (event: string, cb: (...args: any[]) => void) => void }) => void }>
+  const proxy = config.server?.proxy as Record<
+    string,
+    { configure?: (proxy: { on: (event: string, cb: (...args: any[]) => void) => void }) => void }
+  >
   const handlers = new Map<string, (...args: any[]) => void>()
 
   proxy["/event"]?.configure?.({
@@ -178,7 +181,10 @@ it("在 serve 模式下未设置目录 override 时不会注入目录 header", a
   }))
 
   const { default: config } = await import("./vite.config")
-  const proxy = config.server?.proxy as Record<string, { configure?: (proxy: { on: (event: string, cb: (...args: any[]) => void) => void }) => void }>
+  const proxy = config.server?.proxy as Record<
+    string,
+    { configure?: (proxy: { on: (event: string, cb: (...args: any[]) => void) => void }) => void }
+  >
   const handlers = new Map<string, (...args: any[]) => void>()
 
   proxy["/generated-image"]?.configure?.({

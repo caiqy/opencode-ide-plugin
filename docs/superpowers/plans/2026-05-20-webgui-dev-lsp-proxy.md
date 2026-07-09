@@ -26,6 +26,7 @@
 ### Task 1: 先写失败测试锁定 dev proxy 契约
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/vite.config.test.ts`
 - Reference: `packages/opencode/webgui/vite.config.ts`
 
@@ -124,6 +125,7 @@ git commit -m "test: lock webgui dev proxy roots"
 ### Task 2: 最小实现修复 dev proxy 白名单
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/vite.config.ts`
 - Test: `packages/opencode/webgui/vite.config.test.ts`
 
@@ -248,6 +250,7 @@ git commit -m "fix(webgui): proxy lsp and formatter in dev"
 ### Task 3: 浏览器实测确认 `/lsp` 不再 404
 
 **Files:**
+
 - No code changes expected
 - Verify: `packages/opencode/webgui/vite.config.ts`
 - Verify: `packages/opencode/webgui/vite.config.test.ts`

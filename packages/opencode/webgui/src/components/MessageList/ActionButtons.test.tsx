@@ -6,15 +6,7 @@ describe("ActionButtons", () => {
   it("复制/分叉/回退按钮的提示文案为中文", async () => {
     vi.useFakeTimers()
 
-    render(
-      <ActionButtons
-        isUser={true}
-        copyText="hello"
-        onFork={vi.fn()}
-        onRevert={vi.fn()}
-        revertBusy={false}
-      />,
-    )
+    render(<ActionButtons isUser={true} copyText="hello" onFork={vi.fn()} onRevert={vi.fn()} revertBusy={false} />)
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600)

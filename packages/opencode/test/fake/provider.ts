@@ -1,11 +1,12 @@
 import { Effect, Layer } from "effect"
 import { Provider } from "@/provider/provider"
-import { ModelID, ProviderID } from "../../src/provider/schema"
+import { ProviderV2 } from "@opencode-ai/core/provider"
+import { ModelV2 } from "@opencode-ai/core/model"
 
 export namespace ProviderTest {
   export function model(override: Partial<Provider.Model> = {}): Provider.Model {
-    const id = override.id ?? ModelID.make("gpt-5.2")
-    const providerID = override.providerID ?? ProviderID.make("openai")
+    const id = override.id ?? ModelV2.ID.make("gpt-5.2")
+    const providerID = override.providerID ?? ProviderV2.ID.make("openai")
     return {
       id,
       providerID,
@@ -53,6 +54,9 @@ export namespace ProviderTest {
         Provider.Service,
         Provider.Service.of({
           list: Effect.fn("TestProvider.list")(() => Effect.succeed({ [row.id]: row })),
+          catalogModels: Effect.fn("TestProvider.catalogModels")((providerID) =>
+            Effect.succeed({ providerID, models: providerID === row.id ? Object.values(row.models) : [] }),
+          ),
           getProvider: Effect.fn("TestProvider.getProvider")((providerID) => {
             if (providerID === row.id) return Effect.succeed(row)
             return Effect.die(new Error(`Unknown test provider: ${providerID}`))

@@ -26,6 +26,7 @@
 ### Task 1: 在 JetBrains Kotlin 运行时中集中定义插件 ID
 
 **Files:**
+
 - Create: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/PluginIdentity.kt`
 - Create: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/PluginIdentityTest.kt`
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/PluginUpdateService.kt`
@@ -108,6 +109,7 @@ git commit -m "refactor(jetbrains): centralize plugin id"
 ### Task 2: 让 `plugin.xml` 与共享插件 ID 对齐
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/PluginIdentityTest.kt`
 - Modify: `hosts/jetbrains-plugin/src/main/resources/META-INF/plugin.xml`
 
@@ -198,6 +200,7 @@ git commit -m "fix(jetbrains): align plugin xml id"
 ### Task 3: 补充维护文档并完成静态回归验证
 
 **Files:**
+
 - Modify: `docs/repowiki/07-host-plugins.md`
 
 - [ ] **Step 1: 在宿主维护文档中记录新旧插件 ID 的边界**

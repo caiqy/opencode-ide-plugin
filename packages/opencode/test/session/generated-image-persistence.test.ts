@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Effect, Exit } from "effect"
 import path from "node:path"
 import { persistGeneratedImageAttachments } from "../../src/session/generated-image-persistence"
@@ -12,9 +13,11 @@ const pngDataUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAF/gL+ee1vNwAAAABJRU5ErkJggg=="
 
 async function fileSystem() {
-  return Effect.runPromise(Effect.gen(function* () {
-    return yield* AppFileSystem.Service
-  }).pipe(Effect.provide(AppFileSystem.defaultLayer)))
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* FSUtil.Service
+    }).pipe(Effect.provide(LayerNode.compile(FSUtil.node))),
+  )
 }
 
 describe("persistGeneratedImageAttachments", () => {

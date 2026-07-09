@@ -60,6 +60,7 @@ Current implementation went beyond the initial picker swap plan to cover product
 ### Task 1: Extend `ModelSelector` with optional clear/default support
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/ModelSelector.tsx`
 - Test: `packages/opencode/webgui/src/components/ModelSelector.test.tsx`
 
@@ -68,43 +69,43 @@ Current implementation went beyond the initial picker swap plan to cover product
 Append these tests before the closing `})` of `describe("ModelSelector favorites", () => {` in `packages/opencode/webgui/src/components/ModelSelector.test.tsx`:
 
 ```tsx
-  it("显示清空入口并在点击时调用 onClear", async () => {
-    const onSelect = vi.fn()
-    const onClear = vi.fn()
-    render(
-      <ModelSelector
-        selectedProviderId="openai"
-        selectedModelId="gpt-4.1"
-        onSelect={onSelect}
-        allowClear
-        clearLabel="默认"
-        onClear={onClear}
-      />,
-    )
-    await screen.findByText("GPT 4.1")
+it("显示清空入口并在点击时调用 onClear", async () => {
+  const onSelect = vi.fn()
+  const onClear = vi.fn()
+  render(
+    <ModelSelector
+      selectedProviderId="openai"
+      selectedModelId="gpt-4.1"
+      onSelect={onSelect}
+      allowClear
+      clearLabel="默认"
+      onClear={onClear}
+    />,
+  )
+  await screen.findByText("GPT 4.1")
 
-    const user = userEvent.setup()
-    await user.click(screen.getByTitle("选择模型"))
-    await user.click(screen.getByRole("button", { name: "默认" }))
+  const user = userEvent.setup()
+  await user.click(screen.getByTitle("选择模型"))
+  await user.click(screen.getByRole("button", { name: "默认" }))
 
-    expect(onClear).toHaveBeenCalledTimes(1)
-    expect(onSelect).not.toHaveBeenCalled()
-  })
+  expect(onClear).toHaveBeenCalledTimes(1)
+  expect(onSelect).not.toHaveBeenCalled()
+})
 
-  it("未选择模型时使用传入的 placeholder", async () => {
-    render(<ModelSelector onSelect={() => {}} placeholder="默认" />)
-    await screen.findByText("默认")
-  })
+it("未选择模型时使用传入的 placeholder", async () => {
+  render(<ModelSelector onSelect={() => {}} placeholder="默认" />)
+  await screen.findByText("默认")
+})
 
-  it("默认不显示清空入口", async () => {
-    render(<ModelSelector selectedProviderId="openai" selectedModelId="gpt-4.1" onSelect={() => {}} />)
-    await screen.findByText("GPT 4.1")
+it("默认不显示清空入口", async () => {
+  render(<ModelSelector selectedProviderId="openai" selectedModelId="gpt-4.1" onSelect={() => {}} />)
+  await screen.findByText("GPT 4.1")
 
-    const user = userEvent.setup()
-    await user.click(screen.getByTitle("选择模型"))
+  const user = userEvent.setup()
+  await user.click(screen.getByTitle("选择模型"))
 
-    expect(screen.queryByRole("button", { name: "默认" })).not.toBeInTheDocument()
-  })
+  expect(screen.queryByRole("button", { name: "默认" })).not.toBeInTheDocument()
+})
 ```
 
 - [ ] **Step 2: Run the failing tests**
@@ -184,22 +185,22 @@ Keep the existing `useEffect`, `handleSelect`, `toggleFavorite`, filter helpers,
 Add this function after `handleSelect`:
 
 ```tsx
-  const handleClear = async () => {
-    await onClear?.()
-    close()
-  }
+const handleClear = async () => {
+  await onClear?.()
+  close()
+}
 ```
 
 Add these constants before the `return` statement:
 
 ```tsx
-  const buttonClasses =
-    buttonClassName ??
-    "h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
-  const dropdownClasses =
-    dropdownPlacement === "bottom"
-      ? "absolute top-full left-0 mt-1 min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
-      : "absolute bottom-full left-0 mb-1 min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
+const buttonClasses =
+  buttonClassName ??
+  "h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
+const dropdownClasses =
+  dropdownPlacement === "bottom"
+    ? "absolute top-full left-0 mt-1 min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
+    : "absolute bottom-full left-0 mb-1 min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
 ```
 
 - [ ] **Step 6: Use customizable button/dropdown classes and render clear row**
@@ -211,18 +212,20 @@ In the returned JSX:
 3. Inside `<div className="overflow-y-auto flex-1">`, before the loading/providers conditional, render the clear row when enabled:
 
 ```tsx
-            {allowClear && (
-              <div className="border-b border-gray-100 dark:border-gray-800">
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  className="w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-2 text-gray-900 dark:text-gray-100"
-                >
-                  <ModelSelectionIndicator selected={!selectedProviderId && !selectedModelId} />
-                  <span className="font-medium truncate">{clearLabel}</span>
-                </button>
-              </div>
-            )}
+{
+  allowClear && (
+    <div className="border-b border-gray-100 dark:border-gray-800">
+      <button
+        type="button"
+        onClick={handleClear}
+        className="w-full px-3 py-2 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-2 text-gray-900 dark:text-gray-100"
+      >
+        <ModelSelectionIndicator selected={!selectedProviderId && !selectedModelId} />
+        <span className="font-medium truncate">{clearLabel}</span>
+      </button>
+    </div>
+  )
+}
 ```
 
 - [ ] **Step 7: Run tests for `ModelSelector`**
@@ -250,6 +253,7 @@ git commit -m "feat(webgui): add clearable model selector option"
 ### Task 2: Replace Agent 配置页 model `<select>` with `ModelSelector`
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/settings/AgentConfigTab.tsx`
 - Test: `packages/opencode/webgui/src/components/settings/AgentConfigTab.test.tsx`
 
@@ -258,26 +262,26 @@ git commit -m "feat(webgui): add clearable model selector option"
 In `packages/opencode/webgui/src/components/settings/AgentConfigTab.test.tsx`, replace the existing `"selecting model updates formData"` test with:
 
 ```tsx
-  it("selecting model with the search picker updates formData", async () => {
-    const user = userEvent.setup()
-    const { setFormData } = setup()
-    await waitFor(() => {
-      expect(screen.getByText("build")).toBeInTheDocument()
-    })
-
-    const buildRow = screen.getByText("build").closest("tr")!
-    await user.click(within(buildRow).getByTitle("选择模型"))
-    await user.type(screen.getByPlaceholderText("搜索模型…"), "gpt-5.5")
-    await user.click(screen.getByRole("button", { name: /GPT-5.5/ }))
-
-    expect(setFormData).toHaveBeenCalledWith(
-      expect.objectContaining({
-        agent: expect.objectContaining({
-          build: expect.objectContaining({ model: "openai/gpt-5.5" }),
-        }),
-      }),
-    )
+it("selecting model with the search picker updates formData", async () => {
+  const user = userEvent.setup()
+  const { setFormData } = setup()
+  await waitFor(() => {
+    expect(screen.getByText("build")).toBeInTheDocument()
   })
+
+  const buildRow = screen.getByText("build").closest("tr")!
+  await user.click(within(buildRow).getByTitle("选择模型"))
+  await user.type(screen.getByPlaceholderText("搜索模型…"), "gpt-5.5")
+  await user.click(screen.getByRole("button", { name: /GPT-5.5/ }))
+
+  expect(setFormData).toHaveBeenCalledWith(
+    expect.objectContaining({
+      agent: expect.objectContaining({
+        build: expect.objectContaining({ model: "openai/gpt-5.5" }),
+      }),
+    }),
+  )
+})
 ```
 
 Update the import at the top to include `within`:
@@ -289,58 +293,58 @@ import { render, screen, waitFor, within } from "@testing-library/react"
 Add this new test after the model selection test:
 
 ```tsx
-  it("clearing model with the picker preserves other agent fields", async () => {
-    const user = userEvent.setup()
-    const formData = {
-      agent: {
-        build: { model: "openai/gpt-5.5", variant: "high", prompt: "custom prompt", temperature: 0.7 },
-      },
-    }
-    const { setFormData } = setup(formData)
-    await waitFor(() => {
-      expect(screen.getByText("build")).toBeInTheDocument()
-    })
-
-    const buildRow = screen.getByText("build").closest("tr")!
-    await user.click(within(buildRow).getByTitle("选择模型"))
-    await user.click(screen.getByRole("button", { name: "默认" }))
-
-    const call = setFormData.mock.calls[setFormData.mock.calls.length - 1][0]
-    expect(call.agent.build.prompt).toBe("custom prompt")
-    expect(call.agent.build.temperature).toBe(0.7)
-    expect(call.agent.build.model).toBeUndefined()
-    expect(call.agent.build.variant).toBeUndefined()
+it("clearing model with the picker preserves other agent fields", async () => {
+  const user = userEvent.setup()
+  const formData = {
+    agent: {
+      build: { model: "openai/gpt-5.5", variant: "high", prompt: "custom prompt", temperature: 0.7 },
+    },
+  }
+  const { setFormData } = setup(formData)
+  await waitFor(() => {
+    expect(screen.getByText("build")).toBeInTheDocument()
   })
+
+  const buildRow = screen.getByText("build").closest("tr")!
+  await user.click(within(buildRow).getByTitle("选择模型"))
+  await user.click(screen.getByRole("button", { name: "默认" }))
+
+  const call = setFormData.mock.calls[setFormData.mock.calls.length - 1][0]
+  expect(call.agent.build.prompt).toBe("custom prompt")
+  expect(call.agent.build.temperature).toBe(0.7)
+  expect(call.agent.build.model).toBeUndefined()
+  expect(call.agent.build.variant).toBeUndefined()
+})
 ```
 
 Replace the old `"changing model clears incompatible variant"` test body with picker interactions:
 
 ```tsx
-  it("changing model clears incompatible variant", async () => {
-    const user = userEvent.setup()
-    const formData = {
-      agent: {
-        build: { model: "anthropic/claude-opus-4-6", variant: "xhigh" },
-      },
-    }
-    const { setFormData } = setup(formData)
-    await waitFor(() => {
-      expect(screen.getByText("build")).toBeInTheDocument()
-    })
-
-    const buildRow = screen.getByText("build").closest("tr")!
-    await user.click(within(buildRow).getByTitle("选择模型"))
-    await user.type(screen.getByPlaceholderText("搜索模型…"), "gpt-5.5")
-    await user.click(screen.getByRole("button", { name: /GPT-5.5/ }))
-
-    expect(setFormData).toHaveBeenCalledWith(
-      expect.objectContaining({
-        agent: expect.objectContaining({
-          build: expect.objectContaining({ model: "openai/gpt-5.5", variant: undefined }),
-        }),
-      }),
-    )
+it("changing model clears incompatible variant", async () => {
+  const user = userEvent.setup()
+  const formData = {
+    agent: {
+      build: { model: "anthropic/claude-opus-4-6", variant: "xhigh" },
+    },
+  }
+  const { setFormData } = setup(formData)
+  await waitFor(() => {
+    expect(screen.getByText("build")).toBeInTheDocument()
   })
+
+  const buildRow = screen.getByText("build").closest("tr")!
+  await user.click(within(buildRow).getByTitle("选择模型"))
+  await user.type(screen.getByPlaceholderText("搜索模型…"), "gpt-5.5")
+  await user.click(screen.getByRole("button", { name: /GPT-5.5/ }))
+
+  expect(setFormData).toHaveBeenCalledWith(
+    expect.objectContaining({
+      agent: expect.objectContaining({
+        build: expect.objectContaining({ model: "openai/gpt-5.5", variant: undefined }),
+      }),
+    }),
+  )
+})
 ```
 
 Remove the old test code that queries `buildRow.querySelectorAll("select")[0]` for model selection. The Variant `<select>` remains and may still be queried in future variant-specific tests.
@@ -383,25 +387,25 @@ function parseModelValue(modelValue: string | undefined) {
 Inside the `sortedRows.map((row) => {` block, after `const variants = getVariantsForModel(providers, row.model)`, add:
 
 ```tsx
-              const selectedModel = parseModelValue(row.model)
+const selectedModel = parseModelValue(row.model)
 ```
 
 Replace the entire model `<td>` content currently containing `<select value={row.model ?? ""}` with:
 
 ```tsx
-                  <td className="px-3 py-2">
-                    <ModelSelector
-                      selectedProviderId={selectedModel.providerID}
-                      selectedModelId={selectedModel.modelID}
-                      onSelect={(providerID, modelID) => updateAgent(row.name, "model", `${providerID}/${modelID}`)}
-                      allowClear
-                      clearLabel="默认"
-                      placeholder="默认"
-                      onClear={() => updateAgent(row.name, "model", undefined)}
-                      dropdownPlacement="bottom"
-                      buttonClassName="h-7 w-full max-w-[220px] px-2 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between gap-1"
-                    />
-                  </td>
+<td className="px-3 py-2">
+  <ModelSelector
+    selectedProviderId={selectedModel.providerID}
+    selectedModelId={selectedModel.modelID}
+    onSelect={(providerID, modelID) => updateAgent(row.name, "model", `${providerID}/${modelID}`)}
+    allowClear
+    clearLabel="默认"
+    placeholder="默认"
+    onClear={() => updateAgent(row.name, "model", undefined)}
+    dropdownPlacement="bottom"
+    buttonClassName="h-7 w-full max-w-[220px] px-2 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between gap-1"
+  />
+</td>
 ```
 
 Do not change the Variant `<select>` cell in this task.
@@ -411,12 +415,12 @@ Do not change the Variant `<select>` cell in this task.
 In `updateAgent`, keep the existing model-change branch:
 
 ```tsx
-    if (field === "model") {
-      const variants = getVariantsForModel(providers, value)
-      if (updated.variant && !variants.includes(updated.variant)) {
-        updated.variant = undefined
-      }
-    }
+if (field === "model") {
+  const variants = getVariantsForModel(providers, value)
+  if (updated.variant && !variants.includes(updated.variant)) {
+    updated.variant = undefined
+  }
+}
 ```
 
 This already clears variant when `value` is `undefined`, because `getVariantsForModel(providers, undefined)` returns `[]`.
@@ -446,6 +450,7 @@ git commit -m "feat(webgui): use searchable model picker for agent config"
 ### Task 3: Regression verification for combined behavior
 
 **Files:**
+
 - Verify only unless tests reveal issues.
 
 - [ ] **Step 1: Run focused component tests**

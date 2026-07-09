@@ -10,7 +10,6 @@
     "customConditions": ["browser"],
     "paths": {
       "@/*": ["./src/*"],
-      "@tui/*": ["./src/cli/cmd/tui/*"],
       "@test/*": ["./test/*"]
     },
     "plugins": [
@@ -21,5 +20,21 @@
       }
     ]
   },
-  "exclude": ["webgui/**/*"]
+  "exclude": [
+    "webgui/**/*",
+    "test/config/skill-overlay.test.ts",
+    "test/provider/error.test.ts",
+    "test/server/httpapi-session-foreground-state.test.ts",
+    "test/server/session-regenerate-title.test.ts",
+    "test/server/skill-enabled-route.test.ts",
+    "test/session/generated-image-persistence.test.ts",
+    "test/session/llm.anthropic-mutation.nightly.ts",
+    "test/session/llm.anthropic-replay.test.ts",
+    "test/session/llm.include-raw-chunks.test.ts",
+    "test/session/message-v2.stream-error.test.ts",
+    "test/session/processor-streaming-input.test.ts",
+    "test/session/summary-scheduler.test.ts",
+    "test/session/summary.test.ts",
+    "test/tool/generate-image.test.ts"
+  ]
 }

@@ -120,7 +120,9 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
   return (
     <div className="px-2 py-1 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex flex-col gap-1">
       {/* Expanded content - Files */}
-      {filesExpanded && hasFiles && <FileChangesPanel diffs={diffs} fallbackFiles={modifiedFiles} status={diffStatus} />}
+      {filesExpanded && hasFiles && (
+        <FileChangesPanel diffs={diffs} fallbackFiles={modifiedFiles} status={diffStatus} />
+      )}
 
       {/* Expanded content - TODOs */}
       {todosExpanded && hasTodos && <TodosList todos={todos} />}
@@ -140,9 +142,7 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            <span>
-              {fileCount} 个文件变更
-            </span>
+            <span>{fileCount} 个文件变更</span>
           </button>
         )}
         {hasTodos && (

@@ -6,15 +6,15 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| Summary 调度器 | `packages/opencode/src/session/summary-scheduler.ts` |
-| foreground 状态函数 | `packages/opencode/src/session/summary-scheduler-foreground.ts` |
-| HttpApi foreground helper | `packages/opencode/src/server/routes/instance/httpapi/session.ts` |
-| Session 路由 handler | `packages/opencode/src/server/routes/instance/httpapi/handlers/session.ts` |
-| 标准路由兼容出口 | `packages/opencode/src/server/routes/instance/session.ts` |
-| 前端 visible sync | `packages/opencode/webgui/src/hooks/useSessionVisibilitySync.ts` |
-| 前端会话激活 | `packages/opencode/webgui/src/state/useSessionActivation.ts` |
+| 角色                      | 文件                                                                       |
+| ------------------------- | -------------------------------------------------------------------------- |
+| Summary 调度器            | `packages/opencode/src/session/summary-scheduler.ts`                       |
+| foreground 状态函数       | `packages/opencode/src/session/summary-scheduler-foreground.ts`            |
+| HttpApi foreground helper | `packages/opencode/src/server/routes/instance/httpapi/session.ts`          |
+| Session 路由 handler      | `packages/opencode/src/server/routes/instance/httpapi/handlers/session.ts` |
+| 标准路由兼容出口          | `packages/opencode/src/server/routes/instance/session.ts`                  |
+| 前端 visible sync         | `packages/opencode/webgui/src/hooks/useSessionVisibilitySync.ts`           |
+| 前端会话激活              | `packages/opencode/webgui/src/state/useSessionActivation.ts`               |
 
 > 命名交叉核验（Step 5）：J1 对应 [foreground-read-priority](foreground-read-priority.md)，不复制逐文件清单。
 

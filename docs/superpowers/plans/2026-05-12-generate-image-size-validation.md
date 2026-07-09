@@ -13,129 +13,130 @@
 ### Task 1: 先写像素预算失败测试
 
 **Files:**
+
 - Modify: `packages/opencode/test/tool/generate-image-openai-compatible.test.ts`
 - Reference: `packages/opencode/src/tool/generate-image/openai-compatible.ts`
 
 - [ ] **Step 1: 在 adapter 测试中补 4 个失败/通过场景**
 
 ```ts
-  test("rejects GPT image sizes below minimum pixel budget before provider call", async () => {
-    let called = false
+test("rejects GPT image sizes below minimum pixel budget before provider call", async () => {
+  let called = false
 
-    using server = Bun.serve({
-      port: 0,
-      fetch: () => {
-        called = true
-        return Response.json({ data: [{ b64_json: png }] })
-      },
-    })
-
-    await expect(
-      run(
-        callOpenAICompatible({
-          baseURL: `${server.url}v1`,
-          apiKey: "sk-test",
-          action: "generate",
-          model: "gpt-image-2",
-          prompt: "draw",
-          size: "512x512",
-          quality: "high",
-          format: "png",
-          n: 1,
-        }),
-      ),
-    ).rejects.toThrow("size total pixels must be >= 655360 for gpt-image models")
-
-    expect(called).toBe(false)
+  using server = Bun.serve({
+    port: 0,
+    fetch: () => {
+      called = true
+      return Response.json({ data: [{ b64_json: png }] })
+    },
   })
 
-  test("rejects non-square GPT image sizes below minimum pixel budget", async () => {
-    let called = false
-
-    using server = Bun.serve({
-      port: 0,
-      fetch: () => {
-        called = true
-        return Response.json({ data: [{ b64_json: png }] })
-      },
-    })
-
-    await expect(
-      run(
-        callOpenAICompatible({
-          baseURL: `${server.url}v1`,
-          apiKey: "sk-test",
-          action: "generate",
-          model: "gpt-image-2",
-          prompt: "draw",
-          size: "640x1008",
-          quality: "high",
-          format: "png",
-          n: 1,
-        }),
-      ),
-    ).rejects.toThrow("size total pixels must be >= 655360 for gpt-image models")
-
-    expect(called).toBe(false)
-  })
-
-  test("rejects GPT image sizes above maximum pixel budget before provider call", async () => {
-    let called = false
-
-    using server = Bun.serve({
-      port: 0,
-      fetch: () => {
-        called = true
-        return Response.json({ data: [{ b64_json: png }] })
-      },
-    })
-
-    await expect(
-      run(
-        callOpenAICompatible({
-          baseURL: `${server.url}v1`,
-          apiKey: "sk-test",
-          action: "generate",
-          model: "gpt-image-2",
-          prompt: "draw",
-          size: "3840x2176",
-          quality: "high",
-          format: "png",
-          n: 1,
-        }),
-      ),
-    ).rejects.toThrow("size total pixels must be <= 8294400 for gpt-image models")
-
-    expect(called).toBe(false)
-  })
-
-  test("accepts valid custom GPT image sizes that are not from a fixed whitelist", async () => {
-    let body: Record<string, unknown> = {}
-
-    using server = Bun.serve({
-      port: 0,
-      fetch: async (req) => {
-        body = await req.json()
-        return Response.json({ data: [{ b64_json: png }] })
-      },
-    })
-
-    await run(
+  await expect(
+    run(
       callOpenAICompatible({
         baseURL: `${server.url}v1`,
         apiKey: "sk-test",
         action: "generate",
         model: "gpt-image-2",
         prompt: "draw",
-        size: "1280x1024",
+        size: "512x512",
         quality: "high",
         format: "png",
         n: 1,
       }),
-    )
+    ),
+  ).rejects.toThrow("size total pixels must be >= 655360 for gpt-image models")
 
-    expect(body.size).toBe("1280x1024")
+  expect(called).toBe(false)
+})
+
+test("rejects non-square GPT image sizes below minimum pixel budget", async () => {
+  let called = false
+
+  using server = Bun.serve({
+    port: 0,
+    fetch: () => {
+      called = true
+      return Response.json({ data: [{ b64_json: png }] })
+    },
   })
+
+  await expect(
+    run(
+      callOpenAICompatible({
+        baseURL: `${server.url}v1`,
+        apiKey: "sk-test",
+        action: "generate",
+        model: "gpt-image-2",
+        prompt: "draw",
+        size: "640x1008",
+        quality: "high",
+        format: "png",
+        n: 1,
+      }),
+    ),
+  ).rejects.toThrow("size total pixels must be >= 655360 for gpt-image models")
+
+  expect(called).toBe(false)
+})
+
+test("rejects GPT image sizes above maximum pixel budget before provider call", async () => {
+  let called = false
+
+  using server = Bun.serve({
+    port: 0,
+    fetch: () => {
+      called = true
+      return Response.json({ data: [{ b64_json: png }] })
+    },
+  })
+
+  await expect(
+    run(
+      callOpenAICompatible({
+        baseURL: `${server.url}v1`,
+        apiKey: "sk-test",
+        action: "generate",
+        model: "gpt-image-2",
+        prompt: "draw",
+        size: "3840x2176",
+        quality: "high",
+        format: "png",
+        n: 1,
+      }),
+    ),
+  ).rejects.toThrow("size total pixels must be <= 8294400 for gpt-image models")
+
+  expect(called).toBe(false)
+})
+
+test("accepts valid custom GPT image sizes that are not from a fixed whitelist", async () => {
+  let body: Record<string, unknown> = {}
+
+  using server = Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      body = await req.json()
+      return Response.json({ data: [{ b64_json: png }] })
+    },
+  })
+
+  await run(
+    callOpenAICompatible({
+      baseURL: `${server.url}v1`,
+      apiKey: "sk-test",
+      action: "generate",
+      model: "gpt-image-2",
+      prompt: "draw",
+      size: "1280x1024",
+      quality: "high",
+      format: "png",
+      n: 1,
+    }),
+  )
+
+  expect(body.size).toBe("1280x1024")
+})
 ```
 
 - [ ] **Step 2: 运行测试，确认当前实现真的失败**
@@ -152,6 +153,7 @@ Expected: FAIL；新加的两个 “below minimum pixel budget” 用例与 “a
 ### Task 2: 实现像素预算预检
 
 **Files:**
+
 - Modify: `packages/opencode/src/tool/generate-image/openai-compatible.ts`
 - Test: `packages/opencode/test/tool/generate-image-openai-compatible.test.ts`
 
@@ -160,41 +162,41 @@ Expected: FAIL；新加的两个 “below minimum pixel budget” 用例与 “a
 在 `packages/opencode/src/tool/generate-image/openai-compatible.ts` 的 `validateSize()` 中，在长宽比检查之后插入：
 
 ```ts
-  const totalPixels = width * height
+const totalPixels = width * height
 
-  if (totalPixels < 655360) {
-    throw new Error("size total pixels must be >= 655360 for gpt-image models")
-  }
+if (totalPixels < 655360) {
+  throw new Error("size total pixels must be >= 655360 for gpt-image models")
+}
 
-  if (totalPixels > 8294400) {
-    throw new Error("size total pixels must be <= 8294400 for gpt-image models")
-  }
+if (totalPixels > 8294400) {
+  throw new Error("size total pixels must be <= 8294400 for gpt-image models")
+}
 ```
 
 完整上下文应保持这种顺序：
 
 ```ts
-  if (width % 16 !== 0 || height % 16 !== 0) {
-    throw new Error("size width and height must be multiples of 16")
-  }
+if (width % 16 !== 0 || height % 16 !== 0) {
+  throw new Error("size width and height must be multiples of 16")
+}
 
-  if (Math.max(width, height) > 3840) {
-    throw new Error("size longest edge must be <= 3840")
-  }
+if (Math.max(width, height) > 3840) {
+  throw new Error("size longest edge must be <= 3840")
+}
 
-  if (Math.max(width, height) / Math.min(width, height) > 3) {
-    throw new Error("size aspect ratio must be <= 3:1")
-  }
+if (Math.max(width, height) / Math.min(width, height) > 3) {
+  throw new Error("size aspect ratio must be <= 3:1")
+}
 
-  const totalPixels = width * height
+const totalPixels = width * height
 
-  if (totalPixels < 655360) {
-    throw new Error("size total pixels must be >= 655360 for gpt-image models")
-  }
+if (totalPixels < 655360) {
+  throw new Error("size total pixels must be >= 655360 for gpt-image models")
+}
 
-  if (totalPixels > 8294400) {
-    throw new Error("size total pixels must be <= 8294400 for gpt-image models")
-  }
+if (totalPixels > 8294400) {
+  throw new Error("size total pixels must be <= 8294400 for gpt-image models")
+}
 ```
 
 - [ ] **Step 2: 运行 adapter 测试，确认像素预算与合法自定义尺寸都通过**
@@ -218,6 +220,7 @@ git commit -m "fix: enforce gpt image pixel budget"
 ### Task 3: 固化参数说明与工具文本
 
 **Files:**
+
 - Modify: `packages/opencode/src/tool/generate-image.ts`
 - Modify: `packages/opencode/src/tool/generate-image.txt`
 - Modify: `packages/opencode/test/tool/parameters.test.ts`
@@ -228,15 +231,15 @@ git commit -m "fix: enforce gpt image pixel budget"
 在 `packages/opencode/test/tool/parameters.test.ts` 的 `describe("generate_image", ...)` 中添加：
 
 ```ts
-    test("documents GPT image size constraints", () => {
-      const schema = toJsonSchema(GenerateImage) as {
-        properties?: Record<string, { description?: string }>
-      }
+test("documents GPT image size constraints", () => {
+  const schema = toJsonSchema(GenerateImage) as {
+    properties?: Record<string, { description?: string }>
+  }
 
-      expect(schema.properties?.size?.description).toBe(
-        "Requested output size. Use auto or WIDTHxHEIGHT. For gpt-image-* models, width and height must be multiples of 16, the longest edge must be <= 3840, aspect ratio must be <= 3:1, and total pixels must be between 655360 and 8294400.",
-      )
-    })
+  expect(schema.properties?.size?.description).toBe(
+    "Requested output size. Use auto or WIDTHxHEIGHT. For gpt-image-* models, width and height must be multiples of 16, the longest edge must be <= 3840, aspect ratio must be <= 3:1, and total pixels must be between 655360 and 8294400.",
+  )
+})
 ```
 
 - [ ] **Step 2: 运行参数测试，确认当前 description 还没更新**

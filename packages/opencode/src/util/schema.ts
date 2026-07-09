@@ -1,1 +1,1 @@
-export { withStatics } from "@opencode-ai/core/schema"
+export { statics as withStatics } from "@opencode-ai/core/schema"

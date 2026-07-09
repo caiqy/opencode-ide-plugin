@@ -6,16 +6,16 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| Diff 弹窗壳层 | `packages/opencode/webgui/src/components/DiffModal/index.tsx` |
-| Diff 头部 | `packages/opencode/webgui/src/components/DiffModal/DiffHeader.tsx` |
-| 多文件导航 | `packages/opencode/webgui/src/components/DiffModal/DiffNavigation.tsx` |
-| Diff 内容渲染 | `packages/opencode/webgui/src/components/DiffModal/DiffViewer.tsx`、`utils.ts` |
-| Diff 数据获取 | `packages/opencode/webgui/src/components/DiffModal/hooks/useDiffData.ts` |
-| Patch part 展示 | `packages/opencode/webgui/src/components/parts/PatchPart.tsx` |
-| 文件变更面板 | `packages/opencode/webgui/src/components/FileChangesPanel.tsx` |
-| diff 与 fallback 合并 | `packages/opencode/webgui/src/hooks/useMergedFileDiffs.ts` |
+| 角色                  | 文件                                                                           |
+| --------------------- | ------------------------------------------------------------------------------ |
+| Diff 弹窗壳层         | `packages/opencode/webgui/src/components/DiffModal/index.tsx`                  |
+| Diff 头部             | `packages/opencode/webgui/src/components/DiffModal/DiffHeader.tsx`             |
+| 多文件导航            | `packages/opencode/webgui/src/components/DiffModal/DiffNavigation.tsx`         |
+| Diff 内容渲染         | `packages/opencode/webgui/src/components/DiffModal/DiffViewer.tsx`、`utils.ts` |
+| Diff 数据获取         | `packages/opencode/webgui/src/components/DiffModal/hooks/useDiffData.ts`       |
+| Patch part 展示       | `packages/opencode/webgui/src/components/parts/PatchPart.tsx`                  |
+| 文件变更面板          | `packages/opencode/webgui/src/components/FileChangesPanel.tsx`                 |
+| diff 与 fallback 合并 | `packages/opencode/webgui/src/hooks/useMergedFileDiffs.ts`                     |
 
 ## 意图
 

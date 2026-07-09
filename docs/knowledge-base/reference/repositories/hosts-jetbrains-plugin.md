@@ -22,15 +22,15 @@ IDE bridge 协议的业务说明见 [IDE Bridge](../business/ide-bridge.md)，�
 
 ## 目录结构 `src/main/kotlin/paviko/opencode/`
 
-| 目录 | 关键文件 | 职责 |
-|------|----------|------|
-| `ui/` | `ChatToolWindowFactory.kt`、`IdeBridge.kt`、`IdeBridgeStorageBackend.kt`、`IdeOpenFilesUpdater.kt`、`DragAndDropInstaller.kt`、`PathInserter.kt`、`BackendLogsErrorView.kt`、`BackendLogsVisibilityController.kt`、`OpenPluginSettings.kt`、`ConnInfo.kt` | 工具窗口、bridge、存储后端、打开文件同步、拖拽、日志懒显示 |
-| `backendprocess/` | `BackendLauncher.kt`、`BackendProcess.kt`、`TerminalBackendProcess.kt`、`RunningTerminalBackendProcess.kt`、`TerminalOutputCapture.kt` | 后端进程抽象、终端输出捕获、连接地址发现 |
-| `actions/` | `EditorAddToContextAction.kt`、`EditorAddLinesToContextAction.kt`、`ProjectAddToContextAction.kt`、`ProjectPastePathAction.kt` | 编辑器/项目视图右键菜单 |
-| `settings/` | `OpenCodeConfigurable.kt`、`OpenCodeSettings.kt` | 设置页（Tools → OpenCode Plugin）、持久化配置服务 |
-| `update/` | `MarketplaceVersionSource.kt`、`PluginUpdateService.kt`、`PluginUpdateModels.kt`、`PluginVersion.kt` | Marketplace 版本查询、更新服务 |
-| `util/` | `ResourceExtractor.kt` | 解压内嵌 backend binary |
-| （根） | `PluginIdentity.kt` | 插件 ID 常量 |
+| 目录              | 关键文件                                                                                                                                                                                                                                                  | 职责                                                       |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `ui/`             | `ChatToolWindowFactory.kt`、`IdeBridge.kt`、`IdeBridgeStorageBackend.kt`、`IdeOpenFilesUpdater.kt`、`DragAndDropInstaller.kt`、`PathInserter.kt`、`BackendLogsErrorView.kt`、`BackendLogsVisibilityController.kt`、`OpenPluginSettings.kt`、`ConnInfo.kt` | 工具窗口、bridge、存储后端、打开文件同步、拖拽、日志懒显示 |
+| `backendprocess/` | `BackendLauncher.kt`、`BackendProcess.kt`、`TerminalBackendProcess.kt`、`RunningTerminalBackendProcess.kt`、`TerminalOutputCapture.kt`                                                                                                                    | 后端进程抽象、终端输出捕获、连接地址发现                   |
+| `actions/`        | `EditorAddToContextAction.kt`、`EditorAddLinesToContextAction.kt`、`ProjectAddToContextAction.kt`、`ProjectPastePathAction.kt`                                                                                                                            | 编辑器/项目视图右键菜单                                    |
+| `settings/`       | `OpenCodeConfigurable.kt`、`OpenCodeSettings.kt`                                                                                                                                                                                                          | 设置页（Tools → OpenCode Plugin）、持久化配置服务          |
+| `update/`         | `MarketplaceVersionSource.kt`、`PluginUpdateService.kt`、`PluginUpdateModels.kt`、`PluginVersion.kt`                                                                                                                                                      | Marketplace 版本查询、更新服务                             |
+| `util/`           | `ResourceExtractor.kt`                                                                                                                                                                                                                                    | 解压内嵌 backend binary                                    |
+| （根）            | `PluginIdentity.kt`                                                                                                                                                                                                                                       | 插件 ID 常量                                               |
 
 ## `plugin.xml` 契约
 

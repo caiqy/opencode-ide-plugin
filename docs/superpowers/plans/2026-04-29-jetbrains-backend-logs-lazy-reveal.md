@@ -13,6 +13,7 @@
 ### Task 1: 提取并测试日志面板懒显示控制器
 
 **Files:**
+
 - Create: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/BackendLogsVisibilityController.kt`
 - Create: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt`
 
@@ -145,6 +146,7 @@ git commit -m "test: cover jetbrains lazy backend logs visibility"
 ### Task 2: 在 ChatToolWindowFactory 中接入懒显示控制器
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt`
 - Reuse: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/BackendLogsVisibilityController.kt`
 - Re-run: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt`
@@ -292,6 +294,7 @@ git commit -m "fix: reveal jetbrains backend logs only on error"
 ### Task 3: 做手动回归，确认正常路径彻底看不到日志区
 
 **Files:**
+
 - Verify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt`
 - Verify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/BackendLauncher.kt`
 - Reference: `docs/superpowers/specs/2026-04-29-jetbrains-backend-logs-lazy-reveal-design.md`

@@ -6,18 +6,18 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| Config overlay / patch | `packages/opencode/src/config/config.ts` |
-| MCP enable / tool-enable | `packages/opencode/src/mcp/index.ts` |
-| Provider/SSE 适配 | `packages/opencode/src/provider/provider.ts` |
-| `/app` server 挂载 | `packages/opencode/src/server/server.ts` |
-| 消息与 compaction | `packages/opencode/src/session/message-v2.ts`、`compaction.ts` |
-| Skill / Permission overlay | `packages/opencode/src/skill/index.ts`、`tool-permission.ts` |
-| 工具安全边界 | `packages/opencode/src/tool/external-directory.ts` |
-| generated image | `packages/opencode/src/session/generated-image.ts` |
-| foreground priority | `packages/opencode/src/session/summary-scheduler-foreground.ts` |
-| IDE 附件分流 | `packages/opencode/src/session/prompt.ts` |
+| 角色                       | 文件                                                            |
+| -------------------------- | --------------------------------------------------------------- |
+| Config overlay / patch     | `packages/opencode/src/config/config.ts`                        |
+| MCP enable / tool-enable   | `packages/opencode/src/mcp/index.ts`                            |
+| Provider/SSE 适配          | `packages/opencode/src/provider/provider.ts`                    |
+| `/app` server 挂载         | `packages/opencode/src/server/server.ts`                        |
+| 消息与 compaction          | `packages/opencode/src/session/message-v2.ts`、`compaction.ts`  |
+| Skill / Permission overlay | `packages/opencode/src/skill/index.ts`、`tool-permission.ts`    |
+| 工具安全边界               | `packages/opencode/src/tool/external-directory.ts`              |
+| generated image            | `packages/opencode/src/session/generated-image.ts`              |
+| foreground priority        | `packages/opencode/src/session/summary-scheduler-foreground.ts` |
+| IDE 附件分流               | `packages/opencode/src/session/prompt.ts`                       |
 
 > 命名交叉核验（Step 5）：J4 是同步风险总览，导航到 [upstream-compatibility](upstream-compatibility.md)，不重复逐文件说明。
 

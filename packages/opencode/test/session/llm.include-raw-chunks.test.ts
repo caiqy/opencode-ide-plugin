@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test"
+import { ModelV2 } from "@opencode-ai/core/model"
+import { ProviderV2 } from "@opencode-ai/core/provider"
 import { Layer, Effect, Stream } from "effect"
 import { LLMClient } from "@opencode-ai/llm/route"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -7,10 +9,14 @@ import { Plugin } from "../../src/plugin"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { MessageID, SessionID } from "../../src/session/schema"
-import { ProviderID, ModelID } from "../../src/provider/schema"
 import { TestConfig } from "../fixture/config"
 import { ProviderTest } from "../fake/provider"
 import type { Agent } from "../../src/agent/agent"
+
+const ModelID = ModelV2.ID
+type ModelID = ModelV2.ID
+const ProviderID = ProviderV2.ID
+type ProviderID = ProviderV2.ID
 
 const capturedStreamTextArgs: Array<Record<string, unknown>> = []
 let nextFullStreamEvents: ReadonlyArray<unknown> = []
@@ -82,7 +88,9 @@ function user(model: { providerID: ProviderID; id: ModelID }) {
   } satisfies MessageV2.User
 }
 
-async function runStream(modelOverride: Partial<ProviderTest.model extends (...args: any[]) => infer T ? T : never> = {}) {
+async function runStream(
+  modelOverride: Partial<ProviderTest.model extends (...args: any[]) => infer T ? T : never> = {},
+) {
   const model = ProviderTest.model(modelOverride as never)
   const provider = ProviderTest.fake({
     model,
@@ -119,7 +127,10 @@ async function runStream(modelOverride: Partial<ProviderTest.model extends (...a
           messages: [{ role: "user", content: "Hello" }],
           tools: {},
         })
-        .pipe(Stream.runCollect, Effect.map((items) => Array.from(items))),
+        .pipe(
+          Stream.runCollect,
+          Effect.map((items) => Array.from(items)),
+        ),
     ).pipe(Effect.provide(layer)),
   )
 

@@ -6,14 +6,14 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| 嵌入资源服务 | `packages/opencode/src/webgui/server/app.ts` |
-| server 挂载点 | `packages/opencode/src/server/server.ts` |
-| WebGUI 构建与 dev proxy | `packages/opencode/webgui/vite.config.ts` |
-| dev backend 发现 | `packages/opencode/webgui/dev/discoverBackend.ts` |
-| React 入口与 Provider 装配 | `packages/opencode/webgui/src/main.tsx` |
-| IDE bridge 运行模式判定 | `packages/opencode/webgui/src/lib/ideBridge.ts` |
+| 角色                       | 文件                                              |
+| -------------------------- | ------------------------------------------------- |
+| 嵌入资源服务               | `packages/opencode/src/webgui/server/app.ts`      |
+| server 挂载点              | `packages/opencode/src/server/server.ts`          |
+| WebGUI 构建与 dev proxy    | `packages/opencode/webgui/vite.config.ts`         |
+| dev backend 发现           | `packages/opencode/webgui/dev/discoverBackend.ts` |
+| React 入口与 Provider 装配 | `packages/opencode/webgui/src/main.tsx`           |
+| IDE bridge 运行模式判定    | `packages/opencode/webgui/src/lib/ideBridge.ts`   |
 
 > 命名交叉核验（Step 5）：能力 A1 的 `/app` 托管由 `server.ts` 第 117-132 行显式拦截 `/app` 和 `/app/*`；能力 A2 的 dev backend discovery 只存在于 `webgui/dev/discoverBackend.ts`，生产路径不依赖它。
 

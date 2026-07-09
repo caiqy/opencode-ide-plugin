@@ -6,15 +6,15 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| WebGUI open file hook | `packages/opencode/webgui/src/hooks/useOpenFile.ts` |
-| WebGUI clipboard fallback | `packages/opencode/webgui/src/utils/clipboard.ts` |
-| WebGUI opened-files state | `packages/opencode/webgui/src/state/IdeBridgeContext.tsx` |
-| VSCode bridge handlers | `hosts/vscode-plugin/src/ui/IdeBridgeServer.ts`、`hosts/vscode-plugin/src/ui/CommunicationBridge.ts` |
-| VSCode save image/file monitor | `hosts/vscode-plugin/src/ui/WebviewController.ts`、`hosts/vscode-plugin/src/utils/FileMonitor.ts` |
-| JetBrains bridge handlers | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt` |
-| JetBrains opened-files updater | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeOpenFilesUpdater.kt` |
+| 角色                           | 文件                                                                                                 |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| WebGUI open file hook          | `packages/opencode/webgui/src/hooks/useOpenFile.ts`                                                  |
+| WebGUI clipboard fallback      | `packages/opencode/webgui/src/utils/clipboard.ts`                                                    |
+| WebGUI opened-files state      | `packages/opencode/webgui/src/state/IdeBridgeContext.tsx`                                            |
+| VSCode bridge handlers         | `hosts/vscode-plugin/src/ui/IdeBridgeServer.ts`、`hosts/vscode-plugin/src/ui/CommunicationBridge.ts` |
+| VSCode save image/file monitor | `hosts/vscode-plugin/src/ui/WebviewController.ts`、`hosts/vscode-plugin/src/utils/FileMonitor.ts`    |
+| JetBrains bridge handlers      | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt`                             |
+| JetBrains opened-files updater | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeOpenFilesUpdater.kt`                   |
 
 > 命名交叉核验（Step 5）：能力索引 G3/G5 的 `openFile/openUrl/clipboard/saveImage/reloadPath` 与 `updateOpenedFiles` 都在 bridge `handleSend` 或宿主 updater 中有同名消息。
 
@@ -43,16 +43,16 @@
 
 ## 代码锚点速查
 
-| 契约 | 锚点 |
-|------|------|
-| UI openFile payload | `useOpenFile.ts:120-134` |
-| Clipboard fallback | `clipboard.ts:10-30` |
-| VSCode openFile | `CommunicationBridge.ts:250-331` |
-| VSCode reloadPath | `CommunicationBridge.ts:369-401` |
-| VSCode saveImage | `WebviewController.ts:388-448` |
-| JetBrains openFile | `IdeBridge.kt:702-739` |
-| JetBrains reloadPath | `IdeBridge.kt:747-759` |
-| openedFiles 消费 | `IdeBridgeContext.tsx:42-68` |
+| 契约                 | 锚点                             |
+| -------------------- | -------------------------------- |
+| UI openFile payload  | `useOpenFile.ts:120-134`         |
+| Clipboard fallback   | `clipboard.ts:10-30`             |
+| VSCode openFile      | `CommunicationBridge.ts:250-331` |
+| VSCode reloadPath    | `CommunicationBridge.ts:369-401` |
+| VSCode saveImage     | `WebviewController.ts:388-448`   |
+| JetBrains openFile   | `IdeBridge.kt:702-739`           |
+| JetBrains reloadPath | `IdeBridge.kt:747-759`           |
+| openedFiles 消费     | `IdeBridgeContext.tsx:42-68`     |
 
 ## 运行时待核验
 

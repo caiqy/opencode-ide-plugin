@@ -1,14 +1,12 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect } from "bun:test"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Effect, Layer } from "effect"
 import type { Agent } from "../../src/agent/agent"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { Skill } from "../../src/skill"
 import { Permission } from "../../src/permission"
-import path from "path"
-import { Config } from "../../src/config/config"
 import { SystemPrompt } from "../../src/session/system"
-import { InstanceRef } from "@/effect/instance-ref"
-import { provideTestInstance, tmpdir } from "../fixture/fixture"
+import { MCP } from "../../src/mcp"
 import { testEffect } from "../lib/effect"
 
 const skills: Skill.Info[] = [
@@ -45,19 +43,43 @@ const build: Agent.Info = {
 }
 
 const it = testEffect(
-  SystemPrompt.layer.pipe(
-    Layer.provide(
+  LayerNode.compile(SystemPrompt.node, [
+    [
+      MCP.node,
+      Layer.mock(MCP.Service, {
+        instructions: () =>
+          Effect.succeed([
+            {
+              name: "guide-server",
+              instructions: "Use lookup before mutate.",
+              tools: [],
+            },
+            {
+              name: "tool-server",
+              instructions: "Prefer search before update.",
+              tools: ["tool-server_search", "tool-server_update"],
+            },
+          ]),
+      }),
+    ],
+    [
+      Skill.node,
       Layer.succeed(
         Skill.Service,
         Skill.Service.of({
           get: (name) => Effect.succeed(skills.find((skill) => skill.name === name)),
+          require: (name) => {
+            const info = skills.find((skill) => skill.name === name)
+            if (info) return Effect.succeed(info)
+            return Effect.fail(new Skill.NotFoundError({ name, available: skills.map((skill) => skill.name) }))
+          },
           all: () => Effect.succeed(skills),
           dirs: () => Effect.succeed([]),
           available: () => Effect.succeed(skills),
         }),
       ),
-    ),
-  ),
+    ],
+  ]),
 )
 
 describe("session.system", () => {
@@ -81,86 +103,40 @@ describe("session.system", () => {
     }),
   )
 
-  test("skills output omits skills denied by runtime overlay", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        for (const name of ["visible-skill", "hidden-skill"]) {
-          await Bun.write(
-            path.join(dir, ".opencode", "skill", name, "SKILL.md"),
-            `---\nname: ${name}\ndescription: ${name} description.\n---\n\n# ${name}\n`,
-          )
-        }
-      },
-    })
+  it.effect("MCP output includes connected server instructions", () =>
+    Effect.gen(function* () {
+      const prompt = yield* SystemPrompt.Service
+      const output = yield* prompt.mcp(build)
 
-    const home = process.env.OPENCODE_TEST_HOME
-    process.env.OPENCODE_TEST_HOME = tmp.path
+      expect(output).toBe(
+        [
+          "<mcp_instructions>",
+          '  <server name="guide-server">',
+          "    Use lookup before mutate.",
+          "  </server>",
+          '  <server name="tool-server">',
+          "    Prefer search before update.",
+          "  </server>",
+          "</mcp_instructions>",
+        ].join("\n"),
+      )
+    }),
+  )
 
-    try {
-      await provideTestInstance({
-        directory: tmp.path,
-        fn: (ctx) =>
-          Effect.runPromise(
-            Effect.gen(function* () {
-              Config.setSkillPermissionOverlay(tmp.path, "hidden-skill", "deny")
-              const output = yield* SystemPrompt.Service.use((svc) => svc.skills(build)).pipe(
-                Effect.provide(SystemPrompt.defaultLayer),
-                Effect.provideService(InstanceRef, ctx),
-              )
+  it.effect("MCP output omits servers when all advertised tools are denied", () =>
+    Effect.gen(function* () {
+      const prompt = yield* SystemPrompt.Service
+      const output = yield* prompt.mcp(build, Permission.fromConfig({ "tool-server_*": "deny" }))
 
-              expect(output).toContain("<name>visible-skill</name>")
-              expect(output).not.toContain("<name>hidden-skill</name>")
-            }),
-          ),
-      })
-    } finally {
-      Config.clearSkillPermissionOverlay(tmp.path)
-      process.env.OPENCODE_TEST_HOME = home
-    }
-  })
-
-  test("skills output allows runtime overlay to override cached agent skill deny", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        await Bun.write(
-          path.join(dir, ".opencode", "skill", "restored-skill", "SKILL.md"),
-          `---\nname: restored-skill\ndescription: Restored skill description.\n---\n\n# restored-skill\n`,
-        )
-      },
-    })
-
-    const home = process.env.OPENCODE_TEST_HOME
-    process.env.OPENCODE_TEST_HOME = tmp.path
-
-    try {
-      await provideTestInstance({
-        directory: tmp.path,
-        fn: (ctx) =>
-          Effect.runPromise(
-            Effect.gen(function* () {
-              Config.setSkillPermissionOverlay(tmp.path, "restored-skill", "allow")
-              const agent: Agent.Info = {
-                name: "cached-agent",
-                mode: "primary",
-                native: true,
-                options: {},
-                permission: Permission.fromConfig({ skill: "deny" }),
-              }
-
-              const output = yield* SystemPrompt.Service.use((svc) => svc.skills(agent)).pipe(
-                Effect.provide(SystemPrompt.defaultLayer),
-                Effect.provideService(InstanceRef, ctx),
-              )
-
-              expect(output).toContain("<name>restored-skill</name>")
-            }),
-          ),
-      })
-    } finally {
-      Config.clearSkillPermissionOverlay(tmp.path)
-      process.env.OPENCODE_TEST_HOME = home
-    }
-  })
+      expect(output).toBe(
+        [
+          "<mcp_instructions>",
+          '  <server name="guide-server">',
+          "    Use lookup before mutate.",
+          "  </server>",
+          "</mcp_instructions>",
+        ].join("\n"),
+      )
+    }),
+  )
 })

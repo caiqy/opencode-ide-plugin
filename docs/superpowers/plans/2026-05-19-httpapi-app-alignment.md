@@ -42,6 +42,7 @@
 ### Task 1: 先用测试和探针锁定 `test:httpapi` 的初始化回归边界
 
 **Files:**
+
 - Modify: `packages/opencode/test/server/httpapi-session.test.ts`
 - Reference: `packages/opencode/src/server/routes/instance/httpapi/server.ts`
 - Reference: `packages/opencode/src/session/summary-scheduler.ts`
@@ -57,11 +58,7 @@ test("summary scheduler runtime can initialize", async () => {
   })
 
   await expect(
-    runtime.runPromise(
-      SessionSummaryScheduler.Service.pipe(
-        Effect.map((svc) => typeof svc.flush),
-      ),
-    ),
+    runtime.runPromise(SessionSummaryScheduler.Service.pipe(Effect.map((svc) => typeof svc.flush))),
   ).resolves.toBe("function")
 
   await runtime.dispose()
@@ -112,6 +109,7 @@ git commit -m "test: capture summary scheduler init regression"
 ### Task 2: 重构 `SessionSummaryScheduler` 与 HttpApi 顶层 layer 装配边界
 
 **Files:**
+
 - Modify: `packages/opencode/src/server/routes/instance/httpapi/server.ts`
 - Modify: `packages/opencode/src/session/summary-scheduler.ts`
 - Test: `packages/opencode/test/server/httpapi-session.test.ts`
@@ -130,11 +128,7 @@ export const defaultLayer = Layer.suspend(() =>
 
 ```ts
 export const defaultLayer = Layer.suspend(() =>
-  layer.pipe(
-    Layer.provide(Bus.layer),
-    Layer.provide(SessionSummary.defaultLayer),
-    Layer.provide(Session.defaultLayer),
-  ),
+  layer.pipe(Layer.provide(Bus.layer), Layer.provide(SessionSummary.defaultLayer), Layer.provide(Session.defaultLayer)),
 )
 ```
 
@@ -217,6 +211,7 @@ git commit -m "refactor: align httpapi scheduler layer boundaries"
 ### Task 3: 对齐 `packages/app` 的 `Path` 空态结构
 
 **Files:**
+
 - Modify: `packages/app/src/context/global-sync.tsx`
 - Modify: `packages/app/src/context/global-sync/child-store.ts`
 - Optional Modify: `packages/app/src/context/global-sync/bootstrap.ts`
@@ -351,6 +346,7 @@ git commit -m "refactor: align app path fallbacks with sdk v2"
 ### Task 4: 对齐 `packages/app` 的 PTY connect 调用面
 
 **Files:**
+
 - Modify: `packages/app/src/components/terminal.tsx`
 - Reference: `packages/sdk/js/src/v2/gen/sdk.gen.ts:1440-1465`
 - Test: `packages/app/src/utils/terminal-websocket-url.test.ts`
@@ -441,6 +437,7 @@ git commit -m "refactor: align app pty connect flow with sdk v2"
 ### Task 5: 跑完整验证矩阵并确认 merge 可用性证据
 
 **Files:**
+
 - No code changes expected
 - Verify: `packages/opencode/test/server/generated-image-route.test.ts`
 - Verify: `packages/opencode/test/server/httpapi-session.test.ts`

@@ -6,11 +6,11 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| WebGUI bridge client | `packages/opencode/webgui/src/lib/ideBridge.ts` |
-| WebGUI bridge state | `packages/opencode/webgui/src/state/IdeBridgeContext.tsx` |
-| VSCode bridge server | `hosts/vscode-plugin/src/ui/IdeBridgeServer.ts` |
+| 角色                    | 文件                                                                     |
+| ----------------------- | ------------------------------------------------------------------------ |
+| WebGUI bridge client    | `packages/opencode/webgui/src/lib/ideBridge.ts`                          |
+| WebGUI bridge state     | `packages/opencode/webgui/src/state/IdeBridgeContext.tsx`                |
+| VSCode bridge server    | `hosts/vscode-plugin/src/ui/IdeBridgeServer.ts`                          |
 | JetBrains bridge server | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt` |
 
 > 命名交叉核验（Step 5）：能力索引 G1 指向 `ideBridge.ts`、`IdeBridgeServer.ts`、`IdeBridge.kt`；三处都暴露 `ideBridge`/`IdeBridge` 命名与 `/idebridge/{sessionId}` 路径。
@@ -37,15 +37,15 @@
 
 ## 代码锚点速查
 
-| 契约 | 锚点 |
-|------|------|
-| UI 读取 URL query | `ideBridge.ts:22-25` |
-| UI 建立 SSE | `ideBridge.ts:54-59` |
-| UI POST send | `ideBridge.ts:193-200` |
-| VSCode 创建 session | `IdeBridgeServer.ts:113-135` |
-| VSCode connected event | `IdeBridgeServer.ts:201-226` |
-| JetBrains 创建 session | `IdeBridge.kt:113-155` |
-| JetBrains connected event | `IdeBridge.kt:272-302` |
+| 契约                      | 锚点                         |
+| ------------------------- | ---------------------------- |
+| UI 读取 URL query         | `ideBridge.ts:22-25`         |
+| UI 建立 SSE               | `ideBridge.ts:54-59`         |
+| UI POST send              | `ideBridge.ts:193-200`       |
+| VSCode 创建 session       | `IdeBridgeServer.ts:113-135` |
+| VSCode connected event    | `IdeBridgeServer.ts:201-226` |
+| JetBrains 创建 session    | `IdeBridge.kt:113-155`       |
+| JetBrains connected event | `IdeBridge.kt:272-302`       |
 | WebGUI opened files state | `IdeBridgeContext.tsx:42-71` |
 
 ## 边界与约束

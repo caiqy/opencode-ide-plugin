@@ -14,29 +14,7 @@ export function adapterState() {
     currentTextID: undefined as string | undefined,
     currentReasoningID: undefined as string | undefined,
     toolNames: {} as Record<string, string>,
-    providerError: undefined as { message: string; code?: string } | undefined,
-  }
-}
-
-function recordProviderError(state: ReturnType<typeof adapterState>, raw: unknown) {
-  if (!raw || typeof raw !== "object") return
-  const item = raw as Record<string, unknown>
-  const source =
-    item.type === "response.failed" && item.response && typeof item.response === "object"
-      ? item.response
-      : item.type === "error"
-        ? item
-        : undefined
-  if (!source || typeof source !== "object") return
-  const data = source as Record<string, unknown>
-  const fields = data.error && typeof data.error === "object" ? (data.error as Record<string, unknown>) : data
-  const message = typeof fields.message === "string" && fields.message.length > 0 ? fields.message : undefined
-  const code = typeof fields.code === "string" && fields.code.length > 0 ? fields.code : undefined
-  if (!message && !code) return
-  if (state.providerError?.code && code === "upstream_error") return
-  state.providerError = {
-    message: message ?? code ?? "Provider stream finished with error",
-    code,
+    copilotTotalNanoAiu: undefined as number | undefined,
   }
 }
 
@@ -47,6 +25,20 @@ function finishReason(value: string | undefined): FinishReason {
 function providerMetadata(value: unknown): ProviderMetadata | undefined {
   if (value == null) return undefined
   return Schema.is(ProviderMetadata)(value) ? value : undefined
+}
+
+// Temporary AI SDK bridge: Copilot billing survives only in raw provider chunks here.
+// Move this extraction into @opencode-ai/llm when Copilot is handled by the native runtime.
+function copilotTotalNanoAiu(value: unknown) {
+  if (!value || typeof value !== "object") return
+  const raw = value as Record<string, unknown>
+  const response =
+    raw.response && typeof raw.response === "object" ? (raw.response as Record<string, unknown>) : undefined
+  const usage = raw.copilot_usage ?? response?.copilot_usage
+  if (!usage || typeof usage !== "object") return
+  const total = (usage as Record<string, unknown>).total_nano_aiu
+  if (typeof total !== "number" || !Number.isFinite(total) || total < 0) return
+  return total
 }
 
 function usage(value: unknown) {
@@ -93,24 +85,28 @@ export function toLLMEvents(
       return Effect.succeed([LLMEvent.stepStart({ index: state.step })])
 
     case "finish-step":
-      if (event.finishReason === "error") {
-        const error = state.providerError
-        state.providerError = undefined
-        return Effect.succeed([
-          LLMEvent.providerError({
-            message: error?.message ?? "Provider stream finished with error",
-            code: error?.code,
+      return Effect.sync(() => {
+        const original = providerMetadata(event.providerMetadata)
+        const metadata =
+          state.copilotTotalNanoAiu === undefined
+            ? original
+            : {
+                ...original,
+                copilot: {
+                  ...original?.copilot,
+                  totalNanoAiu: state.copilotTotalNanoAiu,
+                },
+              }
+        state.copilotTotalNanoAiu = undefined
+        return [
+          LLMEvent.stepFinish({
+            index: state.step++,
+            reason: finishReason(event.finishReason),
+            usage: usage(event.usage),
+            providerMetadata: metadata,
           }),
-        ])
-      }
-      return Effect.sync(() => [
-        LLMEvent.stepFinish({
-          index: state.step++,
-          reason: finishReason(event.finishReason),
-          usage: usage(event.usage),
-          providerMetadata: providerMetadata(event.providerMetadata),
-        }),
-      ])
+        ]
+      })
 
     case "finish":
       return Effect.sync(() => {
@@ -277,10 +273,7 @@ export function toLLMEvents(
 
     case "raw":
       return Effect.sync(() => {
-        // @ai-sdk/openai emits raw Responses chunks before finish-step(error)
-        // when includeRawChunks is enabled. Keep provider error details so the
-        // later generic finish-step can surface the real upstream code/message.
-        recordProviderError(state, event.rawValue)
+        state.copilotTotalNanoAiu = copilotTotalNanoAiu(event.rawValue) ?? state.copilotTotalNanoAiu
         return []
       })
 

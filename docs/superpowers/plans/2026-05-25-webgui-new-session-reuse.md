@@ -38,6 +38,7 @@
 ## Task 1: Browser `localStorage` fallback for scopedStorage
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/state/scopedStorage.ts`
 - Modify: `packages/opencode/webgui/src/state/scopedStorage.test.ts`
 
@@ -46,67 +47,65 @@
 Add these tests inside `describe("scopedStorage", () => { ... })` in `packages/opencode/webgui/src/state/scopedStorage.test.ts`:
 
 ```ts
-  it("无 ideBridge 时 global/workspace 会写入 localStorage 并可读回", async () => {
-    vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
+it("无 ideBridge 时 global/workspace 会写入 localStorage 并可读回", async () => {
+  vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
 
-    await scopedStateSetJSON("workspace", "opencode:webgui:workspace:tabs:v1", {
-      open_tabs: ["s1"],
-      active_tab: "s1",
-    })
-    await scopedStateSetJSON("global", "opencode:webgui:global:theme:v1", "dark")
+  await scopedStateSetJSON("workspace", "opencode:webgui:workspace:tabs:v1", {
+    open_tabs: ["s1"],
+    active_tab: "s1",
+  })
+  await scopedStateSetJSON("global", "opencode:webgui:global:theme:v1", "dark")
 
-    resetScopedStateForTest()
-    vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
+  resetScopedStateForTest()
+  vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
 
-    await expect(
-      scopedStateGetJSON("workspace", "opencode:webgui:workspace:tabs:v1", {
-        open_tabs: [],
-        active_tab: "",
-      }),
-    ).resolves.toEqual({ open_tabs: ["s1"], active_tab: "s1" })
-    await expect(scopedStateGetJSON("global", "opencode:webgui:global:theme:v1", "light")).resolves.toBe("dark")
+  await expect(
+    scopedStateGetJSON("workspace", "opencode:webgui:workspace:tabs:v1", {
+      open_tabs: [],
+      active_tab: "",
+    }),
+  ).resolves.toEqual({ open_tabs: ["s1"], active_tab: "s1" })
+  await expect(scopedStateGetJSON("global", "opencode:webgui:global:theme:v1", "light")).resolves.toBe("dark")
+})
+
+it("无 ideBridge 时 mem 只保存在内存且不进入 localStorage", async () => {
+  vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
+
+  await scopedStateSetJSON("mem", "opencode:webgui:mem:runtime:v1", { panel: "chat" })
+
+  expect(localStorage.getItem("opencode:webgui:scoped:mem:opencode:webgui:mem:runtime:v1")).toBeNull()
+  await expect(scopedStateGetJSON("mem", "opencode:webgui:mem:runtime:v1", {})).resolves.toEqual({ panel: "chat" })
+
+  resetScopedStateForTest()
+  vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
+  await expect(scopedStateGetJSON("mem", "opencode:webgui:mem:runtime:v1", {})).resolves.toEqual({})
+})
+
+it("localStorage 写失败时保留内存值并报告写入失败", async () => {
+  vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
+  const report = vi.fn()
+  setScopedStateWriteErrorReporter(report)
+  const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new Error("quota")
   })
 
-  it("无 ideBridge 时 mem 只保存在内存且不进入 localStorage", async () => {
-    vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
+  await scopedStateSetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", "s1")
 
-    await scopedStateSetJSON("mem", "opencode:webgui:mem:runtime:v1", { panel: "chat" })
-
-    expect(localStorage.getItem("opencode:webgui:scoped:mem:opencode:webgui:mem:runtime:v1")).toBeNull()
-    await expect(scopedStateGetJSON("mem", "opencode:webgui:mem:runtime:v1", {})).resolves.toEqual({ panel: "chat" })
-
-    resetScopedStateForTest()
-    vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
-    await expect(scopedStateGetJSON("mem", "opencode:webgui:mem:runtime:v1", {})).resolves.toEqual({})
+  await expect(scopedStateGetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", null)).resolves.toBe("s1")
+  expect(report).toHaveBeenCalledWith({
+    key: "opencode:webgui:workspace:draft_session:v1",
+    error: "host_write_failed",
+    message: "设置未保存，本次会话可继续使用",
   })
 
-  it("localStorage 写失败时保留内存值并报告写入失败", async () => {
-    vi.mocked(ideBridge.isInstalled).mockReturnValue(false)
-    const report = vi.fn()
-    setScopedStateWriteErrorReporter(report)
-    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("quota")
-    })
-
-    await scopedStateSetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", "s1")
-
-    await expect(scopedStateGetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", null)).resolves.toBe(
-      "s1",
-    )
-    expect(report).toHaveBeenCalledWith({
-      key: "opencode:webgui:workspace:draft_session:v1",
-      error: "host_write_failed",
-      message: "设置未保存，本次会话可继续使用",
-    })
-
-    setItem.mockRestore()
-  })
+  setItem.mockRestore()
+})
 ```
 
 Also update `beforeEach` to clear browser storage:
 
 ```ts
-    localStorage.clear()
+localStorage.clear()
 ```
 
 - [ ] **Step 2: Run scopedStorage tests and verify failure**
@@ -151,23 +150,23 @@ function browserSet(scope: StorageScope, key: string, value: string) {
 Change `scopedStateGet()` non-IDE branch to prefer `localStorage` for global/workspace while keeping memory fallback:
 
 ```ts
-  if (!ideBridge.isInstalled()) {
-    return Object.fromEntries(keys.map((key) => [key, browserGet(scope, key) ?? mem.get(key)]))
-  }
+if (!ideBridge.isInstalled()) {
+  return Object.fromEntries(keys.map((key) => [key, browserGet(scope, key) ?? mem.get(key)]))
+}
 ```
 
 Change `scopedStateSet()` non-IDE branch:
 
 ```ts
-  if (!ideBridge.isInstalled()) {
-    const ok = browserSet(scope, key, value)
-    if (ok) return { ok: true }
-    warn(key, "host_write_failed")
-    return {
-      ok: false,
-      error: "host_write_failed",
-    }
+if (!ideBridge.isInstalled()) {
+  const ok = browserSet(scope, key, value)
+  if (ok) return { ok: true }
+  warn(key, "host_write_failed")
+  return {
+    ok: false,
+    error: "host_write_failed",
   }
+}
 ```
 
 - [ ] **Step 4: Run scopedStorage tests and verify pass**
@@ -185,6 +184,7 @@ Expected: all tests in `scopedStorage.test.ts` pass.
 Run:
 
 ```powershell
+
 ```
 
 Expected: only browser fallback and tests changed.
@@ -194,6 +194,7 @@ Expected: only browser fallback and tests changed.
 ## Task 2: Make tab persistence atomic
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/state/tabStore.ts`
 - Modify: `packages/opencode/webgui/src/state/tabStore.test.ts`
 
@@ -216,7 +217,7 @@ Keep `saveOpenTabs` in the mock for existing assertions until they are updated.
 In `beforeEach`, add:
 
 ```ts
-    mocks.saveTabs.mockResolvedValue({ open_tabs: [], active_tab: "" })
+mocks.saveTabs.mockResolvedValue({ open_tabs: [], active_tab: "" })
 ```
 
 - [ ] **Step 2: Update existing persistence expectations to expect saveTabs**
@@ -224,29 +225,29 @@ In `beforeEach`, add:
 Change the `openTab appends new tabs and activates existing tabs` test expectations from `saveOpenTabs` to `saveTabs`:
 
 ```ts
-    expect(mocks.saveTabs).toHaveBeenCalledTimes(2)
-    expect(mocks.activateTab).toHaveBeenCalledWith("s1")
-    expect(mocks.saveTabs).toHaveBeenLastCalledWith({ open_tabs: ["s1", "s2"], active_tab: "s2" })
+expect(mocks.saveTabs).toHaveBeenCalledTimes(2)
+expect(mocks.activateTab).toHaveBeenCalledWith("s1")
+expect(mocks.saveTabs).toHaveBeenLastCalledWith({ open_tabs: ["s1", "s2"], active_tab: "s2" })
 ```
 
 Add a new test after that test:
 
 ```ts
-  it("openTab 原子保存 open_tabs 与 active_tab", async () => {
-    const { result } = renderHook(() => useTabStore(), { wrapper })
+it("openTab 原子保存 open_tabs 与 active_tab", async () => {
+  const { result } = renderHook(() => useTabStore(), { wrapper })
 
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
-    })
-
-    act(() => {
-      result.current.openTab("s1")
-      result.current.openTab("s2")
-    })
-
-    expect(mocks.saveTabs).toHaveBeenLastCalledWith({ open_tabs: ["s1", "s2"], active_tab: "s2" })
-    expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
+  await waitFor(() => {
+    expect(result.current.loaded).toBe(true)
   })
+
+  act(() => {
+    result.current.openTab("s1")
+    result.current.openTab("s2")
+  })
+
+  expect(mocks.saveTabs).toHaveBeenLastCalledWith({ open_tabs: ["s1", "s2"], active_tab: "s2" })
+  expect(mocks.saveOpenTabs).not.toHaveBeenCalled()
+})
 ```
 
 In tests that currently clear or assert `mocks.saveOpenTabs`, switch to `mocks.saveTabs` when the action adds/removes/reorders tabs. Keep `mocks.activateTab` assertions for “activate existing tab only”.
@@ -294,6 +295,7 @@ Expected: all tests in `tabStore.test.ts` pass.
 Run:
 
 ```powershell
+
 ```
 
 Expected: `tabStore` uses `saveTabs`; tests no longer expect two-phase persistence for tab state changes.
@@ -303,6 +305,7 @@ Expected: `tabStore` uses `saveTabs`; tests no longer expect two-phase persisten
 ## Task 3: Recover persisted tabs when activeTab is empty
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/CompactHeader/index.tsx`
 - Modify: `packages/opencode/webgui/src/components/CompactHeader/index.test.tsx`
 
@@ -386,23 +389,27 @@ Expected: new test fails because current code calls `onNewSession()` whenever `a
 In `packages/opencode/webgui/src/components/CompactHeader/index.tsx`, inside the effect starting around `if (tabStore.openTabs.length > 0)`, replace the active-tab empty branch:
 
 ```ts
-      if (!tabStore.activeTab) {
-        const target = tabStore.openTabs[tabStore.openTabs.length - 1]
-        if (!target) {
-          onNewSession()
-          return
-        }
-        if (!restoring) {
-          setRestoring(true)
-          void switchWithRollback(target, () => tabStore.activateTab(target), () => {
-            if (activeRef.current) return
-            onNewSession()
-          }).finally(() => {
-            setRestoring(false)
-          })
-        }
-        return
-      }
+if (!tabStore.activeTab) {
+  const target = tabStore.openTabs[tabStore.openTabs.length - 1]
+  if (!target) {
+    onNewSession()
+    return
+  }
+  if (!restoring) {
+    setRestoring(true)
+    void switchWithRollback(
+      target,
+      () => tabStore.activateTab(target),
+      () => {
+        if (activeRef.current) return
+        onNewSession()
+      },
+    ).finally(() => {
+      setRestoring(false)
+    })
+  }
+  return
+}
 ```
 
 Do not change the rest of the effect except dependencies if TypeScript requires it. `tabStore.activateTab` is already covered by the `tabStore` object dependency.
@@ -422,6 +429,7 @@ Expected: all tests in `index.test.tsx` pass.
 Run:
 
 ```powershell
+
 ```
 
 Expected: empty `activeTab` with non-empty tabs now recovers the last tab.
@@ -431,6 +439,7 @@ Expected: empty `activeTab` with non-empty tabs now recovers the last tab.
 ## Task 4: Add three-state prepareSession and reusable-session fallback
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/App.tsx`
 - Modify: `packages/opencode/webgui/src/App.test.tsx`
 
@@ -617,6 +626,7 @@ Expected: all tests in `App.test.tsx` pass.
 Run:
 
 ```powershell
+
 ```
 
 Expected: `prepareSession()` supports `ReuseCheck` and optional fallback without changing UI rendering.
@@ -626,6 +636,7 @@ Expected: `prepareSession()` supports `ReuseCheck` and optional fallback without
 ## Task 5: Add default empty New session fallback scanning
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/App.tsx`
 - Modify: `packages/opencode/webgui/src/App.test.tsx`
 
@@ -722,10 +733,14 @@ export function reuseCheckFromResponses(input: {
   return input.messages.length === 0 ? "reusable" : "not_reusable"
 }
 
-export async function findReusableDefaultSession<T extends { id: string; title?: string; parentID?: string; time?: { archived?: number; updated?: number; created?: number } }>(
-  sessions: T[],
-  messages: (id: string) => Promise<unknown[]>,
-): Promise<SessionCandidate | null> {
+export async function findReusableDefaultSession<
+  T extends {
+    id: string
+    title?: string
+    parentID?: string
+    time?: { archived?: number; updated?: number; created?: number }
+  },
+>(sessions: T[], messages: (id: string) => Promise<unknown[]>): Promise<SessionCandidate | null> {
   const candidates = sessions
     .filter((session) => !session.parentID)
     .filter((session) => !session.time?.archived)
@@ -792,6 +807,7 @@ Expected: all tests in `App.test.tsx` pass.
 Run:
 
 ```powershell
+
 ```
 
 Expected: `handleNewSession` now checks draft with three-state semantics and scans recent default empty sessions before creating.
@@ -801,6 +817,7 @@ Expected: `handleNewSession` now checks draft with three-state semantics and sca
 ## Task 6: Run focused regression suite
 
 **Files:**
+
 - Verify only; no file edits expected.
 
 - [ ] **Step 1: Run focused webgui tests**
@@ -828,6 +845,7 @@ Expected: TypeScript build and Vite build complete with exit code 0.
 Run:
 
 ```powershell
+
 ```
 
 Expected: no whitespace errors.
@@ -837,6 +855,7 @@ Expected: no whitespace errors.
 Run:
 
 ```powershell
+
 ```
 
 Expected: changed files are limited to the planned webgui source/tests plus this spec/plan document unless pre-existing workspace changes are present.

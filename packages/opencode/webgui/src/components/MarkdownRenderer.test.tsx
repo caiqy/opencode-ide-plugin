@@ -133,9 +133,7 @@ describe("MarkdownRenderer", () => {
   it("inline generated-images Markdown 图片也使用 worktree 兜底", () => {
     project.worktree = "D:\\repo"
 
-    renderWithTheme(
-      <MarkdownRenderer inline>{"![生成图](.opencode/generated-images/demo.png)"}</MarkdownRenderer>,
-    )
+    renderWithTheme(<MarkdownRenderer inline>{"![生成图](.opencode/generated-images/demo.png)"}</MarkdownRenderer>)
 
     expect(screen.getByRole("img", { name: "生成图" }).getAttribute("src")).toBe(
       getGeneratedImageUrl(".opencode/generated-images/demo.png", project.worktree),
@@ -196,7 +194,9 @@ describe("MarkdownRenderer", () => {
   })
 
   it("无 alt 的链接包裹 Markdown 图片使用文件名作为链接名称", () => {
-    renderWithTheme(<MarkdownRenderer>{"[![](.opencode/generated-images/demo.png)](https://example.com)"}</MarkdownRenderer>)
+    renderWithTheme(
+      <MarkdownRenderer>{"[![](.opencode/generated-images/demo.png)](https://example.com)"}</MarkdownRenderer>,
+    )
 
     const link = screen.getByRole("link", { name: "demo.png" })
 
@@ -215,7 +215,9 @@ describe("MarkdownRenderer", () => {
   })
 
   it("Markdown 图片预览弹窗渲染到 markdown 容器外", () => {
-    const { container } = renderWithTheme(<MarkdownRenderer>{"![生成图](.opencode/generated-images/demo.png)"}</MarkdownRenderer>)
+    const { container } = renderWithTheme(
+      <MarkdownRenderer>{"![生成图](.opencode/generated-images/demo.png)"}</MarkdownRenderer>,
+    )
 
     fireEvent.click(screen.getByRole("button", { name: "查看图片：生成图" }))
 
@@ -226,11 +228,15 @@ describe("MarkdownRenderer", () => {
   })
 
   it("链接包裹 Markdown 图片时不产生交互元素嵌套", () => {
-    renderWithTheme(<MarkdownRenderer>{"[![生成图](.opencode/generated-images/demo.png)](https://example.com)"}</MarkdownRenderer>)
+    renderWithTheme(
+      <MarkdownRenderer>{"[![生成图](.opencode/generated-images/demo.png)](https://example.com)"}</MarkdownRenderer>,
+    )
 
     const link = screen.getByRole("link", { name: "生成图" })
 
     expect(link.querySelector("button")).toBeNull()
-    expect(link.querySelector("img")?.getAttribute("src")).toBe(getGeneratedImageUrl(".opencode/generated-images/demo.png", null))
+    expect(link.querySelector("img")?.getAttribute("src")).toBe(
+      getGeneratedImageUrl(".opencode/generated-images/demo.png", null),
+    )
   })
 })

@@ -28,13 +28,13 @@
 
 ### 组件
 
-| # | 组件 | 用途 | 入口点 |
-|---|------|------|--------|
-| 1 | Opencode 核心 | AI Agent 编排、会话管理、工具执行 | `packages/opencode/src/index.ts` |
-| 2 | WebGUI | 聊天界面、会话管理、设置 | `packages/opencode/webgui/src/main.tsx` |
-| 3 | VSCode 插件 | 集成到 VSCode 活动栏 | `hosts/vscode-plugin/src/extension.ts` |
-| 4 | JetBrains 插件 | 集成到 JetBrains 工具窗口 | `hosts/jetbrains-plugin/.../ChatToolWindowFactory.kt` |
-| 5 | SDK | opencode HTTP API 类型安全客户端 | `packages/sdk/js/` |
+| #   | 组件           | 用途                              | 入口点                                                |
+| --- | -------------- | --------------------------------- | ----------------------------------------------------- |
+| 1   | Opencode 核心  | AI Agent 编排、会话管理、工具执行 | `packages/opencode/src/index.ts`                      |
+| 2   | WebGUI         | 聊天界面、会话管理、设置          | `packages/opencode/webgui/src/main.tsx`               |
+| 3   | VSCode 插件    | 集成到 VSCode 活动栏              | `hosts/vscode-plugin/src/extension.ts`                |
+| 4   | JetBrains 插件 | 集成到 JetBrains 工具窗口         | `hosts/jetbrains-plugin/.../ChatToolWindowFactory.kt` |
+| 5   | SDK            | opencode HTTP API 类型安全客户端  | `packages/sdk/js/`                                    |
 
 ---
 
@@ -71,13 +71,13 @@
 
 ### 入口点
 
-| 入口 | 位置 | 触发方式 |
-|------|------|----------|
-| CLI | `packages/opencode/src/index.ts` | `opencode` 命令（`serve`/`run`/`web`） |
-| HTTP 服务器 | `src/server/server.ts` | `opencode serve`，默认 `0.0.0.0:4096` |
-| WebGUI | `webgui/src/main.tsx` | 浏览器/webview 加载 `/app` |
-| VSCode | `hosts/vscode-plugin/src/extension.ts` | `onView:opencode.main` |
-| JetBrains | `ChatToolWindowFactory.kt` | `plugin.xml` 注册的工具窗口 |
+| 入口        | 位置                                   | 触发方式                               |
+| ----------- | -------------------------------------- | -------------------------------------- |
+| CLI         | `packages/opencode/src/index.ts`       | `opencode` 命令（`serve`/`run`/`web`） |
+| HTTP 服务器 | `src/server/server.ts`                 | `opencode serve`，默认 `0.0.0.0:4096`  |
+| WebGUI      | `webgui/src/main.tsx`                  | 浏览器/webview 加载 `/app`             |
+| VSCode      | `hosts/vscode-plugin/src/extension.ts` | `onView:opencode.main`                 |
+| JetBrains   | `ChatToolWindowFactory.kt`             | `plugin.xml` 注册的工具窗口            |
 
 ---
 
@@ -97,22 +97,26 @@
 ### 横切关注点
 
 **日志：**
+
 - 后端：`Log` 工具（文件日志 + 服务标签）
 - WebGUI：`[Component]` 前缀 console.log + `POST /log` 远程日志
 - IDE 插件：VSCode `OutputChannel` / JetBrains `Logger`
 
 **配置：**
+
 - 后端：`opencode.json` + XDG 全局配置
 - WebGUI：`sdk.config.get()` HTTP API
 - VSCode：`vscode.workspace.getConfiguration("opencode")`
 - JetBrains：`OpenCodeSettings` 持久化状态
 
 **认证：**
+
 - AI 提供商：OAuth + API 密钥（`/auth`、`/provider` 路由）
 - 服务器：可选 `OPENCODE_SERVER_PASSWORD` 基本认证
 - IDE 桥接：每会话随机 UUID token
 
 **构建流水线：**
+
 - Monorepo：Bun 工作区 + Turborepo
 - WebGUI：Vite → `webgui-dist/` → 嵌入脚本 → `embed.generated.ts`
 - VSCode：`hosts/scripts/build_vscode.sh` → `.vsix`

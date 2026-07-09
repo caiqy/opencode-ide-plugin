@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
+import type { SessionV1 } from "@opencode-ai/core/v1/session"
 import { generatedImageRelativePath } from "../../session/generated-image"
-import type { MessageV2 } from "../../session/message-v2"
 import { buildFilename } from "./filename"
 import type { DecodedImage } from "./types"
 
@@ -21,7 +21,7 @@ type PersistImagesInput = {
 
 export async function persistImages(
   input: PersistImagesInput,
-): Promise<Array<Omit<MessageV2.FilePart, "id" | "sessionID" | "messageID">>> {
+): Promise<Array<Omit<SessionV1.FilePart, "id" | "sessionID" | "messageID">>> {
   const root = ensureAbsoluteRealPath(await fs.realpath(input.root))
   const dir = generatedImagesDirectory(root)
   await assertCreatableDirectoryInsideProject(root, dir)

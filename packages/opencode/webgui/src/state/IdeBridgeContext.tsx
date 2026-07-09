@@ -71,7 +71,10 @@ export function IdeBridgeProvider({ children }: ProviderProps) {
     return () => ideBridge.off(handler)
   }, [worktree])
 
-  const value = useMemo(() => ({ openedFiles, currentFile, timestamp, customApi }), [openedFiles, currentFile, timestamp, customApi])
+  const value = useMemo(
+    () => ({ openedFiles, currentFile, timestamp, customApi }),
+    [openedFiles, currentFile, timestamp, customApi],
+  )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

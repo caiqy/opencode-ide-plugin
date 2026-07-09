@@ -34,6 +34,7 @@
 ### Task 1：让图片附件携带项目相对路径，并把路径回放成文本
 
 **Files:**
+
 - Modify: `packages/opencode/src/session/message-v2.ts`
 - Modify: `packages/opencode/test/session/prompt.test.ts`
 
@@ -87,9 +88,10 @@ export const FilePart = Schema.Struct({
 
 ```ts
 const pathAttachments = attachments.filter((a) => typeof a.relativePath === "string")
-const replayText = pathAttachments.length === 0
-  ? outputText
-  : `${outputText}\n${pathAttachments.map((a) => `已生成图片文件：${a.relativePath}`).join("\n")}`
+const replayText =
+  pathAttachments.length === 0
+    ? outputText
+    : `${outputText}\n${pathAttachments.map((a) => `已生成图片文件：${a.relativePath}`).join("\n")}`
 
 const replayableAttachments = attachments.filter((a) => typeof a.relativePath !== "string")
 ```
@@ -132,6 +134,7 @@ git commit -m "feat: replay generated images as project paths"
 ### Task 2：把图片真正落到项目目录里，并生成路径引用附件
 
 **Files:**
+
 - Create: `packages/opencode/src/session/generated-image-persistence.ts`
 - Modify: `packages/opencode/src/session/generated-image.ts`
 - Modify: `packages/opencode/src/session/processor.ts`
@@ -262,6 +265,7 @@ git commit -m "feat: persist generated images in project storage"
 ### Task 3：新增专用图片访问路由，保证只读项目内生成图
 
 **Files:**
+
 - Create: `packages/opencode/src/server/routes/instance/generated-image.ts`
 - Modify: `packages/opencode/src/server/routes/instance/index.ts`
 - Create: `packages/opencode/test/server/generated-image-route.test.ts`
@@ -339,6 +343,7 @@ git commit -m "feat: serve generated images from project storage"
 ### Task 4：让 WebGUI 通过路径加载图片，并显示引用路径
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/lib/fileUtils.ts`
 - Modify: `packages/opencode/webgui/src/components/parts/ToolPart/ToolImageAttachments.tsx`
 - Modify: `packages/opencode/webgui/src/components/parts/ToolPart/ToolImageAttachments.test.tsx`
@@ -399,9 +404,11 @@ const src = attachment.relativePath ? buildGeneratedImageUrl(attachment.relative
 并在卡片下方显示相对路径（如果存在）：
 
 ```tsx
-{attachment.relativePath ? (
-  <div className="truncate text-xs text-gray-500 dark:text-gray-400">{attachment.relativePath}</div>
-) : null}
+{
+  attachment.relativePath ? (
+    <div className="truncate text-xs text-gray-500 dark:text-gray-400">{attachment.relativePath}</div>
+  ) : null
+}
 ```
 
 如果路径图片加载失败，显示“预览不可用”，不要让整张卡片崩掉。
@@ -448,6 +455,7 @@ git commit -m "feat: render generated images from project paths"
 ### Task 5：做端到端验证，确认新旧格式都能工作
 
 **Files:**
+
 - Modify: 仅在必要时修复前面各任务留下的断言
 
 - [ ] **Step 1: 跑后端完整相关测试**

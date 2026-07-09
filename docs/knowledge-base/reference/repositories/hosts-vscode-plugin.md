@@ -22,16 +22,16 @@ IDE bridge 协议的业务说明见 [IDE Bridge](../business/ide-bridge.md)，�
 
 ## 目录结构 `src/`
 
-| 目录 | 关键文件 | 职责 |
-|------|----------|------|
-| （根） | `extension.ts`、`globals.ts` | 激活入口、全局单例 |
-| `backend/` | `BackendLauncher.ts`、`ResourceExtractor.ts`、`kill.ts` | 启动后端、解压内嵌 binary、进程清理 |
-| `ui/` | `WebviewController.ts`、`WebviewManager.ts`、`ActivityBarProvider.ts`、`CommunicationBridge.ts`、`IdeBridgeServer.ts`、`loading.ts` | webview 承载、bridge 服务、面板/活动栏切换、加载页 |
-| `commands/` | `AddToContextCommand.ts`、`AddLinesToContextCommand.ts`、`PastePathCommand.ts` | 右键菜单命令 |
-| `update/` | `ReleaseChecker.ts`、`UpdateInstaller.ts`、`UpdateService.ts`、`version.ts` | GitHub Release 检查、`.vsix` 下载安装、更新状态机、语义版本比较 |
-| `settings/` | `SettingsManager.ts` | `opencode.customCommand` / `opencode.minVersion` 配置管理 |
-| `utils/` | `ErrorHandler.ts`、`FileMonitor.ts`、`PathInserter.ts`、`RecoveryUtils.ts`、`extensionIdentity.ts` | 错误处理、打开文件监控、路径插入、SW 恢复 |
-| `types/` | `UnifiedMessage.ts` | 消息类型 |
+| 目录        | 关键文件                                                                                                                            | 职责                                                            |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| （根）      | `extension.ts`、`globals.ts`                                                                                                        | 激活入口、全局单例                                              |
+| `backend/`  | `BackendLauncher.ts`、`ResourceExtractor.ts`、`kill.ts`                                                                             | 启动后端、解压内嵌 binary、进程清理                             |
+| `ui/`       | `WebviewController.ts`、`WebviewManager.ts`、`ActivityBarProvider.ts`、`CommunicationBridge.ts`、`IdeBridgeServer.ts`、`loading.ts` | webview 承载、bridge 服务、面板/活动栏切换、加载页              |
+| `commands/` | `AddToContextCommand.ts`、`AddLinesToContextCommand.ts`、`PastePathCommand.ts`                                                      | 右键菜单命令                                                    |
+| `update/`   | `ReleaseChecker.ts`、`UpdateInstaller.ts`、`UpdateService.ts`、`version.ts`                                                         | GitHub Release 检查、`.vsix` 下载安装、更新状态机、语义版本比较 |
+| `settings/` | `SettingsManager.ts`                                                                                                                | `opencode.customCommand` / `opencode.minVersion` 配置管理       |
+| `utils/`    | `ErrorHandler.ts`、`FileMonitor.ts`、`PathInserter.ts`、`RecoveryUtils.ts`、`extensionIdentity.ts`                                  | 错误处理、打开文件监控、路径插入、SW 恢复                       |
+| `types/`    | `UnifiedMessage.ts`                                                                                                                 | 消息类型                                                        |
 
 ## `package.json` 契约
 

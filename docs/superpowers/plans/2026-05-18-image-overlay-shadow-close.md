@@ -21,6 +21,7 @@
 ## Task 1: 写出点击边界回归测试
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/parts/ImageOverlay.test.tsx`
 
 - [ ] **Step 1: Add failing tests for overlay click boundaries**
@@ -28,39 +29,39 @@
 在 `describe("ImageOverlay", () => {` 内、`it("Esc 调用 onClose", ...` 后添加以下测试：
 
 ```tsx
-  it("点击图片舞台空白区域调用 onClose", () => {
-    const onClose = vi.fn()
-    renderOverlay({ onClose })
+it("点击图片舞台空白区域调用 onClose", () => {
+  const onClose = vi.fn()
+  renderOverlay({ onClose })
 
-    const img = screen.getByRole("img", { name: "sample.png" })
-    const stage = img.parentElement
-    if (!stage) throw new Error("stage not found")
+  const img = screen.getByRole("img", { name: "sample.png" })
+  const stage = img.parentElement
+  if (!stage) throw new Error("stage not found")
 
-    fireEvent.click(stage)
+  fireEvent.click(stage)
 
-    expect(onClose).toHaveBeenCalledTimes(1)
-  })
+  expect(onClose).toHaveBeenCalledTimes(1)
+})
 
-  it("点击图片本体不会调用 onClose", () => {
-    const onClose = vi.fn()
-    renderOverlay({ onClose })
+it("点击图片本体不会调用 onClose", () => {
+  const onClose = vi.fn()
+  renderOverlay({ onClose })
 
-    fireEvent.click(screen.getByRole("img", { name: "sample.png" }))
+  fireEvent.click(screen.getByRole("img", { name: "sample.png" }))
 
-    expect(onClose).not.toHaveBeenCalled()
-  })
+  expect(onClose).not.toHaveBeenCalled()
+})
 
-  it("点击顶部工具栏不会调用 onClose", () => {
-    const onClose = vi.fn()
-    renderOverlay({ onClose })
+it("点击顶部工具栏不会调用 onClose", () => {
+  const onClose = vi.fn()
+  renderOverlay({ onClose })
 
-    const toolbar = screen.getByText("sample.png").parentElement
-    if (!toolbar) throw new Error("toolbar not found")
+  const toolbar = screen.getByText("sample.png").parentElement
+  if (!toolbar) throw new Error("toolbar not found")
 
-    fireEvent.click(toolbar)
+  fireEvent.click(toolbar)
 
-    expect(onClose).not.toHaveBeenCalled()
-  })
+  expect(onClose).not.toHaveBeenCalled()
+})
 ```
 
 - [ ] **Step 2: Run the focused test file and verify the new tests fail**
@@ -87,6 +88,7 @@ Expected result: a test-only commit is created. If commits are not allowed, skip
 ## Task 2: 实现阴影点击关闭行为
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/parts/ImageOverlay.tsx`
 
 - [ ] **Step 1: Update event propagation boundaries**
@@ -116,28 +118,28 @@ Expected result: a test-only commit is created. If commits are not allowed, skip
 图片节点目标代码片段如下：
 
 ```tsx
-          <img
-            src={url}
-            alt={alt}
-            draggable={false}
-            onLoad={(event) => {
-              naturalSize.current = {
-                width: event.currentTarget.naturalWidth,
-                height: event.currentTarget.naturalHeight,
-              }
+<img
+  src={url}
+  alt={alt}
+  draggable={false}
+  onLoad={(event) => {
+    naturalSize.current = {
+      width: event.currentTarget.naturalWidth,
+      height: event.currentTarget.naturalHeight,
+    }
 
-              if (isFit) applyFit()
-            }}
-            onClick={(event) => event.stopPropagation()}
-            onDoubleClick={resetView}
-            className="select-none rounded shadow-2xl"
-            style={{
-              maxWidth: "none",
-              maxHeight: "none",
-              transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-              transformOrigin: "center center",
-            }}
-          />
+    if (isFit) applyFit()
+  }}
+  onClick={(event) => event.stopPropagation()}
+  onDoubleClick={resetView}
+  className="select-none rounded shadow-2xl"
+  style={{
+    maxWidth: "none",
+    maxHeight: "none",
+    transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+    transformOrigin: "center center",
+  }}
+/>
 ```
 
 - [ ] **Step 2: Run focused tests and verify they pass**
@@ -164,6 +166,7 @@ Expected result: implementation and tests are committed. If commits are not allo
 ## Task 3: 验证不退化
 
 **Files:**
+
 - Read-only verification for `packages/opencode/webgui/src/components/parts/ImageOverlay.tsx`
 - Read-only verification for `packages/opencode/webgui/src/components/parts/ImageOverlay.test.tsx`
 

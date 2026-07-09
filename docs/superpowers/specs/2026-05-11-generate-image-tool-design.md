@@ -73,10 +73,10 @@ generate_image tool
     "openai": {
       "options": {
         "apiKey": "sk-...",
-        "baseURL": "https://api.openai.com/v1"
-      }
-    }
-  }
+        "baseURL": "https://api.openai.com/v1",
+      },
+    },
+  },
 }
 ```
 
@@ -94,7 +94,7 @@ generate_image tool
 
 ```jsonc
 {
-  "image_model": "openai/gpt-image-2"
+  "image_model": "openai/gpt-image-2",
 }
 ```
 
@@ -120,15 +120,15 @@ generate_image tool
         "gpt-image-2": {
           "modalities": {
             "input": ["text", "image"],
-            "output": ["image"]
+            "output": ["image"],
           },
           "options": {
-            "imageApi": "openai-compatible"
-          }
-        }
-      }
-    }
-  }
+            "imageApi": "openai-compatible",
+          },
+        },
+      },
+    },
+  },
 }
 ```
 
@@ -312,8 +312,8 @@ output_format=...
 {
   "options": {
     "imageApi": "openai-compatible",
-    "imageFieldStyle": "brackets"
-  }
+    "imageFieldStyle": "brackets",
+  },
 }
 ```
 
@@ -413,8 +413,8 @@ permission: "generate_image"
 ```jsonc
 {
   "permission": {
-    "generate_image": "allow"
-  }
+    "generate_image": "allow",
+  },
 }
 ```
 
@@ -423,8 +423,8 @@ permission: "generate_image"
 ```jsonc
 {
   "tools": {
-    "generate_image": true
-  }
+    "generate_image": true,
+  },
 }
 ```
 

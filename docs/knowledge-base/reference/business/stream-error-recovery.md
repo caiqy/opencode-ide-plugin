@@ -6,14 +6,14 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| Retry 分类与退避 | `packages/opencode/src/session/retry.ts` |
-| Session status | `packages/opencode/src/session/status.ts` |
-| Provider fetch/SSE patch | `packages/opencode/src/provider/provider.ts` |
-| Provider 错误解析 | `packages/opencode/src/provider/error.ts` |
-| Responses SSE 过滤 | `packages/opencode/src/provider/responses-filter.ts` |
-| WebGUI retry 提示 | `packages/opencode/webgui/src/components/TypingIndicator.tsx` |
+| 角色                     | 文件                                                          |
+| ------------------------ | ------------------------------------------------------------- |
+| Retry 分类与退避         | `packages/opencode/src/session/retry.ts`                      |
+| Session status           | `packages/opencode/src/session/status.ts`                     |
+| Provider fetch/SSE patch | `packages/opencode/src/provider/provider.ts`                  |
+| Provider 错误解析        | `packages/opencode/src/provider/error.ts`                     |
+| Responses SSE 过滤       | `packages/opencode/src/provider/responses-filter.ts`          |
+| WebGUI retry 提示        | `packages/opencode/webgui/src/components/TypingIndicator.tsx` |
 
 > 命名交叉核验（Step 5）：J2 是新增能力，CHANGELOG `v26.6.800` 明确记录 Responses API 临时错误重试、上下文超限识别和兼容帧过滤；对应 [upstream-compatibility](upstream-compatibility.md)。
 

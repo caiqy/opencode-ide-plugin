@@ -60,6 +60,10 @@ export async function jsonRequest<C extends Context, A, E>(
   )
 }
 
-export async function effectRequest<A, E>(name: string, c: Context, effect: Effect.Effect<HttpServerResponse.HttpServerResponse, E, AppEnv>) {
+export async function effectRequest<A, E>(
+  name: string,
+  c: Context,
+  effect: Effect.Effect<HttpServerResponse.HttpServerResponse, E, AppEnv>,
+) {
   return HttpServerResponse.toWeb(await runRequest(name, c, effect))
 }

@@ -1,8 +1,8 @@
 import path from "path"
-import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { FSUtil } from "@opencode-ai/core/fs-util"
+import type { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Effect } from "effect"
 import { generatedImageBytes, generatedImageRelativePath } from "./generated-image"
-import type { MessageV2 } from "./message-v2"
 
 function isSafeGeneratedImageFilename(filename: string) {
   return (
@@ -15,8 +15,8 @@ function isSafeGeneratedImageFilename(filename: string) {
 }
 
 function isGeneratedImageAttachment(
-  part: MessageV2.FilePart,
-): part is MessageV2.FilePart & { filename: string; relativePath?: undefined } {
+  part: SessionV1.FilePart,
+): part is SessionV1.FilePart & { filename: string; relativePath?: undefined } {
   return (
     part.mime.startsWith("image/") &&
     typeof part.filename === "string" &&
@@ -27,7 +27,7 @@ function isGeneratedImageAttachment(
 
 export const persistGeneratedImageAttachments = Effect.fn(
   "SessionGeneratedImagePersistence.persistGeneratedImageAttachments",
-)(function* (fs: AppFileSystem.Interface, root: string, attachments: MessageV2.FilePart[] | undefined) {
+)(function* (fs: FSUtil.Interface, root: string, attachments: SessionV1.FilePart[] | undefined) {
   if (!attachments || attachments.length === 0) return attachments
 
   return yield* Effect.forEach(attachments, (attachment) =>

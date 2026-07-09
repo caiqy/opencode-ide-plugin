@@ -13,6 +13,7 @@
 ### Task 1: 用失败命令锁定下一批迁移目标
 
 **Files:**
+
 - Verify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/update/PluginUpdateServiceTest.kt`
 
 - [ ] **Step 1: 运行 unitTest 过滤命令，确认当前先失败**
@@ -24,6 +25,7 @@ Expected: FAIL with `No tests found for given includes`
 ### Task 2: 迁移 PluginUpdateServiceTest 到 unitTest
 
 **Files:**
+
 - Move: `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/update/PluginUpdateServiceTest.kt`
 - Create: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/update/PluginUpdateServiceTest.kt`
 
@@ -46,6 +48,7 @@ Expected: PASS
 ### Task 3: 写入仓库长期分层规则
 
 **Files:**
+
 - Modify: `docs/repowiki/07-host-plugins.md`
 
 - [ ] **Step 1: 新增 JetBrains 测试分层约定小节**
@@ -62,6 +65,7 @@ Expected: PASS
 ### Task 4: 最终验证
 
 **Files:**
+
 - Verify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/update/PluginUpdateServiceTest.kt`
 - Verify: `docs/repowiki/07-host-plugins.md`
 

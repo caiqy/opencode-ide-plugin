@@ -96,7 +96,8 @@ function normalizeReuseCheck(value: unknown): ReuseCheck {
 
 function isNotFoundError(error: unknown) {
   const record = typeof error === "object" && error !== null ? (error as Record<string, unknown>) : null
-  const data = typeof record?.data === "object" && record.data !== null ? (record.data as Record<string, unknown>) : null
+  const data =
+    typeof record?.data === "object" && record.data !== null ? (record.data as Record<string, unknown>) : null
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : record?.message
   const dataMessage = data?.message
   const text = [message, dataMessage]
@@ -159,7 +160,8 @@ export async function findReusableDefaultSessionFallback(input: {
 export async function checkDraftSessionReusable(id: string): Promise<ReuseCheck> {
   const session = await sdk.session.get({ path: { id } }).catch((error: unknown) => error)
   if (isNotFoundError(session)) return "not_reusable"
-  const response = typeof session === "object" && session !== null ? (session as { data?: unknown; error?: unknown }) : null
+  const response =
+    typeof session === "object" && session !== null ? (session as { data?: unknown; error?: unknown }) : null
   if (!response || session instanceof Error) return "unknown"
   if (isNotFoundError(response.error)) return "not_reusable"
   if (response.error) return "unknown"

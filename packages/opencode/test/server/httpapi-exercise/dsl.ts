@@ -56,6 +56,10 @@ class ScenarioBuilder<S = undefined> {
     return this.clone({ reset: false })
   }
 
+  mutating() {
+    return this.clone({ reset: true })
+  }
+
   stream() {
     return this.clone({ capture: "stream" })
   }
@@ -92,6 +96,7 @@ class ScenarioBuilder<S = undefined> {
   status(
     status = 200,
     inspect?: (ctx: SeededContext<S>, result: CallResult) => Effect.Effect<void>,
+    _label?: string,
   ) {
     return this.done((ctx, result) =>
       Effect.gen(function* () {
@@ -102,7 +107,7 @@ class ScenarioBuilder<S = undefined> {
   }
 
   /** Assert JSON status/content-type plus an optional synchronous body check. */
-  json(status = 200, inspect?: (body: unknown, ctx: SeededContext<S>) => void) {
+  json(status = 200, inspect?: (body: unknown, ctx: SeededContext<S>) => void, _label?: string) {
     return this.jsonEffect(status, inspect ? (body, ctx) => Effect.sync(() => inspect(body, ctx)) : undefined)
   }
 
@@ -110,6 +115,7 @@ class ScenarioBuilder<S = undefined> {
   jsonEffect(
     status = 200,
     inspect?: (body: unknown, ctx: SeededContext<S>) => Effect.Effect<void>,
+    _label?: string,
   ) {
     return this.done((ctx, result) =>
       Effect.gen(function* () {
@@ -137,9 +143,7 @@ class ScenarioBuilder<S = undefined> {
     return builder
   }
 
-  private done(
-    expect: (ctx: SeededContext<S>, result: CallResult) => Effect.Effect<void>,
-  ): ActiveScenario {
+  private done(expect: (ctx: SeededContext<S>, result: CallResult) => Effect.Effect<void>): ActiveScenario {
     const state = this.state
     return {
       kind: "active",

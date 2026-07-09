@@ -1034,7 +1034,6 @@ describe("useSessionActivation", () => {
       expect(sessionApi!.sessions.length).toBe(1)
       expect(sdk.session.syncVisible).toHaveBeenCalledWith({ body: { sessionIDs: [] } })
     })
-
     ;(sdk.session.syncVisible as any).mockClear()
 
     await act(async () => {
@@ -1091,14 +1090,16 @@ describe("useSessionActivation", () => {
     const s2Messages = deferred<any>()
     let s1Signal: AbortSignal | undefined
     let s2Signal: AbortSignal | undefined
-    ;(sdk.session.messages as any).mockImplementation(({ path, signal }: { path: { id: string }; signal?: AbortSignal }) => {
-      if (path.id === "s1") {
-        s1Signal = signal
-        return s1Messages.promise
-      }
-      s2Signal = signal
-      return s2Messages.promise
-    })
+    ;(sdk.session.messages as any).mockImplementation(
+      ({ path, signal }: { path: { id: string }; signal?: AbortSignal }) => {
+        if (path.id === "s1") {
+          s1Signal = signal
+          return s1Messages.promise
+        }
+        s2Signal = signal
+        return s2Messages.promise
+      },
+    )
 
     render(
       <Providers>

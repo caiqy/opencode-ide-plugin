@@ -31,17 +31,11 @@ type DefaultSession = Pick<Session, "id" | "title" | "parentID"> & {
   time: Session["time"] & { archived?: number }
 }
 
-function sessionGetResult(
-  data: unknown,
-  error: unknown,
-): Awaited<ReturnType<typeof sdk.session.get>> {
+function sessionGetResult(data: unknown, error: unknown): Awaited<ReturnType<typeof sdk.session.get>> {
   return { data, error } as Awaited<ReturnType<typeof sdk.session.get>>
 }
 
-function sessionMessagesResult(
-  data: unknown,
-  error: unknown,
-): Awaited<ReturnType<typeof sdk.session.messages>> {
+function sessionMessagesResult(data: unknown, error: unknown): Awaited<ReturnType<typeof sdk.session.messages>> {
   return { data, error } as Awaited<ReturnType<typeof sdk.session.messages>>
 }
 
@@ -73,7 +67,11 @@ describe("findReusableDefaultSession", () => {
 
     await expect(
       findReusableDefaultSession(
-        [defaultSession("s-old-empty", 1000), defaultSession("s-middle-empty", 2000), defaultSession("s-new-used", 3000)],
+        [
+          defaultSession("s-old-empty", 1000),
+          defaultSession("s-middle-empty", 2000),
+          defaultSession("s-new-used", 3000),
+        ],
         messages,
       ),
     ).resolves.toEqual({ id: "s-middle-empty" })

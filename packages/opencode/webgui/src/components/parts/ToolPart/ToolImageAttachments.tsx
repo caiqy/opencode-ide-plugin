@@ -29,20 +29,18 @@ function isImageAttachment(attachment: Attachment): attachment is ImageAttachmen
 }
 
 function imageAttachments(attachments: Attachment[] | undefined, directory: string | null) {
-  return (attachments ?? [])
-    .filter(isImageAttachment)
-    .map((attachment, index) => {
-      const number = index + 1
-      const src = attachment.relativePath ? getGeneratedImageUrl(attachment.relativePath, directory) : attachment.url!
+  return (attachments ?? []).filter(isImageAttachment).map((attachment, index) => {
+    const number = index + 1
+    const src = attachment.relativePath ? getGeneratedImageUrl(attachment.relativePath, directory) : attachment.url!
 
-      return {
-        id: attachment.id ?? `image-${number}`,
-        label: `Image #${number}`,
-        filename: getImageFilename(attachment.filename, attachment.mime, `generated-image-${number}`),
-        relativePath: attachment.relativePath,
-        src,
-      }
-    })
+    return {
+      id: attachment.id ?? `image-${number}`,
+      label: `Image #${number}`,
+      filename: getImageFilename(attachment.filename, attachment.mime, `generated-image-${number}`),
+      relativePath: attachment.relativePath,
+      src,
+    }
+  })
 }
 
 export function ToolImageAttachments({ attachments }: Props) {

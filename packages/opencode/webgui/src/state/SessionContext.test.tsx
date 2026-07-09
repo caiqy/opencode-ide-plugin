@@ -1324,9 +1324,7 @@ describe("SessionContext session paging", () => {
     const secondDiff = deferred<any>()
 
     ;(sdk.session.list as any).mockResolvedValueOnce({ data: [], error: null })
-    ;(sdk.session.get as any)
-      .mockReturnValueOnce(firstGet.promise)
-      .mockReturnValueOnce(secondGet.promise)
+    ;(sdk.session.get as any).mockReturnValueOnce(firstGet.promise).mockReturnValueOnce(secondGet.promise)
     ;(sdk.session.diff as any).mockImplementation(({ path }: { path: { id: string } }) => {
       if (path.id === "s2") {
         return secondDiff.promise

@@ -13,6 +13,7 @@
 ### Task 1: 先写 WebGUI 保存分流失败测试
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/lib/fileUtils.test.ts`
 - Modify: `packages/opencode/webgui/src/components/parts/ImageOverlay.test.tsx`
 - Reference: `packages/opencode/webgui/src/lib/fileUtils.ts`
@@ -89,6 +90,7 @@ Expected: FAIL；因为当前 `fileUtils.ts` 只有 `downloadUrl()`，没有新�
 ### Task 2: 实现 WebGUI 统一保存入口
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/lib/fileUtils.ts`
 - Modify: `packages/opencode/webgui/src/components/parts/ImageOverlay.tsx`
 - Test: `packages/opencode/webgui/src/lib/fileUtils.test.ts`
@@ -151,6 +153,7 @@ git commit -m "fix: route plugin image saves through ide bridge"
 ### Task 3: 先写 VSCode bridge saveImage 失败测试
 
 **Files:**
+
 - Modify: `hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts`
 - Reference: `hosts/vscode-plugin/src/ui/IdeBridgeServer.ts`
 
@@ -213,6 +216,7 @@ Expected: FAIL；当前 `SessionHandlers` 没有 `saveImage`，`handleSend()` �
 ### Task 4: 实现 VSCode 的 saveImage bridge 与宿主保存
 
 **Files:**
+
 - Modify: `hosts/vscode-plugin/src/ui/IdeBridgeServer.ts`
 - Modify: `hosts/vscode-plugin/src/ui/WebviewController.ts`
 - Modify: `hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts`
@@ -269,6 +273,7 @@ saveImage: async (url, filename) => {
 ```
 
 实现时需要把 data URL 解析写得更稳健：
+
 - 校验逗号位置
 - 校验 `;base64`
 - 非法 data URL 抛出明确错误
@@ -310,6 +315,7 @@ git commit -m "fix: support image save in vscode bridge"
 ### Task 5: 先写 JetBrains saveImage 失败测试
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt`
 - Reference: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt`
 
@@ -352,6 +358,7 @@ Expected: FAIL；当前 `IdeBridge.kt` 还不支持 `saveImage`。
 ### Task 6: 实现 JetBrains saveImage bridge
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt`
 - Modify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt`
 
@@ -443,6 +450,7 @@ git commit -m "fix: support image save in jetbrains bridge"
 ### Task 7: 整体验证与回归
 
 **Files:**
+
 - Verify: `packages/opencode/webgui/src/lib/fileUtils.ts`
 - Verify: `packages/opencode/webgui/src/components/parts/ImageOverlay.tsx`
 - Verify: `hosts/vscode-plugin/src/ui/IdeBridgeServer.ts`

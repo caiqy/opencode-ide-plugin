@@ -6,11 +6,11 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| 项目识别与迁移 | `packages/opencode/src/project/project.ts` |
-| ProjectID 规则 | `packages/opencode/src/project/schema.ts` |
-| 回归测试 | `packages/opencode/test/project/project.test.ts` |
+| 角色           | 文件                                             |
+| -------------- | ------------------------------------------------ |
+| 项目识别与迁移 | `packages/opencode/src/project/project.ts`       |
+| ProjectID 规则 | `packages/opencode/src/project/schema.ts`        |
+| 回归测试       | `packages/opencode/test/project/project.test.ts` |
 
 > 命名交叉核验（Step 5）：`ProjectID.nonGit()` 在 `schema.ts` 第 24-26 行按目录 hash 生成 `local_` 前缀 id；`Project.fromDirectory()` 在 `project.ts` 第 217-223 行对无 `.git` 目录使用该 id。
 

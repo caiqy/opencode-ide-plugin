@@ -6,14 +6,14 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| 面板挂载与保存 | `packages/opencode/webgui/src/components/SettingsPanel/index.tsx` |
-| 头部/底部 | `packages/opencode/webgui/src/components/SettingsPanel/SettingsHeader.tsx`、`SettingsFooter.tsx` |
-| tab 导航 | `packages/opencode/webgui/src/components/SettingsPanel/TabBar.tsx` |
-| 表单加载 | `packages/opencode/webgui/src/components/SettingsPanel/hooks/useSettingsForm.ts` |
-| 未保存拦截 | `packages/opencode/webgui/src/components/SettingsPanel/hooks/useUnsavedChanges.ts` |
-| tab 内容 | `packages/opencode/webgui/src/components/settings/` |
+| 角色           | 文件                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------ |
+| 面板挂载与保存 | `packages/opencode/webgui/src/components/SettingsPanel/index.tsx`                                |
+| 头部/底部      | `packages/opencode/webgui/src/components/SettingsPanel/SettingsHeader.tsx`、`SettingsFooter.tsx` |
+| tab 导航       | `packages/opencode/webgui/src/components/SettingsPanel/TabBar.tsx`                               |
+| 表单加载       | `packages/opencode/webgui/src/components/SettingsPanel/hooks/useSettingsForm.ts`                 |
+| 未保存拦截     | `packages/opencode/webgui/src/components/SettingsPanel/hooks/useUnsavedChanges.ts`               |
+| tab 内容       | `packages/opencode/webgui/src/components/settings/`                                              |
 
 > 命名交叉核验（Step 5）：`SettingsPanel/index.tsx` 第 21 行定义 `TabType = "provider" | "general" | "agents" | "advanced" | "quick-phrases"`，第 24 行默认 `provider`。
 

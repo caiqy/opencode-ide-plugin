@@ -6,16 +6,16 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| VSCode backend launcher | `hosts/vscode-plugin/src/backend/BackendLauncher.ts` |
-| VSCode binary extraction | `hosts/vscode-plugin/src/backend/ResourceExtractor.ts` |
-| VSCode process cleanup | `hosts/vscode-plugin/src/backend/kill.ts` |
-| JetBrains backend launcher | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/BackendLauncher.kt` |
-| JetBrains terminal process | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/TerminalBackendProcess.kt`、`BackendProcess.kt` |
-| JetBrains terminal log capture | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/TerminalOutputCapture.kt` |
-| JetBrains binary extraction | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/util/ResourceExtractor.kt` |
-| JetBrains UI connect | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt` |
+| 角色                           | 文件                                                                                                                   |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| VSCode backend launcher        | `hosts/vscode-plugin/src/backend/BackendLauncher.ts`                                                                   |
+| VSCode binary extraction       | `hosts/vscode-plugin/src/backend/ResourceExtractor.ts`                                                                 |
+| VSCode process cleanup         | `hosts/vscode-plugin/src/backend/kill.ts`                                                                              |
+| JetBrains backend launcher     | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/BackendLauncher.kt`                             |
+| JetBrains terminal process     | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/TerminalBackendProcess.kt`、`BackendProcess.kt` |
+| JetBrains terminal log capture | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/backendprocess/TerminalOutputCapture.kt`                       |
+| JetBrains binary extraction    | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/util/ResourceExtractor.kt`                                     |
+| JetBrains UI connect           | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/ChatToolWindowFactory.kt`                                   |
 
 > 命名交叉核验（Step 5）：能力索引 H1 的 `BackendLauncher`、`TerminalBackendProcess` 与代码中的 backend lifecycle 类名一致。
 
@@ -46,16 +46,16 @@
 
 ## 代码锚点速查
 
-| 契约 | 锚点 |
-|------|------|
-| VSCode 复用进程 | `BackendLauncher.ts:49-53` |
-| VSCode binary 优先级 | `BackendLauncher.ts:194-215` |
-| VSCode stdout 解析 | `BackendLauncher.ts:346-382` |
-| VSCode killTree | `kill.ts:23-51` |
-| JetBrains 命令构造 | `BackendLauncher.kt:46-51` |
-| JetBrains binary 优先级 | `BackendLauncher.kt:333-350` |
-| JetBrains ready 轮询 | `ChatToolWindowFactory.kt:237-243` |
-| JetBrains 日志匹配 | `ChatToolWindowFactory.kt:254-268` |
+| 契约                    | 锚点                               |
+| ----------------------- | ---------------------------------- |
+| VSCode 复用进程         | `BackendLauncher.ts:49-53`         |
+| VSCode binary 优先级    | `BackendLauncher.ts:194-215`       |
+| VSCode stdout 解析      | `BackendLauncher.ts:346-382`       |
+| VSCode killTree         | `kill.ts:23-51`                    |
+| JetBrains 命令构造      | `BackendLauncher.kt:46-51`         |
+| JetBrains binary 优先级 | `BackendLauncher.kt:333-350`       |
+| JetBrains ready 轮询    | `ChatToolWindowFactory.kt:237-243` |
+| JetBrains 日志匹配      | `ChatToolWindowFactory.kt:254-268` |
 
 ## 运行时待核验
 

@@ -1,79 +1,40 @@
-import { describe, expect, test } from "bun:test"
-import os from "os"
+import { describe, expect } from "bun:test"
+import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { httpClient } from "@opencode-ai/core/effect/app-node-platform"
 import { Effect, Layer, Stream } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { Installation } from "../../src/installation"
-import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
-import { Flag } from "@opencode-ai/core/flag/flag"
-import { AppProcess } from "@opencode-ai/core/process"
+import { InstallationChannel } from "@opencode-ai/core/installation/version"
+import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
+import { NpmConfig } from "@opencode-ai/core/npm-config"
 import { testEffect } from "../lib/effect"
 
 const encoder = new TextEncoder()
-
-function withUiVersion<T>(version: string | undefined, run: () => T): T {
-  const previous = process.env.OPENCODE_UI_VERSION
-  if (version === undefined) {
-    delete process.env.OPENCODE_UI_VERSION
-  } else {
-    process.env.OPENCODE_UI_VERSION = version
-  }
-
-  try {
-    return run()
-  } finally {
-    if (previous === undefined) {
-      delete process.env.OPENCODE_UI_VERSION
-    } else {
-      process.env.OPENCODE_UI_VERSION = previous
-    }
-  }
-}
-
-function withNpmRegistryEffect<A, E, R>(effect: Effect.Effect<A, E, R>) {
-  return Effect.acquireUseRelease(
-    Effect.sync(() => {
-      const lower = process.env.npm_config_registry
-      const upper = process.env.NPM_CONFIG_REGISTRY
-      process.env.npm_config_registry = "https://registry.npmjs.org/"
-      process.env.NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
-      return { lower, upper }
-    }),
-    () => effect,
-    ({ lower, upper }) =>
-      Effect.sync(() => {
-        if (lower === undefined) {
-          delete process.env.npm_config_registry
-        } else {
-          process.env.npm_config_registry = lower
-        }
-        if (upper === undefined) {
-          delete process.env.NPM_CONFIG_REGISTRY
-        } else {
-          process.env.NPM_CONFIG_REGISTRY = upper
-        }
-      }),
-  )
-}
 
 function mockHttpClient(handler: (request: HttpClientRequest.HttpClientRequest) => Response) {
   const client = HttpClient.make((request) => Effect.succeed(HttpClientResponse.fromWeb(request, handler(request))))
   return Layer.succeed(HttpClient.HttpClient, client)
 }
 
-function mockSpawner(handler: (cmd: string, args: readonly string[]) => string = () => "") {
+function mockSpawner(
+  handler: (cmd: string, args: readonly string[]) => string | { code: number; stdout?: string; stderr?: string } = () =>
+    "",
+) {
   const spawner = ChildProcessSpawner.make((command) => {
     const std = ChildProcess.isStandardCommand(command) ? command : undefined
-    const output = handler(std?.command ?? "", std?.args ?? [])
+    const result = handler(std?.command ?? "", std?.args ?? [])
+    const output = typeof result === "string" ? { code: 0, stdout: result, stderr: "" } : result
     return Effect.succeed(
       ChildProcessSpawner.makeHandle({
         pid: ChildProcessSpawner.ProcessId(0),
-        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(output.code)),
         isRunning: Effect.succeed(false),
         kill: () => Effect.void,
         stdin: { [Symbol.for("effect/Sink/TypeId")]: Symbol.for("effect/Sink/TypeId") } as any,
-        stdout: output ? Stream.make(encoder.encode(output)) : Stream.empty,
-        stderr: Stream.empty,
+        stdout: output.stdout ? Stream.make(encoder.encode(output.stdout)) : Stream.empty,
+        stderr: output.stderr ? Stream.make(encoder.encode(output.stderr)) : Stream.empty,
         all: Stream.empty,
         getInputFd: () => ({ [Symbol.for("effect/Sink/TypeId")]: Symbol.for("effect/Sink/TypeId") }) as any,
         getOutputFd: () => Stream.empty,
@@ -93,94 +54,26 @@ function jsonResponse(body: unknown) {
 
 function testLayer(
   httpHandler: (request: HttpClientRequest.HttpClientRequest) => Response,
-  spawnHandler?: (cmd: string, args: readonly string[]) => string,
+  spawnHandler?: (cmd: string, args: readonly string[]) => string | { code: number; stdout?: string; stderr?: string },
 ) {
-  const appProcess = AppProcess.layer.pipe(Layer.provide(mockSpawner(spawnHandler)))
-  return Installation.layer.pipe(Layer.provide(mockHttpClient(httpHandler)), Layer.provide(appProcess))
+  const spawnerNode = makeGlobalNode({
+    service: ChildProcessSpawner.ChildProcessSpawner,
+    layer: mockSpawner(spawnHandler),
+    deps: [],
+  })
+  return LayerNode.compile(Installation.node, [
+    [httpClient, mockHttpClient(httpHandler)],
+    [CrossSpawnSpawner.node, spawnerNode],
+  ])
 }
 
 describe("installation", () => {
-  describe("userAgent", () => {
-    test("builds the default opencode UI user agent", () => {
-      withUiVersion(undefined, () => {
-        expect(Installation.userAgent()).toBe(`opencode/${InstallationVersion} opencode-ui/${InstallationVersion}`)
-      })
-    })
-
-    test("uses injected UI version for the default opencode UI user agent", () => {
-      withUiVersion("26.5.1602", () => {
-        expect(Installation.userAgent()).toBe(`opencode/${InstallationVersion} opencode-ui/26.5.1602`)
-      })
-    })
-
-    test("falls back to installation version when injected UI version is blank", () => {
-      withUiVersion("   ", () => {
-        expect(Installation.userAgent()).toBe(`opencode/${InstallationVersion} opencode-ui/${InstallationVersion}`)
-      })
-    })
-
-    test("builds the installation-scoped user agent", () => {
-      withUiVersion(undefined, () => {
-        expect(Installation.userAgent({ base: "installation" })).toBe(
-          `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/${InstallationVersion}`,
-        )
-      })
-    })
-
-    test("uses injected UI version for installation-scoped user agent", () => {
-      withUiVersion("26.5.1602", () => {
-        expect(Installation.userAgent({ base: "installation" })).toBe(
-          `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/26.5.1602`,
-        )
-      })
-    })
-
-    test("keeps provider integration products before the UI product", () => {
-      withUiVersion(undefined, () => {
-        expect(Installation.userAgent({ products: ["gitlab-ai-provider/1.2.3"] })).toBe(
-          `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/${InstallationVersion}`,
-        )
-      })
-    })
-
-    test("keeps provider products before injected UI product", () => {
-      withUiVersion("26.5.1602", () => {
-        expect(Installation.userAgent({ products: ["gitlab-ai-provider/1.2.3"] })).toBe(
-          `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/26.5.1602`,
-        )
-      })
-    })
-
-    test("adds system details to the comment", () => {
-      withUiVersion(undefined, () => {
-        expect(Installation.userAgent({ system: true })).toBe(
-          `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (${os.platform()} ${os.release()}; ${os.arch()})`,
-        )
-      })
-    })
-  })
-
   describe("latest", () => {
-    test("sends installation user agent and preserves accept header to version APIs", async () => {
-      let headers: HttpClientRequest.HttpClientRequest["headers"] | undefined
-      const layer = testLayer((request) => {
-        headers = request.headers
-        return jsonResponse({ tag_name: "v1.2.3" })
-      })
-
-      const result = await Effect.runPromise(
-        Installation.Service.use((svc) => svc.latest("unknown")).pipe(Effect.provide(layer)),
-      )
-      expect(result).toBe("1.2.3")
-      expect(headers?.["user-agent"]).toBe(Installation.USER_AGENT)
-      expect(headers?.accept).toBe("application/json")
-    })
-
     testEffect(testLayer(() => jsonResponse({ tag_name: "v1.2.3" }))).effect(
       "reads release version from GitHub releases",
       () =>
         Effect.gen(function* () {
-          const result = yield* Installation.Service.use((svc) => svc.latest("unknown"))
+          const result = yield* Installation.use.latest("unknown")
           expect(result).toBe("1.2.3")
         }),
     )
@@ -189,7 +82,7 @@ describe("installation", () => {
       "strips v prefix from GitHub release tag",
       () =>
         Effect.gen(function* () {
-          const result = yield* Installation.Service.use((svc) => svc.latest("curl"))
+          const result = yield* Installation.use.latest("curl")
           expect(result).toBe("4.0.0-beta.1")
         }),
     )
@@ -201,11 +94,11 @@ describe("installation", () => {
         return jsonResponse({ version: "1.5.0" })
       }),
     ).effect("reads npm versions via registry", () =>
-      withNpmRegistryEffect(Effect.gen(function* () {
-        const result = yield* Installation.Service.use((svc) => svc.latest("npm"))
+      Effect.gen(function* () {
+        const result = yield* Installation.use.latest("npm")
         expect(result).toBe("1.5.0")
-        expect(npmCalls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
-      })),
+        expect(npmCalls).toContain(`${yield* NpmConfig.registry(process.cwd())}/opencode-ai/${InstallationChannel}`)
+      }),
     )
 
     const bunCalls: string[] = []
@@ -215,11 +108,11 @@ describe("installation", () => {
         return jsonResponse({ version: "1.6.0" })
       }),
     ).effect("reads bun versions via registry", () =>
-      withNpmRegistryEffect(Effect.gen(function* () {
-        const result = yield* Installation.Service.use((svc) => svc.latest("bun"))
+      Effect.gen(function* () {
+        const result = yield* Installation.use.latest("bun")
         expect(result).toBe("1.6.0")
-        expect(bunCalls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
-      })),
+        expect(bunCalls).toContain(`${yield* NpmConfig.registry(process.cwd())}/opencode-ai/${InstallationChannel}`)
+      }),
     )
 
     const pnpmCalls: string[] = []
@@ -229,16 +122,16 @@ describe("installation", () => {
         return jsonResponse({ version: "1.7.0" })
       }),
     ).effect("reads pnpm versions via registry", () =>
-      withNpmRegistryEffect(Effect.gen(function* () {
-        const result = yield* Installation.Service.use((svc) => svc.latest("pnpm"))
+      Effect.gen(function* () {
+        const result = yield* Installation.use.latest("pnpm")
         expect(result).toBe("1.7.0")
-        expect(pnpmCalls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
-      })),
+        expect(pnpmCalls).toContain(`${yield* NpmConfig.registry(process.cwd())}/opencode-ai/${InstallationChannel}`)
+      }),
     )
 
     testEffect(testLayer(() => jsonResponse({ version: "2.3.4" }))).effect("reads scoop manifest versions", () =>
       Effect.gen(function* () {
-        const result = yield* Installation.Service.use((svc) => svc.latest("scoop"))
+        const result = yield* Installation.use.latest("scoop")
         expect(result).toBe("2.3.4")
       }),
     )
@@ -247,7 +140,7 @@ describe("installation", () => {
       "reads chocolatey feed versions",
       () =>
         Effect.gen(function* () {
-          const result = yield* Installation.Service.use((svc) => svc.latest("choco"))
+          const result = yield* Installation.use.latest("choco")
           expect(result).toBe("3.4.5")
         }),
     )
@@ -264,7 +157,7 @@ describe("installation", () => {
       ),
     ).effect("reads brew formulae API versions", () =>
       Effect.gen(function* () {
-        const result = yield* Installation.Service.use((svc) => svc.latest("brew"))
+        const result = yield* Installation.use.latest("brew")
         expect(result).toBe("2.0.0")
       }),
     )
@@ -283,8 +176,65 @@ describe("installation", () => {
       ),
     ).effect("reads brew tap info JSON via CLI", () =>
       Effect.gen(function* () {
-        const result = yield* Installation.Service.use((svc) => svc.latest("brew"))
+        const result = yield* Installation.use.latest("brew")
         expect(result).toBe("2.1.0")
+      }),
+    )
+  })
+
+  describe("upgrade", () => {
+    testEffect(
+      testLayer(
+        () => jsonResponse({}),
+        (cmd) => {
+          if (cmd === "npm") return { code: 1, stderr: "token=secret command output" }
+          return ""
+        },
+      ),
+    ).effect("returns sanitized typed errors for failed package upgrades", () =>
+      Effect.gen(function* () {
+        const error = yield* Effect.flip(Installation.use.upgrade("npm", "9.9.9"))
+        expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
+        expect(error.stderr).toBe("Upgrade failed for npm (exit code 1).")
+        expect(error.message).toBe(error.stderr)
+        expect(error.stderr).not.toContain("secret")
+        expect(error.stderr).not.toContain("command output")
+      }),
+    )
+
+    testEffect(
+      testLayer(
+        () => new Response("install script with token=secret", { status: 200 }),
+        (cmd, args) => {
+          if (cmd === "bash" && args[0] === "--version") return "GNU bash"
+          if (cmd === "bash" || cmd === "sh") return { code: 1, stderr: "script output with token=secret" }
+          return ""
+        },
+      ),
+    ).effect("returns sanitized typed errors when the curl install script fails", () =>
+      Effect.gen(function* () {
+        const error = yield* Effect.flip(Installation.use.upgrade("curl", "9.9.9"))
+        expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
+        expect(error.stderr).toBe("Upgrade failed for curl (exit code 1).")
+        expect(error.message).toBe(error.stderr)
+        expect(error.stderr).not.toContain("secret")
+        expect(error.stderr).not.toContain("script output")
+      }),
+    )
+
+    testEffect(
+      testLayer(
+        () => new Response("install script", { status: 200 }),
+        (cmd, args) => {
+          if (cmd === "bash" && args[0] === "--version") return { code: 1, stderr: "missing" }
+          if (cmd === "bash") return { code: 1, stderr: "should not execute installer with bash" }
+          if (cmd === "sh") return "ok"
+          return ""
+        },
+      ),
+    ).effect("falls back to sh when bash is unavailable during curl upgrade", () =>
+      Effect.gen(function* () {
+        yield* Installation.use.upgrade("curl", "9.9.9")
       }),
     )
   })

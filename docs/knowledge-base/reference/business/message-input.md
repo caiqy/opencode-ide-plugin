@@ -6,17 +6,17 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| 输入区壳层 | `packages/opencode/webgui/src/components/MessageInput/index.tsx` |
-| Lexical 配置 | `packages/opencode/webgui/src/components/MessageInput/EditorConfig.ts` |
-| 发送/abort/command 逻辑 | `packages/opencode/webgui/src/components/MessageInput/hooks/useMessageInput.ts` |
-| 消息 part 提取 | `packages/opencode/webgui/src/components/MessageInput/hooks/useMessageParts.ts` |
-| `/command` 精确解析 | `packages/opencode/webgui/src/components/MessageInput/hooks/resolveSlashInput.ts` |
-| 附件节点与上传 | `packages/opencode/webgui/src/components/attachment/`、`MessageInput/hooks/useFileAttachment.ts` |
-| mention 搜索与节点 | `packages/opencode/webgui/src/components/mention/`、`hooks/useMentionSearch.ts` |
-| 快捷短语状态与 UI | `packages/opencode/webgui/src/state/repo/quickPhraseRepo.ts`、`components/MessageInput/QuickPhraseBar.tsx`、`components/settings/QuickPhrasesTab.tsx` |
-| 草稿状态 | `packages/opencode/webgui/src/state/repo/draftRepo.ts` |
+| 角色                    | 文件                                                                                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 输入区壳层              | `packages/opencode/webgui/src/components/MessageInput/index.tsx`                                                                                      |
+| Lexical 配置            | `packages/opencode/webgui/src/components/MessageInput/EditorConfig.ts`                                                                                |
+| 发送/abort/command 逻辑 | `packages/opencode/webgui/src/components/MessageInput/hooks/useMessageInput.ts`                                                                       |
+| 消息 part 提取          | `packages/opencode/webgui/src/components/MessageInput/hooks/useMessageParts.ts`                                                                       |
+| `/command` 精确解析     | `packages/opencode/webgui/src/components/MessageInput/hooks/resolveSlashInput.ts`                                                                     |
+| 附件节点与上传          | `packages/opencode/webgui/src/components/attachment/`、`MessageInput/hooks/useFileAttachment.ts`                                                      |
+| mention 搜索与节点      | `packages/opencode/webgui/src/components/mention/`、`hooks/useMentionSearch.ts`                                                                       |
+| 快捷短语状态与 UI       | `packages/opencode/webgui/src/state/repo/quickPhraseRepo.ts`、`components/MessageInput/QuickPhraseBar.tsx`、`components/settings/QuickPhrasesTab.tsx` |
+| 草稿状态                | `packages/opencode/webgui/src/state/repo/draftRepo.ts`                                                                                                |
 
 > 命名交叉核验（Step 5）：B6 的 MessageInput 使用 LexicalComposer（`index.tsx` 第 46-59 行）；B7 的 quick phrase 全局 key 是 `opencode:webgui:global:quick_phrase:v1`（`quickPhraseRepo.ts` 第 4 行），能力为新增。
 

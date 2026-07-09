@@ -79,7 +79,9 @@ export function pickAdapter(input: {
       return configured
     }
 
-    throw new Error(`Unsupported image adapter: ${configured}. Configure model.options.imageApi or provider.options.imageApi.`)
+    throw new Error(
+      `Unsupported image adapter: ${configured}. Configure model.options.imageApi or provider.options.imageApi.`,
+    )
   }
 
   if (input.npm === "@ai-sdk/openai-compatible" || input.npm === "@ai-sdk/openai") {

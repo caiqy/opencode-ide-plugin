@@ -37,7 +37,11 @@ function devDirectoryOverride() {
   return value ? value : null
 }
 
-function proxyEntry(root: string, backendUrl: string, directoryOverride: string | null): readonly [string, ProxyOptions] {
+function proxyEntry(
+  root: string,
+  backendUrl: string,
+  directoryOverride: string | null,
+): readonly [string, ProxyOptions] {
   return [
     root,
     {

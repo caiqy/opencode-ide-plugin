@@ -179,169 +179,169 @@ Error: missing job
 把下面这个 job 加到 `.github/workflows/release.yml` 中，位置放在 `build-jetbrains` 之后、`release` 之前：
 
 ```yml
-  publish-jetbrains-marketplace:
-    needs: [preflight, build-jetbrains]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      JETBRAINS_MARKETPLACE_TOKEN: ${{ secrets.JETBRAINS_MARKETPLACE_TOKEN }}
-      JETBRAINS_CERTIFICATE_CHAIN: ${{ secrets.JETBRAINS_CERTIFICATE_CHAIN }}
-      JETBRAINS_PRIVATE_KEY: ${{ secrets.JETBRAINS_PRIVATE_KEY }}
-      JETBRAINS_PRIVATE_KEY_PASSWORD: ${{ secrets.JETBRAINS_PRIVATE_KEY_PASSWORD }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+publish-jetbrains-marketplace:
+  needs: [preflight, build-jetbrains]
+  runs-on: ubuntu-latest
+  permissions:
+    contents: read
+  env:
+    JETBRAINS_MARKETPLACE_TOKEN: ${{ secrets.JETBRAINS_MARKETPLACE_TOKEN }}
+    JETBRAINS_CERTIFICATE_CHAIN: ${{ secrets.JETBRAINS_CERTIFICATE_CHAIN }}
+    JETBRAINS_PRIVATE_KEY: ${{ secrets.JETBRAINS_PRIVATE_KEY }}
+    JETBRAINS_PRIVATE_KEY_PASSWORD: ${{ secrets.JETBRAINS_PRIVATE_KEY_PASSWORD }}
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: "21"
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: "temurin"
+        java-version: "21"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.7"
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: "8.7"
 
-      - name: Assert Marketplace secrets are present
-        run: |
-          test -n "$JETBRAINS_MARKETPLACE_TOKEN" || { echo "::error::JETBRAINS_MARKETPLACE_TOKEN is required"; exit 1; }
-          test -n "$JETBRAINS_CERTIFICATE_CHAIN" || { echo "::error::JETBRAINS_CERTIFICATE_CHAIN is required"; exit 1; }
-          test -n "$JETBRAINS_PRIVATE_KEY" || { echo "::error::JETBRAINS_PRIVATE_KEY is required"; exit 1; }
-          test -n "$JETBRAINS_PRIVATE_KEY_PASSWORD" || { echo "::error::JETBRAINS_PRIVATE_KEY_PASSWORD is required"; exit 1; }
+    - name: Assert Marketplace secrets are present
+      run: |
+        test -n "$JETBRAINS_MARKETPLACE_TOKEN" || { echo "::error::JETBRAINS_MARKETPLACE_TOKEN is required"; exit 1; }
+        test -n "$JETBRAINS_CERTIFICATE_CHAIN" || { echo "::error::JETBRAINS_CERTIFICATE_CHAIN is required"; exit 1; }
+        test -n "$JETBRAINS_PRIVATE_KEY" || { echo "::error::JETBRAINS_PRIVATE_KEY is required"; exit 1; }
+        test -n "$JETBRAINS_PRIVATE_KEY_PASSWORD" || { echo "::error::JETBRAINS_PRIVATE_KEY_PASSWORD is required"; exit 1; }
 
-      - name: Download Windows x64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: jetbrains-windows-x64
-          path: marketplace-artifacts/windows-x64
+    - name: Download Windows x64 artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: jetbrains-windows-x64
+        path: marketplace-artifacts/windows-x64
 
-      - name: Download macOS ARM64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: jetbrains-macos-arm64
-          path: marketplace-artifacts/macos-arm64
+    - name: Download macOS ARM64 artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: jetbrains-macos-arm64
+        path: marketplace-artifacts/macos-arm64
 
-      - name: Download Linux x64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: jetbrains-linux-x64
-          path: marketplace-artifacts/linux-x64
+    - name: Download Linux x64 artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: jetbrains-linux-x64
+        path: marketplace-artifacts/linux-x64
 
-      - name: Rebuild Marketplace binary bundle from selected plugin zips
-        run: |
-          python <<'PY'
-          import io
-          import shutil
-          import zipfile
-          from pathlib import Path
+    - name: Rebuild Marketplace binary bundle from selected plugin zips
+      run: |
+        python <<'PY'
+        import io
+        import shutil
+        import zipfile
+        from pathlib import Path
 
-          artifact_root = Path("marketplace-artifacts")
-          target_root = Path("hosts/jetbrains-plugin/src/main/resources/bin")
-          if target_root.exists():
-              shutil.rmtree(target_root)
+        artifact_root = Path("marketplace-artifacts")
+        target_root = Path("hosts/jetbrains-plugin/src/main/resources/bin")
+        if target_root.exists():
+            shutil.rmtree(target_root)
 
-          targets = [
-              ("windows-x64", "windows", "amd64", "opencode.exe"),
-              ("macos-arm64", "macos", "arm64", "opencode"),
-              ("linux-x64", "linux", "amd64", "opencode"),
-          ]
+        targets = [
+            ("windows-x64", "windows", "amd64", "opencode.exe"),
+            ("macos-arm64", "macos", "arm64", "opencode"),
+            ("linux-x64", "linux", "amd64", "opencode"),
+        ]
 
-          for label, os_dir, arch_dir, binary in targets:
-              archives = sorted((artifact_root / label).glob("*.zip"))
-              if len(archives) != 1:
-                  raise SystemExit(f"Expected exactly one archive for {label}, found {len(archives)}")
+        for label, os_dir, arch_dir, binary in targets:
+            archives = sorted((artifact_root / label).glob("*.zip"))
+            if len(archives) != 1:
+                raise SystemExit(f"Expected exactly one archive for {label}, found {len(archives)}")
 
-              entry = f"bin/{os_dir}/{arch_dir}/{binary}"
-              output = target_root / os_dir / arch_dir / binary
-              output.parent.mkdir(parents=True, exist_ok=True)
+            entry = f"bin/{os_dir}/{arch_dir}/{binary}"
+            output = target_root / os_dir / arch_dir / binary
+            output.parent.mkdir(parents=True, exist_ok=True)
 
-              found = False
-              with zipfile.ZipFile(archives[0]) as plugin_zip:
-                  for member in plugin_zip.namelist():
-                      if not member.endswith(".jar"):
-                          continue
-                      payload = plugin_zip.read(member)
-                      with zipfile.ZipFile(io.BytesIO(payload)) as jar_zip:
-                          try:
-                              output.write_bytes(jar_zip.read(entry))
-                              found = True
-                              break
-                          except KeyError:
-                              continue
+            found = False
+            with zipfile.ZipFile(archives[0]) as plugin_zip:
+                for member in plugin_zip.namelist():
+                    if not member.endswith(".jar"):
+                        continue
+                    payload = plugin_zip.read(member)
+                    with zipfile.ZipFile(io.BytesIO(payload)) as jar_zip:
+                        try:
+                            output.write_bytes(jar_zip.read(entry))
+                            found = True
+                            break
+                        except KeyError:
+                            continue
 
-              if not found:
-                  raise SystemExit(f"Missing {entry} inside {archives[0]}")
-          PY
+            if not found:
+                raise SystemExit(f"Missing {entry} inside {archives[0]}")
+        PY
 
-      - name: Verify Marketplace binary bundle
-        run: |
-          test -f hosts/jetbrains-plugin/src/main/resources/bin/windows/amd64/opencode.exe
-          test -f hosts/jetbrains-plugin/src/main/resources/bin/macos/arm64/opencode
-          test -f hosts/jetbrains-plugin/src/main/resources/bin/linux/amd64/opencode
-          chmod +x hosts/jetbrains-plugin/src/main/resources/bin/macos/arm64/opencode
-          chmod +x hosts/jetbrains-plugin/src/main/resources/bin/linux/amd64/opencode
+    - name: Verify Marketplace binary bundle
+      run: |
+        test -f hosts/jetbrains-plugin/src/main/resources/bin/windows/amd64/opencode.exe
+        test -f hosts/jetbrains-plugin/src/main/resources/bin/macos/arm64/opencode
+        test -f hosts/jetbrains-plugin/src/main/resources/bin/linux/amd64/opencode
+        chmod +x hosts/jetbrains-plugin/src/main/resources/bin/macos/arm64/opencode
+        chmod +x hosts/jetbrains-plugin/src/main/resources/bin/linux/amd64/opencode
 
-      - name: Build Marketplace plugin package
-        working-directory: hosts/jetbrains-plugin
-        run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
-          CLEAN_VERSION="${VERSION#v}"
-          chmod +x gradlew
-          ./gradlew clean buildPlugin \
-            -Pplugin.version="$CLEAN_VERSION" \
-            -x test \
-            -x unitTest
+    - name: Build Marketplace plugin package
+      working-directory: hosts/jetbrains-plugin
+      run: |
+        VERSION="${{ needs.preflight.outputs.version }}"
+        CLEAN_VERSION="${VERSION#v}"
+        chmod +x gradlew
+        ./gradlew clean buildPlugin \
+          -Pplugin.version="$CLEAN_VERSION" \
+          -x test \
+          -x unitTest
 
-      - name: Verify Marketplace package contains only 3 binaries
-        run: |
-          python <<'PY'
-          import io
-          import zipfile
-          from pathlib import Path
+    - name: Verify Marketplace package contains only 3 binaries
+      run: |
+        python <<'PY'
+        import io
+        import zipfile
+        from pathlib import Path
 
-          archives = sorted(Path("hosts/jetbrains-plugin/build/distributions").glob("*.zip"))
-          if len(archives) != 1:
-              raise SystemExit(f"Expected exactly one Marketplace zip, found {len(archives)}")
+        archives = sorted(Path("hosts/jetbrains-plugin/build/distributions").glob("*.zip"))
+        if len(archives) != 1:
+            raise SystemExit(f"Expected exactly one Marketplace zip, found {len(archives)}")
 
-          expected = {
-              "bin/windows/amd64/opencode.exe",
-              "bin/macos/arm64/opencode",
-              "bin/linux/amd64/opencode",
-          }
+        expected = {
+            "bin/windows/amd64/opencode.exe",
+            "bin/macos/arm64/opencode",
+            "bin/linux/amd64/opencode",
+        }
 
-          actual = None
-          with zipfile.ZipFile(archives[0]) as plugin_zip:
-              for member in plugin_zip.namelist():
-                  if not member.endswith(".jar"):
-                      continue
-                  payload = plugin_zip.read(member)
-                  with zipfile.ZipFile(io.BytesIO(payload)) as jar_zip:
-                      entries = {name for name in jar_zip.namelist() if name.startswith("bin/") and not name.endswith("/")}
-                      if expected.issubset(entries):
-                          actual = entries
-                          break
+        actual = None
+        with zipfile.ZipFile(archives[0]) as plugin_zip:
+            for member in plugin_zip.namelist():
+                if not member.endswith(".jar"):
+                    continue
+                payload = plugin_zip.read(member)
+                with zipfile.ZipFile(io.BytesIO(payload)) as jar_zip:
+                    entries = {name for name in jar_zip.namelist() if name.startswith("bin/") and not name.endswith("/")}
+                    if expected.issubset(entries):
+                        actual = entries
+                        break
 
-          if actual is None:
-              raise SystemExit(f"Could not find bundled binaries inside {archives[0]}")
+        if actual is None:
+            raise SystemExit(f"Could not find bundled binaries inside {archives[0]}")
 
-          if actual != expected:
-              raise SystemExit(f"Expected only {sorted(expected)}, got {sorted(actual)}")
+        if actual != expected:
+            raise SystemExit(f"Expected only {sorted(expected)}, got {sorted(actual)}")
 
-          print("marketplace bundle contents ok")
-          PY
+        print("marketplace bundle contents ok")
+        PY
 
-      - name: Sign and publish Marketplace plugin
-        working-directory: hosts/jetbrains-plugin
-        run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
-          CLEAN_VERSION="${VERSION#v}"
-          chmod +x gradlew
-          ./gradlew signPlugin publishPlugin \
-            -Pplugin.version="$CLEAN_VERSION" \
-            -x test \
-            -x unitTest
+    - name: Sign and publish Marketplace plugin
+      working-directory: hosts/jetbrains-plugin
+      run: |
+        VERSION="${{ needs.preflight.outputs.version }}"
+        CLEAN_VERSION="${VERSION#v}"
+        chmod +x gradlew
+        ./gradlew signPlugin publishPlugin \
+          -Pplugin.version="$CLEAN_VERSION" \
+          -x test \
+          -x unitTest
 ```
 
 要求：

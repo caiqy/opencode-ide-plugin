@@ -6,17 +6,17 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| 状态面板 UI | `packages/opencode/webgui/src/components/CompactHeader/StatusPopover.tsx` |
-| 状态聚合 hook | `packages/opencode/webgui/src/components/CompactHeader/useStatusPopoverData.ts` |
-| SDK/兼容 API | `packages/opencode/webgui/src/lib/api/sdkClient.ts` |
-| SSE 连接状态 | `packages/opencode/webgui/src/lib/api/events.ts` |
-| IDE bridge 状态 | `packages/opencode/webgui/src/lib/ideBridge.ts` |
-| MCP 后端服务 | `packages/opencode/src/mcp/index.ts` |
-| Skills 后端服务 | `packages/opencode/src/skill/index.ts` |
-| Permission 判定 | `packages/opencode/src/permission/index.ts` |
-| Skill tool 权限 overlay | `packages/opencode/src/session/tool-permission.ts`、`session/tools.ts` |
+| 角色                    | 文件                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| 状态面板 UI             | `packages/opencode/webgui/src/components/CompactHeader/StatusPopover.tsx`       |
+| 状态聚合 hook           | `packages/opencode/webgui/src/components/CompactHeader/useStatusPopoverData.ts` |
+| SDK/兼容 API            | `packages/opencode/webgui/src/lib/api/sdkClient.ts`                             |
+| SSE 连接状态            | `packages/opencode/webgui/src/lib/api/events.ts`                                |
+| IDE bridge 状态         | `packages/opencode/webgui/src/lib/ideBridge.ts`                                 |
+| MCP 后端服务            | `packages/opencode/src/mcp/index.ts`                                            |
+| Skills 后端服务         | `packages/opencode/src/skill/index.ts`                                          |
+| Permission 判定         | `packages/opencode/src/permission/index.ts`                                     |
+| Skill tool 权限 overlay | `packages/opencode/src/session/tool-permission.ts`、`session/tools.ts`          |
 
 ## 意图
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Config } from "../../src/config/config"
+import { AppRuntime } from "../../src/effect/app-runtime"
 import { Instance } from "../../src/project/instance"
 import { tmpdir } from "../fixture/fixture"
 
@@ -34,11 +35,32 @@ describe("config skill permission overlay", () => {
         try {
           Config.setSkillPermissionOverlay(tmp.path, "allowed-skill", "allow")
 
-          const cfg = await Config.get()
+          const cfg = await AppRuntime.runPromise(Config.use.get())
 
           expect(cfg.permission?.skill).toEqual({
             "*": "deny",
             "allowed-skill": "allow",
+          })
+        } finally {
+          Config.clearSkillPermissionOverlay(tmp.path)
+        }
+      },
+    })
+  })
+
+  test("Config.get applies skill overlay after instance config is cached", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        try {
+          expect((await AppRuntime.runPromise(Config.use.get())).permission?.skill).toBeUndefined()
+
+          Config.setSkillPermissionOverlay(tmp.path, "cached-skill", "deny")
+
+          expect((await AppRuntime.runPromise(Config.use.get())).permission?.skill).toEqual({
+            "cached-skill": "deny",
           })
         } finally {
           Config.clearSkillPermissionOverlay(tmp.path)

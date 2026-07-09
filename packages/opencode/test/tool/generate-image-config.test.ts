@@ -184,10 +184,16 @@ describe("generate_image config", () => {
   })
 
   test("resolveModelParts rejects blank and malformed inputs early", () => {
-    expect(() => resolveModelParts({ imageModel: "gpt-image-2" })).toThrow(/image_model must include provider and model/)
+    expect(() => resolveModelParts({ imageModel: "gpt-image-2" })).toThrow(
+      /image_model must include provider and model/,
+    )
     expect(() => resolveModelParts({ imageModel: "openai/" })).toThrow(/image_model must include provider and model/)
-    expect(() => resolveModelParts({ imageModel: "/gpt-image-2" })).toThrow(/image_model must include provider and model/)
-    expect(() => resolveModelParts({ imageModel: "openai//gpt-image-2" })).toThrow(/image_model must include provider and model/)
+    expect(() => resolveModelParts({ imageModel: "/gpt-image-2" })).toThrow(
+      /image_model must include provider and model/,
+    )
+    expect(() => resolveModelParts({ imageModel: "openai//gpt-image-2" })).toThrow(
+      /image_model must include provider and model/,
+    )
     expect(() => resolveModelParts({ provider: "   " })).toThrow(/provider is required/)
     expect(() => resolveModelParts({ model: "   " })).toThrow(/model is required/)
     expect(() => resolveModelParts({ provider: "openai", model: "   " })).toThrow(/model is required/)

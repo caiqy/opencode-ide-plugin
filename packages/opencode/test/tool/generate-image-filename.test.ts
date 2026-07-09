@@ -19,10 +19,24 @@ describe("generate_image filename", () => {
 
   test("builds custom single and multi image names", () => {
     expect(
-      buildFilename({ messageID: "msg_test", index: 1, count: 1, mime: "image/png", random: "a1b2c3d4", filename: "poster" }),
+      buildFilename({
+        messageID: "msg_test",
+        index: 1,
+        count: 1,
+        mime: "image/png",
+        random: "a1b2c3d4",
+        filename: "poster",
+      }),
     ).toBe("poster-msg_test-a1b2c3d4.png")
     expect(
-      buildFilename({ messageID: "msg_test", index: 2, count: 3, mime: "image/jpeg", random: "a1b2c3d4", filename: "poster.webp" }),
+      buildFilename({
+        messageID: "msg_test",
+        index: 2,
+        count: 3,
+        mime: "image/jpeg",
+        random: "a1b2c3d4",
+        filename: "poster.webp",
+      }),
     ).toBe("poster-msg_test-2-a1b2c3d4.jpg")
   })
 

@@ -6,16 +6,16 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| 生成图片工具模块 | `packages/opencode/src/tool/generate-image/` |
-| 图片文件持久化 | `packages/opencode/src/tool/generate-image/persist.ts`、`packages/opencode/src/session/generated-image-persistence.ts` |
-| 会话附件归一化 | `packages/opencode/src/session/generated-image.ts` |
-| 专用读取路由 | `packages/opencode/src/server/routes/instance/generated-image.ts` |
-| 工具附件缩略图 | `packages/opencode/webgui/src/components/parts/ToolPart/ToolImageAttachments.tsx` |
-| Markdown 图片入口 | `packages/opencode/webgui/src/components/MarkdownRenderer.tsx` |
-| 图片预览层 | `packages/opencode/webgui/src/components/parts/ImagePreview.tsx`、`ImageOverlay.tsx` |
-| 保存与路由 URL | `packages/opencode/webgui/src/lib/fileUtils.ts` |
+| 角色              | 文件                                                                                                                   |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 生成图片工具模块  | `packages/opencode/src/tool/generate-image/`                                                                           |
+| 图片文件持久化    | `packages/opencode/src/tool/generate-image/persist.ts`、`packages/opencode/src/session/generated-image-persistence.ts` |
+| 会话附件归一化    | `packages/opencode/src/session/generated-image.ts`                                                                     |
+| 专用读取路由      | `packages/opencode/src/server/routes/instance/generated-image.ts`                                                      |
+| 工具附件缩略图    | `packages/opencode/webgui/src/components/parts/ToolPart/ToolImageAttachments.tsx`                                      |
+| Markdown 图片入口 | `packages/opencode/webgui/src/components/MarkdownRenderer.tsx`                                                         |
+| 图片预览层        | `packages/opencode/webgui/src/components/parts/ImagePreview.tsx`、`ImageOverlay.tsx`                                   |
+| 保存与路由 URL    | `packages/opencode/webgui/src/lib/fileUtils.ts`                                                                        |
 
 ## 意图
 

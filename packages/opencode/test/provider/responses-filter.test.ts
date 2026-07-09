@@ -39,9 +39,7 @@ test("non-SSE responses are not filtered", async () => {
 test("filter only targets OpenAI and Azure /responses requests", () => {
   expect(ResponsesFilter.shouldApply("@ai-sdk/openai", "https://api.example.com/v1/responses")).toBe(true)
   expect(ResponsesFilter.shouldApply("@ai-sdk/azure", "https://api.example.com/openai/v1/responses")).toBe(true)
-  expect(ResponsesFilter.shouldApply("@ai-sdk/openai", new URL("https://api.example.com/v1/responses"))).toBe(
-    true,
-  )
+  expect(ResponsesFilter.shouldApply("@ai-sdk/openai", new URL("https://api.example.com/v1/responses"))).toBe(true)
   expect(ResponsesFilter.shouldApply("@ai-sdk/openai", { url: "https://api.example.com/v1/responses" })).toBe(true)
   expect(
     ResponsesFilter.shouldApply(
@@ -50,9 +48,7 @@ test("filter only targets OpenAI and Azure /responses requests", () => {
     ),
   ).toBe(true)
   expect(ResponsesFilter.shouldApply("@ai-sdk/openai", "https://api.example.com/v1/chat/completions")).toBe(false)
-  expect(ResponsesFilter.shouldApply("@ai-sdk/openai-compatible", "https://api.example.com/v1/responses")).toBe(
-    false,
-  )
+  expect(ResponsesFilter.shouldApply("@ai-sdk/openai-compatible", "https://api.example.com/v1/responses")).toBe(false)
 })
 
 test("Responses filter preserves stream terminators", async () => {
@@ -69,7 +65,9 @@ test("Responses filter drops chat completion frames and preserves Responses even
   const created = `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_1" } })}`
   const textDelta = `data: ${JSON.stringify({ type: "response.output_text.delta", item_id: "msg_1", delta: "Hi" })}`
 
-  const out = await readProviderSse(ResponsesFilter.stripChatCompletionFrames(providerSseResponse([chat, created, textDelta])))
+  const out = await readProviderSse(
+    ResponsesFilter.stripChatCompletionFrames(providerSseResponse([chat, created, textDelta])),
+  )
   expect(out).not.toContain("chatcmpl-dummy")
   expect(out).toContain("response.created")
   expect(out).toContain("response.output_text.delta")

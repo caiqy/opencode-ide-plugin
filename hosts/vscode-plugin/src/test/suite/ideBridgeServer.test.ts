@@ -520,7 +520,7 @@ suite("IdeBridgeServer saveImage", () => {
       openUrl: async () => {},
       reloadPath: async () => {},
       clipboardWrite: async () => {},
-      saveImage: async () => ({ cancelled: true } as const),
+      saveImage: async () => ({ cancelled: true }) as const,
     } as unknown as SessionHandlers)
     baseUrl = session.baseUrl
     token = session.token

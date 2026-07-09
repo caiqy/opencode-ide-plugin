@@ -1,12 +1,16 @@
 import path from "path"
 import { Context, Duration, Effect, Layer, Option, Schedule, Schema } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { ModelsDev } from "@opencode-ai/schema/models-dev"
 import { Global } from "./global"
 import { Flag } from "./flag/flag"
 import { Flock } from "./util/flock"
 import { Hash } from "./util/hash"
-import { AppFileSystem } from "./filesystem"
+import { FSUtil } from "./fs-util"
 import { InstallationChannel, InstallationVersion } from "./installation/version"
+import { EventV2 } from "./event"
+import { makeGlobalNode } from "./effect/app-node"
+import { httpClient } from "./effect/app-node-platform"
 
 export const CatalogModelStatus = Schema.Literals(["alpha", "beta", "deprecated"])
 export type CatalogModelStatus = typeof CatalogModelStatus.Type
@@ -53,7 +57,7 @@ export const Model = Schema.Struct({
     Schema.Union([
       Schema.Literal(true),
       Schema.Struct({
-        field: Schema.Literals(["reasoning_content", "reasoning_details"]),
+        field: Schema.Literals(["reasoning", "reasoning_content", "reasoning_details"]),
       }),
     ]),
   ),
@@ -105,6 +109,8 @@ export const Provider = Schema.Struct({
 
 export type Provider = Schema.Schema.Type<typeof Provider>
 
+export const Event = ModelsDev.Event
+
 declare const OPENCODE_MODELS_DEV: Record<string, Provider> | undefined
 
 export interface Interface {
@@ -114,10 +120,11 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/ModelsDev") {}
 
-export const layer = Layer.effect(
+const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const fs = yield* AppFileSystem.Service
+    const fs = yield* FSUtil.Service
+    const events = yield* EventV2.Service
     const http = HttpClient.filterStatusOk(
       (yield* HttpClient.HttpClient).pipe(
         HttpClient.retryTransient({
@@ -153,7 +160,16 @@ export const layer = Layer.effect(
     })
 
     const loadFromDisk = fs.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath).pipe(
-      Effect.catch(() => Effect.succeed(undefined)),
+      Effect.catch((error) => {
+        if (
+          Flag.OPENCODE_MODELS_PATH === undefined &&
+          error._tag === "FileSystemError" &&
+          error.method === "readJson"
+        ) {
+          return fs.remove(filepath, { force: true }).pipe(Effect.ignore, Effect.as(undefined))
+        }
+        return Effect.succeed(undefined)
+      }),
       Effect.map((v) => v as Record<string, Provider> | undefined),
     )
 
@@ -163,7 +179,16 @@ export const layer = Layer.effect(
 
     const fetchAndWrite = Effect.fn("ModelsDev.fetchAndWrite")(function* () {
       const text = yield* fetchApi()
-      yield* fs.writeWithDirs(filepath, text)
+      const tempfile = `${filepath}.${process.pid}.${Date.now()}.tmp`
+      yield* fs.writeWithDirs(tempfile, text).pipe(
+        Effect.andThen(fs.rename(tempfile, filepath)),
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            yield* fs.remove(tempfile, { force: true }).pipe(Effect.ignore)
+            return yield* Effect.fail(error)
+          }),
+        ),
+      )
       return text
     })
 
@@ -197,11 +222,10 @@ export const layer = Layer.effect(
           if (!force && (yield* fresh())) return
           yield* fetchAndWrite()
           yield* invalidate
+          yield* events.publish(Event.Refreshed, {})
         }),
       ).pipe(
-        Effect.tapCause((cause) =>
-          Effect.logError("Failed to fetch models.dev").pipe(Effect.annotateLogs("cause", cause)),
-        ),
+        Effect.tapCause((cause) => Effect.logError("Failed to fetch models.dev", { cause: cause })),
         Effect.ignore,
       )
     })
@@ -215,9 +239,6 @@ export const layer = Layer.effect(
   }),
 )
 
-export const defaultLayer: Layer.Layer<Service> = layer.pipe(
-  Layer.provide(FetchHttpClient.layer),
-  Layer.provide(AppFileSystem.defaultLayer),
-)
+export const node = makeGlobalNode({ service: Service, layer: layer, deps: [FSUtil.node, EventV2.node, httpClient] })
 
 export * as ModelsDev from "./models-dev"

@@ -77,7 +77,12 @@ function getStatusIcon(status: string) {
       )
     case "in_progress":
       return (
-        <svg className="block w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          className="block w-4 h-4 text-blue-600 dark:text-blue-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -88,7 +93,12 @@ function getStatusIcon(status: string) {
       )
     case "cancelled":
       return (
-        <svg className="block w-4 h-4 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          className="block w-4 h-4 text-gray-400 dark:text-gray-600"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -98,7 +108,9 @@ function getStatusIcon(status: string) {
         </svg>
       )
     default: // pending
-      return <span className="block h-3.5 w-3.5 rounded-full border-[1.5px] border-current text-gray-400 opacity-80 dark:text-gray-500" />
+      return (
+        <span className="block h-3.5 w-3.5 rounded-full border-[1.5px] border-current text-gray-400 opacity-80 dark:text-gray-500" />
+      )
   }
 }
 

@@ -1,5 +1,6 @@
-import { Bus } from "@/bus"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { InstanceState } from "@/effect"
+import { EventV2Bridge } from "@/event-v2-bridge"
 import { NotFoundError } from "@/storage/storage"
 import { Context, Effect, Exit, Layer, Queue, Scope, Stream } from "effect"
 import { MessageID, SessionID } from "./schema"
@@ -66,7 +67,7 @@ function getSession(state: State, sessionID: SessionID) {
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const bus = yield* Bus.Service
+    const events = yield* EventV2Bridge.Service
     const sessions = yield* Session.Service
     const summary = yield* SessionSummary.Service
 
@@ -75,7 +76,7 @@ export const layer = Layer.effect(
       status: Session.DiffStatus,
       message: string,
     ) {
-      yield* bus.publish(Session.Event.DiffStatus, { sessionID, status, message })
+      yield* events.publish(Session.Event.DiffStatus, { sessionID, status, message })
     })
 
     const isVisible = (data: State, sessionID: SessionID) => !data.visibilityReady || data.visible.has(sessionID)
@@ -140,7 +141,13 @@ export const layer = Layer.effect(
         if (data.foregroundCount > 0 || data.backgroundRunning) return
 
         const next = Array.from(data.sessions.entries()).find(([sessionID, current]) => {
-          return current.scheduled && !current.deleted && !current.running && !!current.messageID && isVisible(data, sessionID)
+          return (
+            current.scheduled &&
+            !current.deleted &&
+            !current.running &&
+            !!current.messageID &&
+            isVisible(data, sessionID)
+          )
         })
         if (!next) return
 
@@ -170,15 +177,14 @@ export const layer = Layer.effect(
 
         yield* publishStatus(sessionID, "running", "Summary refresh in progress")
 
-        const exit = yield*
-          Effect.gen(function* () {
-            yield* summary.summarize({
-              sessionID,
-              messageID,
-              canWrite,
-            })
-            return yield* canWrite()
-          }).pipe(Effect.exit)
+        const exit = yield* Effect.gen(function* () {
+          yield* summary.summarize({
+            sessionID,
+            messageID,
+            canWrite,
+          })
+          return yield* canWrite()
+        }).pipe(Effect.exit)
 
         current.running = false
         data.backgroundRunning = false
@@ -223,16 +229,15 @@ export const layer = Layer.effect(
 
         yield* Effect.addFinalizer(() => Queue.shutdown(wake))
 
-        yield* (yield* bus.subscribe(Session.Event.Deleted)).pipe(
-          Stream.runForEach((event) => deleteSessionState(data, event.properties.sessionID)),
-          Effect.forkScoped,
-        )
+        const unsubscribe = yield* events.listen((event) => {
+          if (event.type !== Session.Event.Deleted.type) return Effect.void
+          return deleteSessionState(data, (event.data as { sessionID: SessionID }).sessionID)
+        })
+        yield* Effect.addFinalizer(() => unsubscribe)
 
         yield* Stream.fromQueue(wake).pipe(
           Stream.runForEach(() =>
-            Effect.sleep("1 millis").pipe(
-              Effect.andThen(flushState(data).pipe(Effect.catchCause(() => Effect.void))),
-            ),
+            Effect.sleep("1 millis").pipe(Effect.andThen(flushState(data).pipe(Effect.catchCause(() => Effect.void)))),
           ),
           Effect.forkScoped,
         )
@@ -320,11 +325,7 @@ export const layer = Layer.effect(
 )
 
 export const defaultLayer = Layer.suspend(() =>
-  layer.pipe(
-    Layer.provide(Bus.layer),
-    Layer.provide(SessionSummary.defaultLayer),
-    Layer.provide(Session.defaultLayer),
-  ),
+  layer.pipe(Layer.provide(AppNodeBuilder.build(SessionSummary.node)), Layer.provide(AppNodeBuilder.build(EventV2Bridge.node))),
 )
 
 export * as SessionSummaryScheduler from "./summary-scheduler"

@@ -84,7 +84,7 @@ export async function scopedStateGet(scope: StorageScope, keys: string[]) {
     return Object.fromEntries(
       keys.map((key) => [
         key,
-        dirtyKeys.has(key) ? mem.get(key) ?? browserGet(scope, key) : browserGet(scope, key) ?? mem.get(key),
+        dirtyKeys.has(key) ? (mem.get(key) ?? browserGet(scope, key)) : (browserGet(scope, key) ?? mem.get(key)),
       ]),
     )
   }
@@ -101,10 +101,7 @@ export async function scopedStateGet(scope: StorageScope, keys: string[]) {
   })
 
   return Object.fromEntries(
-    keys.map((key) => [
-      key,
-      dirtyKeys.has(key) ? mem.get(key) ?? host[key] : host[key] ?? mem.get(key),
-    ]),
+    keys.map((key) => [key, dirtyKeys.has(key) ? (mem.get(key) ?? host[key]) : (host[key] ?? mem.get(key))]),
   )
 }
 

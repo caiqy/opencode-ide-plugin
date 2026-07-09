@@ -40,6 +40,7 @@
 ### Task 1: 给后端关键读取补 foreground 生命周期保护
 
 **Files:**
+
 - Modify: `packages/opencode/src/server/routes/instance/httpapi/session.ts`
 - Modify: `packages/opencode/src/server/routes/instance/session.ts`
 - Test: `packages/opencode/test/server/httpapi-session.test.ts`
@@ -62,7 +63,10 @@ test("messages request keeps dirty diff pending until foreground read finishes",
   )
 
   try {
-    await runSummaryScheduler(tmp.path, SessionSummaryScheduler.Service.use((svc) => svc.syncVisible([session.id])))
+    await runSummaryScheduler(
+      tmp.path,
+      SessionSummaryScheduler.Service.use((svc) => svc.syncVisible([session.id])),
+    )
     await runSummaryScheduler(
       tmp.path,
       SessionSummaryScheduler.Service.use((svc) =>
@@ -80,7 +84,10 @@ test("messages request keeps dirty diff pending until foreground read finishes",
       tmp.path,
       SessionSummaryScheduler.Service.use((svc) => svc.foregroundFinish(session.id)),
     )
-    await runSummaryScheduler(tmp.path, SessionSummaryScheduler.Service.use((svc) => svc.flush()))
+    await runSummaryScheduler(
+      tmp.path,
+      SessionSummaryScheduler.Service.use((svc) => svc.flush()),
+    )
 
     await waitFor(() => statuses.includes("idle"))
     expect(statuses).toEqual(["scheduled", "running", "idle"])
@@ -104,7 +111,10 @@ test("diff request also blocks new background diff until foreground read finishe
   )
 
   try {
-    await runSummaryScheduler(tmp.path, SessionSummaryScheduler.Service.use((svc) => svc.syncVisible([session.id])))
+    await runSummaryScheduler(
+      tmp.path,
+      SessionSummaryScheduler.Service.use((svc) => svc.syncVisible([session.id])),
+    )
     await runSummaryScheduler(
       tmp.path,
       SessionSummaryScheduler.Service.use((svc) =>
@@ -122,7 +132,10 @@ test("diff request also blocks new background diff until foreground read finishe
       tmp.path,
       SessionSummaryScheduler.Service.use((svc) => svc.foregroundFinish(session.id)),
     )
-    await runSummaryScheduler(tmp.path, SessionSummaryScheduler.Service.use((svc) => svc.flush()))
+    await runSummaryScheduler(
+      tmp.path,
+      SessionSummaryScheduler.Service.use((svc) => svc.flush()),
+    )
     await waitFor(() => statuses.includes("idle"))
     expect(statuses).toEqual(["scheduled", "running", "idle"])
   } finally {
@@ -225,6 +238,7 @@ git commit -m "fix: prioritize foreground session reads over diff"
 ### Task 2: 让前端 activation 会话在收口前不进入 background visible set
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/hooks/useSessionVisibilitySync.ts`
 - Modify: `packages/opencode/webgui/src/hooks/useSessionVisibilitySync.test.tsx`
 - Modify: `packages/opencode/webgui/src/App.tsx`
@@ -327,7 +341,11 @@ const foregroundSessions = useMemo(
 - [ ] **Step 4: 让 `useSessionVisibilitySync()` 排除 foreground-protected session IDs**
 
 ```ts
-function visibleSessionIDs(openTabs: string[], currentSessionID: string | null | undefined, foregroundSessions: Set<string>) {
+function visibleSessionIDs(
+  openTabs: string[],
+  currentSessionID: string | null | undefined,
+  foregroundSessions: Set<string>,
+) {
   const ids = currentSessionID ? [...openTabs, currentSessionID] : openTabs
   return Array.from(new Set(ids))
     .filter((sessionID) => !foregroundSessions.has(sessionID))
@@ -380,6 +398,7 @@ git commit -m "fix: delay visible sync for activating sessions"
 ### Task 3: 让消息加载、历史扫描和首次 diff 读取都参与 activation 收口
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/state/useSessionActivation.ts`
 - Modify: `packages/opencode/webgui/src/state/useSessionActivation.test.tsx`
 - Modify: `packages/opencode/webgui/src/state/MessagesContext.tsx`
@@ -469,13 +488,8 @@ Expected: FAIL，因为当前没有显式 foreground session 生命周期，失�
 
 ```ts
 export function useSessionActivation() {
-  const {
-    currentSession,
-    restoreSelections,
-    resolveSelections,
-    beginForegroundSession,
-    endForegroundSession,
-  } = useSession()
+  const { currentSession, restoreSelections, resolveSelections, beginForegroundSession, endForegroundSession } =
+    useSession()
 
   const activate = useCallback(async (sessionID?: string | null) => {
     if (!sessionID) return
@@ -569,18 +583,40 @@ useEffect(() => {
 - [ ] **Step 5: 确保 `MessagesContext` 保持“失败也返回 null、而不是悬挂 promise”**
 
 ```ts
-const loadLatest = useCallback(async (sessionID: string) => {
-  const pending = latestLoadRef.current[sessionID]
-  if (pending) return pending
+const loadLatest = useCallback(
+  async (sessionID: string) => {
+    const pending = latestLoadRef.current[sessionID]
+    if (pending) return pending
 
-  const run = (async () => {
-    try {
-      const response = await sdk.session.messages({
-        path: { id: sessionID },
-        query: { limit: PAGE },
-      } as any)
+    const run = (async () => {
+      try {
+        const response = await sdk.session.messages({
+          path: { id: sessionID },
+          query: { limit: PAGE },
+        } as any)
 
-      if (response.error) {
+        if (response.error) {
+          setPage(sessionID, (prev) => ({
+            ...prev,
+            latest_loading: false,
+            loaded: false,
+            latest_error: true,
+          }))
+          return null
+        }
+
+        const loadedMessages = ((response.data ?? []) as unknown as Message[]).map((msg) => normalizeMsg(msg))
+        setPage(sessionID, {
+          cursor: nextCursor(response),
+          complete: !nextCursor(response),
+          loaded: true,
+          latest_loading: false,
+          latest_error: false,
+          older_loading: false,
+          older_error: false,
+        })
+        return loadedMessages
+      } catch {
         setPage(sessionID, (prev) => ({
           ...prev,
           latest_loading: false,
@@ -589,34 +625,15 @@ const loadLatest = useCallback(async (sessionID: string) => {
         }))
         return null
       }
+    })()
 
-      const loadedMessages = ((response.data ?? []) as unknown as Message[]).map((msg) => normalizeMsg(msg))
-      setPage(sessionID, {
-        cursor: nextCursor(response),
-        complete: !nextCursor(response),
-        loaded: true,
-        latest_loading: false,
-        latest_error: false,
-        older_loading: false,
-        older_error: false,
-      })
-      return loadedMessages
-    } catch {
-      setPage(sessionID, (prev) => ({
-        ...prev,
-        latest_loading: false,
-        loaded: false,
-        latest_error: true,
-      }))
-      return null
-    }
-  })()
-
-  latestLoadRef.current[sessionID] = run
-  return run.finally(() => {
-    if (latestLoadRef.current[sessionID] === run) delete latestLoadRef.current[sessionID]
-  })
-}, [normalizeMsg, setPage])
+    latestLoadRef.current[sessionID] = run
+    return run.finally(() => {
+      if (latestLoadRef.current[sessionID] === run) delete latestLoadRef.current[sessionID]
+    })
+  },
+  [normalizeMsg, setPage],
+)
 ```
 
 - [ ] **Step 6: 重新运行前端测试，确认 activation 会正常收口**
@@ -637,6 +654,7 @@ git commit -m "fix: finish session activation before background diff"
 ### Task 4: 全链路验证并补回归 smoke
 
 **Files:**
+
 - Test: `packages/opencode/webgui/src/components/MessageInput/FooterPanels.test.tsx`
 - Test: `packages/opencode/webgui/src/components/FileChangesPanel.test.tsx`
 - Verify only: working tree changes from Tasks 1-3

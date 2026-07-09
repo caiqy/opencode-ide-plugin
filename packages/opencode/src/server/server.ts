@@ -1,5 +1,7 @@
+import "./init-projectors"
+
 import { NodeHttpServer } from "@effect/platform-node"
-import * as Log from "@opencode-ai/core/util/log"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { ConfigProvider, Context, Effect, Exit, Layer, Scope } from "effect"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
 import { OpenApi } from "effect/unstable/httpapi"
@@ -9,24 +11,14 @@ import { HttpApiApp } from "./routes/instance/httpapi/server"
 import { disposeMiddleware } from "./routes/instance/httpapi/lifecycle"
 import { WebSocketTracker } from "./routes/instance/httpapi/websocket-tracker"
 import { PublicApi } from "./routes/instance/httpapi/public"
-import { initProjectors } from "./projectors"
-import type { CorsOptions } from "./cors"
+import type { CorsOptions } from "@opencode-ai/server/cors"
 import { lazy } from "@/util/lazy"
-import { serveWebGuiPath } from "../webgui/server/app"
 import { GeneratedImageRoutes } from "./routes/instance/generated-image"
 import { Instance } from "@/project/instance"
+import { serveWebGuiPath } from "../webgui/server/app"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
-
-const log = Log.create({ service: "server" })
-let projectorsInitialized = false
-
-function ensureProjectorsInitialized() {
-  if (projectorsInitialized) return
-  initProjectors()
-  projectorsInitialized = true
-}
 
 export type Listener = {
   hostname: string
@@ -37,7 +29,7 @@ export type Listener = {
 
 type ServerApp = {
   fetch(request: Request): Response | Promise<Response>
-  request(input: string | URL | Request, init?: RequestInit): Promise<Response>
+  request(input: string | URL | Request, init?: RequestInit): Response | Promise<Response>
 }
 
 type ListenOptions = CorsOptions & {
@@ -65,22 +57,18 @@ class ListenerServerService extends Context.Service<ListenerServerService, Liste
 ) {}
 
 export const Default = lazy(() => {
-  ensureProjectorsInitialized()
   const handler = HttpApiApp.webHandler().handler
   const app: ServerApp = {
     fetch: (request: Request) => handler(request, HttpApiApp.context),
-    async request(input, init) {
-      return await Promise.resolve(
-        app.fetch(input instanceof Request ? cloneRequest(input, init) : new Request(new URL(input, "http://localhost"), init)),
-      )
+    request(input, init) {
+      return app.fetch(input instanceof Request ? input : new Request(new URL(input, "http://localhost"), init))
     },
   }
   return { app }
 })
 
-function serveEmbeddedApp(pathname: string) {
-  const requested = pathname.replace(/^\/app\/?/, "")
-  return serveWebGuiPath(requested)
+function cloneRequest(input: Request, init?: RequestInit) {
+  return new Request(input, init as RequestInit)
 }
 
 function requestDirectory(request: Request) {
@@ -88,30 +76,24 @@ function requestDirectory(request: Request) {
   return url.searchParams.get("directory") ?? request.headers.get("x-opencode-directory") ?? process.cwd()
 }
 
-function requestWithInstanceContext(request: Request, fn: () => Promise<Response>) {
-  return Instance.provide({
-    directory: requestDirectory(request),
-    fn,
-  })
+function serveEmbeddedApp(pathname: string) {
+  return serveWebGuiPath(pathname.replace(/^\/app\/?/, ""))
 }
 
-function cloneRequest(input: Request, init?: RequestInit) {
-  return new Request(input, init as RequestInit)
-}
-
-function createCompatibilityApp(corsOptions?: { cors?: string[] }) {
-  ensureProjectorsInitialized()
+function createCompatibilityApp(corsOptions?: CorsOptions) {
   const app =
     corsOptions?.cors && corsOptions.cors.length > 0
-      ? ((request: Request) =>
+      ? (request: Request) =>
           HttpRouter.toWebHandler(HttpApiApp.createRoutes(corsOptions), {
             disableLogger: true,
             middleware: disposeMiddleware,
-          }).handler(request, HttpApiApp.context))
+          }).handler(request, HttpApiApp.context)
       : Default().app.fetch
+
   return {
     async request(input: string | URL | Request, init?: RequestInit) {
-      const request = input instanceof Request ? cloneRequest(input, init) : new Request(new URL(input, "http://localhost"), init)
+      const request =
+        input instanceof Request ? cloneRequest(input, init) : new Request(new URL(input, "http://localhost"), init)
       const url = new URL(request.url)
 
       if (url.pathname === "/app" || url.pathname.startsWith("/app/")) {
@@ -121,10 +103,10 @@ function createCompatibilityApp(corsOptions?: { cors?: string[] }) {
             headers: request.headers,
             body: request.body,
           })
-          const response = await requestWithInstanceContext(generatedImageRequest, () =>
-            Promise.resolve(GeneratedImageRoutes().fetch(generatedImageRequest)),
-          )
-          return response
+          return await Instance.provide({
+            directory: requestDirectory(request),
+            fn: () => Promise.resolve(GeneratedImageRoutes().fetch(generatedImageRequest)),
+          })
         }
 
         const embedded = serveEmbeddedApp(url.pathname)
@@ -132,7 +114,10 @@ function createCompatibilityApp(corsOptions?: { cors?: string[] }) {
       }
 
       if (url.pathname === "/generated-image") {
-        return await requestWithInstanceContext(request, () => Promise.resolve(GeneratedImageRoutes().fetch(request)))
+        return await Instance.provide({
+          directory: requestDirectory(request),
+          fn: () => Promise.resolve(GeneratedImageRoutes().fetch(request)),
+        })
       }
 
       return await Promise.resolve(app(request))
@@ -141,15 +126,14 @@ function createCompatibilityApp(corsOptions?: { cors?: string[] }) {
 }
 
 export async function openapi() {
-  ensureProjectorsInitialized()
   return OpenApi.fromApi(PublicApi)
 }
 
-export function createApp(opts: { cors?: string[] }) {
-  return createCompatibilityApp({ cors: opts.cors })
+export function createApp(opts: CorsOptions) {
+  return createCompatibilityApp(opts)
 }
 
-export let url: URL
+export let url: URL | undefined
 
 export async function listen(opts: ListenOptions): Promise<Listener> {
   const listener = await Effect.runPromise(listenEffect(opts))
@@ -163,19 +147,17 @@ export async function listen(opts: ListenOptions): Promise<Listener> {
 
 const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unknown> = Effect.fn("Server.listen")(
   function* (opts: ListenOptions) {
-    ensureProjectorsInitialized()
     const state = yield* startWithPortFallback(opts)
     const address = yield* tcpAddress(state)
     const listenerUrl = makeURL(opts.hostname, address.port)
-    url = listenerUrl
-
     const unpublishMdns = yield* setupMdns(opts, address.port, state.scope)
+    url = listenerUrl
 
     return {
       hostname: opts.hostname,
       port: address.port,
       url: listenerUrl,
-      stop: yield* makeStop(state, unpublishMdns),
+      stop: yield* makeStop(state, unpublishMdns, listenerUrl),
     }
   },
 )
@@ -186,7 +168,7 @@ function listenerLayer(opts: ListenOptions, port: number) {
     disableLogger: true,
     disableListenLog: true,
   }).pipe(
-    Layer.provideMerge(WebSocketTracker.layer),
+    Layer.provideMerge(AppNodeBuilder.build(WebSocketTracker.node)),
     Layer.provideMerge(serverLayer({ port, hostname: opts.hostname })),
     // Install a fresh `ConfigProvider` per listener so `Config.string(...)`
     // reads reflect the current `process.env`. Effect's default
@@ -245,15 +227,26 @@ function setupMdns(opts: ListenOptions, port: number, scope: Scope.Scope) {
       yield* Scope.addFinalizer(scope, unpublish)
       return unpublish
     }
-    if (opts.mdns) log.warn("mDNS enabled but hostname is loopback; skipping mDNS publish")
+    if (opts.mdns) {
+      yield* Effect.logWarning("mDNS enabled but hostname is loopback; skipping mDNS publish")
+    }
     return Effect.void
   })
 }
 
-function makeStop(state: ListenerState, unpublishMdns: Effect.Effect<void>) {
+function makeStop(state: ListenerState, unpublishMdns: Effect.Effect<void>, listenerUrl: URL) {
   return Effect.gen(function* () {
     const forceCloseOnce = yield* Effect.cached(forceClose(state).pipe(Effect.ignore))
-    const closeScopeOnce = yield* Effect.cached(Scope.close(state.scope, Exit.void).pipe(Effect.ignore))
+    const closeScopeOnce = yield* Effect.cached(
+      Scope.close(state.scope, Exit.void).pipe(
+        Effect.ignore,
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (url === listenerUrl) url = undefined
+          }),
+        ),
+      ),
+    )
 
     return (close?: boolean) =>
       Effect.gen(function* () {

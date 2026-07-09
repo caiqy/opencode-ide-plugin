@@ -29,28 +29,29 @@ See the follow-up design/plan for the implemented model picker details:
 
 ## 文件结构
 
-| 文件 | 职责 |
-|------|------|
-| `src/components/settings/AgentConfigTab.tsx` | 新建。Agent 配置表格主组件 |
-| `src/components/SettingsPanel/TabBar.tsx` | 修改。新增 "agents" tab |
-| `src/components/SettingsPanel/index.tsx` | 修改。导入并渲染 AgentConfigTab |
+| 文件                                         | 职责                            |
+| -------------------------------------------- | ------------------------------- |
+| `src/components/settings/AgentConfigTab.tsx` | 新建。Agent 配置表格主组件      |
+| `src/components/SettingsPanel/TabBar.tsx`    | 修改。新增 "agents" tab         |
+| `src/components/SettingsPanel/index.tsx`     | 修改。导入并渲染 AgentConfigTab |
 
 Additional files changed by review follow-ups:
 
-| 文件 | 职责 |
-|------|------|
-| `packages/opencode/webgui/src/components/ModelSelector.tsx` | 搜索式模型选择器、默认/清空、预加载 provider、portal 下拉 |
-| `packages/opencode/webgui/src/hooks/useClickOutside.ts` | 子下拉 Escape 优先处理，避免关闭 SettingsPanel |
-| `packages/opencode/src/config/config.ts` | 全局 `agent` replace 写入语义 |
-| `packages/opencode/src/server/routes/instance/httpapi/handlers/global.ts` | lightweight config 更新与 agent 热更新 |
-| `packages/opencode/src/agent/agent.ts` | agent model/variant cache 热更新 |
-| `packages/opencode/src/project/instance-store.ts` | 在 active instances 中执行热更新 effect |
+| 文件                                                                      | 职责                                                      |
+| ------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `packages/opencode/webgui/src/components/ModelSelector.tsx`               | 搜索式模型选择器、默认/清空、预加载 provider、portal 下拉 |
+| `packages/opencode/webgui/src/hooks/useClickOutside.ts`                   | 子下拉 Escape 优先处理，避免关闭 SettingsPanel            |
+| `packages/opencode/src/config/config.ts`                                  | 全局 `agent` replace 写入语义                             |
+| `packages/opencode/src/server/routes/instance/httpapi/handlers/global.ts` | lightweight config 更新与 agent 热更新                    |
+| `packages/opencode/src/agent/agent.ts`                                    | agent model/variant cache 热更新                          |
+| `packages/opencode/src/project/instance-store.ts`                         | 在 active instances 中执行热更新 effect                   |
 
 ---
 
 ### Task 1: 扩展 TabBar 支持 "agents" 标签
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/SettingsPanel/TabBar.tsx`
 - Modify: `packages/opencode/webgui/src/components/SettingsPanel/index.tsx`
 
@@ -99,18 +100,23 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
 在 `packages/opencode/webgui/src/components/SettingsPanel/index.tsx` 中：
 
 1. 添加 import：
+
 ```tsx
 import { AgentConfigTab } from "../settings/AgentConfigTab"
 ```
 
 2. 修改 TabType：
+
 ```tsx
 type TabType = "general" | "agents" | "advanced" | "quick-phrases"
 ```
 
 3. 在渲染区域添加 agents tab 的条件渲染（在 `{activeTab === "general" && ...}` 之后）：
+
 ```tsx
-{activeTab === "agents" && <AgentConfigTab formData={formData} setFormData={setFormData} />}
+{
+  activeTab === "agents" && <AgentConfigTab formData={formData} setFormData={setFormData} />
+}
 ```
 
 - [ ] **Step 3: 验证编译通过**
@@ -124,6 +130,7 @@ Run: `cd packages/opencode/webgui && npx tsc --noEmit`
 ### Task 2: 创建 AgentConfigTab 组件
 
 **Files:**
+
 - Create: `packages/opencode/webgui/src/components/settings/AgentConfigTab.tsx`
 
 - [ ] **Step 1: 创建完整的 AgentConfigTab 组件**
@@ -388,6 +395,7 @@ git commit -m "feat(webgui): add Agent config tab to settings panel"
 ### Task 3: 修复 TabBar 测试
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/SettingsPanel/TabBar.test.tsx`
 
 - [ ] **Step 1: 更新 TabBar 测试以包含新的 "agents" tab**
@@ -417,6 +425,7 @@ git commit -m "test(webgui): update TabBar tests for agents tab"
 Run: `cd packages/opencode/webgui && npx vite --host`
 
 在浏览器中打开，进入设置面板，确认：
+
 1. TabBar 中出现 "🤖 Agent 配置" 标签
 2. 点击后显示表格，列出所有 agent
 3. 已配置的 agent 排在前面，未配置的淡化显示

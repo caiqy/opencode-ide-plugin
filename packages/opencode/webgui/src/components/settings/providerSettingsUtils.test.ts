@@ -24,10 +24,7 @@ describe("maskApiKey", () => {
 
 describe("normalizeWhitelist", () => {
   it("去空、trim、去重并保留首次出现顺序", () => {
-    expect(normalizeWhitelist([" gpt-4.1 ", "", "gpt-4.1", "claude-opus"])).toEqual([
-      "gpt-4.1",
-      "claude-opus",
-    ])
+    expect(normalizeWhitelist([" gpt-4.1 ", "", "gpt-4.1", "claude-opus"])).toEqual(["gpt-4.1", "claude-opus"])
   })
 })
 

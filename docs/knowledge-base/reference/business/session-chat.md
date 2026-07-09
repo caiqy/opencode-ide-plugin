@@ -6,14 +6,14 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| 会话状态与生命周期 | `packages/opencode/webgui/src/state/SessionContext.tsx` |
-| 消息流、分页、SSE 事件 | `packages/opencode/webgui/src/state/MessagesContext.tsx` |
-| 消息 store 纯逻辑 | `packages/opencode/webgui/src/lib/messagesStore.ts` |
-| 多标签状态 | `packages/opencode/webgui/src/state/tabStore.ts` |
-| 标签淘汰策略 | `packages/opencode/webgui/src/state/tabPolicy.ts` |
-| 滚动稳态 | `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.ts` |
+| 角色                   | 文件                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------- |
+| 会话状态与生命周期     | `packages/opencode/webgui/src/state/SessionContext.tsx`                         |
+| 消息流、分页、SSE 事件 | `packages/opencode/webgui/src/state/MessagesContext.tsx`                        |
+| 消息 store 纯逻辑      | `packages/opencode/webgui/src/lib/messagesStore.ts`                             |
+| 多标签状态             | `packages/opencode/webgui/src/state/tabStore.ts`                                |
+| 标签淘汰策略           | `packages/opencode/webgui/src/state/tabPolicy.ts`                               |
+| 滚动稳态               | `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.ts` |
 
 > 命名交叉核验（Step 5）：`SessionContext` 暴露 create/switch/fork/revert/retry/delete 等会话生命周期 API（第 96-109 行）；`MessagesContext` 暴露 latest/older/scanOlder 分页 API（第 72-80 行）；`tabPolicy.ts` 第 6 行定义 `MAX_OPEN_TABS = 6`。
 

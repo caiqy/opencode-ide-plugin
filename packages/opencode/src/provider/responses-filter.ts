@@ -28,7 +28,9 @@ export function stripChatCompletionFrames(res: Response): Response {
           for (const part of parts) {
             const trimmed = part.trim()
             if (!trimmed) continue
-            const dataLine = trimmed.split(/\r?\n/).find((line) => line.startsWith("data: ") || line.startsWith("data:"))
+            const dataLine = trimmed
+              .split(/\r?\n/)
+              .find((line) => line.startsWith("data: ") || line.startsWith("data:"))
             if (dataLine) {
               const payload = dataLine.startsWith("data: ") ? dataLine.slice(6) : dataLine.slice(5)
               if (isChatCompletionFrame(payload)) continue

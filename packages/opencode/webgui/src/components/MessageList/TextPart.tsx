@@ -48,7 +48,9 @@ function Thumbnail({ file }: { file: ImageFile }) {
       >
         <img src={file.url} alt={alt} className="max-w-48 max-h-36 object-contain" />
       </div>
-      {preview && <ImageOverlay url={file.url} alt={alt} filename={getImageFilename(file.filename, file.mime)} onClose={toggle} />}
+      {preview && (
+        <ImageOverlay url={file.url} alt={alt} filename={getImageFilename(file.filename, file.mime)} onClose={toggle} />
+      )}
     </>
   )
 }

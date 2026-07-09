@@ -22,6 +22,7 @@
 ### Task 1: 更新 ToolPart 标题规则并补回归测试
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/parts/ToolPart/utils.test.ts:4-66`
 - Modify: `packages/opencode/webgui/src/components/parts/ToolPart/utils.tsx:137-202`
 - Verify: `packages/opencode/webgui/src/components/parts/ToolPart/index.tsx:75`
@@ -31,27 +32,17 @@
 在 `describe("getToolDisplayName", ...)` 里，插入下面两个测试，放在现有“在有 title 时使用中文工具名”测试后面：
 
 ```ts
-  it("bash 在无 title 时使用 description 作为运行中标题", () => {
-    expect(
-      getToolDisplayName(
-        "bash",
-        { command: "git status", description: "查看工作区变更" },
-        undefined,
-        undefined,
-      ),
-    ).toBe("执行命令：查看工作区变更")
-  })
+it("bash 在无 title 时使用 description 作为运行中标题", () => {
+  expect(
+    getToolDisplayName("bash", { command: "git status", description: "查看工作区变更" }, undefined, undefined),
+  ).toBe("执行命令：查看工作区变更")
+})
 
-  it("非 bash 工具在无 title 时不应把 description 当作标题", () => {
-    expect(
-      getToolDisplayName(
-        "read",
-        { filePath: "/tmp/demo.ts", description: "查看工作区变更" },
-        undefined,
-        undefined,
-      ),
-    ).toBe("查看：/tmp/demo.ts")
-  })
+it("非 bash 工具在无 title 时不应把 description 当作标题", () => {
+  expect(
+    getToolDisplayName("read", { filePath: "/tmp/demo.ts", description: "查看工作区变更" }, undefined, undefined),
+  ).toBe("查看：/tmp/demo.ts")
+})
 ```
 
 说明：

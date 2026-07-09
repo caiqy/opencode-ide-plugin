@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
+import { ProviderV2 } from "@opencode-ai/core/provider"
 import { APICallError } from "ai"
-import { ProviderID } from "../../src/provider/schema"
 import { ProviderError } from "../../src/provider/error"
+
+const ProviderID = ProviderV2.ID
 
 describe("ProviderError.parseStreamError", () => {
   test("returns undefined for non-object input", () => {
@@ -15,67 +17,10 @@ describe("ProviderError.parseStreamError", () => {
     expect(ProviderError.parseStreamError({})).toBeUndefined()
   })
 
-  test("recognises gateway non-standard frame {error: string}", () => {
-    const result = ProviderError.parseStreamError({ error: "stream_read_error" })
-    expect(result).toBeDefined()
-    expect(result!.type).toBe("api_error")
-    expect(result!.message).toContain("stream_read_error")
-    const r = result!
-    if (r.type === "api_error") expect(r.isRetryable).toBe(true)
-  })
-
-  test("recognises transient string error values beyond stream_read_error", () => {
-    const result = ProviderError.parseStreamError({ error: "connection_timeout" })
-    expect(result).toBeDefined()
-    expect(result!.type).toBe("api_error")
-    expect(result!.message).toContain("connection_timeout")
-    const r = result!
-    if (r.type === "api_error") expect(r.isRetryable).toBe(true)
-  })
-
-  test("ignores permanent non-standard string error values", () => {
+  test("ignores non-standard string error values", () => {
+    expect(ProviderError.parseStreamError({ error: "stream_read_error" })).toBeUndefined()
+    expect(ProviderError.parseStreamError({ error: "connection_timeout" })).toBeUndefined()
     expect(ProviderError.parseStreamError({ error: "invalid_api_key" })).toBeUndefined()
-  })
-
-  test("retries transient nested error codes without upstream_error type", () => {
-    const input = { type: "error", error: { code: "rate_limit_exceeded", message: "Slow down" } }
-    const result = ProviderError.parseStreamError(input)
-
-    expect(result).toStrictEqual({
-      type: "api_error",
-      message: "Slow down",
-      isRetryable: true,
-      responseBody: JSON.stringify(input),
-    })
-  })
-
-  test("retries upstream_error nested code without upstream_error type", () => {
-    const input = { type: "error", error: { code: "upstream_error", message: "Upstream failed" } }
-    const result = ProviderError.parseStreamError(input)
-
-    expect(result).toStrictEqual({
-      type: "api_error",
-      message: "Upstream failed",
-      isRetryable: true,
-      responseBody: JSON.stringify(input),
-    })
-  })
-
-  test("does not retry invalid_api_key nested error codes", () => {
-    expect(
-      ProviderError.parseStreamError({
-        type: "error",
-        error: { code: "invalid_api_key", message: "Invalid API key" },
-      }),
-    ).toStrictEqual({
-      type: "api_error",
-      message: "Invalid API key",
-      isRetryable: false,
-      responseBody: JSON.stringify({
-        type: "error",
-        error: { code: "invalid_api_key", message: "Invalid API key" },
-      }),
-    })
   })
 
   test("does not confuse {error: object} with new string branch", () => {
@@ -85,27 +30,6 @@ describe("ProviderError.parseStreamError", () => {
     const result = ProviderError.parseStreamError(input)
     expect(result).toBeDefined()
     expect(result!.type).toBe("context_overflow")
-  })
-
-  test("recognises OpenAI Responses context_too_large stream events as context overflow", () => {
-    const input = {
-      type: "error",
-      code: "context_too_large",
-      message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
-      sequence_number: 0,
-    }
-
-    expect(ProviderError.parseStreamError(input)).toStrictEqual({
-      type: "context_overflow",
-      message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
-      responseBody: JSON.stringify(input),
-    })
-  })
-
-  test("includes responseBody in gateway string-error result", () => {
-    const input = { error: "stream_read_error" }
-    const result = ProviderError.parseStreamError(input)
-    expect(result!.responseBody).toBe(JSON.stringify(input))
   })
 
   test("does not retry upstream errors with permanent codes", () => {
@@ -142,10 +66,10 @@ describe("ProviderError.parseAPICallError", () => {
     })
 
     expect(result.type).toBe("api_error")
-    expect(result.message).toBe("Bad Request: no_kv_space")
+    expect(result.message).toBe('Bad Request: {"error":{"message":"no_kv_space"}}')
   })
 
-  test("recognises non-stream context_too_large API errors as context overflow", () => {
+  test("keeps non-stream context_too_large API errors as API errors", () => {
     const responseBody = JSON.stringify({
       error: {
         code: "context_too_large",
@@ -167,9 +91,13 @@ describe("ProviderError.parseAPICallError", () => {
         }),
       }),
     ).toStrictEqual({
-      type: "context_overflow",
-      message: "Bad Request: Upstream rejected this request.",
+      type: "api_error",
+      message: `Bad Request: ${responseBody}`,
+      statusCode: 400,
+      isRetryable: false,
+      responseHeaders: { "content-type": "application/json" },
       responseBody,
+      metadata: { url: "https://example.com" },
     })
   })
 })

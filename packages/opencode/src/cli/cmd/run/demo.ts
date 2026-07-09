@@ -15,6 +15,7 @@
 // Demo mode also handles permission and question replies locally, completing
 // or failing the synthetic tool parts as appropriate.
 import path from "path"
+import { EventV2 } from "@opencode-ai/core/event"
 import type { Event, ToolPart } from "@opencode-ai/sdk/v2"
 import { createSessionData, reduceSessionData, type SessionData } from "./session-data"
 import { writeSessionOutput } from "./stream"
@@ -152,6 +153,8 @@ type Input = {
   footer: FooterApi
 }
 
+type SyntheticEvent = Event extends infer Item ? (Item extends { id: string } ? Omit<Item, "id"> : never) : never
+
 function note(footer: FooterApi, text: string): void {
   footer.append({
     kind: "system",
@@ -181,7 +184,7 @@ function showSubagent(
     callID: string
     label: string
     description: string
-    status: "running" | "completed" | "error"
+    status: "running" | "completed" | "cancelled" | "error"
     title?: string
     toolCalls?: number
     commits: StreamCommit[]
@@ -256,10 +259,10 @@ function take(state: State, key: "msg" | "part" | "call" | "perm" | "ask", prefi
   return `demo_${prefix}_${state[key]}`
 }
 
-function feed(state: State, event: Event): void {
+function feed(state: State, event: SyntheticEvent): void {
   const out = reduceSessionData({
     data: state.data,
-    event,
+    event: { id: EventV2.ID.create(), ...event } as Event,
     sessionID: state.id,
     thinking: state.thinking,
     limits: state.limits(),
@@ -577,7 +580,7 @@ function emitError(state: State, text: string): void {
         },
       },
     },
-  } satisfies Event
+  } satisfies SyntheticEvent
   feed(state, event)
 }
 
@@ -1205,7 +1208,7 @@ export function createRunDemo(input: Input) {
         requestID: input.requestID,
         reply: input.reply,
       },
-    } satisfies Event
+    } satisfies SyntheticEvent
     feed(state, event)
 
     if (input.reply === "reject") {
@@ -1231,7 +1234,7 @@ export function createRunDemo(input: Input) {
         requestID: input.requestID,
         answers: input.answers,
       },
-    } satisfies Event
+    } satisfies SyntheticEvent
     feed(state, event)
     doneTool(state, ask.ref, {
       title: "question",

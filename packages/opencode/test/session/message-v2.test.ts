@@ -1,16 +1,19 @@
 import { describe, expect, test } from "bun:test"
+import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { APICallError } from "ai"
 import { MessageV2 } from "../../src/session/message-v2"
 import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
-import { ModelID, ProviderID } from "../../src/provider/schema"
+
 import { SessionID, MessageID, PartID } from "../../src/session/schema"
 import { Question } from "../../src/question"
+import { ProviderV2 } from "@opencode-ai/core/provider"
+import { ModelV2 } from "@opencode-ai/core/model"
 
 const sessionID = SessionID.make("session")
-const providerID = ProviderID.make("test")
+const providerID = ProviderV2.ID.make("test")
 const model: Provider.Model = {
-  id: ModelID.make("test-model"),
+  id: ModelV2.ID.make("test-model"),
   providerID,
   api: {
     id: "test-model",
@@ -58,25 +61,25 @@ const model: Provider.Model = {
   release_date: "2026-01-01",
 }
 
-function userInfo(id: string): MessageV2.User {
+function userInfo(id: string): SessionV1.User {
   return {
     id,
     sessionID,
     role: "user",
     time: { created: 0 },
     agent: "user",
-    model: { providerID, modelID: ModelID.make("test") },
+    model: { providerID, modelID: ModelV2.ID.make("test") },
     tools: {},
     mode: "",
-  } as unknown as MessageV2.User
+  } as unknown as SessionV1.User
 }
 
 function assistantInfo(
   id: string,
   parentID: string,
-  error?: MessageV2.Assistant["error"],
+  error?: SessionV1.Assistant["error"],
   meta?: { providerID: string; modelID: string },
-): MessageV2.Assistant {
+): SessionV1.Assistant {
   const infoModel = meta ?? { providerID: model.providerID, modelID: model.api.id }
   return {
     id,
@@ -97,7 +100,7 @@ function assistantInfo(
       reasoning: 0,
       cache: { read: 0, write: 0 },
     },
-  } as unknown as MessageV2.Assistant
+  } as unknown as SessionV1.Assistant
 }
 
 function basePart(messageID: string, id: string) {
@@ -110,7 +113,7 @@ function basePart(messageID: string, id: string) {
 
 describe("session.message-v2.toModelMessage", () => {
   test("filters out messages with no parts", async () => {
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo("m-empty"),
         parts: [],
@@ -123,7 +126,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "hello",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -138,7 +141,7 @@ describe("session.message-v2.toModelMessage", () => {
   test("filters out messages with only ignored parts", async () => {
     const messageID = "m-user"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(messageID),
         parts: [
@@ -148,7 +151,7 @@ describe("session.message-v2.toModelMessage", () => {
             text: "ignored",
             ignored: true,
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -158,7 +161,7 @@ describe("session.message-v2.toModelMessage", () => {
   test("filters out user messages with only empty text parts", async () => {
     const messageID = "m-user"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(messageID),
         parts: [
@@ -167,7 +170,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -177,7 +180,7 @@ describe("session.message-v2.toModelMessage", () => {
   test("filters empty user text parts while keeping non-empty parts", async () => {
     const messageID = "m-user"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(messageID),
         parts: [
@@ -191,7 +194,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "hello",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -206,7 +209,7 @@ describe("session.message-v2.toModelMessage", () => {
   test("includes synthetic text parts", async () => {
     const messageID = "m-user"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(messageID),
         parts: [
@@ -216,7 +219,7 @@ describe("session.message-v2.toModelMessage", () => {
             text: "hello",
             synthetic: true,
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
       {
         info: assistantInfo("m-assistant", messageID),
@@ -227,7 +230,7 @@ describe("session.message-v2.toModelMessage", () => {
             text: "assistant",
             synthetic: true,
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -246,7 +249,7 @@ describe("session.message-v2.toModelMessage", () => {
   test("converts user text/file parts and injects compaction/subtask prompts", async () => {
     const messageID = "m-user"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(messageID),
         parts: [
@@ -294,7 +297,7 @@ describe("session.message-v2.toModelMessage", () => {
             description: "desc",
             agent: "agent",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -320,7 +323,7 @@ describe("session.message-v2.toModelMessage", () => {
     const userID = "m-user"
     const assistantID = "m-assistant"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(userID),
         parts: [
@@ -329,7 +332,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "run tool",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
       {
         info: assistantInfo(assistantID, userID),
@@ -364,7 +367,7 @@ describe("session.message-v2.toModelMessage", () => {
             },
             metadata: { openai: { tool: "meta" } },
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -411,8 +414,8 @@ describe("session.message-v2.toModelMessage", () => {
   test("preserves jpeg tool-result media for anthropic models", async () => {
     const anthropicModel: Provider.Model = {
       ...model,
-      id: ModelID.make("anthropic/claude-opus-4-7"),
-      providerID: ProviderID.make("anthropic"),
+      id: ModelV2.ID.make("anthropic/claude-opus-4-7"),
+      providerID: ProviderV2.ID.make("anthropic"),
       api: {
         id: "claude-opus-4-7-20250805",
         url: "https://api.anthropic.com",
@@ -433,7 +436,7 @@ describe("session.message-v2.toModelMessage", () => {
     )
     const userID = "m-user-anthropic"
     const assistantID = "m-assistant-anthropic"
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(userID),
         parts: [
@@ -442,7 +445,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "run tool",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
       {
         info: assistantInfo(assistantID, userID),
@@ -470,7 +473,7 @@ describe("session.message-v2.toModelMessage", () => {
               ],
             },
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -494,8 +497,8 @@ describe("session.message-v2.toModelMessage", () => {
   test("moves bedrock pdf tool-result media into a separate user message", async () => {
     const bedrockModel: Provider.Model = {
       ...model,
-      id: ModelID.make("amazon-bedrock/anthropic.claude-sonnet-4-6"),
-      providerID: ProviderID.make("amazon-bedrock"),
+      id: ModelV2.ID.make("amazon-bedrock/anthropic.claude-sonnet-4-6"),
+      providerID: ProviderV2.ID.make("amazon-bedrock"),
       api: {
         id: "anthropic.claude-sonnet-4-6",
         url: "https://bedrock-runtime.us-east-1.amazonaws.com",
@@ -514,7 +517,7 @@ describe("session.message-v2.toModelMessage", () => {
     const pdf = Buffer.from("%PDF-1.4\n").toString("base64")
     const userID = "m-user-bedrock-pdf"
     const assistantID = "m-assistant-bedrock-pdf"
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(userID),
         parts: [
@@ -523,7 +526,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "run tool",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
       {
         info: assistantInfo(assistantID, userID),
@@ -551,7 +554,7 @@ describe("session.message-v2.toModelMessage", () => {
               ],
             },
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -602,7 +605,7 @@ describe("session.message-v2.toModelMessage", () => {
     const userID = "m-user"
     const assistantID = "m-assistant"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(userID),
         parts: [
@@ -611,7 +614,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "run tool",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
       {
         info: assistantInfo(assistantID, userID, undefined, { providerID: "other", modelID: "other" }),
@@ -644,7 +647,7 @@ describe("session.message-v2.toModelMessage", () => {
             },
             metadata: { openai: { tool: "meta" } },
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -685,7 +688,7 @@ describe("session.message-v2.toModelMessage", () => {
     const userID = "m-user"
     const assistantID = "m-assistant"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(userID),
         parts: [
@@ -694,7 +697,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "run tool",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
       {
         info: assistantInfo(assistantID, userID),
@@ -713,7 +716,7 @@ describe("session.message-v2.toModelMessage", () => {
               time: { start: 0, end: 1, compacted: 1 },
             },
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -752,7 +755,7 @@ describe("session.message-v2.toModelMessage", () => {
     const userID = "m-user"
     const assistantID = "m-assistant"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(userID),
         parts: [
@@ -761,7 +764,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "run tool",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
       {
         info: assistantInfo(assistantID, userID),
@@ -780,7 +783,7 @@ describe("session.message-v2.toModelMessage", () => {
               time: { start: 0, end: 1 },
             },
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -822,7 +825,7 @@ describe("session.message-v2.toModelMessage", () => {
     const userID = "m-user"
     const assistantID = "m-assistant"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(userID),
         parts: [
@@ -831,7 +834,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "run tool",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
       {
         info: assistantInfo(assistantID, userID),
@@ -860,7 +863,7 @@ describe("session.message-v2.toModelMessage", () => {
               ],
             },
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -898,11 +901,11 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
-  test("converts assistant tool error into error-text tool result", async () => {
+  test("does not label ordinary media relative paths as generated images", async () => {
     const userID = "m-user"
     const assistantID = "m-assistant"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(userID),
         parts: [
@@ -911,7 +914,66 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "run tool",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "tool",
+            callID: "call-1",
+            tool: "custom_tool",
+            state: {
+              status: "completed",
+              input: {},
+              output: "custom output",
+              title: "custom_tool",
+              metadata: {},
+              time: { start: 0, end: 1 },
+              attachments: [
+                {
+                  ...basePart(assistantID, "file-1"),
+                  type: "file",
+                  mime: "image/png",
+                  filename: "custom.png",
+                  relativePath: "artifacts/custom.png",
+                  url: "/artifacts/custom.png",
+                },
+              ],
+            },
+          },
+        ] as SessionV1.Part[],
+      },
+    ]
+
+    const result = await MessageV2.toModelMessages(input, model, { stripMedia: true })
+    expect(result.at(-1)).toMatchObject({
+      role: "tool",
+      content: [
+        {
+          output: {
+            value: "custom output",
+          },
+        },
+      ],
+    })
+  })
+
+  test("converts assistant tool error into error-text tool result", async () => {
+    const userID = "m-user"
+    const assistantID = "m-assistant"
+
+    const input: SessionV1.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "run tool",
+          },
+        ] as SessionV1.Part[],
       },
       {
         info: assistantInfo(assistantID, userID),
@@ -930,7 +992,7 @@ describe("session.message-v2.toModelMessage", () => {
             },
             metadata: { openai: { tool: "meta" } },
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -980,7 +1042,7 @@ describe("session.message-v2.toModelMessage", () => {
       "</shell_metadata>",
     ].join("\n")
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(userID),
         parts: [
@@ -989,7 +1051,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "run tool",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
       {
         info: assistantInfo(assistantID, userID),
@@ -1007,7 +1069,7 @@ describe("session.message-v2.toModelMessage", () => {
               time: { start: 0, end: 1 },
             },
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -1045,12 +1107,12 @@ describe("session.message-v2.toModelMessage", () => {
   test("filters assistant messages with non-abort errors", async () => {
     const assistantID = "m-assistant"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: assistantInfo(
           assistantID,
           "m-parent",
-          new MessageV2.APIError({ message: "boom", isRetryable: true }).toObject() as MessageV2.APIError,
+          new SessionV1.APIError({ message: "boom", isRetryable: true }).toObject() as SessionV1.APIError,
         ),
         parts: [
           {
@@ -1058,7 +1120,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "should not render",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -1069,9 +1131,11 @@ describe("session.message-v2.toModelMessage", () => {
     const assistantID1 = "m-assistant-1"
     const assistantID2 = "m-assistant-2"
 
-    const aborted = new MessageV2.AbortedError({ message: "aborted" }).toObject() as MessageV2.Assistant["error"]
+    const aborted = new SessionV1.AbortedError({
+      message: "aborted",
+    }).toObject() as SessionV1.Assistant["error"]
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: assistantInfo(assistantID1, "m-parent", aborted),
         parts: [
@@ -1086,7 +1150,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "partial answer",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
       {
         info: assistantInfo(assistantID2, "m-parent", aborted),
@@ -1101,7 +1165,7 @@ describe("session.message-v2.toModelMessage", () => {
             text: "thinking",
             time: { start: 0 },
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -1120,8 +1184,8 @@ describe("session.message-v2.toModelMessage", () => {
     const assistantID = "m-assistant"
     const openrouterModel: Provider.Model = {
       ...model,
-      id: ModelID.make("deepseek/deepseek-v4-pro"),
-      providerID: ProviderID.make("openrouter"),
+      id: ModelV2.ID.make("deepseek/deepseek-v4-pro"),
+      providerID: ProviderV2.ID.make("openrouter"),
       api: {
         id: "deepseek/deepseek-v4-pro",
         url: "https://openrouter.ai/api/v1",
@@ -1141,7 +1205,7 @@ describe("session.message-v2.toModelMessage", () => {
         index: 0,
       },
     ]
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: assistantInfo(assistantID, "m-parent", undefined, {
           providerID: openrouterModel.providerID,
@@ -1164,7 +1228,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "answer",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -1192,7 +1256,7 @@ describe("session.message-v2.toModelMessage", () => {
   test("splits assistant messages on step-start boundaries", async () => {
     const assistantID = "m-assistant"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: assistantInfo(assistantID, "m-parent"),
         parts: [
@@ -1210,7 +1274,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "second",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -1229,7 +1293,7 @@ describe("session.message-v2.toModelMessage", () => {
   test("drops messages that only contain step-start parts", async () => {
     const assistantID = "m-assistant"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: assistantInfo(assistantID, "m-parent"),
         parts: [
@@ -1237,7 +1301,7 @@ describe("session.message-v2.toModelMessage", () => {
             ...basePart(assistantID, "p1"),
             type: "step-start",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -1248,7 +1312,7 @@ describe("session.message-v2.toModelMessage", () => {
     const userID = "m-user"
     const assistantID = "m-assistant"
 
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: userInfo(userID),
         parts: [
@@ -1257,7 +1321,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "text",
             text: "run tool",
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
       {
         info: assistantInfo(assistantID, userID),
@@ -1284,7 +1348,7 @@ describe("session.message-v2.toModelMessage", () => {
               time: { start: 0 },
             },
           },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -1337,7 +1401,7 @@ describe("session.message-v2.toModelMessage", () => {
   test("substitutes space for empty text between signed reasoning blocks", async () => {
     // Reproduces the bug pattern: [reasoning(sig), text(""), reasoning(sig), text(full)]
     const assistantID = "m-assistant"
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: assistantInfo(assistantID, "m-parent"),
         parts: [
@@ -1357,7 +1421,7 @@ describe("session.message-v2.toModelMessage", () => {
             metadata: { anthropic: { signature: "sig2" } },
           },
           { ...basePart(assistantID, "p6"), type: "text", text: "the answer" },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -1373,7 +1437,7 @@ describe("session.message-v2.toModelMessage", () => {
     // Bedrock signed reasoning is preserved as reasoning metadata, but unlike the
     // direct Anthropic path we do not preserve empty text separators for Bedrock.
     const assistantID = "m-assistant-bedrock"
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: assistantInfo(assistantID, "m-parent"),
         parts: [
@@ -1385,7 +1449,7 @@ describe("session.message-v2.toModelMessage", () => {
           },
           { ...basePart(assistantID, "p2"), type: "text", text: "" },
           { ...basePart(assistantID, "p3"), type: "text", text: "answer" },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -1400,14 +1464,14 @@ describe("session.message-v2.toModelMessage", () => {
     // Non-Anthropic providers' reasoning doesn't position-validate, so empty text
     // should be filtered normally rather than substituted.
     const assistantID = "m-assistant-unsigned"
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: assistantInfo(assistantID, "m-parent"),
         parts: [
           { ...basePart(assistantID, "p1"), type: "reasoning", text: "thinking" },
           { ...basePart(assistantID, "p2"), type: "text", text: "" },
           { ...basePart(assistantID, "p3"), type: "text", text: "answer" },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -1420,13 +1484,13 @@ describe("session.message-v2.toModelMessage", () => {
 
   test("leaves empty text alone in assistant messages without reasoning", async () => {
     const assistantID = "m-assistant-no-reasoning"
-    const input: MessageV2.WithParts[] = [
+    const input: SessionV1.WithParts[] = [
       {
         info: assistantInfo(assistantID, "m-parent"),
         parts: [
           { ...basePart(assistantID, "p1"), type: "text", text: "" },
           { ...basePart(assistantID, "p2"), type: "text", text: "hello" },
-        ] as MessageV2.Part[],
+        ] as SessionV1.Part[],
       },
     ]
 
@@ -1523,6 +1587,7 @@ describe("session.message-v2.fromError", () => {
       "prompt is too long: 213462 tokens > 200000 maximum",
       "Your input exceeds the context window of this model",
       "The input token count (1196265) exceeds the maximum number of tokens allowed (1048575)",
+      "tokens in request more than max tokens allowed",
       "Please reduce the length of the messages or completion",
       "400 status code (no body)",
       "413 status code (no body)",
@@ -1538,7 +1603,7 @@ describe("session.message-v2.fromError", () => {
         isRetryable: false,
       })
       const result = MessageV2.fromError(error, { providerID })
-      expect(MessageV2.ContextOverflowError.isInstance(result)).toBe(true)
+      expect(SessionV1.ContextOverflowError.isInstance(result)).toBe(true)
     })
   })
 
@@ -1559,7 +1624,7 @@ describe("session.message-v2.fromError", () => {
       isRetryable: false,
     })
     const result = MessageV2.fromError(error, { providerID })
-    expect(MessageV2.ContextOverflowError.isInstance(result)).toBe(true)
+    expect(SessionV1.ContextOverflowError.isInstance(result)).toBe(true)
   })
 
   test("does not classify 429 no body as context overflow", () => {
@@ -1574,8 +1639,8 @@ describe("session.message-v2.fromError", () => {
       }),
       { providerID },
     )
-    expect(MessageV2.ContextOverflowError.isInstance(result)).toBe(false)
-    expect(MessageV2.APIError.isInstance(result)).toBe(true)
+    expect(SessionV1.ContextOverflowError.isInstance(result)).toBe(false)
+    expect(SessionV1.APIError.isInstance(result)).toBe(true)
   })
 
   test("keeps gemini overflow api errors as ContextOverflowError", () => {
@@ -1597,7 +1662,7 @@ describe("session.message-v2.fromError", () => {
       { cause },
     )
 
-    const result = MessageV2.fromError(error, { providerID: ProviderID.make("google") })
+    const result = MessageV2.fromError(error, { providerID: ProviderV2.ID.make("google") })
 
     expect(result).toStrictEqual({
       name: "ContextOverflowError",
@@ -1628,7 +1693,7 @@ describe("session.message-v2.fromError", () => {
       { cause },
     )
 
-    const result = MessageV2.fromError(error, { providerID: ProviderID.make("google") })
+    const result = MessageV2.fromError(error, { providerID: ProviderV2.ID.make("google") })
 
     expect(result).toStrictEqual({
       name: "APIError",
@@ -1677,9 +1742,9 @@ describe("session.message-v2.fromError", () => {
 
     const result = MessageV2.fromError(zlibError, { providerID })
 
-    expect(MessageV2.APIError.isInstance(result)).toBe(true)
-    expect((result as MessageV2.APIError).data.isRetryable).toBe(true)
-    expect((result as MessageV2.APIError).data.message).toInclude("decompression")
+    expect(SessionV1.APIError.isInstance(result)).toBe(true)
+    expect((result as SessionV1.APIError).data.isRetryable).toBe(true)
+    expect((result as SessionV1.APIError).data.message).toInclude("decompression")
   })
 
   test("classifies ZlibError as AbortedError when abort context is provided", () => {
@@ -1703,21 +1768,21 @@ describe("session.message-v2.latest", () => {
   const CONTINUE_USER = MessageID.make("msg_005")
   const NEW_COMPACTION_USER = MessageID.make("msg_006")
 
-  const tailUser: MessageV2.WithParts = {
+  const tailUser: SessionV1.WithParts = {
     info: userInfo(TAIL_USER),
-    parts: [{ ...basePart(TAIL_USER, "p1"), type: "text", text: "original prompt" }] as MessageV2.Part[],
+    parts: [{ ...basePart(TAIL_USER, "p1"), type: "text", text: "original prompt" }] as SessionV1.Part[],
   }
 
-  const overflowAssistant: MessageV2.WithParts = {
+  const overflowAssistant: SessionV1.WithParts = {
     info: {
       ...assistantInfo(OVERFLOW_ASSISTANT, TAIL_USER),
       finish: "tool-calls",
       tokens: { input: 280_000, output: 200, reasoning: 0, cache: { read: 0, write: 0 }, total: 280_200 },
-    } as MessageV2.Assistant,
+    } as SessionV1.Assistant,
     parts: [],
   }
 
-  const compactionUser: MessageV2.WithParts = {
+  const compactionUser: SessionV1.WithParts = {
     info: userInfo(COMPACTION_USER),
     parts: [
       {
@@ -1726,20 +1791,20 @@ describe("session.message-v2.latest", () => {
         auto: true,
         tail_start_id: TAIL_USER,
       },
-    ] as MessageV2.Part[],
+    ] as SessionV1.Part[],
   }
 
-  const summaryAssistant: MessageV2.WithParts = {
+  const summaryAssistant: SessionV1.WithParts = {
     info: {
       ...assistantInfo(SUMMARY_ASSISTANT, COMPACTION_USER),
       summary: true,
       finish: "stop",
       tokens: { input: 150_000, output: 1_500, reasoning: 0, cache: { read: 0, write: 0 }, total: 151_500 },
-    } as MessageV2.Assistant,
+    } as SessionV1.Assistant,
     parts: [],
   }
 
-  const continueUser: MessageV2.WithParts = {
+  const continueUser: SessionV1.WithParts = {
     info: userInfo(CONTINUE_USER),
     parts: [
       {
@@ -1749,7 +1814,7 @@ describe("session.message-v2.latest", () => {
         synthetic: true,
         metadata: { compaction_continue: true },
       },
-    ] as MessageV2.Part[],
+    ] as SessionV1.Part[],
   }
 
   // Regression for double auto-compaction. The reorder in filterCompacted
@@ -1775,7 +1840,7 @@ describe("session.message-v2.latest", () => {
   })
 
   test("a fresh compaction-user newer than the latest summary surfaces in tasks", () => {
-    const newCompactionUser: MessageV2.WithParts = {
+    const newCompactionUser: SessionV1.WithParts = {
       info: userInfo(NEW_COMPACTION_USER),
       parts: [
         {
@@ -1783,7 +1848,7 @@ describe("session.message-v2.latest", () => {
           type: "compaction",
           auto: true,
         },
-      ] as MessageV2.Part[],
+      ] as SessionV1.Part[],
     }
 
     const state = MessageV2.latest([

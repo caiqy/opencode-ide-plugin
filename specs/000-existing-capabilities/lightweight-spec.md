@@ -5,7 +5,7 @@
 **Status**: 基线
 **Input**: 用户确认需要把现有功能整理为 Spec Kit 文档。
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - 在 IDE 中使用 WebGUI (Priority: P1)
 
@@ -66,14 +66,14 @@
 1. **Given** 一个 VSCode Windows package request，**When** VSIX workflow 运行，**Then** artifact 包含 Windows amd64 backend binary 和正确 manifest version。
 2. **Given** 一个 JetBrains plugin package request，**When** `buildPlugin` 使用计算出的 version property 运行，**Then** 生成 plugin ZIP。
 
-## Compatibility & Regression Constraints *(mandatory for this repository)*
+## Compatibility & Regression Constraints _(mandatory for this repository)_
 
 - **Upstream Compatibility**: 现有 opencode CLI、TUI、API 和 server behavior 必须保持兼容，除非 future spec 明确变更。
 - **Affected Clients**: opencode core, WebGUI `/app`, VSCode plugin, JetBrains plugin。
 - **No-Regression Requirement**: `overview.md` 中的 capabilities 和 `regression-matrix.md` 中的 rows 是当前 baseline。
 - **Clarifications Needed**: 基线清单本身无待澄清项。future changes 如果改变列出的 capability，必须在 implementation 前澄清 scope 和 client impact。
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -87,14 +87,14 @@
 - **FR-008**: packaging workflows MUST 产出包含 required version metadata 和 bundled resources 的 artifacts。
 - **FR-009**: Future changes MUST 提供映射到 affected regression matrix rows 的 validation evidence。
 
-### Key Entities *(include if feature involves data)*
+### Key Entities _(include if feature involves data)_
 
 - **Session**: opencode conversation state，由 WebGUI 展示并由用户选择。
 - **Bridge Session**: IDE-host local connection，包含 session ID、token、metadata、handlers 和 SSE clients。
 - **Client Surface**: opencode core、WebGUI、VSCode plugin、JetBrains plugin 中的一个。
 - **Validation Evidence**: 用于证明 requirement 或 regression matrix row 的 command result 或 manual scenario result。
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 

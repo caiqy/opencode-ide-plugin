@@ -1,4 +1,5 @@
-import { afterEach, describe, expect } from "bun:test"
+import { afterEach, expect } from "bun:test"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Cause, Effect, Exit, Layer } from "effect"
 import path from "path"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
@@ -9,26 +10,22 @@ import { Config } from "../../src/config/config"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
 import { Global } from "@opencode-ai/core/global"
 import { Permission } from "../../src/permission"
+import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Plugin } from "../../src/plugin"
 import { Provider } from "../../src/provider/provider"
 import { Skill } from "../../src/skill"
 import { Truncate } from "../../src/tool/truncate"
 
 const agentLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
-  Agent.layer.pipe(
-    Layer.provide(Plugin.defaultLayer),
-    Layer.provide(Provider.defaultLayer),
-    Layer.provide(Auth.defaultLayer),
-    Layer.provideMerge(Config.defaultLayer),
-    Layer.provide(Skill.defaultLayer),
-    Layer.provide(RuntimeFlags.layer(flags)),
+  LayerNode.compile(
+    LayerNode.group([Agent.node, Plugin.node, Provider.node, Auth.node, Config.node, Skill.node, RuntimeFlags.node]),
+    [[RuntimeFlags.node, RuntimeFlags.layer(flags)]],
   )
 
 const it = testEffect(agentLayer())
-const scout = testEffect(agentLayer({ experimentalScout: true }))
 
 // Helper to evaluate permission for a tool with wildcard pattern
-function evalPerm(agent: Agent.Info | undefined, permission: string): Permission.Action | undefined {
+function evalPerm(agent: Agent.Info | undefined, permission: string): PermissionV1.Action | undefined {
   if (!agent) return undefined
   return Permission.evaluate(permission, "*", agent.permission).action
 }
@@ -55,8 +52,6 @@ it.instance("returns default native agents when no config", () =>
     expect(names).toContain("plan")
     expect(names).toContain("general")
     expect(names).toContain("explore")
-    expect(names).toContain("reviewer")
-    expect(names).not.toContain("scout")
     expect(names).toContain("compaction")
     expect(names).toContain("title")
     expect(names).toContain("summary")
@@ -71,8 +66,6 @@ it.instance("build agent has correct default properties", () =>
     expect(build?.native).toBe(true)
     expect(evalPerm(build, "edit")).toBe("allow")
     expect(evalPerm(build, "bash")).toBe("allow")
-    expect(evalPerm(build, "repo_clone")).toBe("deny")
-    expect(evalPerm(build, "repo_overview")).toBe("deny")
   }),
 )
 
@@ -85,6 +78,35 @@ it.instance("plan agent denies edits except .opencode/plans/*", () =>
     // But specific path is allowed
     expect(Permission.evaluate("edit", ".opencode/plans/foo.md", plan!.permission).action).toBe("allow")
   }),
+)
+
+it.instance("plan agent denies the general subagent by default", () =>
+  Effect.gen(function* () {
+    const plan = yield* load((svc) => svc.get("plan"))
+    expect(plan).toBeDefined()
+    expect(Permission.evaluate("task", "general", plan!.permission).action).toBe("deny")
+    expect(Permission.evaluate("task", "explore", plan!.permission).action).toBe("allow")
+    expect(Permission.evaluate("task", "custom", plan!.permission).action).toBe("allow")
+  }),
+)
+
+it.instance(
+  "user permission can allow the general subagent from plan mode",
+  () =>
+    Effect.gen(function* () {
+      const plan = yield* load((svc) => svc.get("plan"))
+      expect(plan).toBeDefined()
+      expect(Permission.evaluate("task", "general", plan!.permission).action).toBe("allow")
+    }),
+  {
+    config: {
+      permission: {
+        task: {
+          general: "allow",
+        },
+      },
+    },
+  },
 )
 
 it.instance("explore agent denies edit and write", () =>
@@ -110,31 +132,12 @@ it.instance("explore agent asks for external directories and allows whitelisted 
   }),
 )
 
-scout.instance("scout agent allows repo cloning and repo cache reads", () =>
-  Effect.gen(function* () {
-    const scout = yield* load((svc) => svc.get("scout"))
-    expect(scout).toBeDefined()
-    expect(scout?.mode).toBe("subagent")
-    expect(evalPerm(scout, "repo_clone")).toBe("allow")
-    expect(evalPerm(scout, "repo_overview")).toBe("allow")
-    expect(evalPerm(scout, "edit")).toBe("deny")
-    expect(
-      Permission.evaluate(
-        "external_directory",
-        path.join(Global.Path.repos, "github.com", "owner", "repo", "README.md"),
-        scout!.permission,
-      ).action,
-    ).toBe("allow")
-  }),
-)
-
-scout.instance(
+it.instance(
   "reference config does not create subagents",
   () =>
     Effect.gen(function* () {
       const agents = yield* load((svc) => svc.list())
       const names = agents.map((agent) => agent.name)
-      expect(names).toContain("scout")
       expect(names).not.toContain("effect")
       expect(names).not.toContain("effectFull")
       expect(names).not.toContain("localdocs")
@@ -142,7 +145,7 @@ scout.instance(
     }),
   {
     config: {
-      reference: {
+      references: {
         effect: "github.com/effect/effect-smol",
         effectFull: {
           repository: "Effect-TS/effect",
@@ -175,69 +178,6 @@ it.instance("compaction agent denies all permissions", () =>
     expect(evalPerm(compaction, "bash")).toBe("deny")
     expect(evalPerm(compaction, "edit")).toBe("deny")
     expect(evalPerm(compaction, "read")).toBe("deny")
-  }),
-)
-
-it.instance("reloadModelConfig sees global config updates without disposing the instance", () =>
-  Effect.gen(function* () {
-    const test = yield* TestInstance
-    const previousConfigDir = Global.Path.config
-    ;(Global.Path as { config: string }).config = test.directory
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        ;(Global.Path as { config: string }).config = previousConfigDir
-      }),
-    )
-
-    yield* Effect.promise(() =>
-      Bun.write(
-        path.join(test.directory, "opencode.jsonc"),
-        JSON.stringify({
-          $schema: "https://opencode.ai/config.json",
-          agent: {
-            compaction: {
-              model: "openai/old-model",
-            },
-          },
-        }),
-      ),
-    )
-
-    const config = yield* Config.Service
-    const agent = yield* Agent.Service
-    const before = yield* agent.get("compaction")
-    expect(String(before.model?.providerID)).toBe("openai")
-    expect(String(before.model?.modelID)).toBe("old-model")
-
-    yield* config.updateGlobal({
-      agent: {
-        compaction: {
-          model: "anthropic/new-model",
-        },
-      },
-    })
-    yield* agent.reloadModelConfig()
-
-    const after = yield* agent.get("compaction")
-    expect(String(after.model?.providerID)).toBe("anthropic")
-    expect(String(after.model?.modelID)).toBe("new-model")
-  }),
-)
-
-it.instance("reviewer agent is a built-in read-only subagent", () =>
-  Effect.gen(function* () {
-    const reviewer = yield* load((svc) => svc.get("reviewer"))
-    expect(reviewer).toBeDefined()
-    expect(reviewer?.mode).toBe("subagent")
-    expect(reviewer?.native).toBe(true)
-    expect(reviewer?.description).toContain("Read-only review agent")
-    expect(evalPerm(reviewer, "read")).toBe("allow")
-    expect(evalPerm(reviewer, "grep")).toBe("allow")
-    expect(evalPerm(reviewer, "glob")).toBe("allow")
-    expect(evalPerm(reviewer, "edit")).toBe("deny")
-    expect(evalPerm(reviewer, "write")).toBe("deny")
-    expect(evalPerm(reviewer, "bash")).toBe("deny")
-    expect(evalPerm(reviewer, "todowrite")).toBe("deny")
   }),
 )
 
@@ -685,6 +625,25 @@ description: Permission skill.
       expect(Permission.evaluate("external_directory", target, build!.permission).action).toBe("allow")
     }),
   { git: true },
+)
+
+it.instance(
+  "project reference directories are allowed for external_directory",
+  () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const build = yield* load((svc) => svc.get("build"))
+      const target = path.resolve(test.directory, "../docs/reference/notes.md")
+      expect(Permission.evaluate("external_directory", target, build!.permission).action).toBe("allow")
+    }),
+  {
+    git: true,
+    config: {
+      references: {
+        docs: "../docs",
+      },
+    },
+  },
 )
 
 it.instance("defaultAgent returns build when no default_agent config", () =>

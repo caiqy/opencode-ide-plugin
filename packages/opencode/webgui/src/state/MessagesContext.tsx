@@ -73,7 +73,11 @@ interface MessagesContextValue {
   ensureSession: (sessionID: string, signal?: AbortSignal) => Promise<Message[] | null>
   loadOlder: (sessionID: string, signal?: AbortSignal) => Promise<Message[] | null>
   /** 后台扫描更早消息：不污染分页状态，也不落地到可见消息列表 */
-  scanOlder: (sessionID: string, before: string, signal?: AbortSignal) => Promise<{ rows: Message[]; cursor?: string } | null>
+  scanOlder: (
+    sessionID: string,
+    before: string,
+    signal?: AbortSignal,
+  ) => Promise<{ rows: Message[]; cursor?: string } | null>
   /** 兼容接口：仅保证最近一页可用，等价于 ensureSession，不会加载整段会话历史 */
   loadSessionMessages: (sessionID: string) => Promise<Message[] | null>
   /** 仅读取当前会话分页 cursor（用于后台扫描），不触发加载 */
@@ -610,11 +614,14 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     [addSessionError],
   )
 
-  const handleSessionCompacted = useCallback((event: ServerEvent) => {
-    if (event.type !== "session.compacted") return
-    const { sessionID } = event.properties
-    removeSessionErrors(sessionID)
-  }, [removeSessionErrors])
+  const handleSessionCompacted = useCallback(
+    (event: ServerEvent) => {
+      if (event.type !== "session.compacted") return
+      const { sessionID } = event.properties
+      removeSessionErrors(sessionID)
+    },
+    [removeSessionErrors],
+  )
 
   // Listen to message.removed events
   const handleMessageRemoved = useCallback(

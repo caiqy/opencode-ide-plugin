@@ -69,7 +69,10 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         // Only send fields that actually changed to avoid unnecessary instance disposal
         const patch: Record<string, unknown> = {}
         for (const key of Object.keys(formData)) {
-          if (JSON.stringify((formData as Record<string, unknown>)[key]) !== JSON.stringify((originalFormData as Record<string, unknown>)[key])) {
+          if (
+            JSON.stringify((formData as Record<string, unknown>)[key]) !==
+            JSON.stringify((originalFormData as Record<string, unknown>)[key])
+          ) {
             patch[key] = (formData as Record<string, unknown>)[key]
           }
         }
@@ -124,12 +127,18 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             ) : (
               <>
                 {activeTab === "provider" && (
-                  <ProviderSettingsTab formData={formData} setFormData={setFormData} onReloadConfig={setOriginalFormData} />
+                  <ProviderSettingsTab
+                    formData={formData}
+                    setFormData={setFormData}
+                    onReloadConfig={setOriginalFormData}
+                  />
                 )}
 
                 {activeTab === "general" && <GeneralTab formData={formData} setFormData={setFormData} />}
 
-                {activeTab === "agents" && <AgentConfigTab formData={formData} setFormData={setFormData} onReloadConfig={setOriginalFormData} />}
+                {activeTab === "agents" && (
+                  <AgentConfigTab formData={formData} setFormData={setFormData} onReloadConfig={setOriginalFormData} />
+                )}
 
                 {activeTab === "advanced" && <AdvancedTab formData={formData} setFormData={setFormData} />}
 

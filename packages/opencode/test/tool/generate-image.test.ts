@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { ModelV2 } from "@opencode-ai/core/model"
+import { ProviderV2 } from "@opencode-ai/core/provider"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { Cause, Effect, Exit, Layer } from "effect"
 import { Agent } from "../../src/agent/agent"
-import { Bus } from "../../src/bus"
+import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { Config } from "../../src/config"
 import { Permission } from "../../src/permission"
-import { ModelID, ProviderID } from "../../src/provider/schema"
 import { Instance } from "../../src/project/instance"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
+import { InstanceState } from "../../src/effect/instance-state"
 import { generatedImageRelativePath } from "../../src/session/generated-image"
 import { buildToolPermissionAsk } from "../../src/session/tool-permission"
 import { MessageID, SessionID } from "../../src/session/schema"
@@ -18,6 +21,9 @@ import { Truncate } from "../../src/tool/truncate"
 import { provideTmpdirInstance, tmpdir } from "../fixture/fixture"
 import { ProviderTest } from "../fake/provider"
 import { testEffect } from "../lib/effect"
+
+const ModelID = ModelV2.ID
+const ProviderID = ProviderV2.ID
 
 const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAF/gL+ee1vNwAAAABJRU5ErkJggg=="
 const jpegBase64 = "/9j/"
@@ -73,14 +79,7 @@ const toolCtx = {
 }
 
 const it = testEffect(
-  Layer.mergeAll(
-    Config.defaultLayer,
-    Permission.defaultLayer,
-    Bus.layer,
-    CrossSpawnSpawner.defaultLayer,
-    Truncate.defaultLayer,
-    Agent.defaultLayer,
-  ),
+  LayerNode.compile(LayerNode.group([Config.node, Permission.node, EventV2Bridge.node, CrossSpawnSpawner.node, Truncate.node, Agent.node])),
 )
 
 function providerLayer(baseURL: string) {
@@ -754,7 +753,9 @@ describe("generate_image persist", () => {
       }),
     ).rejects.toThrow("generated image directory is outside project")
 
-    expect(await Bun.file(path.join(outside.path, "generated-image-msg_broken_escape-1-b1b2b3b4.png")).exists()).toBe(false)
+    expect(await Bun.file(path.join(outside.path, "generated-image-msg_broken_escape-1-b1b2b3b4.png")).exists()).toBe(
+      false,
+    )
   })
 
   test("rejects broken opencode symlink or junction before creating generated-images", async () => {
@@ -791,7 +792,8 @@ describe("generate_image tool", () => {
       })
 
       const tool = yield* initTool(providerLayer(String(server.url)))
-      const exit = yield* tool.execute(
+      const exit = yield* tool
+        .execute(
           {
             prompt: "draw a cat",
             provider: "openai",
@@ -862,17 +864,19 @@ describe("generate_image tool", () => {
       })
 
       const tool = yield* initTool(providerLayer(String(server.url)))
-      const exit = yield* tool.execute(
-        {
-          action: "generate",
-          prompt: "draw",
-          mask: "image.png",
-        },
-        {
-          ...toolCtx,
-          ask: () => Effect.void,
-        },
-      ).pipe(Effect.exit)
+      const exit = yield* tool
+        .execute(
+          {
+            action: "generate",
+            prompt: "draw",
+            mask: "image.png",
+          },
+          {
+            ...toolCtx,
+            ask: () => Effect.void,
+          },
+        )
+        .pipe(Effect.exit)
 
       expect(squashedMessage(exit)).toBe("mask can only be used with edit action")
     }),
@@ -886,16 +890,18 @@ describe("generate_image tool", () => {
       })
 
       const tool = yield* initTool(providerLayer(String(server.url)))
-      const exit = yield* tool.execute(
-        {
-          action: "edit",
-          prompt: "draw",
-        },
-        {
-          ...toolCtx,
-          ask: () => Effect.void,
-        },
-      ).pipe(Effect.exit)
+      const exit = yield* tool
+        .execute(
+          {
+            action: "edit",
+            prompt: "draw",
+          },
+          {
+            ...toolCtx,
+            ask: () => Effect.void,
+          },
+        )
+        .pipe(Effect.exit)
 
       expect(squashedMessage(exit)).toBe("images are required for edit action")
     }),
@@ -909,17 +915,19 @@ describe("generate_image tool", () => {
       })
 
       const tool = yield* initTool(providerLayer(String(server.url)))
-      const exit = yield* tool.execute(
-        {
-          action: "edit",
-          prompt: "edit",
-          images: [],
-        },
-        {
-          ...toolCtx,
-          ask: () => Effect.void,
-        },
-      ).pipe(Effect.exit)
+      const exit = yield* tool
+        .execute(
+          {
+            action: "edit",
+            prompt: "edit",
+            images: [],
+          },
+          {
+            ...toolCtx,
+            ask: () => Effect.void,
+          },
+        )
+        .pipe(Effect.exit)
 
       expect(squashedMessage(exit)).toBe("images are required for edit action")
     }),
@@ -929,19 +937,21 @@ describe("generate_image tool", () => {
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const tool = yield* initTool(providerLayer("https://example.com"))
-        const exit = yield* tool.execute(
-          {
-            action: "edit",
-            prompt: "edit",
-            provider: "openai",
-            model: "gpt-image-2",
-            images: [""],
-          },
-          {
-            ...toolCtx,
-            ask: () => Effect.void,
-          },
-        ).pipe(Effect.exit)
+        const exit = yield* tool
+          .execute(
+            {
+              action: "edit",
+              prompt: "edit",
+              provider: "openai",
+              model: "gpt-image-2",
+              images: [""],
+            },
+            {
+              ...toolCtx,
+              ask: () => Effect.void,
+            },
+          )
+          .pipe(Effect.exit)
 
         expect(squashedMessage(exit)).toBe("image input cannot be empty")
       }),
@@ -952,19 +962,21 @@ describe("generate_image tool", () => {
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const tool = yield* initTool(providerLayer("https://example.com"))
-        const exit = yield* tool.execute(
-          {
-            action: "edit",
-            prompt: "edit",
-            provider: "openai",
-            model: "gpt-image-2",
-            images: ["missing.png"],
-          },
-          {
-            ...toolCtx,
-            ask: () => Effect.die(new Error("denied")),
-          },
-        ).pipe(Effect.exit)
+        const exit = yield* tool
+          .execute(
+            {
+              action: "edit",
+              prompt: "edit",
+              provider: "openai",
+              model: "gpt-image-2",
+              images: ["missing.png"],
+            },
+            {
+              ...toolCtx,
+              ask: () => Effect.die(new Error("denied")),
+            },
+          )
+          .pipe(Effect.exit)
 
         expect(squashedMessage(exit)).toBe("denied")
       }),
@@ -976,24 +988,26 @@ describe("generate_image tool", () => {
       Effect.gen(function* () {
         const tool = yield* initTool(providerLayer("https://example.com"))
         const asks: unknown[] = []
-        const exit = yield* tool.execute(
-          {
-            action: "edit",
-            prompt: "edit",
-            provider: "openai",
-            model: "gpt-image-2",
-            images: [`data:image/png;base64,${pngBase64}`],
-            mask: "missing-mask.png",
-          },
-          {
-            ...toolCtx,
-            ask: (req) =>
-              Effect.sync(() => {
-                asks.push(req)
-                throw new Error("denied")
-              }),
-          },
-        ).pipe(Effect.exit)
+        const exit = yield* tool
+          .execute(
+            {
+              action: "edit",
+              prompt: "edit",
+              provider: "openai",
+              model: "gpt-image-2",
+              images: [`data:image/png;base64,${pngBase64}`],
+              mask: "missing-mask.png",
+            },
+            {
+              ...toolCtx,
+              ask: (req) =>
+                Effect.sync(() => {
+                  asks.push(req)
+                  throw new Error("denied")
+                }),
+            },
+          )
+          .pipe(Effect.exit)
 
         expect(asks).toEqual([
           {
@@ -1030,17 +1044,19 @@ describe("generate_image tool", () => {
       })
 
       const tool = yield* initTool(providerLayer(String(server.url)))
-      const exit = yield* tool.execute(
-        {
-          action: "edit",
-          prompt: "draw",
-          images: Array.from({ length: 11 }, () => `data:image/png;base64,${pngBase64}`),
-        },
-        {
-          ...toolCtx,
-          ask: () => Effect.void,
-        },
-      ).pipe(Effect.exit)
+      const exit = yield* tool
+        .execute(
+          {
+            action: "edit",
+            prompt: "draw",
+            images: Array.from({ length: 11 }, () => `data:image/png;base64,${pngBase64}`),
+          },
+          {
+            ...toolCtx,
+            ask: () => Effect.void,
+          },
+        )
+        .pipe(Effect.exit)
 
       expect(squashedMessage(exit)).toBe("edit action supports at most 10 images")
     }),
@@ -1056,18 +1072,20 @@ describe("generate_image tool", () => {
           })
 
           const tool = yield* initTool(providerLayer(String(server.url)))
-          const exit = yield* tool.execute(
-            {
-              action: "edit",
-              prompt: "draw",
-              images: [`data:image/png;base64,${pngBase64}`],
-              mask: `data:image/jpeg;base64,${jpegBase64}`,
-            },
-            {
-              ...toolCtx,
-              ask: () => Effect.void,
-            },
-          ).pipe(Effect.exit)
+          const exit = yield* tool
+            .execute(
+              {
+                action: "edit",
+                prompt: "draw",
+                images: [`data:image/png;base64,${pngBase64}`],
+                mask: `data:image/jpeg;base64,${jpegBase64}`,
+              },
+              {
+                ...toolCtx,
+                ask: () => Effect.void,
+              },
+            )
+            .pipe(Effect.exit)
 
           expect(squashedMessage(exit)).toBe("mask mime must match all edit images")
         }),
@@ -1089,16 +1107,18 @@ describe("generate_image tool", () => {
           })
 
           const tool = yield* initTool(providerLayer(String(server.url)))
-          const exit = yield* tool.execute(
-            {
-              action: "generate",
-              prompt: "draw",
-            },
-            {
-              ...toolCtx,
-              ask: () => Effect.void,
-            },
-          ).pipe(Effect.exit)
+          const exit = yield* tool
+            .execute(
+              {
+                action: "generate",
+                prompt: "draw",
+              },
+              {
+                ...toolCtx,
+                ask: () => Effect.void,
+              },
+            )
+            .pipe(Effect.exit)
 
           expect(squashedMessage(exit)).toBe("No image data returned from image provider")
         }),
@@ -1112,11 +1132,11 @@ describe("generate_image tool", () => {
 
   it.live("requests generate_image permission and persists generated attachment", () =>
     provideTmpdirInstance(
-      (dir) =>
+      () =>
         Effect.gen(function* () {
           let requestBody: Record<string, unknown> | undefined
           const asks: unknown[] = []
-          const worktree = dir
+          const worktree = (yield* InstanceState.context).worktree
 
           using server = Bun.serve({
             port: 0,
@@ -1206,8 +1226,7 @@ describe("generate_image tool", () => {
           expect(attachment.mime).toBe("image/png")
           expect(attachment.filename).toEqual(expect.stringMatching(/^generated-image-msg_generate-image-1-/))
           expect(attachment.relativePath).toEqual(expect.stringMatching(/^\.opencode\/generated-images\//))
-          const filename = requireValue(attachment.filename, "expected generated attachment filename")
-          expect(yield* Effect.promise(() => Bun.file(filePath(worktree, filename)).bytes())).toEqual(pngBytes)
+          expect(yield* Effect.promise(() => Bun.file(path.join(worktree, attachment.relativePath)).bytes())).toEqual(pngBytes)
         }),
       {
         config: {
@@ -1242,15 +1261,17 @@ describe("generate_image tool", () => {
             {
               ...toolCtx,
               ask: (req) =>
-                permission.ask(
-                  buildToolPermissionAsk({
-                    req,
-                    sessionID: toolCtx.sessionID,
-                    messageID: toolCtx.messageID,
-                    callID: toolCtx.callID,
-                    ruleset,
-                  }),
-                ).pipe(Effect.orDie),
+                permission
+                  .ask(
+                    buildToolPermissionAsk({
+                      req,
+                      sessionID: toolCtx.sessionID,
+                      messageID: toolCtx.messageID,
+                      callID: toolCtx.callID,
+                      ruleset,
+                    }),
+                  )
+                  .pipe(Effect.orDie),
             },
           )
 
@@ -1268,11 +1289,10 @@ describe("generate_image tool", () => {
 
   it.live("accepts readonly edit image inputs without mutating the caller array", () =>
     provideTmpdirInstance(
-      (dir) =>
+      () =>
         Effect.gen(function* () {
           let imageFieldNames: string[] = []
-          const readonlyImages = Object.freeze(["input.png"] as string[])
-          yield* Effect.promise(() => Bun.write(path.join(dir, "input.png"), Buffer.from(pngBase64, "base64")))
+          const readonlyImages = Object.freeze([`data:image/png;base64,${pngBase64}`] as string[])
 
           using server = Bun.serve({
             port: 0,
@@ -1311,8 +1331,8 @@ describe("generate_image tool", () => {
             },
           )
 
-          expect(readonlyImages).toEqual(["input.png"])
-          expect(imageFieldNames).toEqual(["input.png"])
+          expect(readonlyImages).toEqual([`data:image/png;base64,${pngBase64}`])
+          expect(imageFieldNames).toEqual(["image.png"])
           expect(result.output).toBe("已生成 1 张图片：")
           expect(result.attachments).toHaveLength(1)
         }),

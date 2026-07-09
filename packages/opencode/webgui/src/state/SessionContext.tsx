@@ -325,7 +325,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
   )
 
   const foregroundSessionKey = useMemo(
-    () => Object.keys(foregroundCounts).filter((sessionId) => foregroundCounts[sessionId] > 0).sort().join("\0"),
+    () =>
+      Object.keys(foregroundCounts)
+        .filter((sessionId) => foregroundCounts[sessionId] > 0)
+        .sort()
+        .join("\0"),
     [foregroundCounts],
   )
 

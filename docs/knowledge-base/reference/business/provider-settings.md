@@ -6,12 +6,12 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| 设置页组件 | `packages/opencode/webgui/src/components/settings/ProviderSettingsTab.tsx` |
-| 纯逻辑工具 | `packages/opencode/webgui/src/components/settings/providerSettingsUtils.ts` |
-| 挂载点 | `packages/opencode/webgui/src/components/SettingsPanel/index.tsx`（`activeTab === "provider"`，默认 tab） |
-| 配置读写 | `packages/opencode/webgui/src/lib/api/sdkClient.ts`（`sdk.global.config`） |
+| 角色       | 文件                                                                                                      |
+| ---------- | --------------------------------------------------------------------------------------------------------- |
+| 设置页组件 | `packages/opencode/webgui/src/components/settings/ProviderSettingsTab.tsx`                                |
+| 纯逻辑工具 | `packages/opencode/webgui/src/components/settings/providerSettingsUtils.ts`                               |
+| 挂载点     | `packages/opencode/webgui/src/components/SettingsPanel/index.tsx`（`activeTab === "provider"`，默认 tab） |
+| 配置读写   | `packages/opencode/webgui/src/lib/api/sdkClient.ts`（`sdk.global.config`）                                |
 
 > 命名交叉核验（Step 5）：`ProviderSettingsTab` 是设置面板 `TabType` 里的 `"provider"` 分支，`SettingsPanel/index.tsx` 第 24 行 `useState<TabType>("provider")` 确认它是**默认打开的 tab**。
 

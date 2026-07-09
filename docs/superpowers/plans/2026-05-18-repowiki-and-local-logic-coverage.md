@@ -51,6 +51,7 @@
 ### Task 1: 创建本地逻辑 coverage 矩阵初稿
 
 **Files:**
+
 - Create: `docs/superpowers/coverage/2026-05-18-local-logic-coverage-matrix.md`
 
 - [ ] **Step 1: 写入 coverage 矩阵文档**
@@ -75,45 +76,45 @@
 
 ## A. 图片链路
 
-| ID | 本地逻辑点 | repowiki 章节 | 测试证据 | 覆盖结论 |
-| --- | --- | --- | --- | --- |
-| A1 | `generate_image` 结果持久化到 `.opencode/generated-images`，返回 file attachment，且不带旧 `source` metadata。 | `05-subtasks-tools-mcp.md`、`08-upstream-adaptations.md` | `packages/opencode/test/tool/generate-image.test.ts`：`writes images into .opencode/generated-images and returns file attachments without source metadata`；`packages/opencode/test/session/generated-image-persistence.test.ts` | 已直接覆盖，无需补测 |
-| A2 | generated image 路由只允许项目内 `.opencode/generated-images`，阻止路径逃逸与 symlink/junction 逃逸。 | `01-webgui-architecture.md`、`08-upstream-adaptations.md` | `packages/opencode/test/server/generated-image-route.test.ts`；`packages/opencode/test/tool/generate-image.test.ts` symlink/junction escape 用例 | 已直接覆盖，无需补测 |
-| A3 | `generate_image` edit action 接受 readonly/frozen image input array，不改写调用方入参。 | `05-subtasks-tools-mcp.md`、`08-upstream-adaptations.md` | 本次新增：`packages/opencode/test/tool/generate-image.test.ts` 的 readonly edit image inputs 回归 | 新增覆盖 |
-| A4 | WebGUI tool attachment 图片网格稳定展示多图顺序、编号、文件名和 relativePath 专用路由。 | `05-subtasks-tools-mcp.md` | `packages/opencode/webgui/src/components/parts/ToolPart/index.test.tsx`；`ToolImageAttachments.test.tsx` | 已直接覆盖，无需补测 |
-| A5 | Markdown 中 `.opencode/generated-images` 图片使用专用图片路由，并携带当前 directory/worktree 上下文。 | `01-webgui-architecture.md`、`04-session-chat.md` | `packages/opencode/webgui/src/components/MarkdownRenderer.test.tsx` | 已直接覆盖，无需补测 |
-| A6 | `ImageOverlay` 保存、缩放、拖拽、Esc、阴影点击关闭、图片/工具栏点击不关闭。 | `05-subtasks-tools-mcp.md` | `packages/opencode/webgui/src/components/parts/ImageOverlay.test.tsx` | 已直接覆盖，无需补测 |
-| A7 | Host `saveImage` bridge 能处理 data URL、remote URL、generated-image relative URL、取消、无 handler 和非法输入。 | `02-ide-bridge.md`、`07-host-plugins.md` | `hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts`；`webviewController.test.ts`；`hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt` | 已直接覆盖，无需补测 |
+| ID  | 本地逻辑点                                                                                                       | repowiki 章节                                             | 测试证据                                                                                                                                                                                                                         | 覆盖结论             |
+| --- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| A1  | `generate_image` 结果持久化到 `.opencode/generated-images`，返回 file attachment，且不带旧 `source` metadata。   | `05-subtasks-tools-mcp.md`、`08-upstream-adaptations.md`  | `packages/opencode/test/tool/generate-image.test.ts`：`writes images into .opencode/generated-images and returns file attachments without source metadata`；`packages/opencode/test/session/generated-image-persistence.test.ts` | 已直接覆盖，无需补测 |
+| A2  | generated image 路由只允许项目内 `.opencode/generated-images`，阻止路径逃逸与 symlink/junction 逃逸。            | `01-webgui-architecture.md`、`08-upstream-adaptations.md` | `packages/opencode/test/server/generated-image-route.test.ts`；`packages/opencode/test/tool/generate-image.test.ts` symlink/junction escape 用例                                                                                 | 已直接覆盖，无需补测 |
+| A3  | `generate_image` edit action 接受 readonly/frozen image input array，不改写调用方入参。                          | `05-subtasks-tools-mcp.md`、`08-upstream-adaptations.md`  | 本次新增：`packages/opencode/test/tool/generate-image.test.ts` 的 readonly edit image inputs 回归                                                                                                                                | 新增覆盖             |
+| A4  | WebGUI tool attachment 图片网格稳定展示多图顺序、编号、文件名和 relativePath 专用路由。                          | `05-subtasks-tools-mcp.md`                                | `packages/opencode/webgui/src/components/parts/ToolPart/index.test.tsx`；`ToolImageAttachments.test.tsx`                                                                                                                         | 已直接覆盖，无需补测 |
+| A5  | Markdown 中 `.opencode/generated-images` 图片使用专用图片路由，并携带当前 directory/worktree 上下文。            | `01-webgui-architecture.md`、`04-session-chat.md`         | `packages/opencode/webgui/src/components/MarkdownRenderer.test.tsx`                                                                                                                                                              | 已直接覆盖，无需补测 |
+| A6  | `ImageOverlay` 保存、缩放、拖拽、Esc、阴影点击关闭、图片/工具栏点击不关闭。                                      | `05-subtasks-tools-mcp.md`                                | `packages/opencode/webgui/src/components/parts/ImageOverlay.test.tsx`                                                                                                                                                            | 已直接覆盖，无需补测 |
+| A7  | Host `saveImage` bridge 能处理 data URL、remote URL、generated-image relative URL、取消、无 handler 和非法输入。 | `02-ide-bridge.md`、`07-host-plugins.md`                  | `hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts`；`webviewController.test.ts`；`hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt`                                                | 已直接覆盖，无需补测 |
 
 ## B. 宿主版本与更新链路
 
-| ID | 本地逻辑点 | repowiki 章节 | 测试证据 | 覆盖结论 |
-| --- | --- | --- | --- | --- |
-| B1 | VSCode backend 环境注入 `OPENCODE_UI_VERSION`，空版本不注入且清理继承的 stale 值。 | `07-host-plugins.md`、`08-upstream-adaptations.md` | `hosts/vscode-plugin/src/test/suite/backendLauncher.test.ts` | 已直接覆盖，无需补测 |
-| B2 | opencode UI user agent 使用注入的 UI version，installation-scoped user agent 保留 accept header。 | `07-host-plugins.md`、`08-upstream-adaptations.md` | `packages/opencode/test/installation/installation.test.ts` | 已直接覆盖，无需补测 |
-| B3 | VSCode / JetBrains `getExtensionVersion` 返回宿主真实版本，JetBrains 与 `getUpdateInfo` 共用同一 version source。 | `02-ide-bridge.md`、`07-host-plugins.md` | `hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts`；`hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt` | 已直接覆盖，无需补测 |
-| B4 | JetBrains 使用 public Marketplace 查询；空 marketplace result 视为 manual check / unavailable，不保留旧 cached update。 | `06-settings-update-localization.md`、`07-host-plugins.md` | `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/update/PluginUpdateServiceTest.kt` | 已直接覆盖，无需补测 |
-| B5 | JetBrains plugin id / vendor / marketplace metadata 不回退到旧身份。 | `07-host-plugins.md` | `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/PluginIdentityTest.kt` | 已直接覆盖，无需补测 |
+| ID  | 本地逻辑点                                                                                                              | repowiki 章节                                              | 测试证据                                                                                                                                             | 覆盖结论             |
+| --- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| B1  | VSCode backend 环境注入 `OPENCODE_UI_VERSION`，空版本不注入且清理继承的 stale 值。                                      | `07-host-plugins.md`、`08-upstream-adaptations.md`         | `hosts/vscode-plugin/src/test/suite/backendLauncher.test.ts`                                                                                         | 已直接覆盖，无需补测 |
+| B2  | opencode UI user agent 使用注入的 UI version，installation-scoped user agent 保留 accept header。                       | `07-host-plugins.md`、`08-upstream-adaptations.md`         | `packages/opencode/test/installation/installation.test.ts`                                                                                           | 已直接覆盖，无需补测 |
+| B3  | VSCode / JetBrains `getExtensionVersion` 返回宿主真实版本，JetBrains 与 `getUpdateInfo` 共用同一 version source。       | `02-ide-bridge.md`、`07-host-plugins.md`                   | `hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts`；`hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt` | 已直接覆盖，无需补测 |
+| B4  | JetBrains 使用 public Marketplace 查询；空 marketplace result 视为 manual check / unavailable，不保留旧 cached update。 | `06-settings-update-localization.md`、`07-host-plugins.md` | `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/update/PluginUpdateServiceTest.kt`                                                       | 已直接覆盖，无需补测 |
+| B5  | JetBrains plugin id / vendor / marketplace metadata 不回退到旧身份。                                                    | `07-host-plugins.md`                                       | `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/PluginIdentityTest.kt`                                                                   | 已直接覆盖，无需补测 |
 
 ## C. 同步隔离链路
 
-| ID | 本地逻辑点 | repowiki 章节 | 测试证据 | 覆盖结论 |
-| --- | --- | --- | --- | --- |
-| C1 | non-git 普通目录生成稳定且非 global 的 project id。 | `03-state-storage.md`、`08-upstream-adaptations.md` | `packages/opencode/test/project/project.test.ts`：`returns a stable non-git project id for plain directories` | 已直接覆盖，无需补测 |
-| C2 | 不同 non-git 目录生成不同 project id，不互相串状态。 | `03-state-storage.md`、`08-upstream-adaptations.md` | `packages/opencode/test/project/project.test.ts`：`assigns different non-git project ids to different directories` | 已直接覆盖，无需补测 |
-| C3 | legacy global session 会在运行时迁移到目录派生的 non-git project id。 | `03-state-storage.md`、`08-upstream-adaptations.md` | `packages/opencode/test/project/project.test.ts`：`migrates legacy global sessions for plain directories at runtime` | 已直接覆盖，无需补测 |
-| C4 | Vite dev-only directory override 只在 serve proxy 注入 `x-opencode-directory`，未设置时不注入。 | `01-webgui-architecture.md`、`07-host-plugins.md` | `packages/opencode/webgui/vite.config.test.ts` | 已直接覆盖，无需补测 |
+| ID  | 本地逻辑点                                                                                      | repowiki 章节                                       | 测试证据                                                                                                             | 覆盖结论             |
+| --- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| C1  | non-git 普通目录生成稳定且非 global 的 project id。                                             | `03-state-storage.md`、`08-upstream-adaptations.md` | `packages/opencode/test/project/project.test.ts`：`returns a stable non-git project id for plain directories`        | 已直接覆盖，无需补测 |
+| C2  | 不同 non-git 目录生成不同 project id，不互相串状态。                                            | `03-state-storage.md`、`08-upstream-adaptations.md` | `packages/opencode/test/project/project.test.ts`：`assigns different non-git project ids to different directories`   | 已直接覆盖，无需补测 |
+| C3  | legacy global session 会在运行时迁移到目录派生的 non-git project id。                           | `03-state-storage.md`、`08-upstream-adaptations.md` | `packages/opencode/test/project/project.test.ts`：`migrates legacy global sessions for plain directories at runtime` | 已直接覆盖，无需补测 |
+| C4  | Vite dev-only directory override 只在 serve proxy 注入 `x-opencode-directory`，未设置时不注入。 | `01-webgui-architecture.md`、`07-host-plugins.md`   | `packages/opencode/webgui/vite.config.test.ts`                                                                       | 已直接覆盖，无需补测 |
 
 ## D. WebGUI 稳定性链路
 
-| ID | 本地逻辑点 | repowiki 章节 | 测试证据 | 覆盖结论 |
-| --- | --- | --- | --- | --- |
-| D1 | 贴底时 tail resize / 内容展开 / 容器高度变化会保持自动跟随，用户离开底部后停止自动滚动。 | `04-session-chat.md` | `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.test.tsx` | 已直接覆盖，无需补测 |
-| D2 | history anchor / prepend / trim 不破坏历史位置。 | `04-session-chat.md` | `packages/opencode/webgui/src/components/MessageList/hooks/useHistoryScroll.test.tsx`；`useTopTrim.test.tsx` | 已直接覆盖，无需补测 |
-| D3 | aborted latest/older message load 不误标加载完成或错误，并允许后续 retry。 | `04-session-chat.md` | `packages/opencode/webgui/src/state/MessagesContext.pagination.test.tsx` | 已直接覆盖，无需补测 |
-| D4 | assistant completed time 与 interrupted 可以同时展示，非法 completedAt 不展示。 | `04-session-chat.md` | `packages/opencode/webgui/src/components/MessageList/AssistantMeta.test.tsx`；`MessageRow.test.tsx` | 已直接覆盖，无需补测 |
-| D5 | bash 运行中 title 使用 input description，image_generation title 不重复污染结果区。 | `05-subtasks-tools-mcp.md` | `packages/opencode/webgui/src/components/parts/ToolPart/index.test.tsx`；`utils.test.ts` | 已直接覆盖，无需补测 |
-| D6 | StatusPopover 展示真实 backend 地址，未注入时回退当前 origin。 | `05-subtasks-tools-mcp.md` | `packages/opencode/webgui/src/components/CompactHeader/useStatusPopoverData.test.tsx`；`StatusPopover.test.tsx` | 已直接覆盖，无需补测 |
+| ID  | 本地逻辑点                                                                               | repowiki 章节              | 测试证据                                                                                                        | 覆盖结论             |
+| --- | ---------------------------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------- |
+| D1  | 贴底时 tail resize / 内容展开 / 容器高度变化会保持自动跟随，用户离开底部后停止自动滚动。 | `04-session-chat.md`       | `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.test.tsx`                           | 已直接覆盖，无需补测 |
+| D2  | history anchor / prepend / trim 不破坏历史位置。                                         | `04-session-chat.md`       | `packages/opencode/webgui/src/components/MessageList/hooks/useHistoryScroll.test.tsx`；`useTopTrim.test.tsx`    | 已直接覆盖，无需补测 |
+| D3  | aborted latest/older message load 不误标加载完成或错误，并允许后续 retry。               | `04-session-chat.md`       | `packages/opencode/webgui/src/state/MessagesContext.pagination.test.tsx`                                        | 已直接覆盖，无需补测 |
+| D4  | assistant completed time 与 interrupted 可以同时展示，非法 completedAt 不展示。          | `04-session-chat.md`       | `packages/opencode/webgui/src/components/MessageList/AssistantMeta.test.tsx`；`MessageRow.test.tsx`             | 已直接覆盖，无需补测 |
+| D5  | bash 运行中 title 使用 input description，image_generation title 不重复污染结果区。      | `05-subtasks-tools-mcp.md` | `packages/opencode/webgui/src/components/parts/ToolPart/index.test.tsx`；`utils.test.ts`                        | 已直接覆盖，无需补测 |
+| D6  | StatusPopover 展示真实 backend 地址，未注入时回退当前 origin。                           | `05-subtasks-tools-mcp.md` | `packages/opencode/webgui/src/components/CompactHeader/useStatusPopoverData.test.tsx`；`StatusPopover.test.tsx` | 已直接覆盖，无需补测 |
 
 ## 当前补测最小集合
 
@@ -150,6 +151,7 @@ Expected: 创建 coverage 文档 commit。若用户未明确要求 commit，跳�
 ### Task 2: 补 `generate_image` readonly edit input 直接回归测试
 
 **Files:**
+
 - Modify: `packages/opencode/test/tool/generate-image.test.ts`
 - Modify only if test fails: `packages/opencode/src/tool/generate-image.ts`
 
@@ -158,65 +160,65 @@ Expected: 创建 coverage 文档 commit。若用户未明确要求 commit，跳�
 在 `describe("generate_image tool", () => {` 内、`auto-allows generate_image when permission config is allow` 测试之前插入：
 
 ```ts
-  it.live("accepts readonly edit image inputs without mutating the caller array", () =>
-    provideTmpdirInstance(
-      () =>
-        Effect.gen(function* () {
-          let imageFieldNames: string[] = []
-          const readonlyImages = Object.freeze(["input.png"] as string[])
+it.live("accepts readonly edit image inputs without mutating the caller array", () =>
+  provideTmpdirInstance(
+    () =>
+      Effect.gen(function* () {
+        let imageFieldNames: string[] = []
+        const readonlyImages = Object.freeze(["input.png"] as string[])
 
-          using server = Bun.serve({
-            port: 0,
-            fetch: async (request) => {
-              const form = await request.formData()
-              imageFieldNames = form.getAll("image[]").map((value) => {
-                if (value instanceof File) {
-                  return value.name
-                }
-                return String(value)
-              })
+        using server = Bun.serve({
+          port: 0,
+          fetch: async (request) => {
+            const form = await request.formData()
+            imageFieldNames = form.getAll("image[]").map((value) => {
+              if (value instanceof File) {
+                return value.name
+              }
+              return String(value)
+            })
 
-              return Response.json({
-                data: [
-                  {
-                    b64_json: Buffer.from(pngBytes).toString("base64"),
-                  },
-                ],
-              })
-            },
-          })
+            return Response.json({
+              data: [
+                {
+                  b64_json: Buffer.from(pngBytes).toString("base64"),
+                },
+              ],
+            })
+          },
+        })
 
-          const tool = yield* initTool(providerLayer(String(server.url)))
-          const result = yield* tool.execute(
-            {
-              action: "edit",
-              prompt: "make the image darker",
-              provider: "openai",
-              model: "gpt-image-2",
-              images: readonlyImages as unknown as string[],
-            },
-            {
-              ...toolCtx,
-              messageID: MessageID.make("msg_readonly-edit-image"),
-              ask: () => Effect.void,
-            },
-          )
+        const tool = yield* initTool(providerLayer(String(server.url)))
+        const result = yield* tool.execute(
+          {
+            action: "edit",
+            prompt: "make the image darker",
+            provider: "openai",
+            model: "gpt-image-2",
+            images: readonlyImages as unknown as string[],
+          },
+          {
+            ...toolCtx,
+            messageID: MessageID.make("msg_readonly-edit-image"),
+            ask: () => Effect.void,
+          },
+        )
 
-          expect(readonlyImages).toEqual(["input.png"])
-          expect(imageFieldNames).toEqual(["input.png"])
-          expect(result.output).toBe("已生成 1 张图片：")
-          expect(result.attachments).toHaveLength(1)
-        }),
-      {
-        config: {
-          image_model: "openai/gpt-image-2",
-        },
-        init: async (dir) => {
-          await Bun.write(path.join(dir, "input.png"), Buffer.from(pngBase64, "base64"))
-        },
+        expect(readonlyImages).toEqual(["input.png"])
+        expect(imageFieldNames).toEqual(["input.png"])
+        expect(result.output).toBe("已生成 1 张图片：")
+        expect(result.attachments).toHaveLength(1)
+      }),
+    {
+      config: {
+        image_model: "openai/gpt-image-2",
       },
-    ),
-  )
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "input.png"), Buffer.from(pngBase64, "base64"))
+      },
+    },
+  ),
+)
 ```
 
 - [ ] **Step 2: 运行 focused backend test**
@@ -236,16 +238,16 @@ Expected: PASS。如果测试失败并提示 readonly/frozen array 被写入或 
 把：
 
 ```ts
-          const generateImages = normalizeGenerateImages(params.images)
-          const editImages = action === "edit" ? params.images : undefined
+const generateImages = normalizeGenerateImages(params.images)
+const editImages = action === "edit" ? params.images : undefined
 ```
 
 改为：
 
 ```ts
-          const inputImages = params.images ? [...params.images] : undefined
-          const generateImages = normalizeGenerateImages(inputImages)
-          const editImages = action === "edit" ? inputImages : undefined
+const inputImages = params.images ? [...params.images] : undefined
+const generateImages = normalizeGenerateImages(inputImages)
+const editImages = action === "edit" ? inputImages : undefined
 ```
 
 Expected: 后续内部逻辑只使用 `inputImages` 副本，不会依赖或改写调用方传入的 readonly/frozen array。
@@ -276,6 +278,7 @@ Expected: 创建测试或测试加最小修复 commit。若 `generate-image.ts` 
 ### Task 3: 更新 repowiki README 与 WebGUI 架构/聊天/工具章节
 
 **Files:**
+
 - Modify: `docs/repowiki/README.md`
 - Modify: `docs/repowiki/01-webgui-architecture.md`
 - Modify: `docs/repowiki/04-session-chat.md`
@@ -354,7 +357,7 @@ Expected: 创建测试或测试加最小修复 commit。若 `generate-image.ts` 
 
 在 `## 工具调用展示` 之后、`## Diff、patch 与文件变更浏览` 之前插入：
 
-```markdown
+````markdown
 ## 图片生成工具与预览
 
 `generate_image` 是本 fork 为 IDE/WebGUI 场景保留的关键工具能力。它的展示链路不是普通文本 output，而是：
@@ -366,6 +369,7 @@ generate_image provider result
   -> ToolImageAttachments 缩略图网格
   -> ImageOverlay 预览 / 保存
 ```
+````
 
 当前契约：
 
@@ -376,13 +380,14 @@ generate_image provider result
 - `ImageOverlay` 支持保存、缩放、重置、适应窗口、滚轮缩放、拖拽平移、Esc 关闭；点击图片外阴影/空白区域关闭，点击图片本体或工具栏不关闭。
 
 保存链路通过 WebGUI `saveImage()` 分流：插件环境走 IDE bridge `saveImage`，普通浏览器环境回退到下载链接。
-```
+
+````
 
 在 `## Server 状态分区` 的列表后追加：
 
 ```markdown
 - `后端地址`：优先展示 Vite dev 注入的 `__OPENCODE_BACKEND_URL__`，未注入时回退当前 origin。这个字段用于区分“WebGUI 当前页面地址”和“实际 opencode backend 目标”，本地多端口联调时尤其重要。
-```
+````
 
 - [ ] **Step 5: 搜索重复或过时表述**
 
@@ -410,6 +415,7 @@ Expected: 创建 WebGUI/图片相关 repowiki commit。若用户未明确要求 
 ### Task 4: 更新 bridge、state、update、host 与 upstream 章节
 
 **Files:**
+
 - Modify: `docs/repowiki/02-ide-bridge.md`
 - Modify: `docs/repowiki/03-state-storage.md`
 - Modify: `docs/repowiki/06-settings-update-localization.md`
@@ -518,7 +524,7 @@ JetBrains 现已补齐同名更新 API，但有明确边界：
 把 `## 双端差异` 表中更新行替换为：
 
 ```markdown
-| 更新          | 支持 GitHub Release `.vsix` 更新 | Marketplace 安装版支持 public Marketplace 检查并打开 Plugins 页面手动更新；本地 ZIP / 开发版不执行自动安装 |
+| 更新 | 支持 GitHub Release `.vsix` 更新 | Marketplace 安装版支持 public Marketplace 检查并打开 Plugins 页面手动更新；本地 ZIP / 开发版不执行自动安装 |
 ```
 
 - [ ] **Step 5: 在 `08-upstream-adaptations.md` 增加本地适配风险小节**
@@ -614,6 +620,7 @@ Expected: 创建 host/upstream 相关 repowiki commit。若用户未明确要求
 ### Task 5: 更新 coverage 矩阵为最终验收导航
 
 **Files:**
+
 - Modify: `docs/superpowers/coverage/2026-05-18-local-logic-coverage-matrix.md`
 
 - [ ] **Step 1: 确认新增 readonly 测试已在矩阵中标为新增覆盖**
@@ -662,6 +669,7 @@ Expected: 创建 coverage 最终更新 commit。若用户未明确要求 commit�
 ### Task 6: 运行目标验证集
 
 **Files:**
+
 - Read-only verification across modified tests and docs
 
 - [ ] **Step 1: 验证 opencode 图片与 project 隔离测试**

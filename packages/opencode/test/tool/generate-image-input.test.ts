@@ -31,7 +31,8 @@ async function withMockedImageFiles(files: Record<string, Uint8Array>, run: (roo
   const originalStat = fs.stat
   const originalReadFile = fs.readFile
   type FilePath = Parameters<typeof fs.realpath>[0]
-  const missing = (filePath: string) => Object.assign(new Error(`ENOENT: no such file or directory, stat '${filePath}'`), { code: "ENOENT" })
+  const missing = (filePath: string) =>
+    Object.assign(new Error(`ENOENT: no such file or directory, stat '${filePath}'`), { code: "ENOENT" })
 
   fs.realpath = (async (filePath: FilePath) => {
     const resolved = String(filePath)
@@ -102,9 +103,9 @@ describe("generate_image input", () => {
     expect(webpImage.mime).toBe("image/webp")
     expect(webpImage.filename).toBe("image.webp")
 
-    await expect(decodeImageInput({ root: process.cwd(), input: Buffer.from("not an image").toString("base64") })).rejects.toThrow(
-      "unable to detect image mime",
-    )
+    await expect(
+      decodeImageInput({ root: process.cwd(), input: Buffer.from("not an image").toString("base64") }),
+    ).rejects.toThrow("unable to detect image mime")
     await expect(decodeImageInput({ root: process.cwd(), input: "data:image/png;base64,%%%%" })).rejects.toThrow(
       "data URL base64 decode failed",
     )
@@ -117,7 +118,9 @@ describe("generate_image input", () => {
   })
 
   test("rejects whitespace-only inputs", async () => {
-    await expect(decodeImageInput({ root: process.cwd(), input: "  \n\t  " })).rejects.toThrow("image input cannot be empty")
+    await expect(decodeImageInput({ root: process.cwd(), input: "  \n\t  " })).rejects.toThrow(
+      "image input cannot be empty",
+    )
   })
 
   test("uses the original relative path without trimming surrounding spaces", async () => {
@@ -176,7 +179,11 @@ describe("generate_image input", () => {
     const base64 = Buffer.from(bytes).toString("base64")
     const originalBufferFrom = Buffer.from
 
-    Buffer.from = ((value: string | ArrayBuffer | SharedArrayBuffer | ArrayLike<number>, encodingOrOffset?: BufferEncoding | number, length?: number) => {
+    Buffer.from = ((
+      value: string | ArrayBuffer | SharedArrayBuffer | ArrayLike<number>,
+      encodingOrOffset?: BufferEncoding | number,
+      length?: number,
+    ) => {
       if (typeof value === "string" && encodingOrOffset === "base64" && value === base64) {
         throw new Error("base64 should not be decoded before size check")
       }
@@ -219,7 +226,9 @@ describe("generate_image input", () => {
         await Bun.write(path.join(dir, "large.png"), new Uint8Array(10 * 1024 * 1024 + 1))
       },
     })
-    await expect(decodeImageInput({ root: tmp.path, input: "missing.png" })).rejects.toThrow("image file does not exist")
+    await expect(decodeImageInput({ root: tmp.path, input: "missing.png" })).rejects.toThrow(
+      "image file does not exist",
+    )
     await expect(decodeImageInput({ root: tmp.path, input: "note.txt" })).rejects.toThrow("unable to detect image mime")
     await expect(decodeImageInput({ root: tmp.path, input: "large.png" })).rejects.toThrow("image exceeds 10MB limit")
   })
@@ -275,7 +284,9 @@ describe("generate_image input", () => {
     const bytes = new Uint8Array(Buffer.from(png, "base64"))
     const image = { mime: "image/png" as const, bytes, filename: "image.png" }
     const jpeg = new Uint8Array([0xff, 0xd8, 0xff])
-    expect(() => validateMask([image], { mime: "image/jpeg", bytes: jpeg, filename: "mask.jpg" })).toThrow("mask mime must match all edit images")
+    expect(() => validateMask([image], { mime: "image/jpeg", bytes: jpeg, filename: "mask.jpg" })).toThrow(
+      "mask mime must match all edit images",
+    )
     expect(validateMask([image], { mime: "image/png", bytes, filename: "mask.png" })).toBeUndefined()
   })
 })

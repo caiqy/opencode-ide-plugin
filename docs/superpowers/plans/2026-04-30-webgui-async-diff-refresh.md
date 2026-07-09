@@ -52,6 +52,7 @@
 ### Task 1: 建立后端 scheduler 骨架与状态事件
 
 **Files:**
+
 - Create: `packages/opencode/src/session/summary-scheduler.ts`
 - Create: `packages/opencode/test/session/summary-scheduler.test.ts`
 - Modify: `packages/opencode/src/session/session.ts`
@@ -182,8 +183,11 @@ export const layer = Layer.effect(
       visible: new Set(),
     })
 
-    const publishStatus = (sessionID: SessionID, status: "idle" | "scheduled" | "running" | "failed", message?: string) =>
-      bus.publish(Session.Event.DiffStatus, { sessionID, status, message })
+    const publishStatus = (
+      sessionID: SessionID,
+      status: "idle" | "scheduled" | "running" | "failed",
+      message?: string,
+    ) => bus.publish(Session.Event.DiffStatus, { sessionID, status, message })
 
     const ensure = (state: State, sessionID: SessionID) => {
       const current = state.sessions.get(sessionID)
@@ -264,9 +268,13 @@ export const layer = Layer.effect(
     })
 
     const foregroundStart = Ref.update(ref, (state) => ({ ...state, foregroundCount: state.foregroundCount + 1 }))
-    const foregroundFinish = Ref.update(ref, (state) => ({ ...state, foregroundCount: Math.max(0, state.foregroundCount - 1) }))
-      .pipe(Effect.zipRight(runNext))
-    const syncVisible = Effect.fn("SessionSummaryScheduler.syncVisible")(function* (input: { sessionIDs: SessionID[] }) {
+    const foregroundFinish = Ref.update(ref, (state) => ({
+      ...state,
+      foregroundCount: Math.max(0, state.foregroundCount - 1),
+    })).pipe(Effect.zipRight(runNext))
+    const syncVisible = Effect.fn("SessionSummaryScheduler.syncVisible")(function* (input: {
+      sessionIDs: SessionID[]
+    }) {
       yield* Ref.update(ref, (state) => {
         state.visible = new Set(input.sessionIDs)
         for (const [sessionID, item] of state.sessions) {
@@ -289,7 +297,14 @@ export const layer = Layer.effect(
     })
     const flush = runNext
 
-    return Service.of({ markDirty, foregroundStart: () => foregroundStart, foregroundFinish: () => foregroundFinish, syncVisible, deleteSession, flush: () => flush })
+    return Service.of({
+      markDirty,
+      foregroundStart: () => foregroundStart,
+      foregroundFinish: () => foregroundFinish,
+      syncVisible,
+      deleteSession,
+      flush: () => flush,
+    })
   }),
 )
 
@@ -331,6 +346,7 @@ git commit -m "refactor: add background diff scheduler skeleton"
 ### Task 2: 把 prompt / processor 的同步 summary 改为 markDirty
 
 **Files:**
+
 - Modify: `packages/opencode/src/session/prompt.ts`
 - Modify: `packages/opencode/src/session/processor.ts`
 - Modify: `packages/opencode/src/session/summary.ts`
@@ -361,12 +377,14 @@ it.live("debug disable summary test still keeps prompt path async by marking dir
       const session = yield* Session.Service
       const chat = yield* session.create({ title: "async prompt" })
 
-      yield* prompt.prompt({
-        sessionID: chat.id,
-        parts: [{ type: "text", text: "继续" }],
-        model: ref,
-        agent: "build",
-      }).pipe(Effect.provide(scheduler))
+      yield* prompt
+        .prompt({
+          sessionID: chat.id,
+          parts: [{ type: "text", text: "继续" }],
+          model: ref,
+          agent: "build",
+        })
+        .pipe(Effect.provide(scheduler))
 
       expect(marked.length).toBeGreaterThan(0)
     }),
@@ -383,7 +401,7 @@ Expected: FAIL，因为 `SessionSummaryScheduler.Service` 还未注入，且 `pr
 - [ ] **Step 3: 修改 `prompt.ts`，在前台生命周期里 mark dirty**
 
 ```ts
-const scheduler = yield* SessionSummaryScheduler.Service
+const scheduler = yield * SessionSummaryScheduler.Service
 
 const prompt: (input: PromptInput) => Effect.Effect<MessageV2.WithParts> = Effect.fn("SessionPrompt.prompt")(
   function* (input) {
@@ -395,11 +413,12 @@ const prompt: (input: PromptInput) => Effect.Effect<MessageV2.WithParts> = Effec
 
 if (step === 1) {
   if (disableSummary) {
-    yield* Effect.sync(() => {
-      void trace.event({ tag: "summary.skipped", sessionID, meta: { reason: "disabled-in-prompt", step } })
-    })
+    yield *
+      Effect.sync(() => {
+        void trace.event({ tag: "summary.skipped", sessionID, meta: { reason: "disabled-in-prompt", step } })
+      })
   } else {
-    yield* scheduler.markDirty({ sessionID, messageID: lastUser.id })
+    yield * scheduler.markDirty({ sessionID, messageID: lastUser.id })
   }
 }
 ```
@@ -407,21 +426,23 @@ if (step === 1) {
 - [ ] **Step 4: 修改 `processor.ts`，在 finish-step 只 mark dirty**
 
 ```ts
-const scheduler = yield* SessionSummaryScheduler.Service
+const scheduler = yield * SessionSummaryScheduler.Service
 
 if (disableSummary) {
-  yield* Effect.sync(() => {
-    void trace.event({
-      tag: "summary.skipped",
-      sessionID: ctx.sessionID,
-      meta: { reason: "disabled-in-processor", messageID: ctx.assistantMessage.parentID },
+  yield *
+    Effect.sync(() => {
+      void trace.event({
+        tag: "summary.skipped",
+        sessionID: ctx.sessionID,
+        meta: { reason: "disabled-in-processor", messageID: ctx.assistantMessage.parentID },
+      })
     })
-  })
 } else {
-  yield* scheduler.markDirty({
-    sessionID: ctx.sessionID,
-    messageID: ctx.assistantMessage.parentID,
-  })
+  yield *
+    scheduler.markDirty({
+      sessionID: ctx.sessionID,
+      messageID: ctx.assistantMessage.parentID,
+    })
 }
 ```
 
@@ -498,6 +519,7 @@ git commit -m "refactor: move session diff refresh off prompt path"
 ### Task 3: 增加可见 session 同步接口，并把标签可见性同步到后端
 
 **Files:**
+
 - Modify: `packages/opencode/src/server/routes/instance/session.ts`
 - Modify: `packages/opencode/src/server/routes/instance/httpapi/session.ts`
 - Modify: `packages/opencode/test/server/httpapi-session.test.ts`
@@ -617,7 +639,11 @@ session: Object.assign(baseClient.session, {
 import { useEffect, useMemo, useRef } from "react"
 import { sdk } from "../lib/api/sdkClient"
 
-export function useSessionVisibilitySync(input: { loaded: boolean; openTabs: string[]; currentSessionID: string | null }) {
+export function useSessionVisibilitySync(input: {
+  loaded: boolean
+  openTabs: string[]
+  currentSessionID: string | null
+}) {
   const last = useRef("")
   const sessionIDs = useMemo(() => {
     return [...new Set([...input.openTabs, ...(input.currentSessionID ? [input.currentSessionID] : [])])].sort()
@@ -661,6 +687,7 @@ git commit -m "feat: sync visible sessions for async diff refresh"
 ### Task 4: 把 `session.diff.status` 接到 SessionContext 和 Diff 面板轻提示
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/lib/api/events.ts`
 - Modify: `packages/opencode/webgui/src/state/SessionContext.tsx`
 - Modify: `packages/opencode/webgui/src/state/SessionContext.test.tsx`
@@ -721,7 +748,10 @@ Expected: FAIL，因为 `session.diff.status` 类型、`sessionDiffStatus` state
 ```ts
 export type ServerEvent =
   | { type: "session.diff"; properties: { sessionID: string; diff: FileDiff[] } }
-  | { type: "session.diff.status"; properties: { sessionID: string; status: "idle" | "scheduled" | "running" | "failed"; message?: string } }
+  | {
+      type: "session.diff.status"
+      properties: { sessionID: string; status: "idle" | "scheduled" | "running" | "failed"; message?: string }
+    }
 ```
 
 ```ts
@@ -772,28 +802,36 @@ interface FileChangesPanelProps {
   status?: { state: "updating" | "latest" | "failed"; message?: string }
 }
 
-{status?.state === "updating" && (
-  <div className="px-3 py-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900/40">
-    差异仍在后台刷新，当前显示的是上一版结果
-  </div>
-)}
-{status?.state === "failed" && (
-  <div className="px-3 py-2 text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border-b border-red-200 dark:border-red-900/40">
-    {status.message ?? "刷新失败，将在空闲后重试"}
-  </div>
-)}
-{status?.state === "latest" && (
-  <div className="px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 border-b border-emerald-200 dark:border-emerald-900/40">
-    已是最新结果
-  </div>
-)}
+{
+  status?.state === "updating" && (
+    <div className="px-3 py-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900/40">
+      差异仍在后台刷新，当前显示的是上一版结果
+    </div>
+  )
+}
+{
+  status?.state === "failed" && (
+    <div className="px-3 py-2 text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border-b border-red-200 dark:border-red-900/40">
+      {status.message ?? "刷新失败，将在空闲后重试"}
+    </div>
+  )
+}
+{
+  status?.state === "latest" && (
+    <div className="px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 border-b border-emerald-200 dark:border-emerald-900/40">
+      已是最新结果
+    </div>
+  )
+}
 ```
 
 ```tsx
 const { sessionDiff, sessionDiffStatus } = useSession()
 const diffStatus = sessionID ? sessionDiffStatus[sessionID] : undefined
 
-{filesExpanded && hasFiles && <FileChangesPanel diffs={diffs} fallbackFiles={modifiedFiles} status={diffStatus} />}
+{
+  filesExpanded && hasFiles && <FileChangesPanel diffs={diffs} fallbackFiles={modifiedFiles} status={diffStatus} />
+}
 ```
 
 - [ ] **Step 5: 运行 WebGUI 测试**
@@ -812,6 +850,7 @@ git commit -m "feat: show async diff refresh status in file changes panel"
 ### Task 5: 完成回归验证与人工 smoke test
 
 **Files:**
+
 - Modify as needed: `packages/opencode/src/session/summary-scheduler.ts`
 - Modify as needed: `packages/opencode/webgui/src/state/SessionContext.tsx`
 - Modify as needed: `packages/opencode/webgui/src/components/FileChangesPanel.tsx`

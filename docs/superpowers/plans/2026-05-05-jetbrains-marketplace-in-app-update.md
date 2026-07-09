@@ -46,6 +46,7 @@
 ### Task 1: JetBrains 更新模型、分发渠道与 Service
 
 **Files:**
+
 - Create: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/PluginUpdateModels.kt`
 - Create: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/update/PluginUpdateService.kt`
 - Test: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/update/PluginUpdateServiceTest.kt`
@@ -444,6 +445,7 @@ git commit -m "feat(jetbrains): add marketplace update service"
 ### Task 2: JetBrains IdeBridge 更新协议接线
 
 **Files:**
+
 - Modify: `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt`
 - Test: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeUpdateTest.kt`
 
@@ -767,6 +769,7 @@ git commit -m "feat(jetbrains): wire update requests through ide bridge"
 ### Task 3: WebGUI 兼容 JetBrains `unsupported` 与 IDE 重启文案
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/state/UpdateContext.tsx`
 - Modify: `packages/opencode/webgui/src/state/UpdateContext.test.tsx`
 - Modify: `packages/opencode/webgui/src/components/UpdateBanner.tsx`
@@ -777,39 +780,39 @@ git commit -m "feat(jetbrains): wire update requests through ide bridge"
 在 `packages/opencode/webgui/src/state/UpdateContext.test.tsx` 追加下面这个用例：
 
 ```tsx
-  it("JetBrains 返回 unsupported 时提示仅 Marketplace 安装版支持", async () => {
-    mocks.request.mockResolvedValueOnce({
-      result: {
-        supported: false,
-        reason: "marketplace-only",
-        latest: null,
-        hasUpdate: false,
-      },
-    })
-    mocks.request.mockResolvedValueOnce({
-      result: {
-        status: "unsupported",
-        reason: "marketplace-only",
-        currentVersion: "26.5.501",
-      },
-    })
-
-    const { result } = renderHook(() => useUpdate(), { wrapper })
-
-    await waitFor(() => {
-      expect(mocks.request).toHaveBeenCalledWith("getUpdateInfo", undefined)
-    })
-
-    await act(async () => {
-      await result.current.checkForUpdates()
-    })
-
-    expect(mocks.showToast).toHaveBeenCalledWith("当前安装包不支持站内更新，请使用 JetBrains Marketplace 安装版")
-    expect(result.current.status).toBe("idle")
-    expect(result.current.confirmOpen).toBe(false)
-    expect(result.current.confirmVersion).toBe(null)
-    expect(result.current.latest).toBe(null)
+it("JetBrains 返回 unsupported 时提示仅 Marketplace 安装版支持", async () => {
+  mocks.request.mockResolvedValueOnce({
+    result: {
+      supported: false,
+      reason: "marketplace-only",
+      latest: null,
+      hasUpdate: false,
+    },
   })
+  mocks.request.mockResolvedValueOnce({
+    result: {
+      status: "unsupported",
+      reason: "marketplace-only",
+      currentVersion: "26.5.501",
+    },
+  })
+
+  const { result } = renderHook(() => useUpdate(), { wrapper })
+
+  await waitFor(() => {
+    expect(mocks.request).toHaveBeenCalledWith("getUpdateInfo", undefined)
+  })
+
+  await act(async () => {
+    await result.current.checkForUpdates()
+  })
+
+  expect(mocks.showToast).toHaveBeenCalledWith("当前安装包不支持站内更新，请使用 JetBrains Marketplace 安装版")
+  expect(result.current.status).toBe("idle")
+  expect(result.current.confirmOpen).toBe(false)
+  expect(result.current.confirmVersion).toBe(null)
+  expect(result.current.latest).toBe(null)
+})
 ```
 
 把 `packages/opencode/webgui/src/components/UpdateBanner.test.tsx` 顶部 mock 改成这样，并新增 JetBrains success copy 用例：
@@ -840,15 +843,15 @@ vi.mock("../lib/ideBridge", () => ({
 ```
 
 ```tsx
-  it("JetBrains success 状态提示按 IDE 提示重启", () => {
-    bridge.restartMode = "ide"
-    mocks.update.status = "success"
+it("JetBrains success 状态提示按 IDE 提示重启", () => {
+  bridge.restartMode = "ide"
+  mocks.update.status = "success"
 
-    render(<UpdateBanner />)
+  render(<UpdateBanner />)
 
-    expect(screen.getByText("更新已安装完成，请按 IDE 提示重启")).toBeInTheDocument()
-    expect(screen.getByText("状态：安装完成，请按 IDE 提示重启")).toBeInTheDocument()
-  })
+  expect(screen.getByText("更新已安装完成，请按 IDE 提示重启")).toBeInTheDocument()
+  expect(screen.getByText("状态：安装完成，请按 IDE 提示重启")).toBeInTheDocument()
+})
 ```
 
 - [ ] **Step 2: 运行 WebGUI 测试，确认它们先失败**
@@ -906,21 +909,21 @@ type CheckForUpdatesResult = {
 把 `checkForUpdates` 里的结果分支改成：
 
 ```tsx
-      if (result?.status === "unsupported") {
-        setLatest(null)
-        setStatus("idle")
-        clearInstallConfirm()
-        showToast("当前安装包不支持站内更新，请使用 JetBrains Marketplace 安装版")
-        return
-      }
+if (result?.status === "unsupported") {
+  setLatest(null)
+  setStatus("idle")
+  clearInstallConfirm()
+  showToast("当前安装包不支持站内更新，请使用 JetBrains Marketplace 安装版")
+  return
+}
 
-      if (result?.status === "up-to-date") {
-        setLatest(null)
-        setStatus("idle")
-        clearInstallConfirm()
-        showToast("已是最新版")
-        return
-      }
+if (result?.status === "up-to-date") {
+  setLatest(null)
+  setStatus("idle")
+  clearInstallConfirm()
+  showToast("已是最新版")
+  return
+}
 ```
 
 把 `packages/opencode/webgui/src/components/UpdateBanner.tsx` 改成下面这种按 `restartMode` 生成 copy 的写法：
@@ -1031,6 +1034,7 @@ git commit -m "fix(webgui): handle jetbrains marketplace update states"
 ### Task 4: Marketplace 构建标记、RepoWiki 与最终验证
 
 **Files:**
+
 - Modify: `.github/workflows/release.yml`
 - Modify: `docs/repowiki/02-ide-bridge.md`
 - Modify: `docs/repowiki/06-settings-update-localization.md`
@@ -1059,67 +1063,67 @@ Expected: FAIL，报错包含 `docs missing JetBrains marketplace update note`�
 把 `.github/workflows/release.yml` 的 Marketplace build / publish 两段 Gradle 命令改成：
 
 ```yml
-      - name: Build Marketplace plugin package
-        working-directory: hosts/jetbrains-plugin
-        run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
-          CLEAN_VERSION="${VERSION#v}"
-          chmod +x gradlew
-          ./gradlew clean buildPlugin \
-            -Pplugin.version="$CLEAN_VERSION" \
-            -Pdistribution.channel="marketplace" \
-            -x test \
-            -x unitTest
+- name: Build Marketplace plugin package
+  working-directory: hosts/jetbrains-plugin
+  run: |
+    VERSION="${{ needs.preflight.outputs.version }}"
+    CLEAN_VERSION="${VERSION#v}"
+    chmod +x gradlew
+    ./gradlew clean buildPlugin \
+      -Pplugin.version="$CLEAN_VERSION" \
+      -Pdistribution.channel="marketplace" \
+      -x test \
+      -x unitTest
 ```
 
 ```yml
-      - name: Sign and publish Marketplace plugin
-        working-directory: hosts/jetbrains-plugin
-        run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
-          CLEAN_VERSION="${VERSION#v}"
-          chmod +x gradlew
-          ./gradlew signPlugin publishPlugin \
-            -Pplugin.version="$CLEAN_VERSION" \
-            -Pdistribution.channel="marketplace" \
-            -x test \
-            -x unitTest
+- name: Sign and publish Marketplace plugin
+  working-directory: hosts/jetbrains-plugin
+  run: |
+    VERSION="${{ needs.preflight.outputs.version }}"
+    CLEAN_VERSION="${VERSION#v}"
+    chmod +x gradlew
+    ./gradlew signPlugin publishPlugin \
+      -Pplugin.version="$CLEAN_VERSION" \
+      -Pdistribution.channel="marketplace" \
+      -x test \
+      -x unitTest
 ```
 
 紧接着 `Verify Marketplace plugin metadata` 后面加一个新的校验 step：
 
 ```yml
-      - name: Verify Marketplace distribution channel metadata
-        run: |
-          python <<'PY'
-          import io
-          import zipfile
-          from pathlib import Path
+- name: Verify Marketplace distribution channel metadata
+  run: |
+    python <<'PY'
+    import io
+    import zipfile
+    from pathlib import Path
 
-          archives = sorted(Path("hosts/jetbrains-plugin/build/distributions").glob("*.zip"))
-          if len(archives) != 1:
-              raise SystemExit(f"Expected exactly one Marketplace zip, found {len(archives)}")
+    archives = sorted(Path("hosts/jetbrains-plugin/build/distributions").glob("*.zip"))
+    if len(archives) != 1:
+        raise SystemExit(f"Expected exactly one Marketplace zip, found {len(archives)}")
 
-          props = None
-          with zipfile.ZipFile(archives[0]) as plugin_zip:
-              for member in plugin_zip.namelist():
-                  if not member.endswith('.jar'):
-                      continue
-                  payload = plugin_zip.read(member)
-                  with zipfile.ZipFile(io.BytesIO(payload)) as jar_zip:
-                      try:
-                          props = jar_zip.read('opencode-build.properties').decode('utf-8')
-                          break
-                      except KeyError:
-                          continue
+    props = None
+    with zipfile.ZipFile(archives[0]) as plugin_zip:
+        for member in plugin_zip.namelist():
+            if not member.endswith('.jar'):
+                continue
+            payload = plugin_zip.read(member)
+            with zipfile.ZipFile(io.BytesIO(payload)) as jar_zip:
+                try:
+                    props = jar_zip.read('opencode-build.properties').decode('utf-8')
+                    break
+                except KeyError:
+                    continue
 
-          if props is None:
-              raise SystemExit('Could not find opencode-build.properties inside Marketplace package')
-          if 'distribution.channel=marketplace' not in props:
-              raise SystemExit(f'Marketplace package has wrong distribution channel: {props!r}')
+    if props is None:
+        raise SystemExit('Could not find opencode-build.properties inside Marketplace package')
+    if 'distribution.channel=marketplace' not in props:
+        raise SystemExit(f'Marketplace package has wrong distribution channel: {props!r}')
 
-          print('marketplace distribution channel ok')
-          PY
+    print('marketplace distribution channel ok')
+    PY
 ```
 
 把 `docs/repowiki/02-ide-bridge.md` 的更新段落替换为：
@@ -1152,7 +1156,7 @@ JetBrains 现已补齐同名更新 API，但有明确边界：
 把 `docs/repowiki/07-host-plugins.md` 的对比表和维护提示改成：
 
 ```md
-| 更新          | 支持 GitHub Release `.vsix` 更新 | JetBrains Marketplace 安装版支持站内更新；本地 ZIP / 开发版仅提示 |
+| 更新 | 支持 GitHub Release `.vsix` 更新 | JetBrains Marketplace 安装版支持站内更新；本地 ZIP / 开发版仅提示 |
 ```
 
 ```md

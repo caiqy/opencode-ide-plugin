@@ -53,7 +53,10 @@ describe("generate_image openai-compatible adapter", () => {
   })
 
   test("rejects remote url only responses", async () => {
-    using server = Bun.serve({ port: 0, fetch: () => Response.json({ data: [{ url: "https://example.com/image.png" }] }) })
+    using server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ data: [{ url: "https://example.com/image.png" }] }),
+    })
 
     await expect(
       run(
@@ -73,7 +76,10 @@ describe("generate_image openai-compatible adapter", () => {
   })
 
   test("parses data url fields in response data array", async () => {
-    using server = Bun.serve({ port: 0, fetch: () => Response.json({ data: [{ url: `data:image/png;base64,${png}` }] }) })
+    using server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ data: [{ url: `data:image/png;base64,${png}` }] }),
+    })
 
     const images = await run(
       callOpenAICompatible({
@@ -367,7 +373,8 @@ describe("generate_image openai-compatible adapter", () => {
   test("prefers json error.message over top-level message in provider errors", async () => {
     using server = Bun.serve({
       port: 0,
-      fetch: () => new Response(JSON.stringify({ message: "generic", error: { message: "specific" } }), { status: 400 }),
+      fetch: () =>
+        new Response(JSON.stringify({ message: "generic", error: { message: "specific" } }), { status: 400 }),
     })
 
     await expect(
@@ -391,9 +398,12 @@ describe("generate_image openai-compatible adapter", () => {
     using server = Bun.serve({
       port: 0,
       fetch: () =>
-        new Response(JSON.stringify({ error: { message: "bad key sk-test-secret Authorization: Bearer sk-test-secret" } }), {
-          status: 400,
-        }),
+        new Response(
+          JSON.stringify({ error: { message: "bad key sk-test-secret Authorization: Bearer sk-test-secret" } }),
+          {
+            status: 400,
+          },
+        ),
     })
 
     const error = await run(
@@ -486,16 +496,18 @@ describe("generate_image openai-compatible adapter", () => {
   test("sends edit multipart with image brackets and optional mask", async () => {
     let url = ""
     let auth = ""
-    let fields: {
-      model: FormDataEntryValue | null
-      prompt: FormDataEntryValue | null
-      size: FormDataEntryValue | null
-      quality: FormDataEntryValue | null
-      format: FormDataEntryValue | null
-      n: FormDataEntryValue | null
-      images: number
-      hasMask: boolean
-    } | undefined
+    let fields:
+      | {
+          model: FormDataEntryValue | null
+          prompt: FormDataEntryValue | null
+          size: FormDataEntryValue | null
+          quality: FormDataEntryValue | null
+          format: FormDataEntryValue | null
+          n: FormDataEntryValue | null
+          images: number
+          hasMask: boolean
+        }
+      | undefined
 
     using server = Bun.serve({
       port: 0,

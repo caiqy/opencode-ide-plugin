@@ -186,12 +186,12 @@ import { classifyAttachment } from "@/util/media"
 
 ```ts
 // packages/opencode/src/tool/read.ts
-const loaded = yield* instruction.resolve(ctx.messages, filepath, ctx.messageID)
-const sample = yield* readSample(filepath, Number(stat.size), SAMPLE_BYTES)
+const loaded = yield * instruction.resolve(ctx.messages, filepath, ctx.messageID)
+const sample = yield * readSample(filepath, Number(stat.size), SAMPLE_BYTES)
 
 const classified = classifyAttachment(filepath, sample, AppFileSystem.mimeType(filepath))
 if (classified.kind === "image" || classified.kind === "pdf") {
-  const bytes = yield* fs.readFile(filepath)
+  const bytes = yield * fs.readFile(filepath)
   const msg = classified.kind === "pdf" ? "PDF read successfully" : "Image read successfully"
   return {
     title,
@@ -212,7 +212,7 @@ if (classified.kind === "image" || classified.kind === "pdf") {
 }
 
 if (classified.kind === "binary") {
-  return yield* Effect.fail(new Error(`Cannot read binary file: ${filepath}`))
+  return yield * Effect.fail(new Error(`Cannot read binary file: ${filepath}`))
 }
 ```
 
@@ -373,18 +373,16 @@ const FILE_SAMPLE_BYTES = 4096
 ```ts
 // packages/opencode/src/session/prompt.ts
 const readFileSample = Effect.fn("SessionPrompt.readFileSample")(function* (filepath: string) {
-  return yield* fsys
-    .readFile(filepath)
-    .pipe(
-      Effect.map((bytes) => bytes.subarray(0, Math.min(FILE_SAMPLE_BYTES, bytes.length))),
-      Effect.catch(() => Effect.succeed(undefined)),
-    )
+  return yield* fsys.readFile(filepath).pipe(
+    Effect.map((bytes) => bytes.subarray(0, Math.min(FILE_SAMPLE_BYTES, bytes.length))),
+    Effect.catch(() => Effect.succeed(undefined)),
+  )
 })
 ```
 
 ```ts
 // packages/opencode/src/session/prompt.ts 中 case "file:" 分支，放在 execRead 定义之后、part.mime 判断之前
-const sample = yield* readFileSample(filepath)
+const sample = yield * readFileSample(filepath)
 if (sample) {
   const fallbackMime = part.mime === "text/plain" ? AppFileSystem.mimeType(filepath) : part.mime
   const classified = classifyAttachment(filepath, sample, fallbackMime)

@@ -13,6 +13,7 @@
 ### Task 1: 先验证现有 `test` 路径是重型入口
 
 **Files:**
+
 - Verify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt`
 - Verify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsErrorViewTest.kt`
 
@@ -38,6 +39,7 @@ hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsErrorVi
 ### Task 2: 迁移测试文件到 `unitTest`
 
 **Files:**
+
 - Move: `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt`
 - Move: `hosts/jetbrains-plugin/src/test/kotlin/paviko/opencode/ui/BackendLogsErrorViewTest.kt`
 
@@ -60,6 +62,7 @@ Expected: PASS
 ### Task 3: 更新文档中的命令与路径引用
 
 **Files:**
+
 - Modify: `docs/superpowers/plans/2026-04-29-jetbrains-backend-logs-lazy-reveal.md`
 
 - [ ] **Step 1: 将单独验证 BackendLogs 的命令改为 unitTest**
@@ -81,6 +84,7 @@ Expected: PASS
 ### Task 4: 最终验证
 
 **Files:**
+
 - Verify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsVisibilityControllerTest.kt`
 - Verify: `hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/BackendLogsErrorViewTest.kt`
 

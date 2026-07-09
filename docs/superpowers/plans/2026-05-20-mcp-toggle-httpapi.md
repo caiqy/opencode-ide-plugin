@@ -30,6 +30,7 @@
 ### Task 1: 先写后端红灯测试锁定 MCP PATCH 路由缺口
 
 **Files:**
+
 - Modify: `packages/opencode/test/server/httpapi-mcp.test.ts`
 - Reference: `packages/opencode/src/server/routes/instance/httpapi/groups/mcp.ts`
 - Reference: `packages/opencode/src/server/routes/instance/httpapi/handlers/mcp.ts`
@@ -136,6 +137,7 @@ git add packages/opencode/test/server/httpapi-mcp.test.ts
 ### Task 2: 最小实现补齐 MCP PATCH routes 与 handlers
 
 **Files:**
+
 - Modify: `packages/opencode/src/server/routes/instance/httpapi/groups/mcp.ts`
 - Modify: `packages/opencode/src/server/routes/instance/httpapi/handlers/mcp.ts`
 - Test: `packages/opencode/test/server/httpapi-mcp.test.ts`
@@ -244,6 +246,7 @@ git add packages/opencode/src/server/routes/instance/httpapi/groups/mcp.ts packa
 ### Task 3: 补 `httpapi-exercise` 覆盖，锁死后续上游回归
 
 **Files:**
+
 - Modify: `packages/opencode/test/server/httpapi-exercise/index.ts`
 - Reference: `packages/opencode/src/server/routes/instance/httpapi/groups/mcp.ts`
 
@@ -312,6 +315,7 @@ git add packages/opencode/test/server/httpapi-exercise/index.ts
 ### Task 4: 补前端调用链回归并做浏览器实测
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/CompactHeader/useStatusPopoverData.test.tsx`
 - Verify: browser at `http://localhost:5173/app`
 

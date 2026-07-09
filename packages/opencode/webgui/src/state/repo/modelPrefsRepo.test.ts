@@ -6,7 +6,13 @@ vi.mock("../scopedStorage", () => ({
 }))
 
 import { scopedStateGetJSON, scopedStateSetJSON } from "../scopedStorage"
-import { loadModelPrefs, saveModelPrefs, updateModelPrefs, addRecentModel, resetModelPrefsCache } from "./modelPrefsRepo"
+import {
+  loadModelPrefs,
+  saveModelPrefs,
+  updateModelPrefs,
+  addRecentModel,
+  resetModelPrefsCache,
+} from "./modelPrefsRepo"
 
 describe("modelPrefsRepo", () => {
   beforeEach(() => {

@@ -35,6 +35,7 @@
 ## Task 1: 先写 history 深层增长失败测试
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.test.tsx`
 
 - [ ] **Step 1: Write the failing test**
@@ -77,6 +78,7 @@ Expected: the new test fails because current ResizeObserver observes `tail-box` 
 ## Task 2: 让 ResizeObserver 覆盖整体内容边界
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.ts`
 - Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.test.tsx`
 
@@ -116,6 +118,7 @@ Expected: the new history-growth test passes and existing tests still pass.
 ## Task 3: 移除 fixed seek timer，改为 shell resize 即时追底
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.ts`
 - Modify: `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.test.tsx`
 
@@ -209,6 +212,7 @@ Expected: all hook tests pass. Tests that previously advanced `700ms` now assert
 ## Task 4: Full verification and browser proof
 
 **Files:**
+
 - Verify only.
 
 - [ ] **Step 1: Run focused tests**
@@ -236,7 +240,7 @@ Expected: `tsc -b && vite build` passes. Existing Vite chunk-size warning is acc
 Use Chrome DevTools to verify:
 
 ```js
-const main = document.querySelector('main')
+const main = document.querySelector("main")
 main.scrollHeight - main.clientHeight - main.scrollTop
 ```
 

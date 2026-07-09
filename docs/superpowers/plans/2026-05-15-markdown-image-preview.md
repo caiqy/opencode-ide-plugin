@@ -13,6 +13,7 @@
 ### Task 1: Markdown 图片路径与失败占位测试
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/MarkdownRenderer.test.tsx`
 - Modify: `packages/opencode/webgui/src/components/MarkdownRenderer.tsx`
 - Create: `packages/opencode/webgui/src/components/parts/ImagePreview.tsx`
@@ -112,7 +113,9 @@ it("无 alt 的 Markdown 图片使用文件名作为可访问名称", () => {
 })
 
 it("无 alt 的链接包裹 Markdown 图片使用文件名作为链接名称", () => {
-  renderWithTheme(<MarkdownRenderer>{"[![](.opencode/generated-images/demo.png)](https://example.com)"}</MarkdownRenderer>)
+  renderWithTheme(
+    <MarkdownRenderer>{"[![](.opencode/generated-images/demo.png)](https://example.com)"}</MarkdownRenderer>,
+  )
 
   const link = screen.getByRole("link", { name: "demo.png" })
 
@@ -121,7 +124,9 @@ it("无 alt 的链接包裹 Markdown 图片使用文件名作为链接名称", (
 })
 
 it("Markdown 图片预览弹窗渲染到 markdown 容器外", () => {
-  const { container } = renderWithTheme(<MarkdownRenderer>{"![生成图](.opencode/generated-images/demo.png)"}</MarkdownRenderer>)
+  const { container } = renderWithTheme(
+    <MarkdownRenderer>{"![生成图](.opencode/generated-images/demo.png)"}</MarkdownRenderer>,
+  )
 
   fireEvent.click(screen.getByRole("button", { name: "查看图片：生成图" }))
 
@@ -132,12 +137,16 @@ it("Markdown 图片预览弹窗渲染到 markdown 容器外", () => {
 })
 
 it("链接包裹 Markdown 图片时不产生交互元素嵌套", () => {
-  renderWithTheme(<MarkdownRenderer>{"[![生成图](.opencode/generated-images/demo.png)](https://example.com)"}</MarkdownRenderer>)
+  renderWithTheme(
+    <MarkdownRenderer>{"[![生成图](.opencode/generated-images/demo.png)](https://example.com)"}</MarkdownRenderer>,
+  )
 
   const link = screen.getByRole("link", { name: "生成图" })
 
   expect(link.querySelector("button")).toBeNull()
-  expect(link.querySelector("img")?.getAttribute("src")).toBe(getGeneratedImageUrl(".opencode/generated-images/demo.png", null))
+  expect(link.querySelector("img")?.getAttribute("src")).toBe(
+    getGeneratedImageUrl(".opencode/generated-images/demo.png", null),
+  )
 })
 ```
 

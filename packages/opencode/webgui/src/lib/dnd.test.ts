@@ -4,7 +4,11 @@ import { extractPathsFromDrop } from "./dnd"
 function makeDragEvent(opts: {
   types?: string[]
   data?: Record<string, string>
-  items?: Array<{ kind: string; getAsFile?: () => { path?: string }; webkitGetAsEntry?: () => { isDirectory: boolean } }>
+  items?: Array<{
+    kind: string
+    getAsFile?: () => { path?: string }
+    webkitGetAsEntry?: () => { isDirectory: boolean }
+  }>
   files?: Array<{ path?: string }>
 }): DragEvent {
   const data = opts.data ?? {}
@@ -55,10 +59,7 @@ describe("extractPathsFromDrop", () => {
 
     it("skips non-file items", () => {
       const ev = makeDragEvent({
-        items: [
-          { kind: "string" } as any,
-          { kind: "file", getAsFile: () => ({ path: "/home/user/file.ts" }) },
-        ],
+        items: [{ kind: "string" } as any, { kind: "file", getAsFile: () => ({ path: "/home/user/file.ts" }) }],
       })
       expect(extractPathsFromDrop(ev)).toEqual(["/home/user/file.ts"])
     })

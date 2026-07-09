@@ -1,16 +1,20 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
+import { ModelV2 } from "@opencode-ai/core/model"
+import { ProviderV2 } from "@opencode-ai/core/provider"
 import path from "path"
 import { LLM } from "../../src/session/llm"
 import { Instance } from "../../src/project/instance"
 import { Provider } from "../../src/provider/provider"
 import { ModelsDev } from "../../src/provider/models"
-import { ProviderID, ModelID } from "../../src/provider/schema"
 import { Filesystem } from "../../src/util/filesystem"
 import { tmpdir } from "../fixture/fixture"
 import { createEventResponse } from "../fixture/sse"
 import type { Agent } from "../../src/agent/agent"
 import type { MessageV2 } from "../../src/session/message-v2"
 import { SessionID, MessageID } from "../../src/session/schema"
+
+const ModelID = ModelV2.ID
+const ProviderID = ProviderV2.ID
 
 type Capture = {
   url: URL

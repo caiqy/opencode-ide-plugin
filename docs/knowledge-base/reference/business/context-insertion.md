@@ -6,17 +6,17 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| VSCode add file/folder | `hosts/vscode-plugin/src/commands/AddToContextCommand.ts` |
-| VSCode add selected lines | `hosts/vscode-plugin/src/commands/AddLinesToContextCommand.ts` |
-| VSCode paste directory path | `hosts/vscode-plugin/src/commands/PastePathCommand.ts` |
-| VSCode command/menu/keybinding | `hosts/vscode-plugin/package.json` |
-| JetBrains actions | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/actions/` |
-| JetBrains action registration | `hosts/jetbrains-plugin/src/main/resources/META-INF/plugin.xml` |
-| WebGUI bridge handlers | `packages/opencode/webgui/src/App.tsx` |
-| WebGUI input insertion | `packages/opencode/webgui/src/components/MessageInput/index.tsx` |
-| Drop parsing/coordinator | `packages/opencode/webgui/src/lib/dnd.ts`、`packages/opencode/webgui/src/lib/dropCoordinator.ts` |
+| 角色                           | 文件                                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| VSCode add file/folder         | `hosts/vscode-plugin/src/commands/AddToContextCommand.ts`                                        |
+| VSCode add selected lines      | `hosts/vscode-plugin/src/commands/AddLinesToContextCommand.ts`                                   |
+| VSCode paste directory path    | `hosts/vscode-plugin/src/commands/PastePathCommand.ts`                                           |
+| VSCode command/menu/keybinding | `hosts/vscode-plugin/package.json`                                                               |
+| JetBrains actions              | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/actions/`                                |
+| JetBrains action registration  | `hosts/jetbrains-plugin/src/main/resources/META-INF/plugin.xml`                                  |
+| WebGUI bridge handlers         | `packages/opencode/webgui/src/App.tsx`                                                           |
+| WebGUI input insertion         | `packages/opencode/webgui/src/components/MessageInput/index.tsx`                                 |
+| Drop parsing/coordinator       | `packages/opencode/webgui/src/lib/dnd.ts`、`packages/opencode/webgui/src/lib/dropCoordinator.ts` |
 
 > 命名交叉核验（Step 5）：能力索引 G2 的 add file/lines/paste/drag 四类入口分别对应 VSCode commands、JetBrains actions、WebGUI `insertPaths`/`pastePath`/drop handler。
 
@@ -47,16 +47,16 @@
 
 ## 代码锚点速查
 
-| 契约 | 锚点 |
-|------|------|
-| VSCode command 声明 | `package.json:46-58` |
-| VSCode 菜单入口 | `package.json:102-143` |
-| VSCode 快捷键 | `package.json:145-157` |
-| JetBrains action 注册 | `plugin.xml:18-48` |
-| Host -> UI handler | `App.tsx:403-486` |
-| WebGUI 全局 drop | `App.tsx:505-529` |
-| Drop 去重 | `dropCoordinator.ts:27-58` |
-| Mention 插入 | `MessageInput/index.tsx:283-325` |
+| 契约                  | 锚点                             |
+| --------------------- | -------------------------------- |
+| VSCode command 声明   | `package.json:46-58`             |
+| VSCode 菜单入口       | `package.json:102-143`           |
+| VSCode 快捷键         | `package.json:145-157`           |
+| JetBrains action 注册 | `plugin.xml:18-48`               |
+| Host -> UI handler    | `App.tsx:403-486`                |
+| WebGUI 全局 drop      | `App.tsx:505-529`                |
+| Drop 去重             | `dropCoordinator.ts:27-58`       |
+| Mention 插入          | `MessageInput/index.tsx:283-325` |
 
 ## 运行时待核验
 

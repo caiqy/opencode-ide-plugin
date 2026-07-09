@@ -32,6 +32,7 @@
 ## Task 1: Backend catalog model endpoint
 
 **Files:**
+
 - Modify: `packages/opencode/src/provider/provider.ts`
 - Modify: `packages/opencode/src/server/routes/instance/httpapi/groups/config.ts`
 - Modify: `packages/opencode/src/server/routes/instance/httpapi/handlers/config.ts`
@@ -42,41 +43,41 @@
 Append this test inside `describe("config HttpApi", () => { ... })` in `packages/opencode/test/server/httpapi-config.test.ts`:
 
 ```ts
-  it.live(
-    "serves provider catalog models without applying config whitelist",
-    Effect.gen(function* () {
-      const tmp = yield* tmpdirEffect({
-        config: {
-          formatter: false,
-          lsp: false,
-          provider: {
-            anthropic: {
-              whitelist: ["claude-sonnet-4-20250514"],
-            },
+it.live(
+  "serves provider catalog models without applying config whitelist",
+  Effect.gen(function* () {
+    const tmp = yield* tmpdirEffect({
+      config: {
+        formatter: false,
+        lsp: false,
+        provider: {
+          anthropic: {
+            whitelist: ["claude-sonnet-4-20250514"],
           },
         },
-      })
+      },
+    })
 
-      const response = yield* Effect.promise(() =>
-        Promise.resolve(
-          app().request("/config/providers/anthropic/models", {
-            headers: {
-              "x-opencode-directory": tmp.path,
-            },
-          }),
-        ),
-      )
+    const response = yield* Effect.promise(() =>
+      Promise.resolve(
+        app().request("/config/providers/anthropic/models", {
+          headers: {
+            "x-opencode-directory": tmp.path,
+          },
+        }),
+      ),
+    )
 
-      expect(response.status).toBe(200)
-      const body = (yield* Effect.promise(() => response.json())) as {
-        providerID: string
-        models: Array<{ id: string; name: string; status: string }>
-      }
-      expect(body.providerID).toBe("anthropic")
-      expect(body.models.some((model) => model.id === "claude-sonnet-4-20250514")).toBe(true)
-      expect(body.models.length).toBeGreaterThan(1)
-    }),
-  )
+    expect(response.status).toBe(200)
+    const body = (yield* Effect.promise(() => response.json())) as {
+      providerID: string
+      models: Array<{ id: string; name: string; status: string }>
+    }
+    expect(body.providerID).toBe("anthropic")
+    expect(body.models.some((model) => model.id === "claude-sonnet-4-20250514")).toBe(true)
+    expect(body.models.length).toBeGreaterThan(1)
+  }),
+)
 ```
 
 - [ ] **Step 2: Run the backend test and verify RED**
@@ -116,16 +117,16 @@ In the `Interface` block, add:
 Near the existing `const list = ...` implementation, add:
 
 ```ts
-    const catalogModels = Effect.fn("Provider.catalogModels")(function* (providerID: ProviderID) {
-      const stateValue = yield* InstanceState.use(state, (s) => s.catalog)
-      const provider = stateValue[providerID]
-      return {
-        providerID,
-        models: Object.values(provider?.models ?? {})
-          .map((model) => ({ id: model.id, name: model.name, status: model.status }))
-          .sort((a, b) => a.id.localeCompare(b.id)),
-      }
-    })
+const catalogModels = Effect.fn("Provider.catalogModels")(function* (providerID: ProviderID) {
+  const stateValue = yield* InstanceState.use(state, (s) => s.catalog)
+  const provider = stateValue[providerID]
+  return {
+    providerID,
+    models: Object.values(provider?.models ?? {})
+      .map((model) => ({ id: model.id, name: model.name, status: model.status }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  }
+})
 ```
 
 In the `Service.of({ ... })` return object, add:
@@ -166,19 +167,19 @@ If `Schema` is unused after editing, remove that import; do not keep unused impo
 In `packages/opencode/src/server/routes/instance/httpapi/handlers/config.ts`, add:
 
 ```ts
-    const providerModels = Effect.fn("ConfigHttpApi.providerModels")(function* (ctx) {
-      return yield* providerSvc.catalogModels(ctx.params.providerID)
-    })
+const providerModels = Effect.fn("ConfigHttpApi.providerModels")(function* (ctx) {
+  return yield* providerSvc.catalogModels(ctx.params.providerID)
+})
 ```
 
 Change the return chain to:
 
 ```ts
-    return handlers
-      .handle("get", get)
-      .handle("update", update)
-      .handle("providers", providers)
-      .handle("providerModels", providerModels)
+return handlers
+  .handle("get", get)
+  .handle("update", update)
+  .handle("providers", providers)
+  .handle("providerModels", providerModels)
 ```
 
 - [ ] **Step 6: Run backend test and verify GREEN**
@@ -194,6 +195,7 @@ Expected: all tests in `httpapi-config.test.ts` pass.
 ## Task 2: WebGUI SDK wrapper and combobox tests
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/lib/api/sdkClient.ts`
 - Modify: `packages/opencode/webgui/src/components/settings/ProviderSettingsTab.test.tsx`
 
@@ -222,16 +224,16 @@ Extend the SDK mock:
 In `beforeEach`, add:
 
 ```ts
-    mocks.configProviderModels.mockResolvedValue({
-      data: {
-        providerID: "openai",
-        models: [
-          { id: "gpt-4.1", name: "GPT 4.1", status: "active" },
-          { id: "gpt-4.1-mini", name: "GPT 4.1 Mini", status: "active" },
-        ],
-      },
-      error: null,
-    })
+mocks.configProviderModels.mockResolvedValue({
+  data: {
+    providerID: "openai",
+    models: [
+      { id: "gpt-4.1", name: "GPT 4.1", status: "active" },
+      { id: "gpt-4.1-mini", name: "GPT 4.1 Mini", status: "active" },
+    ],
+  },
+  error: null,
+})
 ```
 
 Add these tests inside the `ProviderSettingsTab` describe:
@@ -340,6 +342,7 @@ Change the `sdk.config` object to:
 ## Task 3: Custom ProviderSettingsTab combobox
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/settings/ProviderSettingsTab.tsx`
 - Test: `packages/opencode/webgui/src/components/settings/ProviderSettingsTab.test.tsx`
 
@@ -348,8 +351,8 @@ Change the `sdk.config` object to:
 In `ProviderSettingsTab.tsx`, replace `knownModels` state with:
 
 ```ts
-  const [catalogModels, setCatalogModels] = useState<Array<{ id: string; name: string; status: string }>>([])
-  const [modelListOpen, setModelListOpen] = useState(false)
+const [catalogModels, setCatalogModels] = useState<Array<{ id: string; name: string; status: string }>>([])
+const [modelListOpen, setModelListOpen] = useState(false)
 ```
 
 Remove the `useEffect` that calls `sdk.config.providers()` for model options.
@@ -357,17 +360,17 @@ Remove the `useEffect` that calls `sdk.config.providers()` for model options.
 Add this effect below `editingProvider`:
 
 ```ts
-  useEffect(() => {
-    if (!editingProviderId) {
-      setCatalogModels([])
-      setModelListOpen(false)
-      return
-    }
-    sdk.config
-      .providerModels(editingProviderId)
-      .then((res) => setCatalogModels(res.data?.models ?? []))
-      .catch(() => setCatalogModels([]))
-  }, [editingProviderId])
+useEffect(() => {
+  if (!editingProviderId) {
+    setCatalogModels([])
+    setModelListOpen(false)
+    return
+  }
+  sdk.config
+    .providerModels(editingProviderId)
+    .then((res) => setCatalogModels(res.data?.models ?? []))
+    .catch(() => setCatalogModels([]))
+}, [editingProviderId])
 ```
 
 - [ ] **Step 2: Add filtered combobox options**
@@ -375,16 +378,16 @@ Add this effect below `editingProvider`:
 Replace the current `modelOptions` memo with:
 
 ```ts
-  const modelOptions = useMemo(() => {
-    const query = modelInput.trim().toLowerCase()
-    return catalogModels
-      .filter((model) => !draft.whitelist.includes(model.id))
-      .filter((model) => {
-        if (!query) return true
-        return model.id.toLowerCase().includes(query) || model.name.toLowerCase().includes(query)
-      })
-      .slice(0, 50)
-  }, [catalogModels, draft.whitelist, modelInput])
+const modelOptions = useMemo(() => {
+  const query = modelInput.trim().toLowerCase()
+  return catalogModels
+    .filter((model) => !draft.whitelist.includes(model.id))
+    .filter((model) => {
+      if (!query) return true
+      return model.id.toLowerCase().includes(query) || model.name.toLowerCase().includes(query)
+    })
+    .slice(0, 50)
+}, [catalogModels, draft.whitelist, modelInput])
 ```
 
 - [ ] **Step 3: Replace datalist markup with custom listbox**
@@ -392,61 +395,62 @@ Replace the current `modelOptions` memo with:
 Replace lines around the existing model input and `<datalist>` with:
 
 ```tsx
-            <div className="relative flex-1">
-              <input
-                aria-label="模型白名单输入"
-                aria-autocomplete="list"
-                aria-expanded={modelListOpen}
-                aria-controls="provider-model-options"
-                className="w-full rounded border border-gray-300 bg-white px-3 py-2 pr-8 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                placeholder="选择或输入模型，例如 gpt-4.1"
-                value={modelInput}
-                disabled={isSaving}
-                onFocus={() => setModelListOpen(true)}
-                onChange={(event) => {
-                  setModelInput(event.target.value)
-                  setModelListOpen(true)
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && modelInput.trim()) {
-                    event.preventDefault()
-                    addModel()
-                  }
-                  if (event.key === "Escape") setModelListOpen(false)
-                }}
-              />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">▾</span>
-              {modelListOpen && !isSaving && (
-                <div
-                  id="provider-model-options"
-                  role="listbox"
-                  aria-label="模型候选"
-                  className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
-                >
-                  {modelOptions.map((model) => (
-                    <button
-                      key={model.id}
-                      type="button"
-                      role="option"
-                      className="flex w-full flex-col px-3 py-2 text-left hover:bg-blue-50 focus:bg-blue-50 dark:hover:bg-gray-800 dark:focus:bg-gray-800"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        setModelInput(model.id)
-                        setModelListOpen(false)
-                      }}
-                    >
-                      <span className="font-mono text-gray-900 dark:text-gray-100">{model.id}</span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {model.name}{model.status !== "active" ? ` · ${model.status}` : ""}
-                      </span>
-                    </button>
-                  ))}
-                  {modelOptions.length === 0 && (
-                    <div className="px-3 py-2 text-gray-500 dark:text-gray-400">没有匹配的候选，可直接添加当前输入</div>
-                  )}
-                </div>
-              )}
-            </div>
+<div className="relative flex-1">
+  <input
+    aria-label="模型白名单输入"
+    aria-autocomplete="list"
+    aria-expanded={modelListOpen}
+    aria-controls="provider-model-options"
+    className="w-full rounded border border-gray-300 bg-white px-3 py-2 pr-8 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+    placeholder="选择或输入模型，例如 gpt-4.1"
+    value={modelInput}
+    disabled={isSaving}
+    onFocus={() => setModelListOpen(true)}
+    onChange={(event) => {
+      setModelInput(event.target.value)
+      setModelListOpen(true)
+    }}
+    onKeyDown={(event) => {
+      if (event.key === "Enter" && modelInput.trim()) {
+        event.preventDefault()
+        addModel()
+      }
+      if (event.key === "Escape") setModelListOpen(false)
+    }}
+  />
+  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">▾</span>
+  {modelListOpen && !isSaving && (
+    <div
+      id="provider-model-options"
+      role="listbox"
+      aria-label="模型候选"
+      className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
+    >
+      {modelOptions.map((model) => (
+        <button
+          key={model.id}
+          type="button"
+          role="option"
+          className="flex w-full flex-col px-3 py-2 text-left hover:bg-blue-50 focus:bg-blue-50 dark:hover:bg-gray-800 dark:focus:bg-gray-800"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            setModelInput(model.id)
+            setModelListOpen(false)
+          }}
+        >
+          <span className="font-mono text-gray-900 dark:text-gray-100">{model.id}</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {model.name}
+            {model.status !== "active" ? ` · ${model.status}` : ""}
+          </span>
+        </button>
+      ))}
+      {modelOptions.length === 0 && (
+        <div className="px-3 py-2 text-gray-500 dark:text-gray-400">没有匹配的候选，可直接添加当前输入</div>
+      )}
+    </div>
+  )}
+</div>
 ```
 
 Keep the existing `添加模型` button immediately after this div.
@@ -456,12 +460,12 @@ Keep the existing `添加模型` button immediately after this div.
 Change `addModel` to:
 
 ```ts
-  const addModel = () => {
-    if (isSaving) return
-    setDraft({ ...draft, whitelist: normalizeWhitelist([...draft.whitelist, modelInput]) })
-    setModelInput("")
-    setModelListOpen(false)
-  }
+const addModel = () => {
+  if (isSaving) return
+  setDraft({ ...draft, whitelist: normalizeWhitelist([...draft.whitelist, modelInput]) })
+  setModelInput("")
+  setModelListOpen(false)
+}
 ```
 
 - [ ] **Step 5: Run frontend tests and verify GREEN**
@@ -477,6 +481,7 @@ Expected: all `ProviderSettingsTab` tests pass.
 ## Task 4: Full verification and browser check
 
 **Files:**
+
 - No new files unless tests reveal a defect.
 
 - [ ] **Step 1: Run backend config tests**

@@ -56,10 +56,7 @@ describe("discoverBackend", () => {
       port: 4096,
       probe: "http://127.0.0.1:4096/global/config",
     })
-    expect(calls).toEqual([
-      "http://127.0.0.1:4300/global/config",
-      "http://127.0.0.1:4096/global/config",
-    ])
+    expect(calls).toEqual(["http://127.0.0.1:4300/global/config", "http://127.0.0.1:4096/global/config"])
   })
 
   it("非 JSON 响应不应被识别为 opencode backend", async () => {

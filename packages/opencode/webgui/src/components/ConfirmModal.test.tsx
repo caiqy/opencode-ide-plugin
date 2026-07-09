@@ -9,9 +9,7 @@ describe("ConfirmModal", () => {
     const onClose = vi.fn()
     const onConfirm = vi.fn()
 
-    render(
-      <ConfirmModal isOpen={true} onClose={onClose} onConfirm={onConfirm} title="标题" message="内容" />,
-    )
+    render(<ConfirmModal isOpen={true} onClose={onClose} onConfirm={onConfirm} title="标题" message="内容" />)
 
     await user.click(screen.getByRole("button", { name: "取消" }))
     expect(onClose).toHaveBeenCalledTimes(1)

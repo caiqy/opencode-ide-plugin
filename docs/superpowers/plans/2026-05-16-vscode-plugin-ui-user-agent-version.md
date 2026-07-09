@@ -44,6 +44,7 @@
 ### Task 1: 后端 `Installation.userAgent()` 支持 `OPENCODE_UI_VERSION`
 
 **Files:**
+
 - Modify: `packages/opencode/test/installation/installation.test.ts`
 - Modify: `packages/opencode/src/installation/index.ts`
 
@@ -75,19 +76,19 @@ function withUiVersion<T>(version: string | undefined, run: () => T): T {
 在 `describe("userAgent", () => {` 内、现有第一个测试之后添加：
 
 ```ts
-    test("uses injected UI version for the default opencode UI user agent", () => {
-      withUiVersion("26.5.1602", () => {
-        expect(Installation.userAgent()).toBe(`opencode/${InstallationVersion} opencode-ui/26.5.1602 (codex app)`)
-      })
-    })
+test("uses injected UI version for the default opencode UI user agent", () => {
+  withUiVersion("26.5.1602", () => {
+    expect(Installation.userAgent()).toBe(`opencode/${InstallationVersion} opencode-ui/26.5.1602 (codex app)`)
+  })
+})
 
-    test("falls back to installation version when injected UI version is blank", () => {
-      withUiVersion("   ", () => {
-        expect(Installation.userAgent()).toBe(
-          `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (codex app)`,
-        )
-      })
-    })
+test("falls back to installation version when injected UI version is blank", () => {
+  withUiVersion("   ", () => {
+    expect(Installation.userAgent()).toBe(
+      `opencode/${InstallationVersion} opencode-ui/${InstallationVersion} (codex app)`,
+    )
+  })
+})
 ```
 
 - [ ] **Step 2: 运行后端目标测试，确认失败原因正确**
@@ -120,13 +121,13 @@ function uiUserAgentProduct() {
 将 `userAgent()` 中的 products 构造从：
 
 ```ts
-  const products = [base, ...(options?.products ?? []), UI_USER_AGENT_PRODUCT]
+const products = [base, ...(options?.products ?? []), UI_USER_AGENT_PRODUCT]
 ```
 
 改为：
 
 ```ts
-  const products = [base, ...(options?.products ?? []), uiUserAgentProduct()]
+const products = [base, ...(options?.products ?? []), uiUserAgentProduct()]
 ```
 
 - [ ] **Step 4: 运行后端目标测试，确认通过**
@@ -144,21 +145,21 @@ Expected: `installation.test.ts` 全部通过。
 在 `packages/opencode/test/installation/installation.test.ts` 的 `describe("userAgent", () => {` 中继续添加：
 
 ```ts
-    test("uses injected UI version for installation-scoped user agent", () => {
-      withUiVersion("26.5.1602", () => {
-        expect(Installation.userAgent({ base: "installation" })).toBe(
-          `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/26.5.1602 (codex app)`,
-        )
-      })
-    })
+test("uses injected UI version for installation-scoped user agent", () => {
+  withUiVersion("26.5.1602", () => {
+    expect(Installation.userAgent({ base: "installation" })).toBe(
+      `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/26.5.1602 (codex app)`,
+    )
+  })
+})
 
-    test("keeps provider products before injected UI product", () => {
-      withUiVersion("26.5.1602", () => {
-        expect(Installation.userAgent({ products: ["gitlab-ai-provider/1.2.3"] })).toBe(
-          `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/26.5.1602 (codex app)`,
-        )
-      })
-    })
+test("keeps provider products before injected UI product", () => {
+  withUiVersion("26.5.1602", () => {
+    expect(Installation.userAgent({ products: ["gitlab-ai-provider/1.2.3"] })).toBe(
+      `opencode/${InstallationVersion} gitlab-ai-provider/1.2.3 opencode-ui/26.5.1602 (codex app)`,
+    )
+  })
+})
 ```
 
 - [ ] **Step 6: 运行后端目标测试，确认通过**
@@ -176,6 +177,7 @@ Expected: `installation.test.ts` 全部通过。
 ### Task 2: VSCode `BackendLauncher` 注入插件版本环境变量
 
 **Files:**
+
 - Modify: `hosts/vscode-plugin/src/test/suite/backendLauncher.test.ts`
 - Modify: `hosts/vscode-plugin/src/backend/BackendLauncher.ts`
 
@@ -184,48 +186,48 @@ Expected: `installation.test.ts` 全部通过。
 在 `hosts/vscode-plugin/src/test/suite/backendLauncher.test.ts` 的 `suite("BackendLauncher Test Suite", () => {` 内、第一个测试之后添加：
 
 ```ts
-  test("should inject extension version into backend environment", () => {
-    const scoped = new BackendLauncher({ extensionVersion: "26.5.1602" })
+test("should inject extension version into backend environment", () => {
+  const scoped = new BackendLauncher({ extensionVersion: "26.5.1602" })
+  const env = (scoped as unknown as { buildEnvironment(): NodeJS.ProcessEnv }).buildEnvironment()
+
+  assert.strictEqual(env.OPENCODE_UI_VERSION, "26.5.1602")
+})
+
+test("should not inject blank extension version into backend environment", () => {
+  const previous = process.env.OPENCODE_UI_VERSION
+  delete process.env.OPENCODE_UI_VERSION
+
+  try {
+    const scoped = new BackendLauncher({ extensionVersion: "   " })
     const env = (scoped as unknown as { buildEnvironment(): NodeJS.ProcessEnv }).buildEnvironment()
 
-    assert.strictEqual(env.OPENCODE_UI_VERSION, "26.5.1602")
-  })
-
-  test("should not inject blank extension version into backend environment", () => {
-    const previous = process.env.OPENCODE_UI_VERSION
-    delete process.env.OPENCODE_UI_VERSION
-
-    try {
-      const scoped = new BackendLauncher({ extensionVersion: "   " })
-      const env = (scoped as unknown as { buildEnvironment(): NodeJS.ProcessEnv }).buildEnvironment()
-
-      assert.strictEqual(Object.prototype.hasOwnProperty.call(env, "OPENCODE_UI_VERSION"), false)
-    } finally {
-      if (previous === undefined) {
-        delete process.env.OPENCODE_UI_VERSION
-      } else {
-        process.env.OPENCODE_UI_VERSION = previous
-      }
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(env, "OPENCODE_UI_VERSION"), false)
+  } finally {
+    if (previous === undefined) {
+      delete process.env.OPENCODE_UI_VERSION
+    } else {
+      process.env.OPENCODE_UI_VERSION = previous
     }
-  })
+  }
+})
 
-  test("should remove inherited UI version when extension version is blank", () => {
-    const previous = process.env.OPENCODE_UI_VERSION
-    process.env.OPENCODE_UI_VERSION = "stale"
+test("should remove inherited UI version when extension version is blank", () => {
+  const previous = process.env.OPENCODE_UI_VERSION
+  process.env.OPENCODE_UI_VERSION = "stale"
 
-    try {
-      const scoped = new BackendLauncher({ extensionVersion: "   " })
-      const env = (scoped as unknown as { buildEnvironment(): NodeJS.ProcessEnv }).buildEnvironment()
+  try {
+    const scoped = new BackendLauncher({ extensionVersion: "   " })
+    const env = (scoped as unknown as { buildEnvironment(): NodeJS.ProcessEnv }).buildEnvironment()
 
-      assert.strictEqual(Object.prototype.hasOwnProperty.call(env, "OPENCODE_UI_VERSION"), false)
-    } finally {
-      if (previous === undefined) {
-        delete process.env.OPENCODE_UI_VERSION
-      } else {
-        process.env.OPENCODE_UI_VERSION = previous
-      }
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(env, "OPENCODE_UI_VERSION"), false)
+  } finally {
+    if (previous === undefined) {
+      delete process.env.OPENCODE_UI_VERSION
+    } else {
+      process.env.OPENCODE_UI_VERSION = previous
     }
-  })
+  }
+})
 ```
 
 - [ ] **Step 2: 运行 VSCode 编译，确认失败原因正确**
@@ -328,6 +330,7 @@ Expected: `BackendLauncher Test Suite` 通过。如果当前 `vscode-test` 不�
 ### Task 3: VSCode 扩展入口传入真实插件版本
 
 **Files:**
+
 - Modify: `hosts/vscode-plugin/src/extension.ts`
 - Modify: `hosts/vscode-plugin/src/test/suite/backendLauncher.test.ts`
 
@@ -336,11 +339,11 @@ Expected: `BackendLauncher Test Suite` 通过。如果当前 `vscode-test` 不�
 在 `hosts/vscode-plugin/src/test/suite/backendLauncher.test.ts` 的 `should create BackendLauncher instance` 测试之后添加：
 
 ```ts
-  test("should keep string extension path constructor compatibility", () => {
-    const scoped = new BackendLauncher("/tmp/opencode-extension")
+test("should keep string extension path constructor compatibility", () => {
+  const scoped = new BackendLauncher("/tmp/opencode-extension")
 
-    assert.ok(scoped instanceof BackendLauncher)
-  })
+  assert.ok(scoped instanceof BackendLauncher)
+})
 ```
 
 - [ ] **Step 2: 运行 VSCode 编译，确认通过**
@@ -358,19 +361,19 @@ Expected: 编译通过。这个测试用于锁定兼容性，避免后续入口�
 在 `hosts/vscode-plugin/src/extension.ts` 中将：
 
 ```ts
-    this.backendLauncher = new BackendLauncher(this.context!.extensionUri.fsPath)
+this.backendLauncher = new BackendLauncher(this.context!.extensionUri.fsPath)
 
-    const currentVersion = this.context!.extension.packageJSON.version
+const currentVersion = this.context!.extension.packageJSON.version
 ```
 
 改为：
 
 ```ts
-    const currentVersion = this.context!.extension.packageJSON.version
-    this.backendLauncher = new BackendLauncher({
-      extensionPath: this.context!.extensionUri.fsPath,
-      extensionVersion: currentVersion,
-    })
+const currentVersion = this.context!.extension.packageJSON.version
+this.backendLauncher = new BackendLauncher({
+  extensionPath: this.context!.extensionUri.fsPath,
+  extensionVersion: currentVersion,
+})
 ```
 
 这样 `currentVersion` 同时服务于后端 UA 注入和现有更新检查。
@@ -390,6 +393,7 @@ Expected: TypeScript 编译通过。
 ### Task 4: 最终验证
 
 **Files:**
+
 - Verify only; no code changes expected.
 
 - [ ] **Step 1: 运行后端目标测试**

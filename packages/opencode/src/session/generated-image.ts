@@ -1,4 +1,4 @@
-import type { MessageV2 } from "./message-v2"
+import type { SessionV1 } from "@opencode-ai/core/v1/session"
 import { PartID } from "./schema"
 import type { MessageID, SessionID } from "./schema"
 
@@ -6,14 +6,14 @@ export type GeneratedImageOutput = {
   title: string
   metadata: Record<string, any>
   output: string
-  attachments?: MessageV2.FilePart[]
+  attachments?: SessionV1.FilePart[]
 }
 
 type ImageGenerationToolOutput = {
   title: string
   metadata: Record<string, any>
   output: unknown
-  attachments?: MessageV2.FilePart[]
+  attachments?: SessionV1.FilePart[]
 }
 
 type NormalizeImageGenerationOutputInput = {
@@ -107,7 +107,7 @@ function isToolOutput(output: GeneratedImageOutput | unknown): output is Generat
   )
 }
 
-function countImageAttachments(attachments: MessageV2.FilePart[] | undefined) {
+function countImageAttachments(attachments: SessionV1.FilePart[] | undefined) {
   return (attachments ?? []).filter((attachment) => {
     return (
       typeof attachment.mime === "string" &&

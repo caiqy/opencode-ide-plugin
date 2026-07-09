@@ -6,13 +6,13 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| WebGUI restart bridge client | `packages/opencode/webgui/src/lib/ideBridge.ts` |
-| Provider 保存后的重启弹窗 | `packages/opencode/webgui/src/components/settings/RestartRequiredModal.tsx` |
-| CompactHeader 重启入口 | `packages/opencode/webgui/src/components/CompactHeader/index.tsx` |
-| VSCode restart handler | `hosts/vscode-plugin/src/ui/WebviewController.ts`、`hosts/vscode-plugin/src/ui/IdeBridgeServer.ts` |
-| JetBrains restart handler | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt` |
+| 角色                         | 文件                                                                                               |
+| ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| WebGUI restart bridge client | `packages/opencode/webgui/src/lib/ideBridge.ts`                                                    |
+| Provider 保存后的重启弹窗    | `packages/opencode/webgui/src/components/settings/RestartRequiredModal.tsx`                        |
+| CompactHeader 重启入口       | `packages/opencode/webgui/src/components/CompactHeader/index.tsx`                                  |
+| VSCode restart handler       | `hosts/vscode-plugin/src/ui/WebviewController.ts`、`hosts/vscode-plugin/src/ui/IdeBridgeServer.ts` |
+| JetBrains restart handler    | `hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt`                           |
 
 > 命名交叉核验（Step 5）：能力索引 G4 的 `restartHost` 在 UI 请求、VSCode handler、JetBrains handler 中保持同名。
 
@@ -39,16 +39,16 @@
 
 ## 代码锚点速查
 
-| 契约 | 锚点 |
-|------|------|
-| restart 请求超时 | `ideBridge.ts:38-42` |
-| Provider 重启弹窗 | `RestartRequiredModal.tsx:14-24` |
-| Header restartMode state | `CompactHeader/index.tsx:58-83` |
-| Header 调用 restartHost | `CompactHeader/index.tsx:127-134` |
-| VSCode restartMode | `WebviewController.ts:181-184` |
-| VSCode reloadWindow | `WebviewController.ts:155-159` |
-| VSCode 先回复再 reload | `IdeBridgeServer.ts:302-315` |
-| JetBrains restartHook | `IdeBridge.kt:52-55` |
+| 契约                     | 锚点                              |
+| ------------------------ | --------------------------------- |
+| restart 请求超时         | `ideBridge.ts:38-42`              |
+| Provider 重启弹窗        | `RestartRequiredModal.tsx:14-24`  |
+| Header restartMode state | `CompactHeader/index.tsx:58-83`   |
+| Header 调用 restartHost  | `CompactHeader/index.tsx:127-134` |
+| VSCode restartMode       | `WebviewController.ts:181-184`    |
+| VSCode reloadWindow      | `WebviewController.ts:155-159`    |
+| VSCode 先回复再 reload   | `IdeBridgeServer.ts:302-315`      |
+| JetBrains restartHook    | `IdeBridge.kt:52-55`              |
 
 ## 运行时待核验
 

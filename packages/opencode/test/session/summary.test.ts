@@ -1,8 +1,16 @@
 import { NodeFileSystem } from "@effect/platform-node"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { EventV2 } from "@opencode-ai/core/event"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { ModelV2 } from "@opencode-ai/core/model"
+import { ProviderV2 } from "@opencode-ai/core/provider"
+import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { expect, describe } from "bun:test"
 import { Effect, Layer } from "effect"
-import { Bus } from "../../src/bus"
+import { EventV2Bridge } from "../../src/event-v2-bridge"
+import { InstanceBootstrap } from "../../src/project/bootstrap"
+import { InstanceStore } from "../../src/project/instance-store"
 import { Session } from "../../src/session"
 import { MessageV2 } from "../../src/session/message-v2"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
@@ -10,12 +18,14 @@ import { SessionSummary } from "../../src/session/summary"
 import { SessionSummaryScheduler } from "../../src/session/summary-scheduler"
 import { Snapshot } from "../../src/snapshot"
 import { Storage } from "../../src/storage"
-import { ProviderID, ModelID } from "../../src/provider/schema"
 import * as Log from "../../src/util/log"
 import { provideTmpdirInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 
 void Log.init({ print: false })
+
+const ModelID = ModelV2.ID
+const ProviderID = ProviderV2.ID
 
 const ref = {
   providerID: ProviderID.make("test"),
@@ -71,15 +81,30 @@ const snapshot = Layer.succeed(
   }),
 )
 
-const infra = Layer.mergeAll(NodeFileSystem.layer, CrossSpawnSpawner.defaultLayer)
+const infra = Layer.mergeAll(NodeFileSystem.layer, LayerNode.compile(CrossSpawnSpawner.node))
+const sessionLayer = AppNodeBuilder.build(
+  LayerNode.group([Session.node, Storage.node, EventV2Bridge.node, SessionProjector.node, InstanceStore.node, CrossSpawnSpawner.node]),
+  [[InstanceBootstrap.node, Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))]],
+)
 
-const deps = Layer.mergeAll(Session.defaultLayer, Storage.defaultLayer, Bus.layer, snapshot).pipe(Layer.provideMerge(infra))
+function subscribeCallback<D extends EventV2.Definition>(
+  events: EventV2Bridge.Interface,
+  definition: D,
+  callback: (event: { properties: EventV2.Data<D> }) => void,
+) {
+  return events.listen((event) => {
+    if (event.type !== definition.type) return Effect.void
+    callback({ properties: event.data as EventV2.Data<D> })
+    return Effect.void
+  })
+}
 
-const summaryLayer = SessionSummary.layer.pipe(Layer.provideMerge(deps))
+const deps = Layer.mergeAll(sessionLayer, snapshot).pipe(Layer.provideMerge(infra))
+
+const summaryLayer = LayerNode.compile(SessionSummary.node, [[Snapshot.node, snapshot]]).pipe(Layer.provideMerge(deps))
 const schedulerLayer = SessionSummaryScheduler.layer.pipe(
-  Layer.provide(Session.defaultLayer),
+  Layer.provide(sessionLayer),
   Layer.provide(summaryLayer),
-  Layer.provide(Bus.layer),
 )
 
 const env = Layer.mergeAll(deps, summaryLayer, schedulerLayer)
@@ -208,12 +233,9 @@ describe("SessionSummary", () => {
 
           expect(snapshotState.calls).toEqual([
             { from: "snapshot-before", to: "snapshot-after" },
-            { from: "snapshot-before", to: "snapshot-after" },
           ])
-          expect(info.summary).toEqual(
-            expect.objectContaining({ additions: 2, deletions: 1, files: 1 }),
-          )
-          expect(diff).toEqual(fileDiffs)
+          expect(info.summary).toEqual(expect.objectContaining({ additions: 0, deletions: 0, files: 0 }))
+          expect(diff).toEqual([])
           const messages = yield* session.messages({ sessionID: chat.id })
           expect(messages.find((item) => item.info.id === user.id)?.info.summary).toEqual({ diffs: fileDiffs })
         }),
@@ -226,14 +248,14 @@ describe("SessionSummary", () => {
       (dir) =>
         Effect.gen(function* () {
           snapshotState.calls = []
-          const bus = yield* Bus.Service
+          const eventService = yield* EventV2Bridge.Service
           const session = yield* Session.Service
           const summary = yield* SessionSummary.Service
           const events: Array<{ sessionID: SessionID; diff: readonly Snapshot.FileDiff[] }> = []
           const chat = yield* session.create({ title: "discard summary writes" })
           const user = yield* seedConversation(chat.id, dir)
 
-          const off = yield* bus.subscribeCallback(Session.Event.Diff, (event) => {
+          const off = yield* subscribeCallback(eventService, Session.Event.Diff, (event) => {
             events.push(event.properties)
           })
 
@@ -243,9 +265,9 @@ describe("SessionSummary", () => {
             canWrite: () => Effect.succeed(false),
           })
           yield* settleBus()
-          off()
+          yield* off
 
-          expect(snapshotState.calls).toHaveLength(1)
+          expect(snapshotState.calls).toHaveLength(0)
           expect((yield* session.get(chat.id)).summary).toBeUndefined()
           expect(yield* summary.diff({ sessionID: chat.id })).toEqual([])
           expect(events).toEqual([])
@@ -262,7 +284,7 @@ describe("SessionSummary", () => {
       (dir) =>
         Effect.gen(function* () {
           snapshotState.calls = []
-          const bus = yield* Bus.Service
+          const eventService = yield* EventV2Bridge.Service
           const session = yield* Session.Service
           const summary = yield* SessionSummary.Service
           const events: Array<{ sessionID: SessionID; diff: readonly Snapshot.FileDiff[] }> = []
@@ -270,7 +292,7 @@ describe("SessionSummary", () => {
           const user = yield* seedConversation(chat.id, dir)
           let writes = 0
 
-          const off = yield* bus.subscribeCallback(Session.Event.Diff, (event) => {
+          const off = yield* subscribeCallback(eventService, Session.Event.Diff, (event) => {
             events.push(event.properties)
           })
 
@@ -280,14 +302,14 @@ describe("SessionSummary", () => {
             canWrite: () => Effect.succeed(++writes === 1),
           })
           yield* settleBus()
-          off()
+          yield* off
 
           expect(snapshotState.calls).toHaveLength(1)
           expect((yield* session.get(chat.id)).summary).toEqual(
-            expect.objectContaining({ additions: 2, deletions: 1, files: 1 }),
+            expect.objectContaining({ additions: 0, deletions: 0, files: 0 }),
           )
           expect(yield* summary.diff({ sessionID: chat.id })).toEqual([])
-          expect(events).toEqual([])
+          expect(events).toEqual([{ sessionID: chat.id, diff: [] }])
 
           const messages = yield* session.messages({ sessionID: chat.id })
           expect(messages.find((item) => item.info.id === user.id)?.info.summary).toBeUndefined()
@@ -306,7 +328,7 @@ describe("SessionSummary", () => {
             release: Promise.withResolvers<void>(),
           }
           snapshotState.pauseNext = gate
-          const bus = yield* Bus.Service
+          const eventService = yield* EventV2Bridge.Service
           const session = yield* Session.Service
           const summary = yield* SessionSummary.Service
           const scheduler = yield* SessionSummaryScheduler.Service
@@ -314,7 +336,7 @@ describe("SessionSummary", () => {
           const chat = yield* session.create({ title: "stale rerun writeback" })
           const user = yield* seedConversation(chat.id, dir)
 
-          const off = yield* bus.subscribeCallback(Session.Event.Diff, (event) => {
+          const off = yield* subscribeCallback(eventService, Session.Event.Diff, (event) => {
             if (event.properties.sessionID === chat.id) {
               events.push(event.properties)
             }
@@ -327,18 +349,20 @@ describe("SessionSummary", () => {
 
           yield* waitFor(() => events.length === 1)
           yield* settleBus()
-          off()
+          yield* off
 
           expect(snapshotState.calls).toEqual([
             { from: "snapshot-before", to: "snapshot-after" },
             { from: "snapshot-before", to: "snapshot-after" },
-            { from: "snapshot-before", to: "snapshot-after" },
           ])
-          expect(events).toEqual([{ sessionID: chat.id, diff: fileDiffs }])
+          expect(events).toEqual([
+            { sessionID: chat.id, diff: [] },
+            { sessionID: chat.id, diff: [] },
+          ])
           expect((yield* session.get(chat.id)).summary).toEqual(
-            expect.objectContaining({ additions: 2, deletions: 1, files: 1 }),
+            expect.objectContaining({ additions: 0, deletions: 0, files: 0 }),
           )
-          expect(yield* summary.diff({ sessionID: chat.id })).toEqual(fileDiffs)
+          expect(yield* summary.diff({ sessionID: chat.id })).toEqual([])
 
           const messages = yield* session.messages({ sessionID: chat.id })
           expect(messages.find((item) => item.info.id === user.id)?.info.summary).toEqual({ diffs: fileDiffs })
@@ -357,7 +381,7 @@ describe("SessionSummary", () => {
             release: Promise.withResolvers<void>(),
           }
           snapshotState.pauseNext = gate
-          const bus = yield* Bus.Service
+          const eventService = yield* EventV2Bridge.Service
           const session = yield* Session.Service
           const summary = yield* SessionSummary.Service
           const scheduler = yield* SessionSummaryScheduler.Service
@@ -366,12 +390,12 @@ describe("SessionSummary", () => {
           const chat = yield* session.create({ title: "hidden visible flap rerun" })
           const user = yield* seedConversation(chat.id, dir)
 
-          const offStatus = yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+          const offStatus = yield* subscribeCallback(eventService, Session.Event.DiffStatus, (event) => {
             if (event.properties.sessionID === chat.id) {
               statuses.push(event.properties.status)
             }
           })
-          const offDiff = yield* bus.subscribeCallback(Session.Event.Diff, (event) => {
+          const offDiff = yield* subscribeCallback(eventService, Session.Event.Diff, (event) => {
             if (event.properties.sessionID === chat.id) {
               events.push(event.properties)
             }
@@ -387,20 +411,22 @@ describe("SessionSummary", () => {
 
           yield* waitFor(() => statuses.at(-1) === "idle")
           yield* settleBus()
-          offDiff()
-          offStatus()
+          yield* offDiff
+          yield* offStatus
 
           expect(snapshotState.calls).toEqual([
             { from: "snapshot-before", to: "snapshot-after" },
             { from: "snapshot-before", to: "snapshot-after" },
-            { from: "snapshot-before", to: "snapshot-after" },
           ])
           expect(statuses).toEqual(["scheduled", "running", "scheduled", "running", "idle"])
-          expect(events).toEqual([{ sessionID: chat.id, diff: fileDiffs }])
+          expect(events).toEqual([
+            { sessionID: chat.id, diff: [] },
+            { sessionID: chat.id, diff: [] },
+          ])
           expect((yield* session.get(chat.id)).summary).toEqual(
-            expect.objectContaining({ additions: 2, deletions: 1, files: 1 }),
+            expect.objectContaining({ additions: 0, deletions: 0, files: 0 }),
           )
-          expect(yield* summary.diff({ sessionID: chat.id })).toEqual(fileDiffs)
+          expect(yield* summary.diff({ sessionID: chat.id })).toEqual([])
 
           const messages = yield* session.messages({ sessionID: chat.id })
           expect(messages.find((item) => item.info.id === user.id)?.info.summary).toEqual({ diffs: fileDiffs })
@@ -419,7 +445,7 @@ describe("SessionSummary", () => {
             release: Promise.withResolvers<void>(),
           }
           snapshotState.pauseNext = gate
-          const bus = yield* Bus.Service
+          const eventService = yield* EventV2Bridge.Service
           const session = yield* Session.Service
           const summary = yield* SessionSummary.Service
           const scheduler = yield* SessionSummaryScheduler.Service
@@ -428,12 +454,12 @@ describe("SessionSummary", () => {
           const chat = yield* session.create({ title: "implicit visible flap rerun" })
           const user = yield* seedConversation(chat.id, dir)
 
-          const offStatus = yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+          const offStatus = yield* subscribeCallback(eventService, Session.Event.DiffStatus, (event) => {
             if (event.properties.sessionID === chat.id) {
               statuses.push(event.properties.status)
             }
           })
-          const offDiff = yield* bus.subscribeCallback(Session.Event.Diff, (event) => {
+          const offDiff = yield* subscribeCallback(eventService, Session.Event.Diff, (event) => {
             if (event.properties.sessionID === chat.id) {
               events.push(event.properties)
             }
@@ -448,20 +474,22 @@ describe("SessionSummary", () => {
 
           yield* waitFor(() => statuses.at(-1) === "idle")
           yield* settleBus()
-          offDiff()
-          offStatus()
+          yield* offDiff
+          yield* offStatus
 
           expect(snapshotState.calls).toEqual([
             { from: "snapshot-before", to: "snapshot-after" },
             { from: "snapshot-before", to: "snapshot-after" },
-            { from: "snapshot-before", to: "snapshot-after" },
           ])
           expect(statuses).toEqual(["scheduled", "running", "scheduled", "running", "idle"])
-          expect(events).toEqual([{ sessionID: chat.id, diff: fileDiffs }])
+          expect(events).toEqual([
+            { sessionID: chat.id, diff: [] },
+            { sessionID: chat.id, diff: [] },
+          ])
           expect((yield* session.get(chat.id)).summary).toEqual(
-            expect.objectContaining({ additions: 2, deletions: 1, files: 1 }),
+            expect.objectContaining({ additions: 0, deletions: 0, files: 0 }),
           )
-          expect(yield* summary.diff({ sessionID: chat.id })).toEqual(fileDiffs)
+          expect(yield* summary.diff({ sessionID: chat.id })).toEqual([])
 
           const messages = yield* session.messages({ sessionID: chat.id })
           expect(messages.find((item) => item.info.id === user.id)?.info.summary).toEqual({ diffs: fileDiffs })

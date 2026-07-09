@@ -1,7 +1,13 @@
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { EventV2 } from "@opencode-ai/core/event"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { describe, expect, test } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Layer } from "effect"
-import { Bus } from "../../src/bus"
+import { EventV2Bridge } from "../../src/event-v2-bridge"
+import { InstanceBootstrap } from "../../src/project/bootstrap"
+import { InstanceStore } from "../../src/project/instance-store"
 import { Session } from "../../src/session"
 import { MessageID, SessionID } from "../../src/session/schema"
 import { applyForegroundFinish, applyForegroundStart } from "../../src/session/summary-scheduler-foreground"
@@ -57,12 +63,27 @@ const summary = Layer.succeed(
   }),
 )
 
-const deps = Layer.mergeAll(Bus.layer, summary)
+function subscribeCallback<D extends EventV2.Definition>(
+  events: EventV2Bridge.Interface,
+  definition: D,
+  callback: (event: { properties: EventV2.Data<D> }) => void,
+) {
+  return events.listen((event) => {
+    if (event.type !== definition.type) return Effect.void
+    callback({ properties: event.data as EventV2.Data<D> })
+    return Effect.void
+  })
+}
+
+const eventLayer = AppNodeBuilder.build(EventV2Bridge.node)
+const sessionLayer = AppNodeBuilder.build(
+  LayerNode.group([Session.node, EventV2Bridge.node, SessionProjector.node, InstanceStore.node, CrossSpawnSpawner.node]),
+  [[InstanceBootstrap.node, Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))]],
+)
+const deps = Layer.mergeAll(sessionLayer, summary)
 const env = Layer.mergeAll(
-  CrossSpawnSpawner.defaultLayer,
   deps,
-  Session.defaultLayer,
-  SessionSummaryScheduler.layer.pipe(Layer.provide(Session.defaultLayer), Layer.provideMerge(deps)),
+  SessionSummaryScheduler.layer.pipe(Layer.provide(sessionLayer), Layer.provideMerge(deps)),
 )
 
 const it = testEffect(env)
@@ -131,16 +152,16 @@ describe("SessionSummaryScheduler", () => {
     get: () => Effect.die(new Error("session lookup crashed")),
   })
   const sessionGetErrorEnv = Layer.mergeAll(
-    Bus.layer,
+    eventLayer,
     summary,
     sessionGetError,
     SessionSummaryScheduler.layer.pipe(
       Layer.provide(summary),
-      Layer.provide(Bus.layer),
+      Layer.provide(eventLayer),
       Layer.provide(sessionGetError),
     ),
   )
-  const errorIt = testEffect(Layer.mergeAll(CrossSpawnSpawner.defaultLayer, sessionGetErrorEnv))
+  const errorIt = testEffect(Layer.mergeAll(LayerNode.compile(CrossSpawnSpawner.node), sessionGetErrorEnv))
 
   it.live("markDirty automatically runs summarize without manual flush", () =>
     provideTmpdirInstance(() =>
@@ -209,14 +230,14 @@ describe("SessionSummaryScheduler", () => {
       Effect.gen(function* () {
         state.calls.length = 0
         state.failures = 0
-        const bus = yield* Bus.Service
+        const events = yield* EventV2Bridge.Service
         const scheduler = yield* SessionSummaryScheduler.Service
         const sessions = yield* Session.Service
         const statuses: string[] = []
         const session = yield* sessions.create()
         const sessionID = session.id
 
-        const off = yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+        const off = yield* subscribeCallback(events, Session.Event.DiffStatus, (event) => {
           statuses.push(event.properties.status)
         })
 
@@ -238,7 +259,7 @@ describe("SessionSummaryScheduler", () => {
 
         yield* scheduler.flush()
         yield* settleBus()
-        off()
+        yield* off
 
         expect(state.calls).toHaveLength(1)
         expect(statuses).toEqual(["scheduled", "running", "idle"])
@@ -300,7 +321,7 @@ describe("SessionSummaryScheduler", () => {
         }
         state.pauseNext = gate
 
-        const bus = yield* Bus.Service
+        const events = yield* EventV2Bridge.Service
         const scheduler = yield* SessionSummaryScheduler.Service
         const sessions = yield* Session.Service
         const statuses: string[] = []
@@ -309,7 +330,7 @@ describe("SessionSummaryScheduler", () => {
         const first = MessageID.ascending()
         const second = MessageID.ascending()
 
-        const off = yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+        const off = yield* subscribeCallback(events, Session.Event.DiffStatus, (event) => {
           statuses.push(event.properties.status)
         })
 
@@ -337,7 +358,7 @@ describe("SessionSummaryScheduler", () => {
 
         yield* scheduler.flush()
         yield* settleBus()
-        off()
+        yield* off
 
         expect(state.calls).toEqual([
           { sessionID, messageID: first },
@@ -354,7 +375,7 @@ describe("SessionSummaryScheduler", () => {
         state.calls.length = 0
         state.failures = 1
         state.pauseNext = undefined
-        const bus = yield* Bus.Service
+        const events = yield* EventV2Bridge.Service
         const scheduler = yield* SessionSummaryScheduler.Service
         const sessions = yield* Session.Service
         const statuses: string[] = []
@@ -362,7 +383,7 @@ describe("SessionSummaryScheduler", () => {
         const sessionID = session.id
         const messageID = MessageID.ascending()
 
-        const off = yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+        const off = yield* subscribeCallback(events, Session.Event.DiffStatus, (event) => {
           statuses.push(event.properties.status)
         })
 
@@ -377,7 +398,7 @@ describe("SessionSummaryScheduler", () => {
         yield* scheduler.markDirty({ sessionID, messageID, version: 2 })
         const second = yield* scheduler.flush().pipe(Effect.exit)
         yield* settleBus()
-        off()
+        yield* off
 
         expect(Exit.isSuccess(second)).toBe(true)
         expect(state.calls).toEqual([
@@ -396,7 +417,7 @@ describe("SessionSummaryScheduler", () => {
         state.writes.length = 0
         state.failures = 1
         state.pauseNext = undefined
-        const bus = yield* Bus.Service
+        const events = yield* EventV2Bridge.Service
         const scheduler = yield* SessionSummaryScheduler.Service
         const sessions = yield* Session.Service
         const statuses: string[] = []
@@ -404,14 +425,14 @@ describe("SessionSummaryScheduler", () => {
         const sessionID = session.id
         const messageID = MessageID.ascending()
 
-        const off = yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+        const off = yield* subscribeCallback(events, Session.Event.DiffStatus, (event) => {
           statuses.push(event.properties.status)
         })
 
         yield* scheduler.markDirty({ sessionID, messageID, version: 1 })
         yield* waitFor(() => state.calls.length === 2, 1500)
         yield* settleBus()
-        off()
+        yield* off
 
         expect(state.calls).toEqual([
           { sessionID, messageID },
@@ -434,14 +455,14 @@ describe("SessionSummaryScheduler", () => {
         }
         state.pauseNext = gate
 
-        const bus = yield* Bus.Service
+        const events = yield* EventV2Bridge.Service
         const scheduler = yield* SessionSummaryScheduler.Service
         const sessions = yield* Session.Service
         const statuses: string[] = []
         const session = yield* sessions.create()
         const messageID = MessageID.ascending()
 
-        const off = yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+        const off = yield* subscribeCallback(events, Session.Event.DiffStatus, (event) => {
           if (event.properties.sessionID === session.id) {
             statuses.push(event.properties.status)
           }
@@ -453,7 +474,7 @@ describe("SessionSummaryScheduler", () => {
         gate.release.resolve()
         yield* Effect.sleep("20 millis")
         yield* settleBus()
-        off()
+        yield* off
 
         expect(state.calls).toEqual([{ sessionID: session.id, messageID }])
         expect(state.writes).toEqual([])
@@ -474,14 +495,14 @@ describe("SessionSummaryScheduler", () => {
         }
         state.pauseNext = gate
 
-        const bus = yield* Bus.Service
+        const events = yield* EventV2Bridge.Service
         const scheduler = yield* SessionSummaryScheduler.Service
         const sessions = yield* Session.Service
         const statuses: string[] = []
         const session = yield* sessions.create()
         const messageID = MessageID.ascending()
 
-        const off = yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+        const off = yield* subscribeCallback(events, Session.Event.DiffStatus, (event) => {
           if (event.properties.sessionID === session.id) {
             statuses.push(event.properties.status)
           }
@@ -502,7 +523,7 @@ describe("SessionSummaryScheduler", () => {
         yield* scheduler.syncVisible([session.id])
         yield* waitFor(() => state.calls.length === 2)
         yield* settleBus()
-        off()
+        yield* off
 
         expect(state.calls).toEqual([
           { sessionID: session.id, messageID },
@@ -527,13 +548,13 @@ describe("SessionSummaryScheduler", () => {
         }
         state.pauseNext = gate
 
-        const bus = yield* Bus.Service
+        const events = yield* EventV2Bridge.Service
         const scheduler = yield* SessionSummaryScheduler.Service
         const sessionID = SessionID.descending()
         const messageID = MessageID.ascending()
         const statuses: string[] = []
 
-        const off = yield* bus.subscribeCallback(Session.Event.DiffStatus, (event) => {
+        const off = yield* subscribeCallback(events, Session.Event.DiffStatus, (event) => {
           if (event.properties.sessionID === sessionID) statuses.push(event.properties.status)
         })
 
@@ -546,7 +567,7 @@ describe("SessionSummaryScheduler", () => {
 
         const exit = yield* Fiber.join(flush).pipe(Effect.exit)
         yield* settleBus()
-        off()
+        yield* off
 
         expect(Exit.isFailure(exit)).toBe(true)
         if (Exit.isFailure(exit)) {

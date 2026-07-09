@@ -21,7 +21,9 @@ type CallOpenAICompatibleInput = {
 const base64Pattern = /^[A-Za-z0-9+/]+={0,2}$/
 const dataUrlPattern = /^data:(image\/[A-Za-z0-9.+-]+);base64,(.*)$/is
 
-export const callOpenAICompatible = Effect.fn("GenerateImage.openaiCompatible")(function* (input: CallOpenAICompatibleInput) {
+export const callOpenAICompatible = Effect.fn("GenerateImage.openaiCompatible")(function* (
+  input: CallOpenAICompatibleInput,
+) {
   validateSize(input.size, input.model)
 
   if (input.action === "generate") {

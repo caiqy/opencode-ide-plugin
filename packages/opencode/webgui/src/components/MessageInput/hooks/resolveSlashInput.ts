@@ -1,4 +1,8 @@
-import { hasCommandSearchCache, loadCommandSearchCommands, resetCommandSearchCache } from "../../../hooks/useCommandSearch"
+import {
+  hasCommandSearchCache,
+  loadCommandSearchCommands,
+  resetCommandSearchCache,
+} from "../../../hooks/useCommandSearch"
 
 type SlashResolution = { mode: "prompt" } | { mode: "command"; name: string; arguments: string }
 

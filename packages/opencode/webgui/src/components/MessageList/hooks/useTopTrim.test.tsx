@@ -164,10 +164,12 @@ describe("useTopTrim", () => {
 
   it("prepend restore 通过 history-restore programmatic scroll 包裹", async () => {
     let parent: HTMLElement | null = null
-    const runProgrammaticScroll = vi.fn((_cause: "history-restore" | "history-trim", fn: (node: HTMLElement) => void) => {
-      if (!parent) throw new Error("missing scroll parent")
-      fn(parent)
-    })
+    const runProgrammaticScroll = vi.fn(
+      (_cause: "history-restore" | "history-trim", fn: (node: HTMLElement) => void) => {
+        if (!parent) throw new Error("missing scroll parent")
+        fn(parent)
+      },
+    )
     const view = render(
       <Harness
         sessionID="s1"
@@ -610,10 +612,12 @@ describe("useTopTrim", () => {
 
   it("顶部高度补偿通过 history-trim programmatic scroll 包裹", async () => {
     let parent: HTMLElement | null = null
-    const runProgrammaticScroll = vi.fn((_cause: "history-restore" | "history-trim", fn: (node: HTMLElement) => void) => {
-      if (!parent) throw new Error("missing scroll parent")
-      fn(parent)
-    })
+    const runProgrammaticScroll = vi.fn(
+      (_cause: "history-restore" | "history-trim", fn: (node: HTMLElement) => void) => {
+        if (!parent) throw new Error("missing scroll parent")
+        fn(parent)
+      },
+    )
     const view = render(
       <Harness
         sessionID="s1"

@@ -25,6 +25,7 @@
 ### Task 1: 新增消息复制纯函数与失败测试
 
 **Files:**
+
 - Create: `packages/opencode/webgui/src/components/MessageList/messageCopy.ts`
 - Create: `packages/opencode/webgui/src/components/MessageList/messageCopy.test.ts`
 
@@ -39,11 +40,7 @@ export function getMessageCopyText(_message: Message) {
   return null
 }
 
-export function getUserTextCopySelection(_input: {
-  text: string
-  wrapper: HTMLElement
-  selection: Selection
-}) {
+export function getUserTextCopySelection(_input: { text: string; wrapper: HTMLElement; selection: Selection }) {
   return null
 }
 ```
@@ -131,11 +128,7 @@ export function getMessageCopyText(message: Message) {
   return text.length > 0 ? text : null
 }
 
-export function getUserTextCopySelection(_input: {
-  text: string
-  wrapper: HTMLElement
-  selection: Selection
-}) {
+export function getUserTextCopySelection(_input: { text: string; wrapper: HTMLElement; selection: Selection }) {
   return null
 }
 ```
@@ -155,6 +148,7 @@ Expected: PASS。
 ### Task 2: 增加用户选区映射纯函数
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/MessageList/messageCopy.ts`
 - Modify: `packages/opencode/webgui/src/components/MessageList/messageCopy.test.ts`
 
@@ -163,24 +157,25 @@ Expected: PASS。
 Append to `messageCopy.test.ts` inside `describe`:
 
 ```ts
-  it("普通用户文本选区应返回原文片段", () => {
-    const wrapper = document.createElement("div")
-    wrapper.innerHTML = '<span data-rawpart="1" data-raw="hello world" data-raw-start="0" data-raw-end="11">hello world</span>'
-    document.body.appendChild(wrapper)
-    const text = wrapper.firstChild?.firstChild
-    expect(text).toBeTruthy()
+it("普通用户文本选区应返回原文片段", () => {
+  const wrapper = document.createElement("div")
+  wrapper.innerHTML =
+    '<span data-rawpart="1" data-raw="hello world" data-raw-start="0" data-raw-end="11">hello world</span>'
+  document.body.appendChild(wrapper)
+  const text = wrapper.firstChild?.firstChild
+  expect(text).toBeTruthy()
 
-    const range = document.createRange()
-    range.setStart(text!, 6)
-    range.setEnd(text!, 11)
-    const selection = window.getSelection()!
-    selection.removeAllRanges()
-    selection.addRange(range)
+  const range = document.createRange()
+  range.setStart(text!, 6)
+  range.setEnd(text!, 11)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
 
-    expect(getUserTextCopySelection({ text: "hello world", wrapper, selection })).toBe("world")
-    wrapper.remove()
-    selection.removeAllRanges()
-  })
+  expect(getUserTextCopySelection({ text: "hello world", wrapper, selection })).toBe("world")
+  wrapper.remove()
+  selection.removeAllRanges()
+})
 ```
 
 - [ ] **Step 2: 运行测试确认 RED**
@@ -234,8 +229,12 @@ export function getUserTextCopySelection(input: { text: string; wrapper: HTMLEle
 
     const first = index === 0
     const last = index === end - start
-    const localStart = first && contains(range.startContainer, part) ? offsetWithin(part, range.startContainer, range.startOffset) : 0
-    const localEnd = last && contains(range.endContainer, part) ? offsetWithin(part, range.endContainer, range.endOffset) : partEnd - partStart
+    const localStart =
+      first && contains(range.startContainer, part) ? offsetWithin(part, range.startContainer, range.startOffset) : 0
+    const localEnd =
+      last && contains(range.endContainer, part)
+        ? offsetWithin(part, range.endContainer, range.endOffset)
+        : partEnd - partStart
     const boundedStart = Math.max(0, Math.min(localStart, partEnd - partStart))
     const boundedEnd = Math.max(0, Math.min(localEnd, partEnd - partStart))
 
@@ -272,79 +271,79 @@ Expected: PASS。
 Append to `messageCopy.test.ts` inside `describe`:
 
 ```ts
-  it("包含 mention 的选区应复制 raw mention 文本", () => {
-    const wrapper = document.createElement("div")
-    wrapper.innerHTML = [
-      '<span data-rawpart="1" data-raw="open " data-raw-start="0" data-raw-end="5">open </span>',
-      '<span data-rawpart="1" data-raw-mention="1" data-raw="@file.txt" data-raw-start="5" data-raw-end="14"><button>file.txt</button></span>',
-    ].join("")
-    document.body.appendChild(wrapper)
+it("包含 mention 的选区应复制 raw mention 文本", () => {
+  const wrapper = document.createElement("div")
+  wrapper.innerHTML = [
+    '<span data-rawpart="1" data-raw="open " data-raw-start="0" data-raw-end="5">open </span>',
+    '<span data-rawpart="1" data-raw-mention="1" data-raw="@file.txt" data-raw-start="5" data-raw-end="14"><button>file.txt</button></span>',
+  ].join("")
+  document.body.appendChild(wrapper)
 
-    const range = document.createRange()
-    range.setStart(wrapper.firstChild!.firstChild!, 0)
-    range.setEnd(wrapper.lastChild!, 1)
-    const selection = window.getSelection()!
-    selection.removeAllRanges()
-    selection.addRange(range)
+  const range = document.createRange()
+  range.setStart(wrapper.firstChild!.firstChild!, 0)
+  range.setEnd(wrapper.lastChild!, 1)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
 
-    expect(getUserTextCopySelection({ text: "open @file.txt", wrapper, selection })).toBe("open @file.txt")
-    wrapper.remove()
-    selection.removeAllRanges()
-  })
+  expect(getUserTextCopySelection({ text: "open @file.txt", wrapper, selection })).toBe("open @file.txt")
+  wrapper.remove()
+  selection.removeAllRanges()
+})
 
-  it("部分选中 mention 时应复制完整 raw mention 文本", () => {
-    const wrapper = document.createElement("div")
-    wrapper.innerHTML =
-      '<span data-rawpart="1" data-raw-mention="1" data-raw="@file.txt" data-raw-start="0" data-raw-end="9"><button>file.txt</button></span>'
-    document.body.appendChild(wrapper)
+it("部分选中 mention 时应复制完整 raw mention 文本", () => {
+  const wrapper = document.createElement("div")
+  wrapper.innerHTML =
+    '<span data-rawpart="1" data-raw-mention="1" data-raw="@file.txt" data-raw-start="0" data-raw-end="9"><button>file.txt</button></span>'
+  document.body.appendChild(wrapper)
 
-    const label = wrapper.querySelector("button")!.firstChild!
-    const range = document.createRange()
-    range.setStart(label, 1)
-    range.setEnd(label, 4)
-    const selection = window.getSelection()!
-    selection.removeAllRanges()
-    selection.addRange(range)
+  const label = wrapper.querySelector("button")!.firstChild!
+  const range = document.createRange()
+  range.setStart(label, 1)
+  range.setEnd(label, 4)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
 
-    expect(getUserTextCopySelection({ text: "@file.txt", wrapper, selection })).toBe("@file.txt")
-    wrapper.remove()
-    selection.removeAllRanges()
-  })
+  expect(getUserTextCopySelection({ text: "@file.txt", wrapper, selection })).toBe("@file.txt")
+  wrapper.remove()
+  selection.removeAllRanges()
+})
 
-  it("选区不在 wrapper 内时返回 null 以放行默认复制", () => {
-    const wrapper = document.createElement("div")
-    wrapper.textContent = "inside"
-    const outside = document.createElement("div")
-    outside.textContent = "outside"
-    document.body.append(wrapper, outside)
+it("选区不在 wrapper 内时返回 null 以放行默认复制", () => {
+  const wrapper = document.createElement("div")
+  wrapper.textContent = "inside"
+  const outside = document.createElement("div")
+  outside.textContent = "outside"
+  document.body.append(wrapper, outside)
 
-    const range = document.createRange()
-    range.selectNodeContents(outside)
-    const selection = window.getSelection()!
-    selection.removeAllRanges()
-    selection.addRange(range)
+  const range = document.createRange()
+  range.selectNodeContents(outside)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
 
-    expect(getUserTextCopySelection({ text: "inside", wrapper, selection })).toBeNull()
-    wrapper.remove()
-    outside.remove()
-    selection.removeAllRanges()
-  })
+  expect(getUserTextCopySelection({ text: "inside", wrapper, selection })).toBeNull()
+  wrapper.remove()
+  outside.remove()
+  selection.removeAllRanges()
+})
 
-  it("映射失败时应 fallback 到可见选区文本", () => {
-    const wrapper = document.createElement("div")
-    wrapper.innerHTML = '<span data-rawpart="1" data-raw="broken" data-raw-start="x" data-raw-end="y">visible</span>'
-    document.body.appendChild(wrapper)
+it("映射失败时应 fallback 到可见选区文本", () => {
+  const wrapper = document.createElement("div")
+  wrapper.innerHTML = '<span data-rawpart="1" data-raw="broken" data-raw-start="x" data-raw-end="y">visible</span>'
+  document.body.appendChild(wrapper)
 
-    const range = document.createRange()
-    range.selectNodeContents(wrapper.firstChild!)
-    const selection = window.getSelection()!
-    selection.removeAllRanges()
-    selection.addRange(range)
+  const range = document.createRange()
+  range.selectNodeContents(wrapper.firstChild!)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
 
-    expect(getUserTextCopySelection({ text: "broken", wrapper, selection })).toBe("visible")
-    wrapper.remove()
-    selection.removeAllRanges()
-  })
+  expect(getUserTextCopySelection({ text: "broken", wrapper, selection })).toBe("visible")
+  wrapper.remove()
+  selection.removeAllRanges()
+})
 ```
 
 - [ ] **Step 6: 运行测试确认 RED 或发现缺口**
@@ -386,6 +385,7 @@ Expected: PASS。
 ### Task 3: TextPart 接入统一选区复制
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/MessageList/TextPart.tsx`
 - Modify: `packages/opencode/webgui/src/components/MessageList/TextPart.test.tsx`
 
@@ -394,47 +394,47 @@ Expected: PASS。
 Append to `TextPart.test.tsx` inside `describe`:
 
 ```tsx
-  it("用户消息普通选区复制应写入选区文本", () => {
-    render(<TextPart part={{ id: "p4", type: "text", text: "hello world" } as any} isUser={true} />)
+it("用户消息普通选区复制应写入选区文本", () => {
+  render(<TextPart part={{ id: "p4", type: "text", text: "hello world" } as any} isUser={true} />)
 
-    const content = screen.getByText("hello world")
-    const text = content.firstChild!
-    const range = document.createRange()
-    range.setStart(text, 6)
-    range.setEnd(text, 11)
-    const selection = window.getSelection()!
-    selection.removeAllRanges()
-    selection.addRange(range)
+  const content = screen.getByText("hello world")
+  const text = content.firstChild!
+  const range = document.createRange()
+  range.setStart(text, 6)
+  range.setEnd(text, 11)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
 
-    const setData = vi.fn()
-    fireEvent.copy(content, {
-      clipboardData: { setData },
-    })
-
-    expect(setData).toHaveBeenCalledWith("text/plain", "world")
-    selection.removeAllRanges()
+  const setData = vi.fn()
+  fireEvent.copy(content, {
+    clipboardData: { setData },
   })
 
-  it("用户消息折叠选区复制应写入整条消息", () => {
-    render(<TextPart part={{ id: "p5", type: "text", text: "hello world" } as any} isUser={true} />)
+  expect(setData).toHaveBeenCalledWith("text/plain", "world")
+  selection.removeAllRanges()
+})
 
-    const content = screen.getByText("hello world")
-    const text = content.firstChild!
-    const range = document.createRange()
-    range.setStart(text, 3)
-    range.collapse(true)
-    const selection = window.getSelection()!
-    selection.removeAllRanges()
-    selection.addRange(range)
+it("用户消息折叠选区复制应写入整条消息", () => {
+  render(<TextPart part={{ id: "p5", type: "text", text: "hello world" } as any} isUser={true} />)
 
-    const setData = vi.fn()
-    fireEvent.copy(content, {
-      clipboardData: { setData },
-    })
+  const content = screen.getByText("hello world")
+  const text = content.firstChild!
+  const range = document.createRange()
+  range.setStart(text, 3)
+  range.collapse(true)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
 
-    expect(setData).toHaveBeenCalledWith("text/plain", "hello world")
-    selection.removeAllRanges()
+  const setData = vi.fn()
+  fireEvent.copy(content, {
+    clipboardData: { setData },
   })
+
+  expect(setData).toHaveBeenCalledWith("text/plain", "hello world")
+  selection.removeAllRanges()
+})
 ```
 
 - [ ] **Step 2: 运行测试确认 RED**
@@ -458,20 +458,20 @@ import { getUserTextCopySelection } from "./messageCopy"
 Replace the large `handleCopy` body in the user branch with:
 
 ```ts
-    const handleCopy = (e: React.ClipboardEvent<HTMLDivElement>) => {
-      if (!e.clipboardData) return
+const handleCopy = (e: React.ClipboardEvent<HTMLDivElement>) => {
+  if (!e.clipboardData) return
 
-      const selection = window.getSelection()
-      const wrapper = ref.current
-      if (!selection || !wrapper || selection.rangeCount === 0) return
+  const selection = window.getSelection()
+  const wrapper = ref.current
+  if (!selection || !wrapper || selection.rangeCount === 0) return
 
-      const value = getUserTextCopySelection({ text, wrapper, selection })
-      if (!value) return
+  const value = getUserTextCopySelection({ text, wrapper, selection })
+  if (!value) return
 
-      e.preventDefault()
-      e.stopPropagation()
-      e.clipboardData.setData("text/plain", value)
-    }
+  e.preventDefault()
+  e.stopPropagation()
+  e.clipboardData.setData("text/plain", value)
+}
 ```
 
 - [ ] **Step 4: 运行 TextPart 测试确认 GREEN**
@@ -489,6 +489,7 @@ Expected: PASS。
 ### Task 4: MessageRow 接入统一按钮复制文本
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/components/MessageList/MessageRow.tsx`
 - Modify: `packages/opencode/webgui/src/components/MessageList/MessageRow.test.tsx`
 
@@ -513,26 +514,26 @@ vi.mock("./ActionButtons", () => ({
 Append to `MessageRow.test.tsx` inside `describe`:
 
 ```tsx
-  it("用户消息复制按钮应接收 canonical copyText", () => {
-    const message = {
-      info: {
-        id: "u-copy",
-        sessionID: "s1",
-        role: "user",
-        time: { created: 1 },
-      },
-      parts: [
-        { id: "p1", type: "text", text: "  第一段" },
-        { id: "p2", type: "text", text: "忽略", synthetic: true },
-        { id: "p3", type: "text", text: "第二段  " },
-      ],
-    }
+it("用户消息复制按钮应接收 canonical copyText", () => {
+  const message = {
+    info: {
+      id: "u-copy",
+      sessionID: "s1",
+      role: "user",
+      time: { created: 1 },
+    },
+    parts: [
+      { id: "p1", type: "text", text: "  第一段" },
+      { id: "p2", type: "text", text: "忽略", synthetic: true },
+      { id: "p3", type: "text", text: "第二段  " },
+    ],
+  }
 
-    const { container } = render(<MessageRow message={message as never} isLast />)
-    fireEvent.mouseEnter(container.firstElementChild!)
+  const { container } = render(<MessageRow message={message as never} isLast />)
+  fireEvent.mouseEnter(container.firstElementChild!)
 
-    expect(actionButtonsSpy).toHaveBeenCalledWith(expect.objectContaining({ copyText: "第一段\n第二段" }))
-  })
+  expect(actionButtonsSpy).toHaveBeenCalledWith(expect.objectContaining({ copyText: "第一段\n第二段" }))
+})
 ```
 
 Ensure `fireEvent` is imported:
@@ -562,7 +563,7 @@ import { getMessageCopyText } from "./messageCopy"
 Replace `copyText` construction with:
 
 ```ts
-  const copyText = getMessageCopyText(message) ?? ""
+const copyText = getMessageCopyText(message) ?? ""
 ```
 
 - [ ] **Step 5: 运行测试确认 GREEN**
@@ -580,6 +581,7 @@ Expected: PASS。
 ### Task 5: 补强 KeyboardHandler 快捷键语义测试
 
 **Files:**
+
 - Modify: `packages/opencode/webgui/src/lib/keyboardHandler.test.ts`
 
 - [ ] **Step 1: 写 copy 成功阻止默认测试**
@@ -587,76 +589,76 @@ Expected: PASS。
 Append to `keyboardHandler.test.ts` inside `describe`:
 
 ```ts
-  it("当 Ctrl+C 的 execCommand(copy) 成功时应阻止默认行为", () => {
-    const el = createEditable()
-    el.value = "hello"
-    el.setSelectionRange(0, 5)
+it("当 Ctrl+C 的 execCommand(copy) 成功时应阻止默认行为", () => {
+  const el = createEditable()
+  el.value = "hello"
+  el.setSelectionRange(0, 5)
 
-    const prev = Reflect.get(document, "execCommand")
-    const cmd = vi.fn(() => true)
-    Object.defineProperty(document, "execCommand", {
-      value: cmd,
-      configurable: true,
-    })
-    const handler = new KeyboardHandler()
-    const ev = new KeyboardEvent("keydown", {
-      key: "c",
-      code: "KeyC",
-      ctrlKey: true,
-      bubbles: true,
-      cancelable: true,
-    })
-
-    el.dispatchEvent(ev)
-
-    expect(cmd).toHaveBeenCalledWith("copy")
-    expect(ev.defaultPrevented).toBe(true)
-
-    handler.destroy()
-    Object.defineProperty(document, "execCommand", {
-      value: prev,
-      configurable: true,
-    })
+  const prev = Reflect.get(document, "execCommand")
+  const cmd = vi.fn(() => true)
+  Object.defineProperty(document, "execCommand", {
+    value: cmd,
+    configurable: true,
+  })
+  const handler = new KeyboardHandler()
+  const ev = new KeyboardEvent("keydown", {
+    key: "c",
+    code: "KeyC",
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
   })
 
-  it("非编辑区域存在 DOM 选区时 Ctrl+C 应在 iframe 内执行 copy 命令", () => {
-    const text = document.createElement("div")
-    text.textContent = "message text"
-    document.body.appendChild(text)
-    const range = document.createRange()
-    range.selectNodeContents(text)
-    const selection = window.getSelection()!
-    selection.removeAllRanges()
-    selection.addRange(range)
+  el.dispatchEvent(ev)
 
-    const prev = Reflect.get(document, "execCommand")
-    const cmd = vi.fn(() => true)
-    Object.defineProperty(document, "execCommand", {
-      value: cmd,
-      configurable: true,
-    })
-    const handler = new KeyboardHandler()
-    const ev = new KeyboardEvent("keydown", {
-      key: "c",
-      code: "KeyC",
-      ctrlKey: true,
-      bubbles: true,
-      cancelable: true,
-    })
+  expect(cmd).toHaveBeenCalledWith("copy")
+  expect(ev.defaultPrevented).toBe(true)
 
-    text.dispatchEvent(ev)
-
-    expect(cmd).toHaveBeenCalledWith("copy")
-    expect(ev.defaultPrevented).toBe(true)
-    expect(postMessageSpy).not.toHaveBeenCalled()
-
-    handler.destroy()
-    Object.defineProperty(document, "execCommand", {
-      value: prev,
-      configurable: true,
-    })
-    selection.removeAllRanges()
+  handler.destroy()
+  Object.defineProperty(document, "execCommand", {
+    value: prev,
+    configurable: true,
   })
+})
+
+it("非编辑区域存在 DOM 选区时 Ctrl+C 应在 iframe 内执行 copy 命令", () => {
+  const text = document.createElement("div")
+  text.textContent = "message text"
+  document.body.appendChild(text)
+  const range = document.createRange()
+  range.selectNodeContents(text)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
+
+  const prev = Reflect.get(document, "execCommand")
+  const cmd = vi.fn(() => true)
+  Object.defineProperty(document, "execCommand", {
+    value: cmd,
+    configurable: true,
+  })
+  const handler = new KeyboardHandler()
+  const ev = new KeyboardEvent("keydown", {
+    key: "c",
+    code: "KeyC",
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
+  })
+
+  text.dispatchEvent(ev)
+
+  expect(cmd).toHaveBeenCalledWith("copy")
+  expect(ev.defaultPrevented).toBe(true)
+  expect(postMessageSpy).not.toHaveBeenCalled()
+
+  handler.destroy()
+  Object.defineProperty(document, "execCommand", {
+    value: prev,
+    configurable: true,
+  })
+  selection.removeAllRanges()
+})
 ```
 
 - [ ] **Step 2: 运行测试确认 GREEN**
@@ -674,6 +676,7 @@ Expected: PASS。此任务不改生产代码。
 ### Task 6: 全量相关验证
 
 **Files:**
+
 - No code changes unless tests reveal issues.
 
 - [ ] **Step 1: 运行 MessageList 相关测试**

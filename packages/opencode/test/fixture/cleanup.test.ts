@@ -5,7 +5,11 @@ import path from "path"
 import { cleanupTestDir } from "./cleanup"
 import { tmpdir } from "./fixture"
 
-const exists = (file: string) => fs.stat(file).then(() => true).catch(() => false)
+const exists = (file: string) =>
+  fs
+    .stat(file)
+    .then(() => true)
+    .catch(() => false)
 
 test("cleanup helper stays focused on directory cleanup", async () => {
   const source = await Bun.file(new URL("./cleanup.ts", import.meta.url)).text()

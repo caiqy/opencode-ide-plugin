@@ -1,17 +1,13 @@
 import { Effect, Schema } from "effect"
 import { Config } from "../config"
 import { Provider } from "../provider"
-import { ModelID, ProviderID } from "../provider/schema"
+import { ModelV2 } from "@opencode-ai/core/model"
+import { ProviderV2 } from "@opencode-ai/core/provider"
 import { InstanceState } from "@/effect/instance-state"
 import * as Tool from "./tool"
 import DESCRIPTION from "./generate-image.txt"
 import { callOpenAICompatible } from "./generate-image/openai-compatible"
-import {
-  pickAdapter,
-  resolveCredentials,
-  resolveImageFieldStyle,
-  resolveModelParts,
-} from "./generate-image/config"
+import { pickAdapter, resolveCredentials, resolveImageFieldStyle, resolveModelParts } from "./generate-image/config"
 import { decodeImageInput, validateMask, validatePrompt } from "./generate-image/input"
 import { persistImages } from "./generate-image/persist"
 
@@ -44,7 +40,8 @@ export const Parameters = Schema.Struct({
   format: Schema.Literals(["png", "jpeg", "webp"])
     .annotate({ description: "Requested output image format" })
     .pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("png" as const))),
-  n: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).check(Schema.isLessThanOrEqualTo(10))
+  n: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
+    .check(Schema.isLessThanOrEqualTo(10))
     .annotate({ description: "Number of images to generate (1-10)" })
     .pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed(1))),
 })
@@ -98,8 +95,8 @@ export const GenerateImageTool = Tool.define(
             provider: providerOverride,
             model: modelOverride,
           })
-          const providerID = ProviderID.make(modelParts.providerID)
-          const modelID = ModelID.make(modelParts.modelID)
+          const providerID = ProviderV2.ID.make(modelParts.providerID)
+          const modelID = ModelV2.ID.make(modelParts.modelID)
           const provider = yield* providerSvc.getProvider(providerID)
           const model = yield* providerSvc.getModel(providerID, modelID)
 
@@ -140,15 +137,15 @@ export const GenerateImageTool = Tool.define(
           })
 
           const instance = yield* InstanceState.context
-          const images =
-            editImages
-              ? yield* Effect.promise(() =>
-                  Promise.all(editImages.map((input) => decodeImageInput({ root: instance.worktree, input }))),
-                )
-              : undefined
-          const decodedMask = mask !== undefined
-            ? yield* Effect.promise(() => decodeImageInput({ root: instance.worktree, input: mask }))
+          const images = editImages
+            ? yield* Effect.promise(() =>
+                Promise.all(editImages.map((input) => decodeImageInput({ root: instance.worktree, input }))),
+              )
             : undefined
+          const decodedMask =
+            mask !== undefined
+              ? yield* Effect.promise(() => decodeImageInput({ root: instance.worktree, input: mask }))
+              : undefined
 
           if (action === "edit" && images) {
             validateMask(images, decodedMask)

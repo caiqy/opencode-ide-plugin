@@ -6,10 +6,10 @@
 
 ## 代码真源
 
-| 角色 | 文件 |
-|------|------|
-| 外部目录校验 | `packages/opencode/src/tool/external-directory.ts` |
-| 调用方 | `packages/opencode/src/tool/read.ts`、`write.ts`、`edit.ts`、`apply_patch.ts`、`glob.ts`、`grep.ts`、`lsp.ts`、`repo_overview.ts` |
+| 角色         | 文件                                                                                                                              |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| 外部目录校验 | `packages/opencode/src/tool/external-directory.ts`                                                                                |
+| 调用方       | `packages/opencode/src/tool/read.ts`、`write.ts`、`edit.ts`、`apply_patch.ts`、`glob.ts`、`grep.ts`、`lsp.ts`、`repo_overview.ts` |
 
 > 命名交叉核验（Step 5）：J3 对应 [upstream-compatibility](upstream-compatibility.md)。代码当前实现是“项目外路径触发 `external_directory` permission ask”，不是无条件拒绝。
 

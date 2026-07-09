@@ -1,5 +1,5 @@
 import { Config } from "@/config/config"
-import { emptyConsoleState } from "@/config/console-state"
+import { emptyConsoleState } from "@opencode-ai/core/v1/config/console-state"
 import { Effect, Layer } from "effect"
 
 export function make(overrides: Partial<Config.Interface> = {}) {
@@ -10,6 +10,7 @@ export function make(overrides: Partial<Config.Interface> = {}) {
     patchProjectField: () => Effect.void,
     update: () => Effect.void,
     updateGlobal: (config) => Effect.succeed({ info: config, changed: false }),
+    replaceGlobal: (config) => Effect.succeed({ info: config, changed: false }),
     invalidate: () => Effect.void,
     reload: () => Effect.void,
     directories: () => Effect.succeed([]),
