@@ -2,6 +2,7 @@
 change: sync-opencode-webgui
 design-doc: docs/superpowers/specs/2026-07-08-sync-opencode-webgui-design.md
 base-ref: c6924271f49262720161cc273c5a24bf70dc0027
+archived-with: 2026-07-10-sync-opencode-webgui
 ---
 
 # sync-opencode-webgui 实施计划
@@ -22,6 +23,7 @@ base-ref: c6924271f49262720161cc273c5a24bf70dc0027
 - 冲突或上游合同变化若迫使上游行为与 WebGUI/IDE bridge 行为二选一，必须停止并询问用户。
 - Windows 下运行 `gradlew.bat` 命令必须追加 `--no-daemon --console=plain`。
 
+archived-with: 2026-07-10-sync-opencode-webgui
 ---
 
 ## 预计涉及文件

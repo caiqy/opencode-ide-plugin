@@ -18,7 +18,7 @@ verification_report: docs/superpowers/reports/2026-07-09-sync-opencode-webgui-ve
 branch_status: handled
 created_at: 2026-07-08
 verified_at: 2026-07-08
-archived: false
+archived: true
 direct_override: null
 build_command: bun run --cwd packages/opencode build --single --skip-install
 verify_command: null

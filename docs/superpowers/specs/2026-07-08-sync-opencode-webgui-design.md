@@ -2,6 +2,8 @@
 comet_change: sync-opencode-webgui
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-10-sync-opencode-webgui
+status: final
 ---
 
 # 同步 opencode 并保护 WebGUI 的技术设计
