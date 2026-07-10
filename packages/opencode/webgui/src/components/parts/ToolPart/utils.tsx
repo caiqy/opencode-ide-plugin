@@ -5,7 +5,6 @@ const TOOL_LABELS: Record<string, string> = {
   read: "查看",
   write: "写入",
   edit: "编辑",
-  multiedit: "批量编辑",
   apply_patch: "文件补丁",
   list: "浏览目录",
   glob: "路径匹配",
@@ -203,7 +202,6 @@ export function getToolDisplayName(
     case "webfetch":
       return input.url ? `${toolLabel}：${input.url}` : toolLabel
     case "edit":
-    case "multiedit":
     case "write":
     case "read":
       return input.filePath ? `${toolLabel}：${input.filePath}` : toolLabel

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   setReasoning: vi.fn(),
   setSessionIdle: vi.fn(),
+  currentSession: null as { id: string } | null,
 }))
 
 vi.mock("../lib/api/sdkClient", () => ({
@@ -12,9 +13,11 @@ vi.mock("../lib/api/sdkClient", () => ({
       messages: vi.fn(),
     },
     permissions: {
+      list: vi.fn(),
       respond: vi.fn(),
     },
     question: {
+      list: vi.fn(),
       reply: vi.fn(),
       reject: vi.fn(),
     },
@@ -25,6 +28,7 @@ vi.mock("./SessionContext", () => ({
   useSession: () => ({
     setReasoning: mocks.setReasoning,
     setSessionIdle: mocks.setSessionIdle,
+    currentSession: mocks.currentSession,
   }),
 }))
 
@@ -104,8 +108,11 @@ function deferred<T>() {
 describe("MessagesContext pagination", () => {
   beforeEach(() => {
     ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mockReset()
+    vi.mocked(sdk.permissions.list).mockReset()
+    vi.mocked(sdk.question.list).mockReset()
     mocks.setReasoning.mockReset()
     mocks.setSessionIdle.mockReset()
+    mocks.currentSession = null
     api = null
   })
 
@@ -795,6 +802,40 @@ describe("MessagesContext pagination", () => {
     const rows = api?.getMessagesBySession("s4") ?? []
     expect(rows.map((row) => row.info.id)).toEqual(["m-old", "m-live"])
     expect(rows[1]?.parts[0]).toMatchObject({ id: "p-live", text: "live" })
+  })
+
+  it("server.connected 会绕过断线前的 latest 请求并保留新快照", async () => {
+    mocks.currentSession = { id: "s8" }
+    const first = deferred<ReturnType<typeof page>>()
+    ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>)
+      .mockImplementationOnce(() => first.promise)
+      .mockResolvedValueOnce(page([msg("fresh", "s8", 2)], null))
+    vi.mocked(sdk.permissions.list).mockResolvedValue({ data: [], error: null })
+    vi.mocked(sdk.question.list).mockResolvedValue({ data: [], error: null })
+    const emitter = new EventEmitter()
+
+    render(
+      <MessagesProvider emitter={emitter}>
+        <Capture />
+      </MessagesProvider>,
+    )
+
+    let stale: Promise<unknown> = Promise.resolve()
+    await act(async () => {
+      stale = (api as NonNullable<typeof api>).loadLatest("s8")
+    })
+    await act(async () => {
+      emitter.emit({ type: "server.connected", properties: {} })
+    })
+
+    await waitFor(() => expect(sdk.session.messages).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(api?.getMessagesBySession("s8").map((item) => item.info.id)).toEqual(["fresh"]))
+    await act(async () => {
+      first.resolve(page([msg("stale", "s8", 1)], null))
+      await stale
+    })
+
+    expect(api?.getMessagesBySession("s8").map((item) => item.info.id)).toEqual(["fresh"])
   })
 
   it("同会话并发 loadLatest 应复用同一请求", async () => {

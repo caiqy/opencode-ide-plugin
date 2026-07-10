@@ -129,7 +129,6 @@ export function getToolDisplayName(
     case "webfetch":
       return input.url ? `${toolLabel}：${input.url}` : toolLabel
     case "edit":
-    case "multiedit":
     case "write":
     case "read":
       return input.filePath ? `${toolLabel}：${input.filePath}` : toolLabel

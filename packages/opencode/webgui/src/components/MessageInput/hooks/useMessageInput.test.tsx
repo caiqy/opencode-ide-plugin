@@ -754,8 +754,8 @@ describe("useMessageInput", () => {
     expect(mocks.setSessionIdle).toHaveBeenCalledWith("s-2", true)
   })
 
-  it("abort 失败时仍恢复 sessionIdle 状态", async () => {
-    mocks.abort.mockRejectedValueOnce(new Error("network error"))
+  it("abort error tuple keeps session busy", async () => {
+    mocks.abort.mockResolvedValueOnce({ data: null, error: { message: "busy" } })
 
     const editor = {
       getEditorState: () => ({
@@ -782,7 +782,39 @@ describe("useMessageInput", () => {
       await result.current.handleAbort()
     })
 
-    expect(mocks.setSessionIdle).toHaveBeenCalledWith("s-3", true)
-    expect(mocks.showToast).toHaveBeenCalledTimes(1)
+    expect(mocks.setSessionIdle).not.toHaveBeenCalledWith("s-3", true)
+    expect(mocks.showToast).toHaveBeenCalledWith("busy", expect.objectContaining({ variant: "error" }))
+  })
+
+  it("abort throw keeps session busy and shows the error", async () => {
+    mocks.abort.mockRejectedValueOnce(new Error("network down"))
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-4",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "x" }]),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.handleAbort()
+    })
+
+    expect(mocks.setSessionIdle).not.toHaveBeenCalledWith("s-4", true)
+    expect(mocks.showToast).toHaveBeenCalledWith("network down", expect.objectContaining({ variant: "error" }))
   })
 })

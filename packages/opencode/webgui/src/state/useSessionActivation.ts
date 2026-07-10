@@ -16,7 +16,7 @@ export function useSessionActivation() {
   const { currentSession, restoreSelections, resolveSelections, beginForegroundSession, endForegroundSession } =
     useSession()
   const { ensureSession, scanOlder, getSessionCursor, getMessagesBySession } = useMessages()
-  const lastActivatedSessionIDRef = useRef<string | null>(null)
+  const lastActivationKeyRef = useRef<string | null>(null)
   const activationTokenRef = useRef(0)
   const ensureRef = useRef(ensureSession)
   const scanRef = useRef(scanOlder)
@@ -167,14 +167,17 @@ export function useSessionActivation() {
 
   useEffect(() => {
     const sessionID = currentSession?.id ?? null
-    if (!sessionID) {
-      lastActivatedSessionIDRef.current = null
+    const activationKey = sessionID
+      ? `${sessionID}:${currentSession?.revert?.messageID ?? ""}:${currentSession?.revert?.partID ?? ""}`
+      : null
+    if (!activationKey) {
+      lastActivationKeyRef.current = null
       activationTokenRef.current += 1
       return
     }
-    if (lastActivatedSessionIDRef.current === sessionID) return
+    if (lastActivationKeyRef.current === activationKey) return
 
-    lastActivatedSessionIDRef.current = sessionID
+    lastActivationKeyRef.current = activationKey
 
     let releaseForeground: (() => void) | null = null
 
@@ -189,7 +192,13 @@ export function useSessionActivation() {
         releasePendingForegroundSessions()
       }
     }
-  }, [currentSession?.id, releasePendingForegroundSessions, runActivation])
+  }, [
+    currentSession?.id,
+    currentSession?.revert?.messageID,
+    currentSession?.revert?.partID,
+    releasePendingForegroundSessions,
+    runActivation,
+  ])
 
   return activate
 }

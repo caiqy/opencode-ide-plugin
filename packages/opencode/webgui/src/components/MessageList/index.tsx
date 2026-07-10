@@ -75,12 +75,14 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
     getMessagesBySession,
     getQuestionsBySession,
     getSessionPagination,
+    getSessionCursor = () => undefined,
     loadOlder,
     permissions = [],
   } = useMessages()
   const { isIdle, isReasoning, currentSession } = useSession()
   const box = useRef<HTMLDivElement>(null)
   const tailRef = useRef<HTMLDivElement>(null)
+  const automaticCursorRef = useRef<string | null>(null)
 
   const pendingQuestions = useMemo(
     () => (sessionID ? getQuestionsBySession(sessionID) : []),
@@ -111,13 +113,37 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
 
   // Inline revert handling: if session has a revert boundary, hide messages at/after it
   const revertBoundaryID = currentSession?.revert?.messageID
+  const page = sessionID
+    ? getSessionPagination(sessionID)
+    : { ready: false, latestLoading: false, olderLoading: false, olderError: false, complete: false }
+  const revertBoundaryIndex = revertBoundaryID
+    ? sortedMessages.findIndex((message) => message.info.id === revertBoundaryID)
+    : -1
+  const cursor = sessionID ? getSessionCursor(sessionID) : undefined
+  const automaticCursorKey = sessionID && revertBoundaryID && cursor ? `${sessionID}:${revertBoundaryID}:${cursor}` : null
+
+  useEffect(() => {
+    if (!sessionID || !revertBoundaryID || revertBoundaryIndex >= 0) return
+    if (page.complete || page.olderLoading || page.olderError) return
+    if (automaticCursorKey && automaticCursorRef.current === automaticCursorKey) return
+    automaticCursorRef.current = automaticCursorKey
+    void loadOlder(sessionID)
+  }, [
+    automaticCursorKey,
+    loadOlder,
+    page.complete,
+    page.olderError,
+    page.olderLoading,
+    revertBoundaryID,
+    revertBoundaryIndex,
+    sessionID,
+  ])
 
   const visibleMessages = useMemo(() => {
     if (!revertBoundaryID) return sortedMessages
-    const index = sortedMessages.findIndex((m) => m.info.id === revertBoundaryID)
-    if (index === -1) return sortedMessages
-    return sortedMessages.slice(0, index)
-  }, [revertBoundaryID, sortedMessages])
+    if (revertBoundaryIndex < 0) return []
+    return sortedMessages.slice(0, revertBoundaryIndex)
+  }, [revertBoundaryID, revertBoundaryIndex, sortedMessages])
   const typing = !isIdle && !isReasoning
   const blocks = useHistoryBlocks({
     sessionID,
@@ -127,9 +153,6 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
     isTyping: typing,
   })
   const settling = useSettle(sessionID, box, sortedMessages.length)
-  const page = sessionID
-    ? getSessionPagination(sessionID)
-    : { ready: false, latestLoading: false, olderLoading: false, olderError: false, complete: false }
   const tailMessages = useMemo(() => {
     return blocks.tail.flatMap((item) => (item.kind === "tail-message" ? [item.msg] : []))
   }, [blocks.tail])

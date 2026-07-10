@@ -416,6 +416,7 @@ export const FilePartInput = Schema.Struct({
   type: Schema.Literal("file"),
   mime: Schema.String,
   filename: Schema.optional(Schema.String),
+  relativePath: Schema.optional(Schema.String),
   url: Schema.String,
   source: Schema.optional(FilePartSource),
 }).annotate({ identifier: "FilePartInput" })

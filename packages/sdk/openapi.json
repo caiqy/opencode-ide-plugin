@@ -3453,6 +3453,16 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "McpServerNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerNotFoundError"
+                }
+              }
+            }
           }
         },
         "description": "Enable or disable a Model Context Protocol (MCP) server.",
@@ -6033,6 +6043,83 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/visibility": {
+      "put": {
+        "tags": ["session"],
+        "operationId": "session.visibility",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Visible sessions updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sessionIDs": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      }
+                    }
+                  },
+                  "required": ["sessionIDs"],
+                  "additionalProperties": false,
+                  "description": "Visible sessions updated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/effect_HttpApiError_BadRequest"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Update the process-local set of sessions visible in the current WebGUI instance.",
+        "summary": "Sync visible sessions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionIDs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^ses"
+                    }
+                  }
+                },
+                "required": ["sessionIDs"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.visibility({\n  ...\n})"
           }
         ]
       }
@@ -17229,6 +17316,9 @@
           "filename": {
             "type": "string"
           },
+          "relativePath": {
+            "type": "string"
+          },
           "url": {
             "type": "string"
           },
@@ -21803,6 +21893,9 @@
           "small_model": {
             "type": "string"
           },
+          "image_model": {
+            "type": "string"
+          },
           "default_agent": {
             "type": "string"
           },
@@ -23255,16 +23348,6 @@
           }
         ]
       },
-      "McpUnsupportedOAuthError": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "string"
-          }
-        },
-        "required": ["error"],
-        "additionalProperties": false
-      },
       "McpServerNotFoundError": {
         "type": "object",
         "properties": {
@@ -23280,6 +23363,16 @@
           }
         },
         "required": ["_tag", "name", "message"],
+        "additionalProperties": false
+      },
+      "McpUnsupportedOAuthError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["error"],
         "additionalProperties": false
       },
       "Project": {
@@ -23689,6 +23782,9 @@
             "type": "string"
           },
           "filename": {
+            "type": "string"
+          },
+          "relativePath": {
             "type": "string"
           },
           "url": {

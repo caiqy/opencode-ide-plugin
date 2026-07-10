@@ -23,10 +23,18 @@ import { SessionSummary } from "../../src/session/summary"
 import { SessionSummaryScheduler } from "../../src/session/summary-scheduler"
 import { provideTmpdirServer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
-import { TestLLMServer } from "../lib/llm-server"
+import { raw, TestLLMServer } from "../lib/llm-server"
 
 const ModelID = ModelV2.ID
 const ProviderID = ProviderV2.ID
+
+function openAIChunk(delta: Record<string, unknown>) {
+  return {
+    id: "chatcmpl-test",
+    object: "chat.completion.chunk",
+    choices: [{ delta }],
+  }
+}
 
 const summaryScheduler = Layer.succeed(
   SessionSummaryScheduler.Service,
@@ -190,12 +198,38 @@ const boot = Effect.fn("test.boot")(function* () {
   return { processors, session, provider }
 })
 
-it.live("creates a pending write tool part for tool-input-delta", () =>
+it.live("accumulates tool-input-delta into state.raw for write tool", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
         const { processors, session, provider } = yield* boot()
-        yield* llm.toolHang("write", { filePath: "/tmp/x.txt", content: "hello world" })
+        const expectedArgs = JSON.stringify({ filePath: "/tmp/x.txt", content: "hello world" })
+        const expectedPartial = expectedArgs.slice(0, Math.max(2, Math.floor(expectedArgs.length / 2)))
+        const split = Math.floor(expectedPartial.length / 2)
+        yield* llm.push(
+          raw({
+            chunks: [
+              openAIChunk({ role: "assistant" }),
+              openAIChunk({
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_1",
+                    type: "function",
+                    function: { name: "write", arguments: "" },
+                  },
+                ],
+              }),
+              openAIChunk({
+                tool_calls: [{ index: 0, function: { arguments: expectedPartial.slice(0, split) } }],
+              }),
+              openAIChunk({
+                tool_calls: [{ index: 0, function: { arguments: expectedPartial.slice(split) } }],
+              }),
+            ],
+            hang: true,
+          }),
+        )
 
         const chat = yield* session.create({ title: "streaming-input" })
         const parent = yield* user(chat.id, "go")
@@ -227,10 +261,10 @@ it.live("creates a pending write tool part for tool-input-delta", () =>
 
         yield* Effect.gen(function* () {
           yield* llm.wait(1)
-          const part = yield* pollUntilToolPending(chat.id)
+          const part = yield* pollUntilToolPending(chat.id, expectedPartial)
 
           expect(part.state.status).toBe("pending")
-          expect(part.state.raw).toBe("")
+          expect(part.state.raw).toBe(expectedPartial)
         }).pipe(Effect.ensuring(Fiber.interrupt(run)))
       }),
     { config: (url) => providerCfg(url) },
@@ -239,7 +273,7 @@ it.live("creates a pending write tool part for tool-input-delta", () =>
 
 type PendingToolPart = MessageV2.ToolPart & { state: MessageV2.ToolStatePending }
 
-const pollUntilToolPending = Effect.fn("pollUntilToolPending")(function* (sessionID: SessionID) {
+const pollUntilToolPending = Effect.fn("pollUntilToolPending")(function* (sessionID: SessionID, raw?: string) {
   const session = yield* Session.Service
   for (let i = 0; i < 50; i++) {
     const messages = yield* session.messages({ sessionID })
@@ -247,7 +281,29 @@ const pollUntilToolPending = Effect.fn("pollUntilToolPending")(function* (sessio
       .flatMap((msg) => msg.parts)
       .find(
         (part): part is PendingToolPart =>
-          part.type === "tool" && part.state.status === "pending",
+          part.type === "tool" &&
+          part.state.status === "pending" &&
+          part.state.raw.length > 0 &&
+          (raw === undefined || part.state.raw === raw),
+      )
+    if (part) return part
+    yield* Effect.sleep("50 millis")
+  }
+  return yield* Effect.fail(new Error("no pending tool part with raw observed within 2.5s"))
+})
+
+const pollUntilAnyPendingTool = Effect.fn("pollUntilAnyPendingTool")(function* (
+  sessionID: SessionID,
+  tool: string,
+) {
+  const session = yield* Session.Service
+  for (let i = 0; i < 50; i++) {
+    const messages = yield* session.messages({ sessionID })
+    const part = messages
+      .flatMap((msg) => msg.parts)
+      .find(
+        (part): part is PendingToolPart =>
+          part.type === "tool" && part.tool === tool && part.state.status === "pending",
       )
     if (part) return part
     yield* Effect.sleep("50 millis")
@@ -255,20 +311,7 @@ const pollUntilToolPending = Effect.fn("pollUntilToolPending")(function* (sessio
   return yield* Effect.fail(new Error("no pending tool part observed within 2.5s"))
 })
 
-const pollUntilAnyPendingTool = Effect.fn("pollUntilAnyPendingTool")(function* (sessionID: SessionID) {
-  const session = yield* Session.Service
-  for (let i = 0; i < 50; i++) {
-    const messages = yield* session.messages({ sessionID })
-    const part = messages
-      .flatMap((msg) => msg.parts)
-      .find((part): part is PendingToolPart => part.type === "tool" && part.state.status === "pending")
-    if (part) return part
-    yield* Effect.sleep("50 millis")
-  }
-  return yield* Effect.fail(new Error("no pending tool part observed within 2.5s"))
-})
-
-it.live("creates a pending edit tool part for tool-input-delta", () =>
+it.live("accumulates tool-input-delta into state.raw for edit tool", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -306,16 +349,18 @@ it.live("creates a pending edit tool part for tool-input-delta", () =>
         yield* Effect.gen(function* () {
           yield* llm.wait(1)
           const part = yield* pollUntilToolPending(chat.id)
+          const expectedArgs = JSON.stringify({ filePath: "/tmp/x.txt", oldString: "hello", newString: "world" })
+          const expectedPartial = expectedArgs.slice(0, Math.max(1, Math.floor(expectedArgs.length / 2)))
 
           expect(part.state.status).toBe("pending")
-          expect(part.state.raw).toBe("")
+          expect(part.state.raw).toBe(expectedPartial)
         }).pipe(Effect.ensuring(Fiber.interrupt(run)))
       }),
     { config: (url) => providerCfg(url) },
   ),
 )
 
-it.live("creates a pending apply_patch tool part for tool-input-delta", () =>
+it.live("accumulates tool-input-delta into state.raw for apply_patch tool", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -356,9 +401,14 @@ it.live("creates a pending apply_patch tool part for tool-input-delta", () =>
         yield* Effect.gen(function* () {
           yield* llm.wait(1)
           const part = yield* pollUntilToolPending(chat.id)
+          const expectedArgs = JSON.stringify({
+            filePath: "/tmp/x.txt",
+            patchText: "--- a/x.txt\n+++ b/x.txt\n@@ -1 +1 @@\n-hello\n+world",
+          })
+          const expectedPartial = expectedArgs.slice(0, Math.max(1, Math.floor(expectedArgs.length / 2)))
 
           expect(part.state.status).toBe("pending")
-          expect(part.state.raw).toBe("")
+          expect(part.state.raw).toBe(expectedPartial)
         }).pipe(Effect.ensuring(Fiber.interrupt(run)))
       }),
     { config: (url) => providerCfg(url) },
@@ -370,7 +420,37 @@ it.live("does not accumulate raw for non-streamable tool", () =>
     ({ dir, llm }) =>
       Effect.gen(function* () {
         const { processors, session, provider } = yield* boot()
-        yield* llm.toolHang("bash", { cmd: "pwd" })
+        yield* llm.push(
+          raw({
+            chunks: [
+              openAIChunk({ role: "assistant" }),
+              openAIChunk({
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_1",
+                    type: "function",
+                    function: { name: "bash", arguments: "" },
+                  },
+                ],
+              }),
+              openAIChunk({
+                tool_calls: [{ index: 0, function: { arguments: '{"cmd":"pwd"' } }],
+              }),
+              openAIChunk({
+                tool_calls: [
+                  {
+                    index: 1,
+                    id: "call_2",
+                    type: "function",
+                    function: { name: "read", arguments: "" },
+                  },
+                ],
+              }),
+            ],
+            hang: true,
+          }),
+        )
 
         const chat = yield* session.create({ title: "streaming-input-non-streamable" })
         const parent = yield* user(chat.id, "run bash")
@@ -402,12 +482,9 @@ it.live("does not accumulate raw for non-streamable tool", () =>
 
         yield* Effect.gen(function* () {
           yield* llm.wait(1)
-          // tool-input-start creates the part, tool-input-delta follows in the
-          // same processor fiber. A short sleep ensures both are consumed before
-          // we read state.raw. If bash were (wrongly) added to STREAMABLE_TOOLS,
-          // raw would be populated by the delta.
-          yield* Effect.sleep("100 millis")
-          const part = yield* pollUntilAnyPendingTool(chat.id)
+          // This start follows the bash args event in the same stream, so observing it proves the delta was consumed.
+          yield* pollUntilAnyPendingTool(chat.id, "read")
+          const part = yield* pollUntilAnyPendingTool(chat.id, "bash")
 
           expect(part.state.raw).toBe("")
         }).pipe(Effect.ensuring(Fiber.interrupt(run)))

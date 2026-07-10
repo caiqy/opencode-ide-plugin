@@ -699,4 +699,133 @@ describe("MessageList", () => {
     expect(screen.queryByTestId("empty-state")).not.toBeInTheDocument()
     expect(screen.getByTestId("revert-summary")).toBeInTheDocument()
   })
+
+  it("revert boundary 在旧页时隐藏最新页并继续加载", async () => {
+    const loadOlder = vi.fn(async () => [])
+    mocks.useMessages.mockReturnValue({
+      getMessagesBySession: () => [msg("after-boundary", 10)],
+      getQuestionsBySession: () => [],
+      getSessionPagination: () => page({ complete: false, olderLoading: false }),
+      loadOlder,
+      permissions: [],
+    })
+    mocks.useSession.mockReturnValue({
+      isIdle: true,
+      isReasoning: false,
+      currentSession: { id: "s1", revert: { messageID: "boundary" } },
+    })
+    mocks.useTopTrim.mockReturnValue({
+      topRef: { current: null },
+      top: 0,
+      visible: [],
+      row: () => vi.fn(),
+    })
+
+    render(<MessageList sessionID="s1" />)
+
+    expect(screen.queryByTestId("message-row")).not.toBeInTheDocument()
+    await waitFor(() => expect(loadOlder).toHaveBeenCalledWith("s1"))
+  })
+
+  it("自动追溯遇到 olderError 时停止，保留现有 retry UI", () => {
+    const loadOlder = vi.fn(async () => [])
+    mocks.useMessages.mockReturnValue({
+      getMessagesBySession: () => [msg("after-boundary", 10)],
+      getQuestionsBySession: () => [],
+      getSessionPagination: () => page({ olderError: true }),
+      getSessionCursor: () => "c1",
+      loadOlder,
+      permissions: [],
+    })
+    mocks.useSession.mockReturnValue({
+      isIdle: true,
+      isReasoning: false,
+      currentSession: { id: "s1", revert: { messageID: "boundary" } },
+    })
+
+    render(<MessageList sessionID="s1" />)
+
+    expect(screen.getByRole("button", { name: "加载失败，点击重试" })).toBeInTheDocument()
+    expect(loadOlder).not.toHaveBeenCalled()
+  })
+
+  it("自动追溯不会对同一 cursor 重复请求", async () => {
+    let calls = 0
+
+    function Host() {
+      const [olderLoading, setOlderLoading] = useState(false)
+      const [settled, setSettled] = useState(false)
+      const loadOlder = vi.fn(async () => {
+        calls += 1
+        if (calls !== 1) return []
+        setOlderLoading(true)
+        queueMicrotask(() => {
+          setOlderLoading(false)
+          setSettled(true)
+        })
+        return []
+      })
+      mocks.useMessages.mockReturnValue({
+        getMessagesBySession: () => [msg("after-boundary", 10)],
+        getQuestionsBySession: () => [],
+        getSessionPagination: () => page({ olderLoading }),
+        getSessionCursor: () => "c1",
+        loadOlder,
+        permissions: [],
+      })
+      mocks.useSession.mockReturnValue({
+        isIdle: true,
+        isReasoning: false,
+        currentSession: { id: "s1", revert: { messageID: "boundary" } },
+      })
+      return (
+        <>
+          <MessageList sessionID="s1" />
+          {settled && <div data-testid="settled" />}
+        </>
+      )
+    }
+
+    render(<Host />)
+
+    await screen.findByTestId("settled")
+    expect(calls).toBe(1)
+  })
+
+  it("自动追溯随 cursor 前进直到 complete", async () => {
+    const seen: string[] = []
+
+    function Host() {
+      const [index, setIndex] = useState(0)
+      const cursors = ["c1", "c2"]
+      mocks.useMessages.mockReturnValue({
+        getMessagesBySession: () => [msg("after-boundary", 10)],
+        getQuestionsBySession: () => [],
+        getSessionPagination: () => page({ complete: index === cursors.length }),
+        getSessionCursor: () => cursors[index],
+        loadOlder: async () => {
+          seen.push(cursors[index])
+          setIndex((value) => value + 1)
+          return []
+        },
+        permissions: [],
+      })
+      mocks.useSession.mockReturnValue({
+        isIdle: true,
+        isReasoning: false,
+        currentSession: { id: "s1", revert: { messageID: "boundary" } },
+      })
+      return (
+        <>
+          <MessageList sessionID="s1" />
+          <div data-testid={`cursor-${index}`} />
+        </>
+      )
+    }
+
+    render(<Host />)
+
+    await screen.findByTestId("cursor-2")
+    expect(seen).toEqual(["c1", "c2"])
+  })
 })

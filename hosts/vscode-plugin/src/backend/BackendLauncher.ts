@@ -205,7 +205,7 @@ export class BackendLauncher {
     // Try bundled binary first
     if (extPath) {
       try {
-        return await ResourceExtractor.extractBinary(extPath)
+        return await ResourceExtractor.extractBinary(extPath, this.extensionVersion)
       } catch {
         logger.appendLine("Bundled binary not found, falling back to system PATH")
       }

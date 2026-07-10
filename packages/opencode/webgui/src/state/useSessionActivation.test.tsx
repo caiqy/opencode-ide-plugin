@@ -267,6 +267,67 @@ describe("useSessionActivation", () => {
     })
   })
 
+  it("同一 session 的 revert 边界变化时会恢复边界前最后一条 user 选择", async () => {
+    ;(sdk.session.messages as any).mockResolvedValue({
+      error: null,
+      data: [
+        {
+          info: {
+            id: "u1",
+            sessionID: "s1",
+            role: "user",
+            time: { created: 1 },
+            agent: "plan",
+            model: { providerID: "openai", modelID: "gpt-4.1" },
+            variant: "low",
+          },
+          parts: [],
+        },
+        {
+          info: {
+            id: "u2",
+            sessionID: "s1",
+            role: "user",
+            time: { created: 2 },
+            agent: "build",
+            model: { providerID: "anthropic", modelID: "claude-4-sonnet" },
+            variant: "high",
+          },
+          parts: [],
+        },
+      ],
+    })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => expect(sessionApi).toBeTruthy())
+
+    act(() => {
+      sessionApi!.setCurrentSession({ id: "s1", title: "", time: { created: 1, updated: 1 } } as any)
+    })
+
+    await waitFor(() => expect(sessionApi!.selectedModelId).toBe("claude-4-sonnet"))
+
+    act(() => {
+      sessionApi!.setCurrentSession({
+        id: "s1",
+        title: "",
+        time: { created: 1, updated: 1 },
+        revert: { messageID: "u2" },
+      } as any)
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.selectedModelId).toBe("gpt-4.1")
+      expect(sessionApi!.selectedAgent).toBe("plan")
+    })
+  })
+
   it("最近一页没有 user 消息时会继续向前加载，直到恢复最后一次 user 选择", async () => {
     const older = deferred<any>()
 

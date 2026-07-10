@@ -3,6 +3,7 @@ import { $getRoot, $isElementNode, type LexicalEditor } from "lexical"
 import { $isMentionNode } from "../../mention/MentionNode"
 import { $isAttachmentNode } from "../../attachment/AttachmentNode"
 import { normalizeTextAttachment } from "../../../lib/fileUtils"
+import type { FilePart } from "@opencode-ai/sdk/v2/client"
 
 interface UseMessagePartsOptions {
   editor: LexicalEditor
@@ -22,12 +23,13 @@ export function useMessageParts({ editor, resolveToAbsolutePath }: UseMessagePar
     const attachments: Array<{
       id: string
       display: string
-      filename: string
+      filename?: string
       mime: string
       url: string
       size: number
       start: number
       end: number
+      source?: FilePart["source"]
     }> = []
 
     editor.getEditorState().read(() => {
@@ -86,6 +88,7 @@ export function useMessageParts({ editor, resolveToAbsolutePath }: UseMessagePar
               size: metadata.size,
               start,
               end,
+              source: metadata.source,
             })
           } else {
             // Regular text node - add to full text
@@ -205,20 +208,30 @@ export function useMessageParts({ editor, resolveToAbsolutePath }: UseMessagePar
     // Add file parts for attachments with source.text positions
     for (const attachment of attachments) {
       const normalized = normalizeTextAttachment(attachment.mime, attachment.url)
+      const source = attachment.source
+        ? {
+            ...attachment.source,
+            text: {
+              value: attachment.source.text.value,
+              start: attachment.start,
+              end: attachment.end,
+            },
+          }
+        : {
+            type: "file" as const,
+            path: attachment.filename,
+            text: {
+              value: `[${attachment.display}]`,
+              start: attachment.start,
+              end: attachment.end,
+            },
+          }
       parts.push({
         type: "file",
         mime: normalized.mime,
         filename: attachment.filename,
         url: normalized.url,
-        source: {
-          type: "file" as const,
-          path: attachment.filename,
-          text: {
-            value: `[${attachment.display}]`,
-            start: attachment.start,
-            end: attachment.end,
-          },
-        },
+        source,
       })
     }
 

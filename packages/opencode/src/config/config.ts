@@ -166,16 +166,27 @@ export function globalConfigFile() {
 
 function patchJsonc(input: string, patch: unknown, path: string[] = []): string {
   if (!isRecord(patch)) {
-    const edits = modify(input, path, patch, {
-      formattingOptions: {
-        insertSpaces: true,
-        tabSize: 2,
-      },
-    })
-    return applyEdits(input, edits)
+    return replaceJsonc(input, patch, path)
   }
 
   return Object.entries(patch).reduce((result, [key, value]) => patchJsonc(result, value, [...path, key]), input)
+}
+
+function replaceJsonc(input: string, value: unknown, path: string[]): string {
+  const edits = modify(input, path, value, {
+    formattingOptions: {
+      insertSpaces: true,
+      tabSize: 2,
+    },
+  })
+  return applyEdits(input, edits)
+}
+
+function mergeGlobalPatch(existing: Info, patch: Info) {
+  const merged = mergeDeep(writable(existing), patch)
+  if ("agent" in patch) merged.agent = patch.agent
+  if ("provider" in patch) merged.provider = patch.provider
+  return merged
 }
 
 function writable(info: Info) {
@@ -673,6 +684,7 @@ const layer = Layer.effect(
 
     const reload = Effect.fn("Config.reload")(function* () {
       yield* invalidate()
+      yield* InstanceState.invalidate(state)
     })
 
     const patchProjectField = Effect.fn("Config.patchProjectField")(function* (pathToField: string[], value: unknown) {
@@ -692,13 +704,19 @@ const layer = Layer.effect(
       let changed: boolean
       if (!file.endsWith(".jsonc")) {
         const existing = ConfigParse.schema(ConfigV1.Info, ConfigParse.jsonc(before, file), file)
-        const merged = mergeDeep(writable(existing), patch)
+        const merged = mergeGlobalPatch(existing, patch)
         const serialized = JSON.stringify(merged, null, 2)
         changed = serialized !== before
         if (changed) yield* fs.writeFileString(file, serialized).pipe(Effect.orDie)
         next = merged
       } else {
-        const updated = patchJsonc(before, patch)
+        const updated = Object.entries(patch).reduce(
+          (result, [key, value]) =>
+            key === "agent" || key === "provider"
+              ? replaceJsonc(result, value, [key])
+              : patchJsonc(result, value, [key]),
+          before,
+        )
         next = ConfigParse.schema(ConfigV1.Info, ConfigParse.jsonc(updated, file), file)
         changed = updated !== before
         if (changed) yield* fs.writeFileString(file, updated).pipe(Effect.orDie)

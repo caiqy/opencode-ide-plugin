@@ -26,10 +26,17 @@ describe("FileChangesPanel", () => {
     mocks.useMergedFileDiffs.mockReturnValue([
       {
         file: "src/a.ts",
-        before: "",
-        after: "next",
+        patch: "@@ -0,0 +1 @@\n+next",
+        status: "modified",
         additions: 1,
         deletions: 0,
+      },
+      {
+        file: "src/deleted.ts",
+        patch: "@@ -1 +0,0 @@\n-old",
+        status: "deleted",
+        additions: 0,
+        deletions: 1,
       },
     ])
   })
@@ -46,6 +53,7 @@ describe("FileChangesPanel", () => {
     )
 
     expect(screen.getByText("差异仍在后台刷新，当前显示的是上一版结果")).toBeInTheDocument()
+    expect(screen.getByText("1 modified • 1 deleted")).toBeInTheDocument()
   })
 
   it("shows latest hint when diff is current", () => {
@@ -74,5 +82,16 @@ describe("FileChangesPanel", () => {
     )
 
     expect(screen.getByText("自定义失败文案")).toBeInTheDocument()
+  })
+
+  it("ignores entries without a file path", () => {
+    mocks.useMergedFileDiffs.mockReturnValue([
+      { patch: "@@ -1 +1 @@\n-old\n+new", status: "modified", additions: 1, deletions: 1 },
+    ])
+
+    const { container } = render(<FileChangesPanel diffs={[]} />)
+
+    expect(container).toBeEmptyDOMElement()
+    expect(mocks.openFile).not.toHaveBeenCalled()
   })
 })

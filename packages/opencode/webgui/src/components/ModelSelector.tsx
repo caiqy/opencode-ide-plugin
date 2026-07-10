@@ -117,6 +117,12 @@ export function ModelSelector({
   const [portalStyle, setPortalStyle] = useState<React.CSSProperties>({})
 
   const favoriteSet = new Set(favorite.map(favoriteKey))
+  const defaultModel = providers.flatMap((provider) => {
+    const modelID = defaultIds[provider.id]
+    return modelID && provider.models[modelID] ? [{ providerID: provider.id, modelID }] : []
+  })[0]
+  const selectedModel =
+    selectedProviderId && selectedModelId && providers.find((provider) => provider.id === selectedProviderId)?.models[selectedModelId]
 
   const isFavorite = useCallback(
     (providerID: string, modelID: string) => favorite.some((f) => f.providerID === providerID && f.modelID === modelID),
@@ -219,21 +225,13 @@ export function ModelSelector({
   }, [isOpen, renderInPortal, updatePortalPosition])
 
   const getCurrentDisplay = () => {
-    if (!selectedProviderId || !selectedModelId) {
-      if (hasExplicitPlaceholder || (!selectedProviderId && !selectedModelId)) {
-        if (hasExplicitPlaceholder) return effectivePlaceholder
-        const pid = defaultIds.provider
-        const mid = defaultIds.model
-        if (!pid || !mid) return effectivePlaceholder
-        const provider = providers.find((p) => p.id === pid)
-        if (!provider) return `${pid}/${mid}`
-        return provider.models[mid]?.name || `${pid}/${mid}`
-      }
-      return effectivePlaceholder
+    if (!selectedModel) {
+      if (hasExplicitPlaceholder) return effectivePlaceholder
+      if (!defaultModel) return effectivePlaceholder
+      const provider = providers.find((p) => p.id === defaultModel.providerID)
+      return provider?.models[defaultModel.modelID]?.name || `${defaultModel.providerID}/${defaultModel.modelID}`
     }
-    const provider = providers.find((p) => p.id === selectedProviderId)
-    if (!provider) return `${selectedProviderId}/${selectedModelId}`
-    return provider.models[selectedModelId]?.name || `${selectedProviderId}/${selectedModelId}`
+    return selectedModel.name || `${selectedProviderId}/${selectedModelId}`
   }
 
   const handleSelect = async (providerID: string, modelID: string) => {
@@ -435,7 +433,7 @@ export function ModelSelector({
                     {provider.name}
                   </div>
                   {filtered.map(([modelId, model]) => {
-                    const isDefault = defaultIds.provider === provider.id && defaultIds.model === modelId
+                    const isDefault = defaultIds[provider.id] === modelId
 
                     return renderModelRow(
                       provider.id,

@@ -74,7 +74,7 @@ export function ToolHeader({
     [handleOpenPath],
   )
 
-  const showFileLink = filePath && (tool === "read" || tool === "write" || tool === "edit" || tool === "multiedit")
+  const showFileLink = filePath && (tool === "read" || tool === "write" || tool === "edit")
   const showPatchFileLinks = tool === "apply_patch" && normalizedPatchPaths.length > 0
   const fileName = filePath ? getFileName(filePath) : ""
 

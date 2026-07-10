@@ -179,7 +179,7 @@ export function usePartialToolInput(tool: string, status: string, raw: string | 
 - **provider 不发 delta**：若某个 provider 走非流式路径，`state.raw` 始终为空，pending 卡片表现等同改动前。无回归。
 - **partial JSON 解析失败**：`parsePartialInput` catch 后返回 `{}`，等同未识别字段，pending 卡片表现等同改动前。
 - **频率调控失效**：`useDeferredValue` 在低性能设备上若仍卡顿，可在第二阶段加 `requestAnimationFrame` 合批；当前不预先优化。
-- **STREAMABLE_TOOLS 漏配**：当后续新增写入类工具，需要同时在后端白名单与前端 `STREAMABLE` 加项；spec 完工后建议把这两处常量提到一个共享文件，避免漂移。webgui 现存的 `multiedit` 渲染分支（`ToolPart/index.tsx:159`、`utils.tsx:206`）是历史遗留——`registry.ts` 未注册该工具，本次不纳入流式范围。
+- **STREAMABLE_TOOLS 漏配**：当后续新增写入类工具，需要同时在后端白名单与前端 `STREAMABLE` 加项；spec 完工后建议把这两处常量提到一个共享文件，避免漂移。
 
 ## 验证
 

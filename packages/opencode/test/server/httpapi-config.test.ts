@@ -1,8 +1,11 @@
 import { afterEach, describe, expect } from "bun:test"
 import path from "path"
 import { Server } from "../../src/server/server"
+import { AppRuntime } from "../../src/effect/app-runtime"
 import { Effect, Fiber } from "effect"
 import { Global } from "@opencode-ai/core/global"
+import { Config } from "../../src/config/config"
+import { InstanceRuntime } from "../../src/project/instance-runtime"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, tmpdir } from "../fixture/fixture"
 import { it } from "../lib/effect"
@@ -34,13 +37,18 @@ const tmpdirEffect = (options: Parameters<typeof tmpdir>[0]) =>
 
 function withGlobalConfigDir<A, E, R>(dir: string, effect: Effect.Effect<A, E, R>) {
   return Effect.acquireUseRelease(
-    Effect.sync(() => {
+    Effect.gen(function* () {
       const prev = Global.Path.config
       ;(Global.Path as { config: string }).config = dir
+      yield* Effect.promise(() => AppRuntime.runPromise(Config.use.invalidate()))
       return prev
     }),
     () => effect,
-    (prev) => Effect.sync(() => ((Global.Path as { config: string }).config = prev)),
+    (prev) =>
+      Effect.gen(function* () {
+        ;(Global.Path as { config: string }).config = prev
+        yield* Effect.promise(() => AppRuntime.runPromise(Config.use.invalidate()))
+      }),
   )
 }
 
@@ -125,6 +133,67 @@ describe("config HttpApi", () => {
           },
         },
       })
+    }),
+  )
+
+  it.live(
+    "reloads active instance agent config after a lightweight global replace",
+    Effect.gen(function* () {
+      const global = yield* tmpdirEffect({
+        init: (dir) =>
+          Bun.write(
+            path.join(dir, "opencode.jsonc"),
+            JSON.stringify({
+              agent: {
+                build: {
+                  description: "before",
+                },
+              },
+            }),
+          ),
+      })
+      const instance = yield* tmpdirEffect({ config: { formatter: false, lsp: false } })
+
+      yield* withGlobalConfigDir(
+        global.path,
+        Effect.gen(function* () {
+          const getAgents = () =>
+            Effect.promise(() =>
+              Promise.resolve(
+                app().request("/agent", {
+                  headers: {
+                    "x-opencode-directory": instance.path,
+                  },
+                }),
+              ).then((response) => response.json() as Promise<Array<{ name: string; description?: string }>>),
+            )
+
+          expect((yield* getAgents()).find((agent) => agent.name === "build")?.description).toBe("before")
+          const active = yield* Effect.promise(() => InstanceRuntime.load({ directory: instance.path }))
+
+          const response = yield* Effect.promise(() =>
+            Promise.resolve(
+              app().request("/global/config", {
+                method: "PUT",
+                headers: {
+                  "content-type": "application/json",
+                },
+                body: JSON.stringify({
+                  agent: {
+                    build: {
+                      description: "after",
+                    },
+                  },
+                }),
+              }),
+            ),
+          )
+
+          expect(response.status).toBe(200)
+          expect((yield* getAgents()).find((agent) => agent.name === "build")?.description).toBe("after")
+          expect(yield* Effect.promise(() => InstanceRuntime.load({ directory: instance.path }))).toBe(active)
+        }),
+      )
     }),
   )
 

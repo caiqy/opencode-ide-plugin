@@ -134,6 +134,13 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
     const instances = yield* InstanceStore.Service
     const installation = yield* Installation.Service
     const bridge = yield* EffectBridge.make()
+    const reloadAgentConfig = () =>
+      instances.provideAll(
+        Effect.gen(function* () {
+          yield* config.reload()
+          yield* agent.reloadModelConfig()
+        }),
+      ).pipe(Effect.catchCause((cause) => Effect.logWarning("agent config reload failed", { cause })))
 
     const health = Effect.fn("GlobalHttpApi.health")(function* () {
       return { healthy: true as const, version: InstallationVersion }
@@ -160,9 +167,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
           bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
         } else {
           yield* Effect.logInfo("config update lightweight, reloading agent config")
-          yield* instances
-            .provideAll(agent.reloadModelConfig())
-            .pipe(Effect.catchCause((cause) => Effect.logWarning("agent config reload failed", { cause })))
+          yield* reloadAgentConfig()
         }
       }
       return result.info
@@ -181,9 +186,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
           bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
         } else {
           yield* Effect.logInfo("config replace lightweight, reloading agent config")
-          yield* instances
-            .provideAll(agent.reloadModelConfig())
-            .pipe(Effect.catchCause((cause) => Effect.logWarning("agent config reload failed", { cause })))
+          yield* reloadAgentConfig()
         }
       }
       return result.info

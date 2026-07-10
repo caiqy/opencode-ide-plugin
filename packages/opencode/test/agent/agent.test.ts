@@ -15,6 +15,8 @@ import { Plugin } from "../../src/plugin"
 import { Provider } from "../../src/provider/provider"
 import { Skill } from "../../src/skill"
 import { Truncate } from "../../src/tool/truncate"
+import { LLMRequestPrep } from "../../src/session/llm/request"
+import { jsonSchema, tool } from "ai"
 
 const agentLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
   LayerNode.compile(
@@ -32,6 +34,55 @@ function evalPerm(agent: Agent.Info | undefined, permission: string): Permission
 
 function load<A>(fn: (svc: Agent.Interface) => Effect.Effect<A>) {
   return Agent.Service.use(fn)
+}
+
+const toolIDs = [
+  "read",
+  "grep",
+  "glob",
+  "bash",
+  "edit",
+  "write",
+  "apply_patch",
+  "webfetch",
+  "list_mcp_resources",
+  "list_mcp_resource_templates",
+  "read_mcp_resource",
+]
+
+function prepareTools(agent: Agent.Info) {
+  return LLMRequestPrep.prepare({
+    user: {
+      id: "msg_reviewer",
+      sessionID: "session_reviewer",
+      role: "user",
+      time: { created: Date.now() },
+      agent: agent.name,
+      model: { providerID: "test", modelID: "test" },
+    } as any,
+    sessionID: "session_reviewer",
+    model: {
+      id: "test",
+      providerID: "test",
+      api: { id: "test", url: "https://example.com", npm: "@ai-sdk/anthropic" },
+      capabilities: { temperature: false },
+      limit: { output: 32_000 },
+      options: {},
+      headers: {},
+    } as any,
+    agent,
+    permission: Permission.fromConfig({ "*": "allow", bash: "allow", edit: "allow" }),
+    system: [],
+    messages: [],
+    tools: Object.fromEntries(
+      toolIDs.map((name) => [name, tool({ description: name, inputSchema: jsonSchema({ type: "object", properties: {} }) })]),
+    ),
+    provider: { id: "test", options: {} } as any,
+    auth: undefined,
+    plugin: { trigger: (_name: string, _input: unknown, output: unknown) => Effect.succeed(output) } as any,
+    flags: { outputTokenMax: 32_000, client: "test" } as any,
+    isWorkflow: false,
+  })
 }
 
 const expectDefaultAgentError = Effect.fn("AgentTest.expectDefaultAgentError")(function* (message: string) {
@@ -52,6 +103,7 @@ it.instance("returns default native agents when no config", () =>
     expect(names).toContain("plan")
     expect(names).toContain("general")
     expect(names).toContain("explore")
+    expect(names).toContain("reviewer")
     expect(names).toContain("compaction")
     expect(names).toContain("title")
     expect(names).toContain("summary")
@@ -118,6 +170,112 @@ it.instance("explore agent denies edit and write", () =>
     expect(evalPerm(explore, "write")).toBe("deny")
     expect(evalPerm(explore, "todowrite")).toBe("deny")
   }),
+)
+
+it.instance("reviewer agent is a native read-only subagent", () =>
+  Effect.gen(function* () {
+    const reviewer = yield* load((svc) => svc.get("reviewer"))
+    expect(reviewer?.native).toBe(true)
+    expect(reviewer?.mode).toBe("subagent")
+    expect(evalPerm(reviewer, "read")).toBe("allow")
+    expect(evalPerm(reviewer, "grep")).toBe("allow")
+    expect(evalPerm(reviewer, "glob")).toBe("allow")
+    expect(evalPerm(reviewer, "edit")).toBe("deny")
+    expect(evalPerm(reviewer, "write")).toBe("deny")
+    expect(evalPerm(reviewer, "bash")).toBe("deny")
+  }),
+)
+
+it.instance(
+  "reviewer model override preserves native read-only semantics",
+  () =>
+    Effect.gen(function* () {
+      const reviewer = yield* load((svc) => svc.get("reviewer"))
+      expect(String(reviewer?.model?.providerID)).toBe("openai")
+      expect(String(reviewer?.model?.modelID)).toBe("gpt-5")
+      expect(reviewer?.native).toBe(true)
+      expect(reviewer?.mode).toBe("subagent")
+      expect(evalPerm(reviewer, "edit")).toBe("deny")
+    }),
+  { config: { agent: { reviewer: { model: "openai/gpt-5" } } } },
+)
+
+it.instance(
+  "reviewer config cannot override its mode or tool boundary",
+  () =>
+    Effect.gen(function* () {
+      const reviewer = yield* load((svc) => svc.get("reviewer"))
+      expect(reviewer?.description).toBe("Configured reviewer")
+      expect(reviewer?.name).toBe("reviewer")
+      expect(reviewer?.mode).toBe("subagent")
+      expect(reviewer?.native).toBe(true)
+      expect(evalPerm(reviewer, "read")).toBe("allow")
+      expect(evalPerm(reviewer, "grep")).toBe("allow")
+      expect(evalPerm(reviewer, "glob")).toBe("allow")
+      expect(evalPerm(reviewer, "bash")).toBe("deny")
+      expect(evalPerm(reviewer, "edit")).toBe("deny")
+      expect(evalPerm(reviewer, "webfetch")).toBe("deny")
+    }),
+  {
+    config: {
+      agent: {
+        reviewer: {
+          description: "Configured reviewer",
+          name: "Untrusted reviewer",
+          mode: "all",
+          permission: { "*": "allow", bash: "allow", edit: "allow" },
+        },
+      },
+    },
+  },
+)
+
+it.instance(
+  "reviewer excludes unsafe tools after session permissions are merged",
+  () =>
+    Effect.gen(function* () {
+      const reviewer = yield* load((svc) => svc.get("reviewer"))
+      const prepared = yield* prepareTools(reviewer!)
+
+      expect(Object.keys(prepared.tools).toSorted()).toEqual(["glob", "grep", "read"])
+    }),
+)
+
+it.instance(
+  "disabling reviewer keeps other native agents available",
+  () =>
+    Effect.gen(function* () {
+      const reviewer = yield* load((svc) => svc.get("reviewer"))
+      const build = yield* load((svc) => svc.get("build"))
+      const names = (yield* load((svc) => svc.list())).map((agent) => agent.name)
+      expect(reviewer).toBeUndefined()
+      expect(build?.name).toBe("build")
+      expect(names).not.toContain("reviewer")
+    }),
+  { config: { agent: { reviewer: { disable: true } } } },
+)
+
+it.instance(
+  "custom agent config can set mode and tool permissions",
+  () =>
+    Effect.gen(function* () {
+      const custom = yield* load((svc) => svc.get("custom"))
+      expect(custom?.mode).toBe("primary")
+      expect(evalPerm(custom, "bash")).toBe("allow")
+      expect(evalPerm(custom, "edit")).toBe("allow")
+      expect(Object.keys((yield* prepareTools(custom!)).tools).toSorted()).toEqual(toolIDs.toSorted())
+    }),
+  {
+    config: {
+      agent: {
+        custom: {
+          name: "reviewer",
+          mode: "primary",
+          permission: { "*": "allow", bash: "allow", edit: "allow" },
+        },
+      },
+    },
+  },
 )
 
 it.instance("explore agent asks for external directories and allows whitelisted external paths", () =>
@@ -207,6 +365,14 @@ it.instance(
       },
     },
   },
+)
+
+it.instance("reviewer execution denies MCP resource aliases", () =>
+  Effect.gen(function* () {
+    const reviewer = yield* load((svc) => svc.get("reviewer"))
+    const ruleset = Agent.toolPermission(reviewer!, Permission.fromConfig({ "*": "allow" }), "read_mcp_resource")
+    expect(Permission.evaluate("read", "mcp:server:resource", ruleset).action).toBe("deny")
+  }),
 )
 
 it.instance(

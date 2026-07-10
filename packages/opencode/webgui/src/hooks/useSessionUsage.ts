@@ -89,8 +89,17 @@ export function useSessionUsage(targetSessionID?: string): SessionUsage {
     async function loadLimit() {
       try {
         const res = await sdk.config.providers()
-        const providerId = selectedProviderId || res.data?.default?.provider
-        const modelId = selectedModelId || res.data?.default?.model
+        const explicit = res.data?.providers.some(
+          (provider) => provider.id === selectedProviderId && selectedModelId !== undefined && provider.models[selectedModelId],
+        )
+          ? { providerId: selectedProviderId!, modelId: selectedModelId! }
+          : undefined
+        const fallback = res.data?.providers.flatMap((provider) => {
+          const modelId = res.data?.default?.[provider.id]
+          return modelId && provider.models[modelId] ? [{ providerId: provider.id, modelId }] : []
+        })[0]
+        const providerId = explicit?.providerId ?? fallback?.providerId
+        const modelId = explicit?.modelId ?? fallback?.modelId
         if (!providerId || !modelId) {
           if (!cancelled) setContextLimit(0)
           return
@@ -107,7 +116,7 @@ export function useSessionUsage(targetSessionID?: string): SessionUsage {
     return () => {
       cancelled = true
     }
-  }, [selectedProviderId, selectedModelId])
+  }, [selectedProviderId, selectedModelId, sessionID])
 
   const percentage = contextLimit > 0 ? (contextUsed / contextLimit) * 100 : 0
 

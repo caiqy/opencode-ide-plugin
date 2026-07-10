@@ -9,8 +9,10 @@ import path from "path"
 import { createClient } from "@hey-api/openapi-ts"
 
 const opencode = path.resolve(dir, "../../opencode")
+const openapi = path.resolve(dir, "../openapi.json")
 
-await $`bun dev generate > ${dir}/openapi.json`.cwd(opencode)
+await $`bun dev generate > ${openapi}`.cwd(opencode)
+await Bun.write("./openapi.json", await Bun.file(openapi).text())
 
 const document = (await Bun.file("./openapi.json").json()) as {
   components?: { schemas?: Record<string, unknown> }
@@ -91,7 +93,14 @@ const historySdkPatched = generatedSdk.replace(
 if (historySdkPatched === generatedSdk) {
   throw new Error("Session history numeric SDK patch did not apply")
 }
-await Bun.write("./src/v2/gen/sdk.gen.ts", historySdkPatched)
+const visibilitySdkPatched = historySdkPatched.replace(
+  /(public visibility<ThrowOnError extends boolean = false>\(parameters)\?: \{\s*sessionIDs\?: Array<string>;?\s*\}/,
+  "$1: { sessionIDs: Array<string> }",
+)
+if (visibilitySdkPatched === historySdkPatched) {
+  throw new Error("Session visibility required payload patch did not apply")
+}
+await Bun.write("./src/v2/gen/sdk.gen.ts", visibilitySdkPatched)
 
 // Patch a @hey-api/openapi-ts codegen bug: SseFn incorrectly passes the
 // endpoint's TError into the second generic of ServerSentEventsResult, which
@@ -113,6 +122,9 @@ await Bun.write(sseTypesPath, sseTypesPatched)
 
 await $`bun prettier --write src/gen`
 await $`bun prettier --write src/v2`
-await $`rm -rf dist`
+await $`rm -rf dist tsconfig.tsbuildinfo`
 await $`bun tsc`
+for (const file of ["dist/v2/client.js", "dist/v2/gen/sdk.gen.js", "dist/v2/gen/types.gen.js"]) {
+  if (!(await Bun.file(file).exists())) throw new Error(`SDK build output missing: ${file}`)
+}
 await $`rm openapi.json`

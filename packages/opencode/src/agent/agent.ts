@@ -12,6 +12,7 @@ import { ProviderTransform } from "@/provider/transform"
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
+import PROMPT_REVIEWER from "./prompt/reviewer.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import { Permission } from "@/permission"
@@ -60,6 +61,34 @@ const GeneratedAgent = Schema.Struct({
   whenToUse: Schema.String,
   systemPrompt: Schema.String,
 })
+
+const reviewerPermission = Permission.fromConfig({
+  "*": "deny",
+  read: "allow",
+  grep: "allow",
+  glob: "allow",
+})
+const reviewerTools = new Set(["read", "grep", "glob"])
+
+export function isReviewer(agent: Info) {
+  return agent.native === true && agent.name === "reviewer"
+}
+
+export function canUseTool(agent: Info, tool: string) {
+  return !isReviewer(agent) || reviewerTools.has(tool)
+}
+
+export function finalPermission(agent: Info, sessionPermission: PermissionV1.Ruleset = []) {
+  const ruleset = Permission.merge(agent.permission, sessionPermission)
+  if (!isReviewer(agent)) return ruleset
+  return Permission.merge(ruleset, reviewerPermission)
+}
+
+export function toolPermission(agent: Info, sessionPermission: PermissionV1.Ruleset, tool: string) {
+  const ruleset = finalPermission(agent, sessionPermission)
+  if (canUseTool(agent, tool)) return ruleset
+  return Permission.merge(ruleset, Permission.fromConfig({ "*": "deny" }))
+}
 
 export interface Interface {
   readonly get: (agent: string) => Effect.Effect<Info>
@@ -217,6 +246,16 @@ const layer = Layer.effect(
             mode: "subagent",
             native: true,
           },
+          reviewer: {
+            name: "reviewer",
+            permission: Permission.merge(defaults, reviewerPermission, user),
+            description:
+              "Read-only review agent for checking task completion, architecture quality, code quality, necessary comments, risks, and test gaps during implementation or after changes are complete.",
+            prompt: PROMPT_REVIEWER,
+            options: {},
+            mode: "subagent",
+            native: true,
+          },
           compaction: {
             name: "compaction",
             mode: "primary",
@@ -308,6 +347,14 @@ const layer = Layer.effect(
             agents[name].permission,
             Permission.fromConfig({ external_directory: { [Truncate.GLOB]: "allow" } }),
           )
+        }
+
+        if (agents.reviewer) {
+          // ponytail: reviewer is permanently read-only; expand this list only with an explicit security review.
+          agents.reviewer.name = "reviewer"
+          agents.reviewer.native = true
+          agents.reviewer.mode = "subagent"
+          agents.reviewer.permission = reviewerPermission
         }
 
         const get = Effect.fnUntraced(function* (agent: string) {

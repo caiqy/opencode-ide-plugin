@@ -1,4 +1,5 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { FSUtil } from "@opencode-ai/core/fs-util"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Image } from "@/image/image"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
@@ -18,6 +19,7 @@ import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
 import { SessionSummary } from "./summary"
+import { STREAMABLE_TOOLS } from "./streamable-tools"
 import type { Provider } from "@/provider/provider"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
@@ -25,6 +27,8 @@ import { isRecord } from "@/util/record"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Database } from "@opencode-ai/core/database/database"
 import { Usage, type LLMEvent } from "@opencode-ai/llm"
+import { normalizeImageGenerationOutput } from "./generated-image"
+import { persistGeneratedImageAttachments } from "./generated-image-persistence"
 
 const DOOM_LOOP_THRESHOLD = 3
 export type Result = "compact" | "stop" | "continue"
@@ -94,6 +98,7 @@ const layer = Layer.effect(
     const image = yield* Image.Service
     const events = yield* EventV2Bridge.Service
     const database = yield* Database.Service
+    const fs = yield* FSUtil.Service
 
     const create = Effect.fn("SessionProcessor.create")(function* (input: Input) {
       // Pre-capture snapshot before the LLM stream starts. The AI SDK
@@ -168,16 +173,32 @@ const layer = Layer.effect(
       ) {
         const match = yield* readToolCall(toolCallID)
         if (!match || match.part.state.status !== "running") return
+        const normalized = normalizeImageGenerationOutput({
+          tool: match.part.tool,
+          sessionID: match.part.sessionID,
+          messageID: match.part.messageID,
+          output,
+        })
+        const attachmentsExit = yield* persistGeneratedImageAttachments(
+          fs,
+          ctx.assistantMessage.path.root,
+          normalized.attachments,
+        ).pipe(Effect.exit)
+        if (Exit.isFailure(attachmentsExit)) {
+          const detail = errorMessage(Cause.squash(attachmentsExit.cause))
+          yield* failToolCall(toolCallID, new Error(`Failed to persist generated image attachment: ${detail}`))
+          return
+        }
         yield* session.updatePart({
           ...match.part,
           state: {
             status: "completed",
             input: match.part.state.input,
-            output: output.output,
-            metadata: output.metadata,
-            title: output.title,
+            output: normalized.output,
+            metadata: normalized.metadata,
+            title: normalized.title,
             time: { start: match.part.state.time.start, end: Date.now() },
-            attachments: output.attachments,
+            attachments: attachmentsExit.value,
           },
         })
         yield* settleToolCall(toolCallID)
@@ -319,9 +340,18 @@ const layer = Layer.effect(
             yield* ensureToolCall(value)
             return
 
-          case "tool-input-delta":
+          case "tool-input-delta": {
+            if (!STREAMABLE_TOOLS.has(value.name)) return
             yield* ensureToolCall(value)
+            yield* updateToolCall(value.id, (match) => {
+              if (match.state.status !== "pending") return match
+              return {
+                ...match,
+                state: { ...match.state, raw: match.state.raw + value.text },
+              }
+            })
             return
+          }
 
           case "tool-input-end": {
             yield* ensureToolCall(value)
@@ -712,6 +742,7 @@ export const node = LayerNode.make({
     Image.node,
     EventV2Bridge.node,
     Database.node,
+    FSUtil.node,
   ],
 })
 

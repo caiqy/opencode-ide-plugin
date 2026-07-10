@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react"
 import { sdk } from "../../../lib/api/sdkClient"
-import type { FileDiff } from "@opencode-ai/sdk/client"
+import type { SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
 
 export function useDiffData(sessionID: string, messageID: string, isOpen: boolean) {
-  const [diffs, setDiffs] = useState<FileDiff[]>([])
+  const [diffs, setDiffs] = useState<SnapshotFileDiff[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

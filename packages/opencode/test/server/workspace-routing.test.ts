@@ -51,6 +51,11 @@ describe("getWorkspaceRouteSessionID", () => {
     expect(getWorkspaceRouteSessionID(url)).toBeNull()
   })
 
+  test("returns null for /session/visibility", () => {
+    const url = new URL("http://localhost/session/visibility")
+    expect(getWorkspaceRouteSessionID(url)).toBeNull()
+  })
+
   test("returns null for non-session paths", () => {
     const url = new URL("http://localhost/config")
     expect(getWorkspaceRouteSessionID(url)).toBeNull()

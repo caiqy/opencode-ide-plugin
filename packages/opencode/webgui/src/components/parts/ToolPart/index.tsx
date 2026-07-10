@@ -182,10 +182,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const showOutput = part.state.status === "completed" && Boolean(part.state.output)
   const showWriteContent =
     part.tool === "write" && (part.state.status === "completed" || partialInput !== null) && writeContent.length > 0
-  const showDiff =
-    (part.tool === "edit" || part.tool === "multiedit") &&
-    part.state.status === "completed" &&
-    Boolean(part.state.metadata?.diff)
+  const showDiff = part.tool === "edit" && part.state.status === "completed" && Boolean(part.state.metadata?.diff)
   const showEditPartial = part.tool === "edit" && partialInput !== null && editNewString.length > 0
   const showError = part.state.status === "error" && Boolean(part.state.error)
 
@@ -237,8 +234,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     part.tool === "grep" ||
     part.tool === "webfetch"
   // edit/write/apply_patch: only show content, no generic output
-  const isContentOnlyTool =
-    part.tool === "edit" || part.tool === "multiedit" || part.tool === "write" || part.tool === "apply_patch"
+  const isContentOnlyTool = part.tool === "edit" || part.tool === "write" || part.tool === "apply_patch"
 
   const onRespond = async (reply: "once" | "always" | "reject") => {
     if (!permission) return

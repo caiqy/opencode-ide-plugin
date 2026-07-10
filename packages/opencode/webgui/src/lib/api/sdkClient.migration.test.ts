@@ -78,7 +78,10 @@ describe("sdk migration baseline", () => {
                 sessionID: "s1",
                 time: { created: 1 },
                 agent: "build",
-                model: { providerID: "openai", modelID: "gpt-4.1" },
+                model: { providerID: "openai", modelID: "gpt-4.1", variant: "high" },
+                format: { type: "json_schema", schema: { type: "object" } },
+                system: "retry system",
+                tools: { bash: false },
               },
               parts: [
                 {
@@ -122,14 +125,16 @@ describe("sdk migration baseline", () => {
     expect(req3.url).not.toContain("/app" + "/api")
     expect(req3.method).toBe("POST")
 
-    const body = JSON.parse(await req3.text()) as {
-      parts: Array<{ type: string; text?: string }>
-      agent?: string
-      model?: { providerID: string; modelID: string }
-    }
-    expect(body.parts).toEqual([{ type: "text", text: "hello", id: "p1" }])
-    expect(body.agent).toBe("build")
-    expect(body.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" })
+    const body: unknown = JSON.parse(await req3.text())
+    expect(body).toHaveProperty("parts", [{ type: "text", text: "hello" }])
+    expect(body).toMatchObject({
+      agent: "build",
+      model: { providerID: "openai", modelID: "gpt-4.1" },
+      variant: "high",
+      format: { type: "json_schema", schema: { type: "object" } },
+      system: "retry system",
+      tools: { bash: false },
+    })
   })
 
   it("session.retry respects revert boundary from session.get", async () => {
@@ -160,7 +165,10 @@ describe("sdk migration baseline", () => {
                 sessionID: "s1",
                 time: { created: 1 },
                 agent: "build",
-                model: { providerID: "openai", modelID: "gpt-4.1" },
+                model: { providerID: "openai", modelID: "gpt-4.1", variant: "high" },
+                format: { type: "json_schema", schema: { type: "object" } },
+                system: "retry system",
+                tools: { bash: false },
               },
               parts: [
                 {
@@ -217,13 +225,15 @@ describe("sdk migration baseline", () => {
     expect(req3.url).toContain("/session/s1/message")
     expect(req3.method).toBe("POST")
 
-    const body = JSON.parse(await req3.text()) as {
-      parts: Array<{ type: string; text?: string }>
-      agent?: string
-      model?: { providerID: string; modelID: string }
-    }
-    expect(body.parts).toEqual([{ type: "text", text: "visible", id: "p-visible" }])
-    expect(body.agent).toBe("build")
-    expect(body.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" })
+    const body: unknown = JSON.parse(await req3.text())
+    expect(body).toHaveProperty("parts", [{ type: "text", text: "visible" }])
+    expect(body).toMatchObject({
+      agent: "build",
+      model: { providerID: "openai", modelID: "gpt-4.1" },
+      variant: "high",
+      format: { type: "json_schema", schema: { type: "object" } },
+      system: "retry system",
+      tools: { bash: false },
+    })
   })
 })

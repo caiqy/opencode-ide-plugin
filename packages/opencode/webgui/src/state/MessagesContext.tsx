@@ -1,20 +1,7 @@
 import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react"
 import { useEventHandler, type EventEmitter, type ServerEvent } from "../lib/api/events"
 import { type Message, type Part, type WebguiPart, type SDKMessage, type QuestionRequest } from "../types/messages"
-import type { QuestionAnswer } from "@opencode-ai/sdk/v2/client"
-// PermissionRequest type based on new permission system (permission.asked event)
-interface PermissionRequest {
-  id: string
-  sessionID: string
-  permission: string
-  patterns: string[]
-  metadata: Record<string, unknown>
-  always: string[]
-  tool?: {
-    messageID: string
-    callID: string
-  }
-}
+import type { PermissionRequest, QuestionAnswer } from "@opencode-ai/sdk/v2/client"
 import * as Store from "../lib/messagesStore"
 import { sdk } from "../lib/api/sdkClient"
 import { useSession } from "./SessionContext"
@@ -53,6 +40,27 @@ const emptyPage: SessionPage = {
   latest_error: false,
   older_loading: false,
   older_error: false,
+}
+
+function mergePendingSnapshot<T extends { id: string }>(
+  current: T[],
+  snapshot: T[],
+  touched: Record<string, number>,
+  type: "permission" | "question",
+  version: number,
+) {
+  const local = new Map(current.map((item) => [item.id, item]))
+  const incoming = new Map(snapshot.map((item) => [item.id, item]))
+  const result = snapshot.flatMap((item) => {
+    if ((touched[`${type}:${item.id}`] ?? 0) <= version) return [item]
+    const current = local.get(item.id)
+    return current ? [current] : []
+  })
+  for (const item of current) {
+    if (incoming.has(item.id) || (touched[`${type}:${item.id}`] ?? 0) <= version) continue
+    result.push(item)
+  }
+  return result
 }
 
 // Re-export types for convenience
@@ -172,6 +180,8 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const latestLoadRef = useRef<Record<string, LatestLoad | undefined>>({})
   const olderLoadRef = useRef<Record<string, Promise<Message[] | null> | undefined>>({})
   const messagesRef = useRef<Message[]>([])
+  const pendingEpoch = useRef(0)
+  const pendingWindow = useRef<{ epoch: number; version: number; touched: Record<string, number> } | undefined>(undefined)
   const session = useSession()
   const setReasoning = session.setReasoning
   const setSessionIdle = session.setSessionIdle
@@ -181,6 +191,13 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     const rows = typeof next === "function" ? next(messagesRef.current) : next
     messagesRef.current = rows
     setRows(rows)
+  }, [])
+
+  const touchPending = useCallback((type: "permission" | "question", id: string) => {
+    const current = pendingWindow.current
+    if (!current) return
+    current.version++
+    current.touched[`${type}:${id}`] = current.version
   }, [])
 
   const normalizePart = useCallback((part: WebguiPart): WebguiPart => {
@@ -659,9 +676,9 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   )
 
   const loadLatest = useCallback(
-    async (sessionID: string, signal?: AbortSignal) => {
+    async (sessionID: string, signal?: AbortSignal, force = false) => {
       const pending = latestLoadRef.current[sessionID]
-      if (pending && !pending.signal?.aborted) return pending.promise
+      if (!force && pending && !pending.signal?.aborted) return pending.promise
       if (pending) delete latestLoadRef.current[sessionID]
 
       console.log("[MessagesContext] Loading latest messages for session:", sessionID)
@@ -972,18 +989,20 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const handlePermissionAsked = useCallback((event: ServerEvent) => {
     if (event.type !== "permission.asked") return
     const perm = event.properties as PermissionRequest
+    touchPending("permission", perm.id)
     setPermissions((prev) => {
       const exists = prev.some((p) => p.id === perm.id)
       if (exists) return prev.map((p) => (p.id === perm.id ? perm : p))
       return [...prev, perm]
     })
-  }, [])
+  }, [touchPending])
 
   const handlePermissionReplied = useCallback((event: ServerEvent) => {
     if (event.type !== "permission.replied") return
     const { requestID } = event.properties as { sessionID: string; requestID: string; reply: string }
+    touchPending("permission", requestID)
     setPermissions((prev) => prev.filter((p) => p.id !== requestID))
-  }, [])
+  }, [touchPending])
 
   const getPermissionForCall = useCallback(
     (sessionID: string, callID?: string | null) => {
@@ -1001,17 +1020,21 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         body: { reply },
       })
       const ok = Boolean(result && "data" in result && result.data === true)
-      if (ok) setPermissions((prev) => prev.filter((p) => p.id !== requestID))
+      if (ok) {
+        touchPending("permission", requestID)
+        setPermissions((prev) => prev.filter((p) => p.id !== requestID))
+      }
       return ok
     } catch (e) {
       return false
     }
-  }, [])
+  }, [touchPending])
 
   // Question events
   const handleQuestionAsked = useCallback((event: ServerEvent) => {
     if (event.type !== "question.asked") return
     const request = event.properties as QuestionRequest
+    touchPending("question", request.id)
     console.log("[MessagesContext] Question asked:", request.id, request.sessionID)
     setQuestions((prev) => {
       const newMap = new Map(prev)
@@ -1029,11 +1052,12 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       }
       return newMap
     })
-  }, [])
+  }, [touchPending])
 
   const handleQuestionReplied = useCallback((event: ServerEvent) => {
     if (event.type !== "question.replied") return
     const { sessionID, requestID } = event.properties as { sessionID: string; requestID: string }
+    touchPending("question", requestID)
     console.log("[MessagesContext] Question replied:", requestID, sessionID)
     setQuestions((prev) => {
       const newMap = new Map(prev)
@@ -1046,11 +1070,12 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       }
       return newMap
     })
-  }, [])
+  }, [touchPending])
 
   const handleQuestionRejected = useCallback((event: ServerEvent) => {
     if (event.type !== "question.rejected") return
     const { sessionID, requestID } = event.properties as { sessionID: string; requestID: string }
+    touchPending("question", requestID)
     console.log("[MessagesContext] Question rejected:", requestID, sessionID)
     setQuestions((prev) => {
       const newMap = new Map(prev)
@@ -1063,7 +1088,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       }
       return newMap
     })
-  }, [])
+  }, [touchPending])
 
   const getQuestionsBySession = useCallback(
     (sessionID: string): QuestionRequest[] => {
@@ -1089,6 +1114,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         answers,
       })
       if (result?.error) return false
+      touchPending("question", requestID)
       // Remove from local state (event will also do this, but be proactive)
       setQuestions((prev) => {
         const newMap = new Map(prev)
@@ -1106,7 +1132,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       console.error("[MessagesContext] Failed to reply to question:", e)
       return false
     }
-  }, [])
+  }, [touchPending])
 
   const rejectQuestion = useCallback(async (requestID: string): Promise<boolean> => {
     try {
@@ -1114,6 +1140,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         requestID,
       })
       if (result?.error) return false
+      touchPending("question", requestID)
       // Remove from local state (event will also do this, but be proactive)
       setQuestions((prev) => {
         const newMap = new Map(prev)
@@ -1131,7 +1158,49 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       console.error("[MessagesContext] Failed to reject question:", e)
       return false
     }
+  }, [touchPending])
+
+  const hydratePending = useCallback(async (epoch: number) => {
+    const window = pendingWindow.current
+    if (!window || window.epoch !== epoch) return
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const [permissionResult, questionResult] = await Promise.all([sdk.permissions.list(), sdk.question.list()])
+        if (pendingWindow.current !== window) return
+        const permissions = permissionResult.data
+        if (!permissionResult.error && permissions) {
+          setPermissions((prev) => mergePendingSnapshot(prev, permissions, window.touched, "permission", 0))
+        }
+        const questions = questionResult.data
+        if (!questionResult.error && questions) {
+          setQuestions((prev) => {
+            const grouped = new Map<string, QuestionRequest[]>()
+            for (const item of mergePendingSnapshot(
+              [...prev.values()].flat(),
+              questions,
+              window.touched,
+              "question",
+              0,
+            )) {
+              grouped.set(item.sessionID, [...(grouped.get(item.sessionID) ?? []), item])
+            }
+            return grouped
+          })
+        }
+        if (window.version === 0 || attempt === 1) return
+      }
+    } finally {
+      if (pendingWindow.current === window) pendingWindow.current = undefined
+    }
   }, [])
+
+  const handleServerConnected = useCallback(() => {
+    const epoch = ++pendingEpoch.current
+    pendingWindow.current = { epoch, version: 0, touched: {} }
+    void hydratePending(epoch)
+    const sessionID = session.currentSession?.id
+    if (sessionID) void loadLatest(sessionID, undefined, true)
+  }, [hydratePending, loadLatest, session.currentSession?.id])
 
   // Subscribe to events if emitter is provided
   useEventHandler(emitter ?? null, "message.updated", handleMessageUpdated)
@@ -1146,6 +1215,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   useEventHandler(emitter ?? null, "question.asked", handleQuestionAsked)
   useEventHandler(emitter ?? null, "question.replied", handleQuestionReplied)
   useEventHandler(emitter ?? null, "question.rejected", handleQuestionRejected)
+  useEventHandler(emitter ?? null, "server.connected", handleServerConnected)
 
   const value: MessagesContextValue = {
     messages,

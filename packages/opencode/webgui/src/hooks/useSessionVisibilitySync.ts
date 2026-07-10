@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react"
 import { sdk } from "../lib/api/sdkClient"
+import { eventEmitter } from "../lib/api/events"
 import { useSession } from "../state/SessionContext"
 import { useTabStore } from "../state/tabStore"
 
@@ -20,8 +21,12 @@ export function useSessionVisibilitySync() {
   const { currentSession, foregroundSessions } = useSession()
   const { openTabs } = useTabStore()
   const synced = useRef<string | undefined>(undefined)
+  const blocked = useRef<string | undefined>(undefined)
+  const attempts = useRef({ key: "", count: 0 })
   const inFlight = useRef<string | undefined>(undefined)
   const retry = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const epoch = useRef(0)
+  const connected = useRef(false)
   const disposed = useRef(false)
   const latest = useRef({ key: "[]", sessionIDs: [] as string[] })
   const flush = useRef<() => void>(() => {})
@@ -34,38 +39,49 @@ export function useSessionVisibilitySync() {
     if (disposed.current) return
 
     const next = latest.current
-    if (inFlight.current || synced.current === next.key) return
+    const token = `${epoch.current}:${next.key}`
+    if (inFlight.current?.startsWith(`${epoch.current}:`) || synced.current === token || blocked.current === token) return
+    if (attempts.current.key !== token) attempts.current = { key: token, count: 0 }
+    if (attempts.current.count === 3) return
     if (retry.current) {
       clearTimeout(retry.current)
       retry.current = null
     }
 
-    inFlight.current = next.key
+    inFlight.current = token
+    attempts.current.count += 1
 
     void sdk.session
       .syncVisible({ body: { sessionIDs: next.sessionIDs } })
       .then((response) => {
-        if (disposed.current || response.error) return false
-        synced.current = next.key
-        return true
+        if (token !== `${epoch.current}:${next.key}`) return { ok: false, status: undefined, stale: true }
+        if (disposed.current || response.error) return { ok: false, status: response.error?.status, stale: false }
+        synced.current = token
+        return { ok: true, status: undefined, stale: false }
       })
       .catch((error) => {
         if (!disposed.current) {
           console.error("[useSessionVisibilitySync] Failed to sync visible sessions:", error)
         }
-        return false
+        return { ok: false, status: undefined, stale: false }
       })
-      .then((ok) => {
+      .then(({ ok, status, stale }) => {
         if (disposed.current) return
-        if (inFlight.current === next.key) inFlight.current = undefined
+        if (inFlight.current === token) inFlight.current = undefined
+        if (stale) return
 
         const current = latest.current
-        if (current.key !== next.key) {
+        const currentToken = `${epoch.current}:${current.key}`
+        if (currentToken !== token) {
           flush.current()
           return
         }
 
-        if (ok || synced.current === current.key || retry.current) return
+        if (ok || synced.current === currentToken || retry.current) return
+        if (status && status < 500) {
+          blocked.current = currentToken
+          return
+        }
 
         retry.current = setTimeout(() => {
           retry.current = null
@@ -75,8 +91,27 @@ export function useSessionVisibilitySync() {
   }
 
   useEffect(() => {
+    if (blocked.current !== `${epoch.current}:${key}`) blocked.current = undefined
     flush.current()
   }, [key])
+
+  useEffect(() => {
+    return eventEmitter.on("server.connected", () => {
+      if (!connected.current) {
+        connected.current = true
+        return
+      }
+      epoch.current++
+      synced.current = undefined
+      blocked.current = undefined
+      attempts.current = { key: "", count: 0 }
+      if (retry.current) {
+        clearTimeout(retry.current)
+        retry.current = null
+      }
+      flush.current()
+    })
+  }, [])
 
   useEffect(() => {
     return () => {

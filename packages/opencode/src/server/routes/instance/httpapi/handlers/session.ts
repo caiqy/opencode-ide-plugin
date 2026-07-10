@@ -13,6 +13,7 @@ import { SessionRevert } from "@/session/revert"
 import { SessionRunState } from "@/session/run-state"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
+import { SessionSummaryScheduler } from "@/session/summary-scheduler"
 import { Todo } from "@/session/todo"
 import { MessageID, PartID, SessionID } from "@/session/schema"
 import { NamedError } from "@opencode-ai/core/util/error"
@@ -36,6 +37,7 @@ import {
   ShellPayload,
   SummarizePayload,
   UpdatePayload,
+  VisibilityPayload,
 } from "../groups/session"
 import * as ApiError from "../errors"
 import { PermissionNotFoundError } from "../errors"
@@ -60,6 +62,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const statusSvc = yield* SessionStatus.Service
     const todoSvc = yield* Todo.Service
     const summary = yield* SessionSummary.Service
+    const summaryScheduler = yield* SessionSummaryScheduler.Service
     const events = yield* EventV2Bridge.Service
     const scope = yield* Scope.Scope
 
@@ -78,6 +81,14 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
 
     const status = Effect.fn("SessionHttpApi.status")(function* () {
       return Object.fromEntries(yield* statusSvc.list())
+    })
+
+    const syncVisible = Effect.fn("SessionHttpApi.syncVisible")(function* (ctx: {
+      payload: typeof VisibilityPayload.Type
+    }) {
+      const sessionIDs = Array.from(new Set(ctx.payload.sessionIDs))
+      yield* summaryScheduler.syncVisible(sessionIDs)
+      return { sessionIDs }
     })
 
     const requireSession = Effect.fn("SessionHttpApi.requireSession")(function* (sessionID: SessionID) {
@@ -438,6 +449,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     return handlers
       .handle("list", list)
       .handle("status", status)
+      .handle("syncVisible", syncVisible)
       .handle("get", get)
       .handle("children", children)
       .handle("todo", todo)

@@ -397,6 +397,103 @@ it.effect("updates global config and omits empty shell key in jsonc", () =>
   ),
 )
 
+it.effect("reloads the current instance after global config changes", () =>
+  Effect.gen(function* () {
+    const project = yield* tmpdirScoped()
+    yield* withGlobalConfig({ config: { username: "before" } }, ({ dir }) =>
+      withInstanceDir(
+        project,
+        Effect.gen(function* () {
+          expect((yield* Config.use.get()).username).toBe("before")
+          yield* writeConfigEffect(dir, schemaConfig({ username: "after" }))
+
+          yield* Config.use.reload()
+
+          expect((yield* Config.use.get()).username).toBe("after")
+        }),
+      ),
+    )
+  }),
+)
+
+for (const name of ["opencode.json", "opencode.jsonc"]) {
+  it.effect(`replaces agent and provider when updating ${name}`, () =>
+    withGlobalConfig(
+      {
+        name,
+        config: {
+          agent: {
+            build: {
+              description: "old description",
+              model: "old/model",
+              variant: "old-variant",
+            },
+          },
+          provider: {
+            openai: {
+              options: {
+                baseURL: "https://old.example.com/v1",
+                apiKey: "old-key",
+                timeout: 1000,
+              },
+              whitelist: ["old-model"],
+            },
+            stale: {
+              options: {
+                apiKey: "stale-key",
+              },
+            },
+          },
+          username: "before",
+        },
+      },
+      ({ dir }) =>
+        Effect.gen(function* () {
+          const result = yield* Config.use.updateGlobal({
+            agent: {
+              build: {
+                description: "new description",
+              },
+            },
+            provider: {
+              openai: {
+                options: {
+                  timeout: 2000,
+                },
+                whitelist: ["new-model"],
+              },
+            },
+            username: "after",
+          })
+
+          expect(result.info.agent?.build?.description).toBe("new description")
+          expect(result.info.agent?.build?.model).toBeUndefined()
+          expect(result.info.agent?.build?.variant).toBeUndefined()
+          expect(result.info.provider?.openai?.options?.baseURL).toBeUndefined()
+          expect(result.info.provider?.openai?.options?.apiKey).toBeUndefined()
+          expect(result.info.provider?.openai?.options?.timeout).toBe(2000)
+          expect(result.info.provider?.openai?.whitelist).toEqual(["new-model"])
+          expect(result.info.provider?.stale).toBeUndefined()
+          expect(result.info.username).toBe("after")
+
+          const file = path.join(dir, name)
+          const written = ConfigParse.schema(
+            ConfigV1.Info,
+            ConfigParse.jsonc(yield* FSUtil.use.readFileString(file), file),
+            file,
+          )
+          expect(written.agent?.build?.model).toBeUndefined()
+          expect(written.agent?.build?.variant).toBeUndefined()
+          expect(written.provider?.openai?.options?.baseURL).toBeUndefined()
+          expect(written.provider?.openai?.options?.apiKey).toBeUndefined()
+          expect(written.provider?.openai?.options?.timeout).toBe(2000)
+          expect(written.provider?.stale).toBeUndefined()
+          expect(written.username).toBe("after")
+        }),
+    ),
+  )
+}
+
 it.instance(
   "loads formatter boolean config",
   Effect.gen(function* () {

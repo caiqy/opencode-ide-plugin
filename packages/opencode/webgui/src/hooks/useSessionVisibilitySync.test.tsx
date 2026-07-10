@@ -10,6 +10,18 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 
+const events = vi.hoisted(() => {
+  const handlers = new Set<() => void>()
+  return {
+    emit: () => handlers.forEach((handler) => handler()),
+    on: (_type: string, handler: () => void) => {
+      handlers.add(handler)
+      return () => handlers.delete(handler)
+    },
+    reset: () => handlers.clear(),
+  }
+})
+
 vi.mock("../lib/api/sdkClient", () => ({
   sdk: {
     session: {
@@ -29,6 +41,12 @@ vi.mock("../state/tabStore", () => ({
   useTabStore: () => ({
     openTabs: mocks.state.openTabs,
   }),
+}))
+
+vi.mock("../lib/api/events", () => ({
+  eventEmitter: {
+    on: events.on,
+  },
 }))
 
 import { useSessionVisibilitySync } from "./useSessionVisibilitySync"
@@ -56,6 +74,7 @@ describe("useSessionVisibilitySync", () => {
     mocks.state.openTabs = ["s3", "s1", "s2", "s1"]
     mocks.state.foregroundSessions = new Set()
     mocks.syncVisible.mockResolvedValue(ok(["s1", "s2", "s3"]))
+    events.reset()
   })
 
   afterEach(() => {
@@ -211,5 +230,153 @@ describe("useSessionVisibilitySync", () => {
         sessionIDs: ["s1", "s2", "s3"],
       },
     })
+  })
+
+  it("4xx visibility error does not retry forever", async () => {
+    vi.useFakeTimers()
+    mocks.syncVisible.mockResolvedValueOnce({ data: null, error: { message: "bad request", status: 400 } })
+
+    renderHook(() => useSessionVisibilitySync())
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+
+    expect(mocks.syncVisible).toHaveBeenCalledTimes(1)
+  })
+
+  it("unknown visibility errors stop after three attempts", async () => {
+    vi.useFakeTimers()
+    mocks.syncVisible.mockResolvedValue(fail("temporary failure"))
+
+    renderHook(() => useSessionVisibilitySync())
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+
+    expect(mocks.syncVisible).toHaveBeenCalledTimes(3)
+  })
+
+  it("5xx visibility errors stop after three attempts", async () => {
+    vi.useFakeTimers()
+    mocks.syncVisible.mockResolvedValue({ data: null, error: { message: "server error", status: 500 } })
+
+    renderHook(() => useSessionVisibilitySync())
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+
+    expect(mocks.syncVisible).toHaveBeenCalledTimes(3)
+  })
+
+  it("does not reset B's retry budget when A settles during B's render", async () => {
+    vi.useFakeTimers()
+    const first = deferred<ReturnType<typeof fail>>()
+    mocks.syncVisible.mockImplementationOnce(() => first.promise)
+    mocks.syncVisible.mockResolvedValue(fail("temporary failure"))
+
+    const view = renderHook(() => useSessionVisibilitySync())
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(mocks.syncVisible).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      mocks.state.currentSession = { id: "s4" }
+      view.rerender()
+      first.resolve(fail("temporary failure"))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+
+    expect(mocks.syncVisible.mock.calls.filter(([input]) => (input as { body: { sessionIDs: string[] } }).body.sessionIDs.includes("s4"))).toHaveLength(3)
+  })
+
+  it("retries after a 4xx when the visibility key changes", async () => {
+    mocks.syncVisible.mockResolvedValueOnce({ data: null, error: { message: "bad request", status: 400 } })
+    mocks.syncVisible.mockResolvedValueOnce(ok(["s1", "s2", "s3", "s4"]))
+
+    const view = renderHook(() => useSessionVisibilitySync())
+    await waitFor(() => expect(mocks.syncVisible).toHaveBeenCalledTimes(1))
+
+    mocks.state.currentSession = { id: "s4" }
+    view.rerender()
+
+    await waitFor(() => expect(mocks.syncVisible).toHaveBeenCalledTimes(2))
+  })
+
+  it("reconnects an unchanged key with a fresh retry budget after the initial connection", async () => {
+    vi.useFakeTimers()
+    mocks.syncVisible.mockResolvedValue(fail("temporary failure"))
+
+    renderHook(() => useSessionVisibilitySync())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+    expect(mocks.syncVisible).toHaveBeenCalledTimes(3)
+
+    await act(async () => {
+      events.emit()
+      events.emit()
+      await Promise.resolve()
+    })
+
+    expect(mocks.syncVisible).toHaveBeenCalledTimes(4)
+  })
+
+  it("starts a new epoch request while an old epoch request is still pending", async () => {
+    const old = deferred<ReturnType<typeof ok>>()
+    mocks.syncVisible.mockImplementationOnce(() => old.promise)
+    mocks.syncVisible.mockResolvedValueOnce(ok(["s1", "s2", "s3"]))
+
+    renderHook(() => useSessionVisibilitySync())
+    await waitFor(() => expect(mocks.syncVisible).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      events.emit()
+      events.emit()
+    })
+
+    await waitFor(() => expect(mocks.syncVisible).toHaveBeenCalledTimes(2))
+    await act(async () => {
+      old.resolve(fail("old failure"))
+      await Promise.resolve()
+    })
+
+    expect(mocks.syncVisible).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not retry after unmount", async () => {
+    vi.useFakeTimers()
+    mocks.syncVisible.mockResolvedValue(fail("temporary failure"))
+
+    const view = renderHook(() => useSessionVisibilitySync())
+    await act(async () => {
+      await Promise.resolve()
+    })
+    view.unmount()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+
+    expect(mocks.syncVisible).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not schedule work when an in-flight request settles after unmount", async () => {
+    const first = deferred<ReturnType<typeof fail>>()
+    mocks.syncVisible.mockImplementationOnce(() => first.promise)
+
+    const view = renderHook(() => useSessionVisibilitySync())
+    await waitFor(() => expect(mocks.syncVisible).toHaveBeenCalledTimes(1))
+    view.unmount()
+    await act(async () => {
+      first.resolve(fail("temporary failure"))
+      await Promise.resolve()
+    })
+
+    expect(mocks.syncVisible).toHaveBeenCalledTimes(1)
   })
 })

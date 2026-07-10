@@ -7,14 +7,16 @@ import {
   type Spread,
 } from "lexical"
 import { AttachmentComponent } from "./AttachmentComponent"
+import type { FilePart } from "@opencode-ai/sdk/v2/client"
 
 export interface AttachmentMetadata {
   id: string
   display: string
-  filename: string
+  filename?: string
   mime: string
   url: string // data URI
   size: number // bytes
+  source?: FilePart["source"]
 }
 
 export type SerializedAttachmentNode = Spread<

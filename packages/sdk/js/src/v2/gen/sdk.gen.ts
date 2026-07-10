@@ -237,6 +237,8 @@ import type {
   SessionUnshareResponses,
   SessionUpdateErrors,
   SessionUpdateResponses,
+  SessionVisibilityErrors,
+  SessionVisibilityResponses,
   SubtaskPartInput,
   SyncHistoryListErrors,
   SyncHistoryListResponses,
@@ -3730,6 +3732,28 @@ export class Session2 extends HeyApiClient {
       url: "/session/status",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Sync visible sessions
+   *
+   * Update the process-local set of sessions visible in the current WebGUI instance.
+   */
+  public visibility<ThrowOnError extends boolean = false>(
+    parameters: { sessionIDs: Array<string> },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "sessionIDs" }] }])
+    return (options?.client ?? this.client).put<SessionVisibilityResponses, SessionVisibilityErrors, ThrowOnError>({
+      url: "/session/visibility",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

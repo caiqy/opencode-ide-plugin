@@ -2,6 +2,7 @@ import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { afterEach, describe, expect } from "bun:test"
 import { NodeHttpServer, NodeServices } from "@effect/platform-node"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
+import { EventV2Bridge } from "@/event-v2-bridge"
 import { mkdir } from "node:fs/promises"
 import path from "node:path"
 import { Cause, Config, Effect, Exit, Layer } from "effect"
@@ -24,12 +25,15 @@ import * as HttpSessionError from "../../src/server/routes/instance/httpapi/hand
 import { ExperimentalPaths } from "../../src/server/routes/instance/httpapi/groups/experimental"
 import { SessionPaths } from "../../src/server/routes/instance/httpapi/groups/session"
 import { Session } from "@/session/session"
+import { SessionSummary } from "@/session/summary"
+import { SessionSummaryScheduler } from "@/session/summary-scheduler"
 import { MessageID, PartID, SessionID, type SessionID as SessionIDType } from "../../src/session/schema"
 import { Database } from "@opencode-ai/core/database/database"
 import { SessionInputTable, SessionMessageTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionMessage } from "@opencode-ai/core/session/message"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
+import { EventV2 } from "@opencode-ai/core/event"
 import * as DateTime from "effect/DateTime"
 import { eq } from "drizzle-orm"
 import { resetDatabase } from "../fixture/db"
@@ -43,8 +47,24 @@ const noopBootstrapLayer = Layer.succeed(
   InstanceBootstrapService.Service,
   InstanceBootstrapService.Service.of({ run: Effect.void }),
 )
+const sessionSummarySchedulerNode = LayerNode.make({
+  service: SessionSummaryScheduler.Service,
+  layer: SessionSummaryScheduler.layer,
+  deps: [EventV2Bridge.node, Session.node, SessionSummary.node],
+})
 const appLayer = AppNodeBuilder.build(
-  LayerNode.group([InstanceStore.node, Project.node, Session.node, Workspace.node, Database.node, Ripgrep.node]),
+  LayerNode.group([
+    InstanceStore.node,
+    Project.node,
+    EventV2.node,
+    EventV2Bridge.node,
+    Session.node,
+    SessionSummary.node,
+    sessionSummarySchedulerNode,
+    Workspace.node,
+    Database.node,
+    Ripgrep.node,
+  ]),
   [[InstanceStore.bootstrapNode, noopBootstrapLayer]],
 )
 const servedRoutes: Layer.Layer<never, Config.ConfigError, HttpServer.HttpServer> = HttpRouter.serve(
@@ -58,8 +78,9 @@ const httpApiLayer = servedRoutes.pipe(
   Layer.provide(layerWebSocketConstructorGlobal),
   Layer.provideMerge(NodeHttpServer.layerTest),
   Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(appLayer),
 )
-const it = testEffect(Layer.mergeAll(appLayer, httpApiLayer))
+const it = testEffect(httpApiLayer)
 
 function pathFor(path: string, params: Record<string, string>) {
   return Object.entries(params).reduce((result, [key, value]) => result.replace(`:${key}`, value), path)
@@ -384,6 +405,33 @@ describe("session HttpApi", () => {
             headers,
           })).data,
         ).toMatchObject([{ type: "assistant" }])
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
+    "syncs session visibility",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const headers = { "x-opencode-directory": test.directory, "content-type": "application/json" }
+        const first = yield* createSession({ title: "first visible" })
+        const second = yield* createSession({ title: "second visible" })
+
+        const savedResponse = yield* request(SessionPaths.visibility, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ sessionIDs: [second.id, first.id, second.id] }),
+        })
+        const saved = yield* json<{ sessionIDs: string[] }>(savedResponse)
+        expect(saved.sessionIDs).toEqual([second.id, first.id])
+
+        const malformed = yield* request(SessionPaths.visibility, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ sessionIDs: ["malformed"] }),
+        })
+        expect(malformed.status).toBe(400)
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )
@@ -1050,21 +1098,20 @@ describe("session HttpApi", () => {
         const test = yield* TestInstance
         const headers = { "x-opencode-directory": test.directory, "content-type": "application/json" }
         const session = yield* createSession({ title: "remaining" })
+        const message = yield* createTextMessage(session.id, "revert target")
 
-        expect(
-          yield* requestJson<Session.Info>(pathFor(SessionPaths.revert, { sessionID: session.id }), {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ messageID: MessageID.ascending() }),
-          }),
-        ).toMatchObject({ id: session.id })
+        const reverted = yield* requestJson<Session.Info>(pathFor(SessionPaths.revert, { sessionID: session.id }), {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ messageID: message.info.id }),
+        })
+        expect(reverted.revert?.messageID).toBe(message.info.id)
 
-        expect(
-          yield* requestJson<Session.Info>(pathFor(SessionPaths.unrevert, { sessionID: session.id }), {
-            method: "POST",
-            headers,
-          }),
-        ).toMatchObject({ id: session.id })
+        const restored = yield* requestJson<Session.Info>(pathFor(SessionPaths.unrevert, { sessionID: session.id }), {
+          method: "POST",
+          headers,
+        })
+        expect(restored.revert).toBeUndefined()
 
         const permissionID = String(PermissionV1.ID.ascending())
         const permission = yield* request(
@@ -1084,7 +1131,8 @@ describe("session HttpApi", () => {
           requestID: permissionID,
           message: `Permission request not found: ${permissionID}`,
         })
-      }),
+    }),
     { git: true, config: { formatter: false, lsp: false } },
+    { timeout: 15000 },
   )
 })

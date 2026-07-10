@@ -1,12 +1,12 @@
 import { useMemo } from "react"
-import type { FileDiff } from "@opencode-ai/sdk/client"
+import type { SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
 import { useOpenFile } from "../hooks/useOpenFile"
 import { useProject } from "../state/ProjectContext"
 import { normalizePath, toDisplayPath } from "../utils/path"
 import { useMergedFileDiffs } from "../hooks/useMergedFileDiffs"
 
 interface FileChangesPanelProps {
-  diffs?: FileDiff[]
+  diffs?: SnapshotFileDiff[]
   fallbackFiles?: string[]
   status?: {
     type: "updating" | "latest" | "failed"
@@ -17,7 +17,9 @@ interface FileChangesPanelProps {
 export function FileChangesPanel({ diffs = [], fallbackFiles = [], status }: FileChangesPanelProps) {
   const openFile = useOpenFile()
   const { worktree } = useProject()
-  const mergedDiffs = useMergedFileDiffs(diffs, fallbackFiles)
+  const mergedDiffs = useMergedFileDiffs(diffs, fallbackFiles).filter(
+    (diff): diff is SnapshotFileDiff & { file: string } => typeof diff.file === "string" && diff.file.length > 0,
+  )
 
   const hint =
     status?.type === "updating"
@@ -29,7 +31,7 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [], status }: Fil
           : null
 
   const { modified, deleted, totalAdditions, totalDeletions, netChange } = useMemo(() => {
-    const sortByBasename = (a: FileDiff, b: FileDiff) => {
+    const sortByBasename = (a: SnapshotFileDiff & { file: string }, b: SnapshotFileDiff & { file: string }) => {
       const aPath = normalizePath(a.file)
       const bPath = normalizePath(b.file)
       const aBasename = (aPath.split("/").pop() || aPath).toLowerCase()
@@ -39,8 +41,8 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [], status }: Fil
       return aPath.localeCompare(bPath)
     }
 
-    const modifiedEntries = mergedDiffs.filter((diff) => diff.after != null).sort(sortByBasename)
-    const deletedEntries = mergedDiffs.filter((diff) => diff.after == null).sort(sortByBasename)
+    const modifiedEntries = mergedDiffs.filter((diff) => diff.status !== "deleted").sort(sortByBasename)
+    const deletedEntries = mergedDiffs.filter((diff) => diff.status === "deleted").sort(sortByBasename)
     const totals = mergedDiffs.reduce(
       (sum, diff) => {
         sum.additions += diff.additions
@@ -84,23 +86,24 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [], status }: Fil
         {modified.length > 0 && (
           <div className="px-3 py-1.5 flex flex-wrap items-center gap-1.5">
             {modified.map((diff) => {
-              const displayPath = toDisplayPath(diff.file, worktree) || normalizePath(diff.file)
+              const file = diff.file
+              const displayPath = toDisplayPath(file, worktree) || normalizePath(file)
               const baseName = displayPath.split("/").pop() || displayPath
               return (
                 <span
-                  key={diff.file}
+                  key={file}
                   role="button"
                   tabIndex={0}
-                  onClick={() => openFile({ path: diff.file, display: displayPath || diff.file })}
+                  onClick={() => openFile({ path: file, display: displayPath || file })}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault()
-                      openFile({ path: diff.file, display: displayPath || diff.file })
+                      openFile({ path: file, display: displayPath || file })
                     }
                   }}
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900/60"
-                  title={displayPath || diff.file}
-                  data-tip={displayPath || diff.file}
+                  title={displayPath || file}
+                  data-tip={displayPath || file}
                 >
                   {baseName}
                   {diff.additions > 0 && (
@@ -118,14 +121,15 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [], status }: Fil
         {deleted.length > 0 && (
           <div className="border-t border-gray-200 dark:border-gray-800 px-3 py-1.5 flex flex-wrap items-center gap-1.5">
             {deleted.map((diff) => {
-              const displayPath = toDisplayPath(diff.file, worktree) || normalizePath(diff.file)
+              const file = diff.file
+              const displayPath = toDisplayPath(file, worktree) || normalizePath(file)
               const baseName = displayPath.split("/").pop() || displayPath
               return (
                 <span
-                  key={diff.file}
+                  key={file}
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono bg-gray-100 dark:bg-gray-800/50 text-gray-500 dark:text-gray-500 rounded line-through"
-                  title={displayPath || diff.file}
-                  data-tip={displayPath || diff.file}
+                  title={displayPath || file}
+                  data-tip={displayPath || file}
                 >
                   {baseName}
                   {diff.additions > 0 && (

@@ -233,7 +233,14 @@ export function useMessageInput({
         console.warn("[MessageInput] Question reject returned false before abort")
       }
 
-      await sdk.session.abort({ path: { id: sessionID } })
+      const response = await sdk.session.abort({ path: { id: sessionID } })
+      if (response.error) {
+        const message =
+          typeof response.error === "object" && "message" in response.error
+            ? String(response.error.message)
+            : "终止会话失败"
+        throw new Error(message)
+      }
       setSessionIdle(sessionID, true)
       setTimeout(() => {
         editor.focus()
@@ -246,7 +253,6 @@ export function useMessageInput({
         variant: "error",
         duration: 6000,
       })
-      setSessionIdle(sessionID, true)
     }
   }, [sessionID, setSessionIdle, showToast, editor, getQuestionsBySession, rejectQuestion])
 

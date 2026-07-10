@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle, useMemo } from "react"
+import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle, useMemo, type RefObject } from "react"
 import { LexicalComposer } from "@lexical/react/LexicalComposer"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import { $getRoot, $getSelection, $isRangeSelection, $createTextNode, type EditorState } from "lexical"
@@ -21,8 +21,8 @@ import { useFileAttachment } from "./hooks/useFileAttachment"
 import { useDragDrop } from "./hooks/useDragDrop"
 import { useEditorKeyboard } from "./hooks/useEditorKeyboard"
 import { useMessageParts } from "./hooks/useMessageParts"
-import { insertPlainWithMentionsImpl } from "./utils"
-import { loadDrafts, saveDraftSession, saveDrafts } from "../../state/repo/draftRepo"
+import { insertPlainWithMentionsImpl, restoreDraftImpl } from "./utils"
+import { draftText, loadDrafts, saveDraftSession, saveDrafts, type Draft } from "../../state/repo/draftRepo"
 import { loadQuickPhraseState, type QuickPhraseState } from "../../state/repo/quickPhraseRepo"
 import { quick_phrase_updated_event } from "../../state/repo/quickPhraseEvent"
 
@@ -32,6 +32,13 @@ interface MessageInputProps {
   onMessageSent?: () => void
   onSendIntent?: () => void
   onError?: (error: Error) => void
+}
+
+interface DraftHydration {
+  sessionID: string | null
+  revision: number
+  editorRevision: number
+  loading: number
 }
 
 export const MessageInput = forwardRef<
@@ -44,6 +51,7 @@ export const MessageInput = forwardRef<
   MessageInputProps
 >(({ sessionID, blocked = false, onMessageSent, onSendIntent, onError }, ref) => {
   const initialConfig = createEditorConfig()
+  const draftHydration = useRef<DraftHydration>({ sessionID: null, revision: 0, editorRevision: 0, loading: 0 })
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
@@ -54,6 +62,7 @@ export const MessageInput = forwardRef<
         onMessageSent={onMessageSent}
         onSendIntent={onSendIntent}
         onError={onError}
+        draftHydration={draftHydration}
       />
     </LexicalComposer>
   )
@@ -68,8 +77,8 @@ const MessageInputInner = forwardRef<
     pastePath: (path: string) => void
     insertPlainWithMentions: (value: string) => void
   },
-  MessageInputProps
->(({ sessionID, blocked = false, onMessageSent, onSendIntent, onError }, ref) => {
+  MessageInputProps & { draftHydration: RefObject<DraftHydration> }
+>(({ sessionID, blocked = false, onMessageSent, onSendIntent, onError, draftHydration }, ref) => {
   const [editor] = useLexicalComposerContext()
   const [isEmpty, setIsEmpty] = useState(true)
   const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
@@ -88,8 +97,10 @@ const MessageInputInner = forwardRef<
     setSelectedModel,
     setSelectedAgent,
     selectedVariant,
+    selectionRevision,
     selectionSessionId,
     setSelectedVariant,
+    restoreSelections,
   } = useSession()
   const { providersDirty, clearProvidersDirty } = useProviders()
   const { getMessagesBySession, isSessionLoaded } = useMessages()
@@ -99,34 +110,15 @@ const MessageInputInner = forwardRef<
   const [quickPhrases, setQuickPhrases] = useState<QuickPhraseState | null>(null)
 
   const restoring = useRef(false)
+  const selectionRevisionRef = useRef(selectionRevision)
+  selectionRevisionRef.current = selectionRevision
+  if (draftHydration.current.sessionID !== sessionID) {
+    draftHydration.current.sessionID = sessionID
+    draftHydration.current.revision = selectionRevision
+  }
   const phraseLoading = useRef(0)
   const draft = useRef("")
-  const drafts = useRef<Record<string, string>>({})
-
-  const handleEditorChange = useCallback(
-    (editorState: EditorState) => {
-      editorState.read(() => {
-        const root = $getRoot()
-        const textContent = root.getTextContent()
-        setIsEmpty(textContent.trim().length === 0)
-        draft.current = textContent
-        if (restoring.current || !sessionID) return
-        const next = { ...drafts.current }
-        if (textContent) {
-          next[sessionID] = textContent
-        } else {
-          delete next[sessionID]
-        }
-        drafts.current = next
-        void saveDrafts(next)
-        if (!textContent) return
-        if (!isSessionLoaded(sessionID)) return
-        if (getMessagesBySession(sessionID).length > 0) return
-        void saveDraftSession(sessionID)
-      })
-    },
-    [sessionID, getMessagesBySession, isSessionLoaded],
-  )
+  const drafts = useRef<Record<string, Draft>>({})
 
   const resolveToAbsolutePath = useCallback(
     (path: string | undefined): string => {
@@ -166,18 +158,64 @@ const MessageInputInner = forwardRef<
   )
 
   const restore = useCallback(
-    (value: string) => {
+    (value: Draft | undefined, restoreSelection = true) => {
+      const text = draftText(value)
       restoring.current = true
-      draft.current = value
-      insertPlainWithMentionsImpl(editor, parseWithRange, value, { replace: true })
+      draft.current = text
+      if (typeof value === "string" || !value) {
+        insertPlainWithMentionsImpl(editor, parseWithRange, text, { replace: true })
+      } else {
+        restoreDraftImpl(editor, value)
+        if (restoreSelection) {
+          restoreSelections(
+            {
+              providerId: value.model?.providerID ?? null,
+              modelId: value.model?.modelID ?? null,
+              agent: value.agent,
+              variant: value.model?.variant ?? null,
+            },
+            sessionID,
+          )
+        }
+      }
       queueMicrotask(() => {
         restoring.current = false
       })
     },
-    [editor, parseWithRange],
+    [editor, parseWithRange, restoreSelections, sessionID],
   )
 
   const { extractMessageParts } = useMessageParts({ editor, resolveToAbsolutePath })
+
+  const handleEditorChange = useCallback(
+    (editorState: EditorState) => {
+      editorState.read(() => {
+        const textContent = $getRoot().getTextContent()
+        setIsEmpty(textContent.trim().length === 0)
+        draft.current = textContent
+        if (restoring.current || !sessionID) return
+        draftHydration.current.editorRevision++
+        const parts = extractMessageParts()
+        const next = { ...drafts.current }
+        if (parts.length > 0) {
+          next[sessionID] = {
+            parts,
+            agent: selectedAgent,
+            model: selectedProviderId && selectedModelId ? { providerID: selectedProviderId, modelID: selectedModelId, variant: selectedVariant } : undefined,
+          }
+        } else {
+          delete next[sessionID]
+        }
+        drafts.current = next
+        void saveDrafts(next)
+        if (!textContent) return
+        if (!isSessionLoaded(sessionID)) return
+        if (getMessagesBySession(sessionID).length > 0) return
+        void saveDraftSession(sessionID)
+      })
+    },
+    [draftHydration, extractMessageParts, getMessagesBySession, isSessionLoaded, selectedAgent, selectedModelId, selectedProviderId, selectedVariant, sessionID],
+  )
 
   const { lastFailedMessage, handleSubmit, submitQuickPhrase, handleRetry, handleAbort, handleCompact } =
     useMessageInput({
@@ -210,16 +248,20 @@ const MessageInputInner = forwardRef<
   // Restore session-scoped draft from workspace storage
   useEffect(() => {
     let active = true
-    const cached = sessionID ? (drafts.current[sessionID] ?? "") : ""
-    if (cached !== draft.current) {
-      restore(cached)
+    const load = ++draftHydration.current.loading
+    const revision = draftHydration.current.revision
+    const editorRevision = draftHydration.current.editorRevision
+    const cached = sessionID ? drafts.current[sessionID] : undefined
+    if ((cached && typeof cached !== "string") || draftText(cached) !== draft.current) {
+      restore(cached, selectionRevisionRef.current === revision)
     }
     void loadDrafts().then((value) => {
-      if (!active) return
+      if (!active || load !== draftHydration.current.loading || editorRevision !== draftHydration.current.editorRevision) return
       drafts.current = value
-      const next = sessionID ? (value[sessionID] ?? "") : ""
-      if (next === draft.current) return
-      restore(next)
+      const next = sessionID ? value[sessionID] : undefined
+      if (draft.current && draftText(next) !== draft.current) return
+      if (typeof next === "string" && draftText(next) === draft.current) return
+      restore(next, selectionRevisionRef.current === revision)
     })
     return () => {
       active = false

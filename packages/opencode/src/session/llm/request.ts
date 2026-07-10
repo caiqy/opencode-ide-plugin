@@ -4,7 +4,7 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import type { RuntimeFlags } from "@/effect/runtime-flags"
 import { InstanceState } from "@/effect/instance-state"
 import { Permission } from "@/permission"
-import type { Agent } from "@/agent/agent"
+import { Agent } from "@/agent/agent"
 import type { MessageV2 } from "../message-v2"
 import type { Provider } from "@/provider/provider"
 import { ProviderTransform } from "@/provider/transform"
@@ -206,11 +206,14 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
 })
 
 function resolveTools(input: Pick<PrepareInput, "tools" | "agent" | "permission" | "user">) {
+  const enabled = Record.filter(input.tools, (_, k) => input.user.tools?.[k] !== false)
+  if (Agent.isReviewer(input.agent)) return Record.filter(enabled, (_, k) => Agent.canUseTool(input.agent, k))
+
   const disabled = Permission.disabled(
-    Object.keys(input.tools),
-    Permission.merge(input.agent.permission, input.permission ?? []),
+    Object.keys(enabled),
+    Agent.finalPermission(input.agent, input.permission),
   )
-  return Record.filter(input.tools, (_, k) => input.user.tools?.[k] !== false && !disabled.has(k))
+  return Record.filter(enabled, (_, k) => !disabled.has(k))
 }
 
 export function hasToolCalls(messages: ModelMessage[]): boolean {

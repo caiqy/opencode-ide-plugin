@@ -1,7 +1,7 @@
-import type { FileDiff } from "@opencode-ai/sdk/client"
+import type { SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
 
 interface DiffNavigationProps {
-  diffs: FileDiff[]
+  diffs: SnapshotFileDiff[]
   selectedFile: number
   onSelectFile: (index: number) => void
 }
@@ -17,15 +17,16 @@ export function DiffNavigation({ diffs, selectedFile, onSelectFile }: DiffNaviga
         <button
           key={index}
           onClick={() => onSelectFile(index)}
+          disabled={!diff.file}
           className={`px-3 py-1.5 text-xs font-medium rounded whitespace-nowrap transition-colors ${
             selectedFile === index
               ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm"
               : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-900"
           }`}
-          title={diff.file}
-          data-tip={diff.file}
+          title={diff.file ?? "Unavailable file"}
+          data-tip={diff.file ?? "Unavailable file"}
         >
-          {diff.file.split("/").pop() || diff.file}
+          {diff.file ? diff.file.split("/").pop() || diff.file : "Unavailable file"}
         </button>
       ))}
     </div>

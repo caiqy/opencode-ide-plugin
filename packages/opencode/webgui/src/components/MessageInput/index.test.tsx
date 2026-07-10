@@ -13,15 +13,23 @@ let rootText = ""
 let sessionIdle = true
 let selectionSessionId: string | null = null
 let currentSessionId: string | null = null
+let selectedProviderId = "openai"
+let selectedModelId = "gpt-4.1"
+let selectedAgent = "build"
+let selectedVariant: string | undefined
+let selectionRevision = 0
 const mocks = vi.hoisted(() => {
   return {
     insertPlainWithMentionsImpl: vi.fn(),
+    restoreDraftImpl: vi.fn(),
+    restoreSelections: vi.fn(),
     getMessagesBySession: vi.fn((): any[] => []),
     isSessionLoaded: vi.fn(() => true),
     loadDrafts: vi.fn(async () => ({})),
     loadDraftSession: vi.fn(async (): Promise<string | null> => null),
     saveDrafts: vi.fn(async (_value: Record<string, string>) => ({ ok: true })),
     saveDraftSession: vi.fn(async (_value: string | null) => ({ ok: true })),
+    extractMessageParts: vi.fn(),
     handleSubmit: vi.fn(),
     submitQuickPhrase: vi.fn(),
     handleRetry: vi.fn(),
@@ -126,7 +134,7 @@ vi.mock("./QuickPhraseBar", () => {
 
 vi.mock("./hooks/useMessageParts", () => {
   return {
-    useMessageParts: () => ({ extractMessageParts: vi.fn() }),
+    useMessageParts: () => ({ extractMessageParts: mocks.extractMessageParts }),
   }
 })
 
@@ -168,12 +176,19 @@ vi.mock("./hooks/useEditorKeyboard", () => {
 vi.mock("./utils", () => {
   return {
     insertPlainWithMentionsImpl: mocks.insertPlainWithMentionsImpl,
+    restoreDraftImpl: mocks.restoreDraftImpl,
   }
 })
 
 vi.mock("../../state/repo/draftRepo", () => {
   return {
     loadDrafts: () => mocks.loadDrafts(),
+    draftText: (value: unknown) =>
+      typeof value === "string"
+        ? value
+        : value && typeof value === "object" && "parts" in value && Array.isArray(value.parts)
+          ? value.parts.flatMap((part) => (part && typeof part === "object" && "type" in part && part.type === "text" && "text" in part && typeof part.text === "string" ? [part.text] : [])).join("\n")
+          : "",
     loadDraftSession: () => mocks.loadDraftSession(),
     saveDrafts: (value: Record<string, string>) => mocks.saveDrafts(value),
     saveDraftSession: (value: string | null) => mocks.saveDraftSession(value),
@@ -191,13 +206,15 @@ vi.mock("../../state/SessionContext", () => {
     useSession: () => ({
       isIdle: sessionIdle,
       currentSession: currentSessionId ? { id: currentSessionId } : null,
-      selectedProviderId: "openai",
-      selectedModelId: "gpt-4.1",
-      selectedAgent: "build",
+      selectedProviderId,
+      selectedModelId,
+      selectedAgent,
       setSelectedModel: vi.fn(),
       setSelectedAgent: vi.fn(),
-      selectedVariant: undefined,
+      selectedVariant,
+      selectionRevision,
       setSelectedVariant: vi.fn(),
+      restoreSelections: mocks.restoreSelections,
       selectionSessionId,
     }),
   }
@@ -257,6 +274,11 @@ describe("MessageInput compact confirm", () => {
     sessionIdle = true
     selectionSessionId = null
     currentSessionId = null
+    selectedProviderId = "openai"
+    selectedModelId = "gpt-4.1"
+    selectedAgent = "build"
+    selectedVariant = undefined
+    selectionRevision = 0
     lastEditorToolbarProps = null
     lastEditorContentProps = null
     lastQuickPhraseBarProps = null
@@ -268,6 +290,7 @@ describe("MessageInput compact confirm", () => {
     mocks.loadDrafts.mockImplementation(async () => new Promise(() => {}))
     mocks.loadDraftSession.mockResolvedValue(null)
     mocks.saveDrafts.mockResolvedValue({ ok: true })
+    mocks.extractMessageParts.mockReturnValue([])
     mocks.saveDraftSession.mockResolvedValue({ ok: true })
     mocks.handleSubmit.mockReset()
     mocks.submitQuickPhrase.mockReset()
@@ -447,6 +470,204 @@ describe("MessageInput compact confirm", () => {
       expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(expect.anything(), expect.anything(), "draft-b", {
         replace: true,
       })
+    })
+  })
+
+  it("恢复结构化 fork 草稿及其 selection", async () => {
+    const draft = {
+      parts: [
+        { type: "text", text: "draft [Image #1] @explore" },
+        { type: "file", mime: "image/png", filename: "image.png", url: "data:image/png;base64,AA==" },
+        { type: "agent", name: "explore" },
+      ],
+      agent: "review",
+      model: { providerID: "openai", modelID: "gpt-5", variant: "high" },
+    }
+    mocks.loadDrafts.mockResolvedValue({ forked: draft })
+
+    render(<MessageInput sessionID="forked" />)
+
+    await waitFor(() => {
+      expect(mocks.restoreDraftImpl).toHaveBeenCalledWith(expect.anything(), draft)
+      expect(mocks.restoreSelections).toHaveBeenCalledWith(
+        { providerId: "openai", modelId: "gpt-5", agent: "review", variant: "high" },
+        "forked",
+      )
+    })
+  })
+
+  it("恢复 attachment-only structured fork draft", async () => {
+    const draft = {
+      parts: [{ type: "file", mime: "image/png", filename: "image.png", url: "data:image/png;base64,AA==" }],
+      agent: "build",
+      model: { providerID: "openai", modelID: "gpt-5" },
+    }
+    mocks.loadDrafts.mockResolvedValue({ forked: draft })
+
+    render(<MessageInput sessionID="forked" />)
+
+    await waitFor(() => {
+      expect(mocks.restoreDraftImpl).toHaveBeenCalledWith(expect.anything(), draft)
+    })
+  })
+
+  it("同会话晚到 draft 不覆盖用户等待期间修改的 selection", async () => {
+    let resolveDrafts!: (value: Record<string, unknown>) => void
+    mocks.loadDrafts.mockReturnValue(
+      new Promise((resolve) => {
+        resolveDrafts = resolve
+      }),
+    )
+    const { rerender } = render(<MessageInput sessionID="forked" />)
+
+    selectedAgent = "user-choice"
+    selectionRevision += 1
+    rerender(<MessageInput sessionID="forked" />)
+    await waitFor(() => expect(lastEditorToolbarProps.selectedAgent).toBe("user-choice"))
+    act(() => {
+      resolveDrafts({
+        forked: {
+          parts: [{ type: "text", text: "draft" }],
+          agent: "review",
+          model: { providerID: "openai", modelID: "gpt-5", variant: "high" },
+        },
+      })
+    })
+
+    await waitFor(() => {
+      expect(mocks.restoreDraftImpl).toHaveBeenCalled()
+    })
+    expect(mocks.restoreSelections).not.toHaveBeenCalled()
+  })
+
+  it("用户编辑时晚到 structured draft 不恢复内容或 selection", async () => {
+    let resolveDrafts!: (value: Record<string, unknown>) => void
+    mocks.loadDrafts.mockReturnValue(new Promise((resolve) => {
+      resolveDrafts = resolve
+    }))
+    rootText = "user edit"
+    mocks.extractMessageParts.mockReturnValue([{ type: "text", text: "user edit" }])
+    render(<MessageInput sessionID="forked" />)
+
+    act(() => {
+      lastEditorContentProps.onEditorChange({ read: (fn: () => void) => fn() })
+      resolveDrafts({
+        forked: {
+          parts: [{ type: "text", text: "late draft" }],
+          agent: "review",
+          model: { providerID: "openai", modelID: "gpt-5" },
+        },
+      })
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(mocks.restoreDraftImpl).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ agent: "review" }))
+    expect(mocks.restoreSelections).not.toHaveBeenCalledWith(expect.objectContaining({ agent: "review" }), "forked")
+  })
+
+  it("fork session activation 先恢复 selection 时，晚到 draft 仍恢复其 selection", async () => {
+    let resolveDrafts!: (value: Record<string, unknown>) => void
+    selectionRevision = 1
+    mocks.loadDrafts.mockReturnValue(
+      new Promise((resolve) => {
+        resolveDrafts = resolve
+      }),
+    )
+    render(<MessageInput sessionID="forked" />)
+
+    act(() => {
+      resolveDrafts({
+        forked: {
+          parts: [{ type: "text", text: "draft" }],
+          agent: "review",
+          model: { providerID: "openai", modelID: "gpt-5" },
+        },
+      })
+    })
+
+    await waitFor(() => {
+      expect(mocks.restoreSelections).toHaveBeenCalledWith(
+        { providerId: "openai", modelId: "gpt-5", agent: "review", variant: null },
+        "forked",
+      )
+    })
+  })
+
+  it("编辑 structured fork draft 时保留 resource、agent 和 selection", async () => {
+    currentSessionId = "forked"
+    selectedAgent = "review"
+    selectedProviderId = "openai"
+    selectedModelId = "gpt-5"
+    selectedVariant = "high"
+    rootText = "changed [resource.txt] @explore"
+    mocks.extractMessageParts.mockReturnValue([
+      { type: "text", text: rootText },
+      { type: "agent", name: "explore" },
+      {
+        type: "file",
+        mime: "text/plain",
+        filename: "resource.txt",
+        url: "resource://server/item",
+        source: {
+          type: "resource",
+          clientName: "server",
+          uri: "resource://server/item",
+          text: { value: "resource://server/item", start: 8, end: 22 },
+        },
+      },
+    ])
+    render(<MessageInput sessionID="forked" />)
+
+    act(() => {
+      lastEditorContentProps.onEditorChange({ read: (fn: () => void) => fn() })
+    })
+
+    expect(mocks.saveDrafts).toHaveBeenCalledWith({
+      forked: {
+        parts: mocks.extractMessageParts.mock.results[0].value,
+        agent: "review",
+        model: { providerID: "openai", modelID: "gpt-5", variant: "high" },
+      },
+    })
+  })
+
+  it("附件-only 和纯文本编辑均写入 structured drafts", async () => {
+    currentSessionId = "forked"
+    rootText = "[image.png]"
+    mocks.extractMessageParts.mockReturnValue([
+      { type: "file", mime: "image/png", filename: "image.png", url: "data:image/png;base64,AA==" },
+    ])
+    render(<MessageInput sessionID="forked" />)
+
+    act(() => {
+      lastEditorContentProps.onEditorChange({ read: (fn: () => void) => fn() })
+    })
+
+    expect(mocks.saveDrafts).toHaveBeenLastCalledWith({
+      forked: {
+        parts: [{ type: "file", mime: "image/png", filename: "image.png", url: "data:image/png;base64,AA==" }],
+        agent: "build",
+        model: { providerID: "openai", modelID: "gpt-4.1", variant: undefined },
+      },
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    rootText = "plain"
+    mocks.extractMessageParts.mockReturnValue([{ type: "text", text: "plain" }])
+    act(() => {
+      lastEditorContentProps.onEditorChange({ read: (fn: () => void) => fn() })
+    })
+
+    expect(mocks.saveDrafts).toHaveBeenLastCalledWith({
+      forked: {
+        parts: [{ type: "text", text: "plain" }],
+        agent: "build",
+        model: { providerID: "openai", modelID: "gpt-4.1", variant: undefined },
+      },
     })
   })
 

@@ -1,6 +1,7 @@
 import * as assert from "assert"
 import { EventEmitter } from "events"
 import { BackendLauncher } from "../../backend/BackendLauncher"
+import { ResourceExtractor } from "../../backend/ResourceExtractor"
 import { errorHandler } from "../../utils/ErrorHandler"
 
 suite("BackendLauncher Test Suite", () => {
@@ -25,6 +26,22 @@ suite("BackendLauncher Test Suite", () => {
     const scoped = new BackendLauncher("/tmp/opencode-extension")
 
     assert.ok(scoped instanceof BackendLauncher)
+  })
+
+  test("should pass extension version to ResourceExtractor", async () => {
+    const original = ResourceExtractor.extractBinary
+    let received: string | undefined
+    ResourceExtractor.extractBinary = async (_path, version) => {
+      received = version
+      return "opencode"
+    }
+    try {
+      const scoped = new BackendLauncher({ extensionPath: "/tmp/extension", extensionVersion: "26.7.902" })
+      await (scoped as unknown as { extractBinary(): Promise<string> }).extractBinary()
+      assert.strictEqual(received, "26.7.902")
+    } finally {
+      ResourceExtractor.extractBinary = original
+    }
   })
 
   test("should inject extension version into backend environment", () => {

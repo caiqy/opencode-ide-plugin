@@ -8,14 +8,12 @@ interface SessionErrorPartProps {
 }
 
 export function SessionErrorPart({ part }: SessionErrorPartProps) {
-  const { currentSession, retrySession, isIdle } = useSession()
+  const { retrySession, isSessionIdle } = useSession()
   const customApi = useCustomApi()
 
   const handleRetry = useCallback(() => {
-    if (currentSession?.id) {
-      retrySession(currentSession.id)
-    }
-  }, [currentSession?.id, retrySession])
+    retrySession(part.sessionID)
+  }, [part.sessionID, retrySession])
 
   return (
     <div className="modern-card overflow-hidden border-red-200 dark:border-red-900/30">
@@ -46,7 +44,7 @@ export function SessionErrorPart({ part }: SessionErrorPartProps) {
           </div>
         </div>
 
-        {isIdle && customApi && (
+        {isSessionIdle(part.sessionID) && customApi && (
           <button
             onClick={handleRetry}
             className="shrink-0 flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium bg-white dark:bg-white/5 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shadow-sm"

@@ -16,9 +16,47 @@ const generated = await import("./generate.ts")
 
 import { Script } from "@opencode-ai/script"
 import pkg from "../package.json"
+import { installs, targets } from "./targets"
 
-const singleFlag = process.argv.includes("--single")
-const baselineFlag = process.argv.includes("--baseline")
+const gui = path.join(dir, "webgui")
+const out = path.join(dir, "webgui-dist")
+const emb = path.join(dir, "src/webgui/embed.generated.ts")
+
+console.log("Building webgui...")
+await $`bun run --cwd ${gui} build`
+
+const walk = async (root: string): Promise<string[]> => {
+  const entries = await fs.promises.readdir(root, { withFileTypes: true })
+  return (
+    await Promise.all(
+      entries.map((entry) => {
+        const file = path.join(root, entry.name)
+        return entry.isDirectory() ? walk(file) : [file]
+      }),
+    )
+  ).flat()
+}
+
+const webguiFiles = (await walk(out))
+  .map((file) => path.relative(out, file).replaceAll("\\", "/"))
+  .sort()
+const rows = await Promise.all(
+  webguiFiles.map(async (file) => ({
+    path: file,
+    data: Buffer.from(await Bun.file(path.join(out, file)).arrayBuffer()).toString("base64"),
+  })),
+)
+await Bun.write(
+  emb,
+  [
+    "export const embeddedWebGui = [",
+    ...rows.map((item) => `  { path: ${JSON.stringify(item.path)}, data: ${JSON.stringify(item.data)} },`),
+    "] as const",
+    "",
+  ].join("\n"),
+)
+console.log(`Embedded ${rows.length} webgui files`)
+
 const skipInstall = process.argv.includes("--skip-install")
 const sourcemapsFlag = process.argv.includes("--sourcemaps")
 const plugin = createSolidTransformPlugin()
@@ -50,99 +88,17 @@ const createEmbeddedWebUIBundle = async () => {
 
 const embeddedFileMap = skipEmbedWebUi ? null : await createEmbeddedWebUIBundle()
 
-const allTargets: {
-  os: string
-  arch: "arm64" | "x64"
-  abi?: "musl"
-  avx2?: false
-}[] = [
-  {
-    os: "linux",
-    arch: "arm64",
-  },
-  {
-    os: "linux",
-    arch: "x64",
-  },
-  {
-    os: "linux",
-    arch: "x64",
-    avx2: false,
-  },
-  {
-    os: "linux",
-    arch: "arm64",
-    abi: "musl",
-  },
-  {
-    os: "linux",
-    arch: "x64",
-    abi: "musl",
-  },
-  {
-    os: "linux",
-    arch: "x64",
-    abi: "musl",
-    avx2: false,
-  },
-  {
-    os: "darwin",
-    arch: "arm64",
-  },
-  {
-    os: "darwin",
-    arch: "x64",
-  },
-  {
-    os: "darwin",
-    arch: "x64",
-    avx2: false,
-  },
-  {
-    os: "win32",
-    arch: "arm64",
-  },
-  {
-    os: "win32",
-    arch: "x64",
-  },
-  {
-    os: "win32",
-    arch: "x64",
-    avx2: false,
-  },
-]
-
-const targets = singleFlag
-  ? allTargets.filter((item) => {
-      if (item.os !== process.platform || item.arch !== process.arch) {
-        return false
-      }
-
-      // When building for the current platform, prefer a single native binary by default.
-      // Baseline binaries require additional Bun artifacts and can be flaky to download.
-      if (item.avx2 === false) {
-        return baselineFlag
-      }
-
-      // also skip abi-specific builds for the same reason
-      if (item.abi !== undefined) {
-        return false
-      }
-
-      return true
-    })
-  : allTargets
+const targetList = targets(process.argv)
 
 await $`rm -rf dist`
 
 const binaries: Record<string, string> = {}
 if (!skipInstall) {
-  await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]}`
-  await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
-  await $`bun install --os="*" --cpu="*" @ff-labs/fff-bun@${pkg.dependencies["@ff-labs/fff-bun"]}`
+  for (const item of installs(targetList)) {
+    await $`bun install --os=${item.os} --cpu=${item.arch} @opentui/core@${pkg.dependencies["@opentui/core"]} @parcel/watcher@${pkg.dependencies["@parcel/watcher"]} @ff-labs/fff-bun@${pkg.dependencies["@ff-labs/fff-bun"]}`
+  }
 }
-for (const item of targets) {
+for (const item of targetList) {
   const name = [
     pkg.name,
     // changing to win32 flags npm for some reason

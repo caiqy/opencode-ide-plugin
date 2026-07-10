@@ -3,6 +3,7 @@ import { useDiffData } from "./hooks/useDiffData"
 import { DiffHeader } from "./DiffHeader"
 import { DiffNavigation } from "./DiffNavigation"
 import { DiffViewer } from "./DiffViewer"
+import { contentFromPatch } from "./utils"
 
 interface DiffModalProps {
   isOpen: boolean
@@ -42,6 +43,7 @@ export function DiffModal({ isOpen, onClose, sessionID, messageID, patchHash }: 
   if (!isOpen) return null
 
   const currentDiff = diffs[selectedFile]
+  const content = contentFromPatch(currentDiff?.patch)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4" onClick={onClose}>
@@ -114,13 +116,12 @@ export function DiffModal({ isOpen, onClose, sessionID, messageID, patchHash }: 
             </div>
           )}
 
-          {!isLoading && !error && currentDiff && (
-            <DiffViewer
-              before={currentDiff.before}
-              after={currentDiff.after}
-              viewMode={viewMode}
-              fileName={currentDiff.file}
-            />
+          {!isLoading && !error && currentDiff && content !== null && (
+            <DiffViewer before={content.before} after={content.after} viewMode={viewMode} fileName={currentDiff.file ?? ""} />
+          )}
+
+          {!isLoading && !error && currentDiff && content === null && (
+            <pre className="p-4 whitespace-pre-wrap text-xs font-mono text-gray-700 dark:text-gray-300">{currentDiff.patch}</pre>
           )}
         </div>
 

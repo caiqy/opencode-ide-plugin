@@ -50,7 +50,7 @@ describe("ModelSelector favorites", () => {
             },
           },
         ],
-        default: { provider: "openai", model: "gpt-4.1" },
+        default: { openai: "gpt-4.1" },
       },
       error: null,
     })
@@ -186,17 +186,38 @@ describe("ModelSelector favorites", () => {
     expect(screen.getByTitle("选择模型")).toHaveTextContent("默认")
   })
 
-  it("unknown selected model 显示 provider/model", async () => {
-    render(<ModelSelector selectedProviderId="openai" selectedModelId="unknown-model" onSelect={() => {}} />)
-    await screen.findByText("openai/unknown-model")
+  it("按 provider ID 显示默认模型并标记默认项", async () => {
+    render(
+      <ModelSelector
+        onSelect={() => {}}
+        providersData={[
+          {
+            id: "openai",
+            name: "OpenAI",
+            models: { "gpt-5": { name: "GPT 5", capabilities: { reasoning: false } } },
+          },
+        ] as any}
+        defaultIdsData={{ openai: "gpt-5" }}
+      />,
+    )
 
-    // 打开 dropdown 确认 provider 已加载，trigger 仍为 fallback
+    expect(screen.getByTitle("选择模型")).toHaveTextContent("GPT 5")
+    const user = userEvent.setup()
+    await user.click(screen.getByTitle("选择模型"))
+    expect(screen.getByText("默认")).toBeInTheDocument()
+  })
+
+  it("invalid selected pair falls back to the valid provider default", async () => {
+    render(<ModelSelector selectedProviderId="openai" selectedModelId="unknown-model" onSelect={() => {}} />)
+    await screen.findByText("GPT 4.1")
+
+    // 打开 dropdown 确认 provider 已加载，trigger 仍为有效默认模型
     const user = userEvent.setup()
     await user.click(screen.getByTitle("选择模型"))
     await screen.findByRole("button", { name: /切换收藏 openai\/gpt-4\.1/ })
     await user.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryByPlaceholderText("搜索模型…")).not.toBeInTheDocument())
-    expect(screen.getByTitle("选择模型")).toHaveTextContent("openai/unknown-model")
+    expect(screen.getByTitle("选择模型")).toHaveTextContent("GPT 4.1")
   })
 
   it("默认不显示清空入口", async () => {
@@ -234,35 +255,35 @@ describe("ModelSelector favorites", () => {
     })
   })
 
-  it("partial selection 只传 providerId 时显示 placeholder", async () => {
+  it("partial provider selection falls back to the default", async () => {
     render(<ModelSelector selectedProviderId="openai" onSelect={() => {}} />)
-    await screen.findByText("选择模型")
+    await screen.findByText("GPT 4.1")
 
     // 打开 dropdown 确认 provider 已加载
     const user = userEvent.setup()
     await user.click(screen.getByTitle("选择模型"))
     await screen.findByRole("button", { name: /切换收藏 openai\/gpt-4\.1/ })
 
-    // 关闭后 trigger 仍为 placeholder，不出现 openai/undefined
+    // 关闭后 trigger 仍为默认模型，不出现 openai/undefined
     await user.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryByPlaceholderText("搜索模型…")).not.toBeInTheDocument())
-    expect(screen.getByTitle("选择模型")).toHaveTextContent("选择模型")
+    expect(screen.getByTitle("选择模型")).toHaveTextContent("GPT 4.1")
     expect(screen.queryByText("openai/undefined")).not.toBeInTheDocument()
   })
 
-  it("partial selection 只传 modelId 时显示 placeholder", async () => {
+  it("partial model selection falls back to the default", async () => {
     render(<ModelSelector selectedModelId="gpt-4.1" onSelect={() => {}} />)
-    await screen.findByText("选择模型")
+    await screen.findByText("GPT 4.1")
 
     // 打开 dropdown 确认 provider 已加载
     const user = userEvent.setup()
     await user.click(screen.getByTitle("选择模型"))
     await screen.findByRole("button", { name: /切换收藏 openai\/gpt-4\.1/ })
 
-    // 关闭后 trigger 仍为 placeholder，不出现 undefined/gpt-4.1
+    // 关闭后 trigger 仍为默认模型，不出现 undefined/gpt-4.1
     await user.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryByPlaceholderText("搜索模型…")).not.toBeInTheDocument())
-    expect(screen.getByTitle("选择模型")).toHaveTextContent("选择模型")
+    expect(screen.getByTitle("选择模型")).toHaveTextContent("GPT 4.1")
     expect(screen.queryByText("undefined/gpt-4.1")).not.toBeInTheDocument()
   })
 

@@ -48,6 +48,7 @@ vi.mock("../lib/api/sdkClient", () => {
         retry: vi.fn(),
         regenerateTitle: vi.fn(),
         get: vi.fn(),
+        status: vi.fn(),
         diff: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
@@ -181,6 +182,20 @@ describe("SessionContext migration", () => {
     ;(ideBridge.storageSet as any).mockResolvedValue(true)
   })
 
+  it("forkSession returns the fork without changing the active session", async () => {
+    ;(sdk.session.fork as any).mockResolvedValue({ data: session("forked", 2), error: null })
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => result.current.setCurrentSession(session("source", 1)))
+
+    await act(async () => {
+      await expect(result.current.forkSession("source", "m1")).resolves.toMatchObject({ id: "forked" })
+    })
+
+    expect(result.current.currentSession?.id).toBe("source")
+  })
+
   it("session context initializes model and agent from workspace/global repos", async () => {
     ;(ideBridge.isInstalled as any).mockReturnValue(true)
     ;(ideBridge.storageGet as any).mockImplementation(async (scope: string) => {
@@ -310,6 +325,24 @@ describe("SessionContext migration", () => {
     expect(setSpy).not.toHaveBeenCalledWith("opencode_selected_provider", expect.anything())
     expect(setSpy).not.toHaveBeenCalledWith("opencode_selected_model", expect.anything())
     expect(setSpy).not.toHaveBeenCalledWith("opencode_selected_agent", expect.anything())
+  })
+
+  it("restoreSelections 不推进用户 selection revision", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.selectedAgent).toBe("build")
+    })
+    const revision = result.current.selectionRevision
+
+    act(() => {
+      result.current.restoreSelections(
+        { providerId: "openai", modelId: "gpt-4.1", agent: "review", variant: null },
+        "s1",
+      )
+    })
+
+    expect(result.current.selectionRevision).toBe(revision)
   })
 
   it("恢复优先级: workspace:last_selection > global:model.recent > config.model > providers 首个可用", async () => {
@@ -744,6 +777,159 @@ describe("SessionContext session 状态查询", () => {
       expect(ctx().isSessionIdle("s-child")).toBe(false)
       expect(ctx().isSessionReasoning("s-child")).toBe(true)
     })
+  })
+
+  it("server.connected 时恢复 current session snapshot 和 idle 状态", async () => {
+    ;(sdk.session.status as any).mockResolvedValueOnce({ data: { s1: { type: "idle" } }, error: null })
+    ;(sdk.session.get as any).mockResolvedValueOnce({
+      data: { ...session("s1", 1), revert: { messageID: "u1" } },
+      error: null,
+    })
+    ;(sdk.session.diff as any).mockResolvedValueOnce({ data: [], error: null })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+    await act(async () => {
+      result.current.setCurrentSession(session("s1", 1))
+      result.current.setSessionIdle("s1", false)
+    })
+
+    await act(async () => {
+      events.emit("server.connected", { type: "server.connected", properties: {} })
+    })
+
+    await waitFor(() => expect(result.current.currentSession?.revert?.messageID).toBe("u1"))
+    expect(result.current.isSessionIdle("s1")).toBe(true)
+  })
+
+  it("redo message load error does not unrevert", async () => {
+    ;(sdk.session.messages as any).mockResolvedValueOnce({ data: null, error: { message: "boom" } })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      result.current.setCurrentSession({ ...session("s1", 1), revert: { messageID: "m1" } })
+    })
+
+    await act(async () => {
+      await expect(result.current.redoNext("s1")).resolves.toBeNull()
+    })
+    expect(sdk.session.unrevert).not.toHaveBeenCalled()
+    expect(result.current.currentSession?.revert?.messageID).toBe("m1")
+  })
+
+  it("redo message load throw exposes an error and preserves the marker", async () => {
+    ;(sdk.session.messages as any).mockRejectedValueOnce(new Error("network down"))
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      result.current.setCurrentSession({ ...session("s1", 1), revert: { messageID: "m1" } })
+    })
+
+    await act(async () => {
+      await expect(result.current.redoNext("s1")).resolves.toBeNull()
+    })
+
+    expect(result.current.error?.message).toBe("network down")
+    expect(result.current.currentSession?.revert?.messageID).toBe("m1")
+  })
+
+  it("reconnect snapshot 不会覆盖后续 SSE status 或已切换的 current session", async () => {
+    const status = deferred<{ data: Record<string, { type: "idle" }>; error: null }>()
+    const current = deferred<{ data: ReturnType<typeof session>; error: null }>()
+    ;(sdk.session.status as any).mockImplementationOnce(() => status.promise)
+    ;(sdk.session.get as any).mockImplementationOnce(() => current.promise)
+    ;(sdk.session.diff as any).mockResolvedValue({ data: [], error: null })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      result.current.setCurrentSession(session("s1", 1))
+    })
+    await act(async () => {
+      events.emit("server.connected", { type: "server.connected", properties: {} })
+    })
+    await waitFor(() => expect(sdk.session.status).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      events.emit("session.status", {
+        type: "session.status",
+        properties: {
+          sessionID: "s1",
+          status: { type: "busy", attempt: 0, message: "", next: 0 },
+        },
+      })
+      result.current.setCurrentSession(session("s2", 2))
+      status.resolve({ data: { s1: { type: "idle" } }, error: null })
+      current.resolve({ data: { ...session("s1", 1), revert: { messageID: "u1" } }, error: null })
+    })
+
+    await waitFor(() => {
+      expect(result.current.currentSession?.id).toBe("s2")
+      expect(result.current.isSessionIdle("s1")).toBe(false)
+    })
+  })
+
+  it("reconnect status snapshot still applies untouched sessions after another session becomes idle", async () => {
+    const status = deferred<{
+      data: Record<string, { type: string; attempt?: number; message?: string; next?: number }>
+      error: null
+    }>()
+    ;(sdk.session.status as any).mockImplementationOnce(() => status.promise)
+    ;(sdk.session.get as any).mockResolvedValueOnce({ data: null, error: null })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      result.current.setSessionIdle("s1", false)
+      events.emit("server.connected", { type: "server.connected", properties: {} })
+    })
+    await waitFor(() => expect(sdk.session.status).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      result.current.setSessionIdle("s1", true)
+      status.resolve({
+        data: {
+          s1: { type: "busy" },
+          s2: { type: "retry", attempt: 2, message: "retrying", next: 100 },
+        },
+        error: null,
+      })
+    })
+
+    await waitFor(() => {
+      expect(result.current.isSessionIdle("s1")).toBe(true)
+      expect(result.current.isSessionIdle("s2")).toBe(false)
+    })
+    await act(async () => {
+      result.current.setCurrentSession(session("s2", 2))
+    })
+    expect(result.current.currentStatus).toMatchObject({ type: "retry", attempt: 2, message: "retrying", next: 100 })
+  })
+
+  it("switching current session does not discard an untouched third session's reconnect status", async () => {
+    const status = deferred<{ data: Record<string, { type: string }>; error: null }>()
+    const current = deferred<{ data: ReturnType<typeof session>; error: null }>()
+    ;(sdk.session.status as any).mockImplementationOnce(() => status.promise)
+    ;(sdk.session.get as any).mockImplementationOnce(() => current.promise)
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      result.current.setCurrentSession(session("s1", 1))
+      events.emit("server.connected", { type: "server.connected", properties: {} })
+    })
+    await waitFor(() => expect(sdk.session.status).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      result.current.setCurrentSession(session("s2", 2))
+      status.resolve({ data: { s3: { type: "busy" } }, error: null })
+      current.resolve({ data: session("s1", 1), error: null })
+    })
+
+    await waitFor(() => expect(result.current.isSessionIdle("s3")).toBe(false))
+    expect(result.current.currentSession?.id).toBe("s2")
   })
 })
 

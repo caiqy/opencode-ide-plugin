@@ -3,7 +3,8 @@
  * Configured to connect to the OpenCode server at the default location
  */
 
-import { createOpencodeClient, type Config, type Provider, type Session } from "@opencode-ai/sdk/client"
+import { createOpencodeClient, type Config, type Part, type Provider, type Session } from "@opencode-ai/sdk/client"
+import type { PermissionRequest, QuestionRequest, UserMessage } from "@opencode-ai/sdk/v2/client"
 
 // Create a single SDK client instance on current origin
 const baseClient = createOpencodeClient({
@@ -79,7 +80,7 @@ interface PathResponse {
 
 type ApiResult<T> = {
   data: T | null
-  error: { message: string } | null
+  error: { message: string; status?: number } | null
 }
 
 type SessionListOptions = {
@@ -88,11 +89,30 @@ type SessionListOptions = {
   roots?: boolean
 }
 
-function retryParts(input: any[]) {
+async function pendingList<T>(url: string, fallback: string): Promise<ApiResult<T[]>> {
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    })
+    if (!response.ok) return { data: null, error: { message: fallback, status: response.status } }
+    const data = await response.json()
+    if (!Array.isArray(data)) return { data: null, error: { message: fallback } }
+    return { data: data as T[], error: null }
+  } catch (error) {
+    return { data: null, error: { message: error instanceof Error ? error.message : fallback } }
+  }
+}
+
+function retryParts(input: Part[]) {
   return input
-    .filter((part) => ["text", "file", "agent", "subtask"].includes(part.type))
+    .filter(
+      (part): part is Extract<Part, { type: "text" | "file" | "agent" | "subtask" }> =>
+        ["text", "file", "agent", "subtask"].includes(part.type),
+    )
     .map((part) => {
-      const { sessionID, messageID, ...rest } = part
+      const { id, sessionID, messageID, ...rest } = part
+      void id
       void sessionID
       void messageID
       return rest
@@ -259,7 +279,7 @@ async function sessionSyncVisible(options: {
 
     if (!response.ok) {
       return {
-        error: { message: "Failed to sync visible sessions" },
+        error: { message: "Failed to sync visible sessions", status: response.status },
         data: null,
       }
     }
@@ -412,21 +432,23 @@ export const sdk = {
               })
         const latest = [...visible].reverse().find((item) => item.info.role === "user")
         if (!latest) return { error: { message: "No user message to retry" }, data: null }
-        const info = latest.info as {
-          agent?: string
-          model?: {
-            providerID: string
-            modelID: string
-          }
+        const info = latest.info as UserMessage
+        const body = {
+          parts: retryParts(latest.parts),
+          agent: info.agent,
+          model: {
+            providerID: info.model.providerID,
+            modelID: info.model.modelID,
+          },
+          variant: info.model.variant,
+          format: info.format,
+          system: info.system,
+          tools: info.tools,
         }
 
         const response = await baseClient.session.prompt({
           path: { id: options.path.sessionID },
-          body: {
-            parts: retryParts(latest.parts),
-            agent: info.agent,
-            model: info.model,
-          },
+          body,
         })
 
         if (response.error || !response.data) {
@@ -638,6 +660,7 @@ export const sdk = {
     setSkillEnabled: (options: { path: { name: string }; body: { enabled: boolean } }) => Promise<ApiResult<unknown>>
   },
   permissions: {
+    list: () => pendingList<PermissionRequest>("/permission", "Failed to load pending permissions"),
     respond: async (options: {
       path: { requestID: string }
       body: { reply: "once" | "always" | "reject"; message?: string }
@@ -655,6 +678,7 @@ export const sdk = {
     },
   },
   question: {
+    list: () => pendingList<QuestionRequest>("/question", "Failed to load pending questions"),
     reply: async (options: { requestID: string; answers: Array<Array<string>> }) => {
       const response = await fetch(`/question/${options.requestID}/reply`, {
         method: "POST",

@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react"
 import { sdk } from "../lib/api/sdkClient"
-import type { Session, FileDiff, Provider } from "@opencode-ai/sdk/client"
-import { eventEmitter } from "../lib/api/events"
+import type { Session, Provider } from "@opencode-ai/sdk/client"
+import type { SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
+import { eventEmitter, type ServerEvent } from "../lib/api/events"
 import { cleanupDeletedSessionDraft } from "./repo/draftRepo"
 import { addRecentModel, loadModelPrefs } from "./repo/modelPrefsRepo"
 import { loadSelection, patchSelection, saveSelection } from "./repo/selectionRepo"
@@ -59,7 +60,7 @@ interface SessionContextState {
   endForegroundSession: (sessionId: string) => void
 
   // Session diff data (per session)
-  sessionDiff: Record<string, FileDiff[]>
+  sessionDiff: Record<string, SnapshotFileDiff[]>
   sessionDiffStatus: Record<string, SessionDiffStatusInfo>
 
   // Session status for current session
@@ -74,6 +75,7 @@ interface SessionContextState {
 
   // Variant selection (per provider/model combo)
   selectedVariant: string | undefined
+  selectionRevision: number
   selectionSessionId: string | null
   setSelectedVariant: (variant: string | undefined) => Promise<void>
 
@@ -192,11 +194,23 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [reasoningMap, setReasoningMap] = useState<Record<string, boolean>>({})
   const [foregroundCounts, setForegroundCounts] = useState<Record<string, number>>({})
   const [statusMap, setStatusMap] = useState<Record<string, SessionStatusInfo>>({})
-  const [sessionDiffMap, setSessionDiffMap] = useState<Record<string, FileDiff[]>>({})
+  const [sessionDiffMap, setSessionDiffMap] = useState<Record<string, SnapshotFileDiff[]>>({})
   const [sessionDiffStatusMap, setSessionDiffStatusMap] = useState<Record<string, SessionDiffStatusInfo>>({})
+  const draftCleanupQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const sessionLimitRef = useRef(SESSION_LIST_LIMIT)
+  const sessionWantRef = useRef(SESSION_LIST_LIMIT)
+  const sessionMoreRef = useRef<Promise<void> | null>(null)
+  const pendingSwitchForegroundRef = useRef<string | null>(null)
+  const switchTokenRef = useRef(0)
+  const sessionListTokenRef = useRef(0)
+  const reconnectEpochRef = useRef(0)
+  const statusVersionRef = useRef<Record<string, number>>({})
+  const currentSessionEpochRef = useRef(0)
+  const currentSessionIDRef = useRef<string | null>(null)
 
   const setSessionIdle = useCallback((sessionId: string, idle: boolean) => {
     if (!sessionId) return
+    statusVersionRef.current[sessionId] = (statusVersionRef.current[sessionId] ?? 0) + 1
     setBusyMap((prev) => {
       const busy = prev[sessionId] ?? false
       const nextBusy = !idle
@@ -219,16 +233,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   // Variant selection state (per provider/model combo, key = "providerId/modelId")
   const [selectedVariant, setSelectedVariantState] = useState<string | undefined>()
+  const [selectionRevision, setSelectionRevision] = useState(0)
   const [selectionSessionId, setSelectionSessionId] = useState<string | null>(null)
   const [variantMap, setVariantMap] = useState<Record<string, string>>({})
   const [selectionRestoreNotice, setSelectionRestoreNotice] = useState<string | null>(null)
   const [selectionReadyForHostSync, setSelectionReadyForHostSync] = useState(false)
-  const draftCleanupQueueRef = useRef<Promise<void>>(Promise.resolve())
-  const sessionLimitRef = useRef(SESSION_LIST_LIMIT)
-  const sessionWantRef = useRef(SESSION_LIST_LIMIT)
-  const sessionMoreRef = useRef<Promise<void> | null>(null)
-  const pendingSwitchForegroundRef = useRef<string | null>(null)
-  const switchTokenRef = useRef(0)
 
   const clearSelectionRestoreNotice = useCallback(() => {
     setSelectionRestoreNotice(null)
@@ -319,6 +328,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
       if (!session || (pendingSwitchForegroundRef.current && pendingSwitchForegroundRef.current !== session.id)) {
         replacePendingSwitchForeground(null)
       }
+      currentSessionEpochRef.current++
+      currentSessionIDRef.current = session?.id ?? null
       setCurrentSessionState(session)
     },
     [replacePendingSwitchForeground],
@@ -484,6 +495,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     async (providerId: string | undefined, modelId: string | undefined) => {
       setSelectedProviderId(providerId)
       setSelectedModelId(modelId)
+      setSelectionRevision((value) => value + 1)
       if (currentSession?.id) setSelectionSessionId(currentSession.id)
 
       // Restore variant for the new model
@@ -529,6 +541,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const setSelectedVariant = useCallback(
     async (variant: string | undefined) => {
       setSelectedVariantState(variant)
+      setSelectionRevision((value) => value + 1)
       if (currentSession?.id) setSelectionSessionId(currentSession.id)
 
       // Get current model key
@@ -574,6 +587,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       const newModel = preferred?.model_id ?? currentModel
 
       setSelectedAgentState(newAgent)
+      setSelectionRevision((value) => value + 1)
       setAgentModelMap(nextAgentModel)
       if (currentSession?.id) setSelectionSessionId(currentSession.id)
 
@@ -664,6 +678,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
    * Load all sessions
    */
   const listSessions = useCallback(async (limit: number, more = false) => {
+    const token = ++sessionListTokenRef.current
     sessionWantRef.current = Math.max(sessionWantRef.current, limit)
     if (more) setIsLoadingMore(true)
     else setIsLoading(true)
@@ -678,7 +693,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
     try {
       const response = await sdk.session.list({ limit, roots: true })
-      const stale = limit < sessionWantRef.current
+      const stale = token !== sessionListTokenRef.current || limit < sessionWantRef.current
 
       if (response?.error) {
         if (stale) {
@@ -714,7 +729,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
       stop()
     } catch (err) {
-      if (limit < sessionWantRef.current) {
+      if (token !== sessionListTokenRef.current || limit < sessionWantRef.current) {
         stop()
         return
       }
@@ -998,8 +1013,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
         console.log("[SessionContext] Session forked:", response.data.id)
         // Don't add to sessions list here - let the session.created event handler do it
         // This prevents duplicate sessions in the list
-        // Switch to forked session
-        setCurrentSession(response.data)
         return response.data
       }
 
@@ -1101,7 +1114,15 @@ export function SessionProvider({ children }: SessionProviderProps) {
     async (sessionId: string) => {
       try {
         const resp = await sdk.session.messages({ path: { id: sessionId } })
-        const list = resp.data ?? []
+        if (resp.error || !resp.data) {
+          const message =
+            resp.error && typeof resp.error === "object" && "message" in resp.error
+              ? String(resp.error.message)
+              : "Failed to load messages for redo"
+          setError(new Error(message))
+          return null
+        }
+        const list = resp.data
         const session = currentSession?.id === sessionId ? currentSession : null
         const boundary = session?.revert?.messageID
         if (!boundary) return null
@@ -1121,7 +1142,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
         }
         if (!target) return await unrevertSession(sessionId)
         return await revertToMessage(sessionId, target)
-      } catch (e) {
+      } catch (err) {
+        setError(new Error(err instanceof Error ? err.message : "Failed to load messages for redo"))
         return null
       }
     },
@@ -1213,6 +1235,69 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   // Listen for session events from SSE
   useEffect(() => {
+    const handleServerConnected = async () => {
+      const reconnectEpoch = ++reconnectEpochRef.current
+      const sessionID = currentSessionIDRef.current
+      const sessionEpoch = currentSessionEpochRef.current
+      const statusVersions = { ...statusVersionRef.current }
+      void loadSessions()
+      const [statusResult, sessionResult] = await Promise.allSettled([
+        sdk.session.status(),
+        sessionID ? sdk.session.get({ path: { id: sessionID } }) : Promise.resolve({ data: null, error: null }),
+      ])
+
+      if (reconnectEpoch !== reconnectEpochRef.current) return
+
+      if (
+        statusResult.status === "fulfilled" &&
+        statusResult.value.data
+      ) {
+        const entries = Object.entries(statusResult.value.data)
+        const snapshot = new Map(entries)
+        const unchanged = (id: string) => statusVersions[id] === statusVersionRef.current[id]
+        setBusyMap((prev) => {
+          const next = { ...prev }
+          for (const id of new Set([...Object.keys(prev), ...snapshot.keys()])) {
+            if (!unchanged(id)) continue
+            if (snapshot.get(id)?.type !== "idle") next[id] = true
+            else delete next[id]
+          }
+          return next
+        })
+        setStatusMap((prev) => {
+          const next = { ...prev }
+          for (const id of new Set([...Object.keys(prev), ...snapshot.keys()])) {
+            if (!unchanged(id)) continue
+            const value = snapshot.get(id)
+            if (!value || value.type === "idle") {
+              delete next[id]
+              continue
+            }
+            next[id] = {
+              type: value.type,
+              attempt: value.type === "retry" ? value.attempt : 0,
+              message: value.type === "retry" ? value.message : "",
+              next: value.type === "retry" ? value.next : Date.now(),
+            }
+          }
+          return next
+        })
+        for (const [id, value] of entries) {
+          if (value.type === "idle" && unchanged(id)) setReasoning(id, false)
+        }
+      }
+
+      if (
+        sessionResult.status === "fulfilled" &&
+        sessionResult.value.data &&
+        sessionID === currentSessionIDRef.current &&
+        sessionEpoch === currentSessionEpochRef.current &&
+        sessionID === sessionResult.value.data.id
+      ) {
+        setCurrentSession(sessionResult.value.data)
+      }
+    }
+
     const handleSessionCreated = (event: any) => {
       if (event.type === "session.created" && event.properties?.info) {
         if (isSubagentSession(event.properties.info)) return
@@ -1308,9 +1393,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
       })
     }
 
-    const handleSessionDiff = (event: any) => {
-      if (event.type !== "session.diff" || !event.properties) return
-      const { sessionID, diff } = event.properties as { sessionID: string; diff: FileDiff[] }
+    const handleSessionDiff = (event: ServerEvent) => {
+      if (event.type !== "session.diff") return
+      const { sessionID, diff } = event.properties
       if (!sessionID) return
       setSessionDiffMap((prev) => ({ ...prev, [sessionID]: Array.isArray(diff) ? diff : [] }))
       setSessionDiffStatusMap((prev) => ({
@@ -1374,6 +1459,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       }
     }
 
+    const unsubscribeConnected = eventEmitter.on("server.connected", handleServerConnected)
     const unsubscribeCreated = eventEmitter.on("session.created", handleSessionCreated)
     const unsubscribeUpdated = eventEmitter.on("session.updated", handleSessionUpdated)
     const unsubscribeDeleted = eventEmitter.on("session.deleted", handleSessionDeleted)
@@ -1382,6 +1468,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     const unsubscribeDiffStatus = eventEmitter.on("session.diff.status", handleSessionDiffStatus)
 
     return () => {
+      unsubscribeConnected()
       unsubscribeCreated()
       unsubscribeUpdated()
       unsubscribeDeleted()
@@ -1389,7 +1476,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       unsubscribeDiff()
       unsubscribeDiffStatus()
     }
-  }, [currentSession?.id, queueDeletedSessionDraftCleanup, setReasoning, setSessionIdle])
+  }, [currentSession?.id, loadSessions, queueDeletedSessionDraftCleanup, setReasoning, setSessionIdle])
 
   const value: SessionContextState = {
     currentSession,
@@ -1419,6 +1506,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setSelectedModel,
     setSelectedAgent,
     selectedVariant,
+    selectionRevision,
     selectionSessionId,
     setSelectedVariant,
     selectionRestoreNotice,

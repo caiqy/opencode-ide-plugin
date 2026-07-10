@@ -470,6 +470,7 @@ export type FilePart = {
   type: "file"
   mime: string
   filename?: string
+  relativePath?: string
   url: string
   source?: FilePartSource
 }
@@ -1927,6 +1928,7 @@ export type Config = {
   enabled_providers?: Array<string>
   model?: string
   small_model?: string
+  image_model?: string
   default_agent?: string
   username?: string
   mode?: {
@@ -2424,14 +2426,14 @@ export type McpStatus =
   | McpStatusNeedsAuth
   | McpStatusNeedsClientRegistration
 
-export type McpUnsupportedOAuthError = {
-  error: string
-}
-
 export type McpServerNotFoundError = {
   _tag: "McpServerNotFoundError"
   name: string
   message: string
+}
+
+export type McpUnsupportedOAuthError = {
+  error: string
 }
 
 export type Project = {
@@ -2573,6 +2575,7 @@ export type FilePartInput = {
   type: "file"
   mime: string
   filename?: string
+  relativePath?: string
   url: string
   source?: FilePartSource
 }
@@ -8644,6 +8647,10 @@ export type McpEnabledErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * McpServerNotFoundError
+   */
+  404: McpServerNotFoundError
 }
 
 export type McpEnabledError = McpEnabledErrors[keyof McpEnabledErrors]
@@ -9740,6 +9747,35 @@ export type SessionStatusResponses = {
 }
 
 export type SessionStatusResponse = SessionStatusResponses[keyof SessionStatusResponses]
+
+export type SessionVisibilityData = {
+  body: {
+    sessionIDs: Array<string>
+  }
+  path?: never
+  query?: never
+  url: "/session/visibility"
+}
+
+export type SessionVisibilityErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type SessionVisibilityError = SessionVisibilityErrors[keyof SessionVisibilityErrors]
+
+export type SessionVisibilityResponses = {
+  /**
+   * Visible sessions updated
+   */
+  200: {
+    sessionIDs: Array<string>
+  }
+}
+
+export type SessionVisibilityResponse = SessionVisibilityResponses[keyof SessionVisibilityResponses]
 
 export type SessionDeleteData = {
   body?: never

@@ -46,6 +46,7 @@ export const MessagesQuery = Schema.Struct({
   before: Schema.optional(Schema.String),
 })
 export const StatusMap = Schema.Record(Schema.String, SessionStatus.Info)
+export const VisibilityPayload = Schema.Struct({ sessionIDs: Schema.Array(SessionID) })
 export const UpdatePayload = Schema.Struct({
   title: Schema.optional(Schema.String),
   metadata: Schema.optional(Session.Metadata),
@@ -78,6 +79,7 @@ export const PermissionResponsePayload = Schema.Struct({
 export const SessionPaths = {
   list: root,
   status: `${root}/status`,
+  visibility: `${root}/visibility`,
   get: `${root}/:sessionID`,
   children: `${root}/:sessionID/children`,
   todo: `${root}/:sessionID/todo`,
@@ -128,6 +130,17 @@ export const SessionApi = HttpApi.make("session")
             identifier: "session.status",
             summary: "Get session status",
             description: "Retrieve the current status of all sessions, including active, idle, and completed states.",
+          }),
+        ),
+        HttpApiEndpoint.put("syncVisible", SessionPaths.visibility, {
+          payload: VisibilityPayload,
+          success: described(VisibilityPayload, "Visible sessions updated"),
+          error: HttpApiError.BadRequest,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.visibility",
+            summary: "Sync visible sessions",
+            description: "Update the process-local set of sessions visible in the current WebGUI instance.",
           }),
         ),
         HttpApiEndpoint.get("get", SessionPaths.get, {

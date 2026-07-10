@@ -5,14 +5,8 @@
 <h3>Provider 与模型配置</h3>
 
 <ul>
-  <li>
-    新增 Provider 设置页，可在 IDE WebGUI 中集中查看和编辑 Provider 的接口地址、API
-    密钥与模型白名单，减少手动修改配置文件的成本。
-  </li>
-  <li>
-    支持从远程配置一键覆盖或合并更新 Provider；覆盖更新会真正替换全局配置，同时保留同名 Provider 的本地接口地址与 API
-    密钥，兼顾配置同步与本地密钥安全。
-  </li>
+  <li>新增 Provider 设置页，可在 IDE WebGUI 中集中查看和编辑 Provider 的接口地址、API 密钥与模型白名单，减少手动修改配置文件的成本。</li>
+  <li>支持从远程配置一键覆盖或合并更新 Provider；覆盖更新会真正替换全局配置，同时保留同名 Provider 的本地接口地址与 API 密钥，兼顾配置同步与本地密钥安全。</li>
   <li>模型白名单提供自绘下拉选择器，并从本地/内置模型目录读取候选模型，不受当前白名单过滤影响。</li>
   <li>已加入白名单的模型会自动从候选中排除；仍支持手动输入自定义模型，并过滤不可用的废弃模型。</li>
 </ul>
@@ -20,14 +14,8 @@
 <h3>对话稳定性与错误恢复</h3>
 
 <ul>
-  <li>
-    改进 OpenAI Responses API 流式错误处理，对临时性上游错误进行重试，减少网络抖动或 Provider 短暂异常导致的对话中断。
-  </li>
-  <li>
-    更准确识别 <code>context_too_large</code> 与
-    <code>context_length_exceeded</code>
-    等上下文超限错误，保留上游返回的错误码和提示，并转换为明确的上下文超限提示，避免被误判为普通可重试错误。
-  </li>
+  <li>改进 OpenAI Responses API 流式错误处理，对临时性上游错误进行重试，减少网络抖动或 Provider 短暂异常导致的对话中断。</li>
+  <li>更准确识别 <code>context_too_large</code> 与 <code>context_length_exceeded</code> 等上下文超限错误，保留上游返回的错误码和提示，并转换为明确的上下文超限提示，避免被误判为普通可重试错误。</li>
   <li>过滤 Responses 流中的 Chat Completions 兼容帧与无效占位内容，降低重复事件和空内容对流式消息处理的干扰。</li>
 </ul>
 
