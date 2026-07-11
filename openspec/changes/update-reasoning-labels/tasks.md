@@ -2,6 +2,7 @@
 
 - [x] 1.1 Extend `VariantSelector` tests to cover bilingual list labels for the default item and reasoning levels such as `minimal`, and confirm selection still returns the original value
 - [x] 1.2 Update reasoning effort list item rendering to show the original English name to the right of the Chinese label while preserving the trigger display
+- [x] 1.3 Add a controlled-selection regression test confirming `minimal` returns its original value while the trigger remains Chinese-only
 
 ## 2. Verification
 

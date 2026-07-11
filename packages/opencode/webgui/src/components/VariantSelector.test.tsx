@@ -36,4 +36,21 @@ describe("VariantSelector", () => {
     await user.click(screen.getByTitle("选择推理强度"))
     expect(screen.getByRole("button", { name: /极低\s*minimal/ })).toBeInTheDocument()
   })
+
+  it("选择 minimal 后触发按钮保持紧凑中文", async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    const view = render(
+      <VariantSelector variants={["minimal", "low"]} selectedVariant={undefined} onSelect={onSelect} />,
+    )
+
+    await user.click(screen.getByTitle("选择推理强度"))
+    await user.click(screen.getByRole("button", { name: /极低\s*minimal/ }))
+    expect(onSelect).toHaveBeenCalledWith("minimal")
+
+    view.rerender(<VariantSelector variants={["minimal", "low"]} selectedVariant="minimal" onSelect={onSelect} />)
+    const trigger = screen.getByTitle("选择推理强度")
+    expect(trigger).toHaveTextContent("极低")
+    expect(trigger).not.toHaveTextContent("minimal")
+  })
 })
