@@ -5,22 +5,27 @@ TBD - created by archiving change sync-opencode-webgui. Update Purpose after arc
 ## Requirements
 ### Requirement: Preserve WebGUI behavior through upstream sync
 
-合并上游 opencode 更新后，系统 SHALL 保持 IDE-hosted WebGUI 在核心 session、message、provider、project、permission、question 和 tool-result workflows 中可用。
+After merging upstream opencode updates, the system SHALL keep the IDE-hosted WebGUI usable across core session, message, provider, project, permission, question, and tool-result workflows.
 
 #### Scenario: Core WebGUI session workflow still works
 
-- **WHEN** 合并后的构建运行 WebGUI 并连接 opencode server
-- **THEN** 用户可以加载 project/path 数据、列出 sessions、创建 session、切换 session、更新或删除 session、发送 prompt、接收 streamed message updates，并观察 idle/status transitions，且不会出现 API shape 错误
+- **WHEN** the merged build runs the WebGUI and connects to the opencode server
+- **THEN** users can load project/path data, list sessions, create, switch, update, or delete a session, submit prompts, receive streamed message updates, and observe idle/status transitions without API shape errors
 
 #### Scenario: Permission and question flows still work
 
-- **WHEN** server 为某个 session 发出 permission 或 question request
-- **THEN** WebGUI 显示 pending request，并可通过预期 API route reply 或 reject
+- **WHEN** the server issues a permission or question request for a session
+- **THEN** the WebGUI displays the pending request and can reply or reject through the expected API route
 
 #### Scenario: Provider and model selection still works
 
-- **WHEN** 用户加载或更改 provider、model、agent 或 variant selection
-- **THEN** WebGUI 恢复可用 selection、从不可用 selection fallback，并持久化最终选择，且不破坏 prompt submission
+- **WHEN** users load or change provider, model, agent, or variant selection
+- **THEN** the WebGUI restores available selections, falls back from unavailable selections, and persists the final selection without breaking prompt submission
+
+#### Scenario: Reasoning variant labels remain understandable
+
+- **WHEN** a reasoning model provides variant selection including `minimal`
+- **THEN** the WebGUI shows every available variant in the reasoning effort list, displays the original English name to the right of its Chinese label, and still submits the original variant value
 
 ### Requirement: Preserve IDE bridge behavior through upstream sync
 
@@ -53,3 +58,4 @@ merge 过程 SHALL 在接受任何无法同时保留上游 opencode 行为和下
 
 - **WHEN** merge 实现准备进入验证
 - **THEN** 验证包含相关 opencode checks、WebGUI checks，以及捕捉受影响 surface 回归所需的 IDE host packaging 或 bridge checks
+
