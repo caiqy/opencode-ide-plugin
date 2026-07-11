@@ -408,6 +408,41 @@ describe("ProviderTransform.options - gpt-5 textVerbosity", () => {
     expect(result.tools.lookup.strict).toBe(false)
   })
 
+  test("removed minimal variant falls back to GPT defaults", async () => {
+    const model = createGpt5Model("gpt-5.6")
+    model.variants = ProviderTransform.variants(model)
+    const result = await Effect.runPromise(
+      LLMRequestPrep.prepare({
+        user: {
+          id: "msg_user-test",
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "test",
+          model: { providerID: "openai", modelID: "gpt-5.6", variant: "minimal" },
+        } as any,
+        sessionID,
+        model,
+        agent: { name: "test", mode: "primary", options: {}, permission: [] } as any,
+        system: [],
+        messages: [{ role: "user", content: "Hello" }],
+        tools: {},
+        provider: { id: "openai", options: {} } as any,
+        auth: undefined,
+        plugin: {
+          trigger: (_name: string, _input: unknown, output: unknown) => Effect.succeed(output),
+          list: () => Effect.succeed([]),
+          init: () => Effect.void,
+        } as any,
+        flags: { outputTokenMax: 32_000, client: "test" } as any,
+        isWorkflow: false,
+      }),
+    )
+    expect(result.params.options.reasoningEffort).toBe("medium")
+    expect(result.params.options.reasoningSummary).toBe("auto")
+    expect(result.params.options.include).toEqual(["reasoning.encrypted_content"])
+  })
+
   test("gpt-5.1 should have textVerbosity set to low", () => {
     const model = createGpt5Model("gpt-5.1")
     const result = ProviderTransform.options({ model, sessionID, providerOptions: {} })
@@ -3834,7 +3869,7 @@ describe("ProviderTransform.variants", () => {
       })
     })
 
-    test("gpt-5 adds minimal effort", () => {
+    test("gpt-5 omits minimal effort", () => {
       const model = createMockModel({
         id: "gpt-5",
         providerID: "azure",
@@ -3845,7 +3880,7 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["minimal", "low", "medium", "high"])
+      expect(Object.keys(result)).toEqual(["low", "medium", "high"])
     })
 
     for (const testCase of [
@@ -3898,7 +3933,7 @@ describe("ProviderTransform.variants", () => {
         release_date: "2024-06-01",
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["minimal", "low", "medium", "high"])
+      expect(Object.keys(result)).toEqual(["low", "medium", "high"])
       expect(result.low).toEqual({
         reasoningEffort: "low",
         reasoningSummary: "auto",
@@ -3918,7 +3953,7 @@ describe("ProviderTransform.variants", () => {
         release_date: "2025-11-14",
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high"])
+      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high"])
     })
 
     test("models after 2025-12-04 include 'xhigh' effort", () => {
@@ -3933,7 +3968,7 @@ describe("ProviderTransform.variants", () => {
         release_date: "2025-12-05",
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
+      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh"])
     })
 
     for (const testCase of [
@@ -4083,6 +4118,73 @@ describe("ProviderTransform.variants", () => {
         })
       }
     }
+
+    const gpt54And55Efforts = ["none", "low", "medium", "high", "xhigh"]
+    const gpt56FullEfforts = [...gpt54And55Efforts, "max", "ultra"]
+
+    for (const testCase of [
+      { apiId: "gpt-5.4-mini", efforts: gpt54And55Efforts },
+      { apiId: "gpt-5.4-nano", efforts: gpt54And55Efforts },
+      { apiId: "gpt-5.6", efforts: gpt56FullEfforts },
+      { apiId: "gpt-5.6-sol", efforts: gpt56FullEfforts },
+      { apiId: "gpt-5.6-sol-2026-07-11", efforts: gpt56FullEfforts },
+      { apiId: "gpt-5.6-terra", efforts: gpt56FullEfforts },
+      { apiId: "gpt-5.6-luna", efforts: [...gpt54And55Efforts, "max"] },
+    ]) {
+      test(`${testCase.apiId} returns its exact reasoning matrix`, () => {
+        const result = ProviderTransform.variants(
+          createMockModel({
+            id: `openai/${testCase.apiId}`,
+            providerID: "openai",
+            api: { id: testCase.apiId, url: "https://api.openai.com", npm: "@ai-sdk/openai" },
+          }),
+        )
+        expect(Object.keys(result)).toEqual(testCase.efforts)
+        expect(result.minimal).toBeUndefined()
+      })
+    }
+
+    test("recognizes Bedrock Mantle's openai. GPT-5.6 catalog ID", () => {
+      const result = ProviderTransform.variants(
+        createMockModel({
+          id: "amazon-bedrock/openai.gpt-5.6-terra",
+          providerID: "amazon-bedrock",
+          api: {
+            id: "openai.gpt-5.6-terra",
+            url: "https://bedrock.example",
+            npm: "@ai-sdk/amazon-bedrock/mantle",
+          },
+        }),
+      )
+      expect(Object.keys(result)).toEqual(gpt56FullEfforts)
+    })
+
+    for (const apiId of [
+      "gpt-5.60",
+      "gpt-5.4-sol",
+      "gpt-5.5-mini",
+      "vendor.gpt-5.6-sol",
+      "gpt-5.6-sol-custom",
+      "gpt-5.6-azure-deployment",
+    ]) {
+      test(`${apiId} keeps the non-GPT-5.6 fallback`, () => {
+        const result = ProviderTransform.variants(
+          createMockModel({ api: { id: apiId, url: "https://azure.example", npm: "@ai-sdk/azure" } }),
+        )
+        expect(Object.keys(result)).not.toContain("max")
+        expect(Object.keys(result)).not.toContain("ultra")
+      })
+    }
+
+    test("retains minimal for a non-GPT OpenAI-compatible fallback", () => {
+      const result = ProviderTransform.variants(
+        createMockModel({
+          id: "test/reasoning-model",
+          api: { id: "reasoning-model", url: "https://api.test.com", npm: "@ai-sdk/gateway" },
+        }),
+      )
+      expect(Object.keys(result)).toContain("minimal")
+    })
 
     test("github copilot opus 4.7 returns only medium reasoning effort", () => {
       const model = createMockModel({
@@ -4507,9 +4609,9 @@ describe("ProviderTransform.variants", () => {
     }
 
     for (const testCase of [
-      { apiId: "gpt-5", releaseDate: "2025-08-07", efforts: ["minimal", "low", "medium", "high"] },
-      { apiId: "gpt-5-mini", releaseDate: "2025-08-07", efforts: ["minimal", "low", "medium", "high"] },
-      { apiId: "gpt-5-nano", releaseDate: "2025-08-07", efforts: ["minimal", "low", "medium", "high"] },
+      { apiId: "gpt-5", releaseDate: "2025-08-07", efforts: ["low", "medium", "high"] },
+      { apiId: "gpt-5-mini", releaseDate: "2025-08-07", efforts: ["low", "medium", "high"] },
+      { apiId: "gpt-5-nano", releaseDate: "2025-08-07", efforts: ["low", "medium", "high"] },
       { apiId: "gpt-5.4", releaseDate: "2026-01-15", efforts: ["none", "low", "medium", "high", "xhigh"] },
       { apiId: "azure-openai--o3-mini", releaseDate: "2024-01-01", efforts: ["low", "medium", "high"] },
     ]) {

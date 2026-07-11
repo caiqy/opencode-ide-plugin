@@ -525,6 +525,10 @@ const OPENAI_GPT5_PRO_2_PLUS_EFFORTS = ["medium", "high", "xhigh"]
 const OPENAI_GPT5_CHAT_EFFORTS = ["medium"]
 const OPENAI_GPT5_CODEX_XHIGH_EFFORTS = [...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
 const OPENAI_GPT5_CODEX_3_PLUS_EFFORTS = ["none", ...OPENAI_GPT5_CODEX_XHIGH_EFFORTS]
+const OPENAI_GPT54_55_EFFORTS = ["none", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
+const OPENAI_GPT54_55_PRO_EFFORTS = ["medium", "high", "xhigh"]
+const OPENAI_GPT56_EFFORTS = [...OPENAI_GPT54_55_EFFORTS, "max"]
+const OPENAI_GPT56_ULTRA_EFFORTS = [...OPENAI_GPT56_EFFORTS, "ultra"]
 
 // OpenAI rolled out the `none` reasoning_effort tier on this date (Responses API).
 // Models released before it 400 on `reasoning_effort: "none"`, so we only expose
@@ -546,7 +550,31 @@ function gpt5Version(apiId: string) {
   return Number(GPT5_VERSION_RE.exec(apiId)?.[1]) || undefined
 }
 
+function gpt54To56ReasoningEfforts(apiId: string) {
+  const match = /(?:^|\/)(?:openai\.)?gpt-5\.(4|5|6)(?:-(mini|nano|pro|sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/i.exec(
+    apiId,
+  )
+  if (!match) return undefined
+  const version = match[1]
+  const member = match[2]
+  if (version === "4") {
+    if (member === "pro") return OPENAI_GPT54_55_PRO_EFFORTS
+    if (!member || member === "mini" || member === "nano") return OPENAI_GPT54_55_EFFORTS
+    return undefined
+  }
+  if (version === "5") {
+    if (member === "pro") return OPENAI_GPT54_55_PRO_EFFORTS
+    if (!member) return OPENAI_GPT54_55_EFFORTS
+    return undefined
+  }
+  if (member && member !== "sol" && member !== "terra" && member !== "luna") return undefined
+  if (member === "luna") return OPENAI_GPT56_EFFORTS
+  return OPENAI_GPT56_ULTRA_EFFORTS
+}
+
 function versionedGpt5ReasoningEfforts(apiId: string) {
+  const exact = gpt54To56ReasoningEfforts(apiId)
+  if (exact) return exact
   if (GPT5_VERSIONED_PRO_RE.test(apiId)) return OPENAI_GPT5_PRO_2_PLUS_EFFORTS
   const version = gpt5Version(apiId)
   if (version === undefined) return undefined
@@ -583,7 +611,6 @@ function openaiReasoningEfforts(apiId: string, releaseDate: string) {
   // additionally accepts `xhigh`. Model pages list the supported subset.
   if (versionedEfforts) return versionedEfforts
   const efforts = [...WIDELY_SUPPORTED_EFFORTS]
-  if (GPT5_FAMILY_RE.test(id)) efforts.unshift("minimal")
   if (releaseDate >= OPENAI_NONE_EFFORT_RELEASE_DATE) efforts.unshift("none")
   if (releaseDate >= OPENAI_XHIGH_EFFORT_RELEASE_DATE) efforts.push("xhigh")
   return efforts
@@ -594,7 +621,12 @@ function openaiCompatibleReasoningEfforts(id: string) {
   const chatEfforts = gpt5ChatReasoningEfforts(apiId)
   if (chatEfforts) return chatEfforts
   if (GPT5_PRO_RE.test(apiId)) return OPENAI_GPT5_PRO_EFFORTS
-  return gpt5CodexReasoningEfforts(apiId) ?? versionedGpt5ReasoningEfforts(apiId) ?? OPENAI_EFFORTS
+  const codexEfforts = gpt5CodexReasoningEfforts(apiId)
+  if (codexEfforts) return codexEfforts
+  const versionedEfforts = versionedGpt5ReasoningEfforts(apiId)
+  if (versionedEfforts) return versionedEfforts
+  if (GPT5_FAMILY_RE.test(apiId)) return WIDELY_SUPPORTED_EFFORTS
+  return OPENAI_EFFORTS
 }
 
 function anthropicOpus47OrLater(apiId: string) {

@@ -1,0 +1,8 @@
+{
+  "openspec_proposal": "openspec/changes/fix-gpt-reasoning/proposal.md",
+  "openspec_design": "openspec/changes/fix-gpt-reasoning/design.md",
+  "openspec_tasks": "openspec/changes/fix-gpt-reasoning/tasks.md",
+  "openspec_delta_spec": "openspec/changes/fix-gpt-reasoning/specs/gpt-reasoning-options/spec.md",
+  "handoff_context": "openspec/changes/fix-gpt-reasoning/.comet/handoff/design-context.json",
+  "handoff_markdown": "openspec/changes/fix-gpt-reasoning/.comet/handoff/design-context.md"
+}

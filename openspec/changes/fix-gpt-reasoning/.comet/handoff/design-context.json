@@ -1,0 +1,14 @@
+{
+  "change": "fix-gpt-reasoning",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "cf86923cc95a12492e20bfce9ce87ea99fd87f027b6fc4d4fff860fcf3ea6b74",
+  "files": [
+    { "path": "openspec/changes/fix-gpt-reasoning/proposal.md", "sha256": "2336f0c2304c5358564894f5d9abd6e0bd49add4935e8baeae1987d5f14815c7" },
+    { "path": "openspec/changes/fix-gpt-reasoning/design.md", "sha256": "8eece43ff030f4d423478e356cca2f764238133c203f7d9b72134e8d64a802c2" },
+    { "path": "openspec/changes/fix-gpt-reasoning/tasks.md", "sha256": "66e3b1eed2a1559d286893d0722faa465f11225af216f790cd16bde1d7ed8f78" },
+    { "path": "openspec/changes/fix-gpt-reasoning/specs/gpt-reasoning-options/spec.md", "sha256": "28eb577ddb21fe2f96aafdfe05928b0b48a747d5750d5086b4f5ab31de236323" }
+  ]
+}
