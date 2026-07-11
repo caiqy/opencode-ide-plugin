@@ -29,28 +29,26 @@ describe("VariantSelector", () => {
     expect(onSelect).toHaveBeenCalledWith("high")
   })
 
-  it("展示 minimal 变体为中文", async () => {
+  it("展示 ultra 为双语推理选项", async () => {
     const user = userEvent.setup()
-    render(<VariantSelector variants={["minimal", "low", "medium"]} selectedVariant={undefined} onSelect={vi.fn()} />)
+    render(<VariantSelector variants={["ultra", "max"]} selectedVariant={undefined} onSelect={vi.fn()} />)
 
     await user.click(screen.getByTitle("选择推理强度"))
-    expect(screen.getByRole("button", { name: /极低\s*minimal/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /极高\s*ultra/ })).toBeInTheDocument()
   })
 
-  it("选择 minimal 后触发按钮保持紧凑中文", async () => {
+  it("选择 ultra 后触发按钮保持紧凑中文", () => {
+    render(<VariantSelector variants={["ultra"]} selectedVariant="ultra" onSelect={vi.fn()} />)
+    const trigger = screen.getByTitle("选择推理强度")
+    expect(trigger).toHaveTextContent("极高")
+    expect(trigger).not.toHaveTextContent("ultra")
+  })
+
+  it("非 GPT minimal 选项使用默认英文标签", async () => {
     const user = userEvent.setup()
-    const onSelect = vi.fn()
-    const view = render(
-      <VariantSelector variants={["minimal", "low"]} selectedVariant={undefined} onSelect={onSelect} />,
-    )
+    render(<VariantSelector variants={["minimal"]} selectedVariant={undefined} onSelect={vi.fn()} />)
 
     await user.click(screen.getByTitle("选择推理强度"))
-    await user.click(screen.getByRole("button", { name: /极低\s*minimal/ }))
-    expect(onSelect).toHaveBeenCalledWith("minimal")
-
-    view.rerender(<VariantSelector variants={["minimal", "low"]} selectedVariant="minimal" onSelect={onSelect} />)
-    const trigger = screen.getByTitle("选择推理强度")
-    expect(trigger).toHaveTextContent("极低")
-    expect(trigger).not.toHaveTextContent("minimal")
+    expect(screen.getByRole("button", { name: /Minimal\s*minimal/ })).toBeInTheDocument()
   })
 })

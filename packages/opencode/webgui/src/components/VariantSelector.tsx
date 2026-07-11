@@ -18,12 +18,12 @@ const formatVariantName = (variant: string) => {
           ? "高"
           : variant === "none"
             ? "无"
-            : variant === "minimal"
-              ? "极低"
-              : variant === "max"
-                ? "最大"
-                : variant === "xhigh"
-                  ? "超高"
+            : variant === "max"
+              ? "最大"
+              : variant === "xhigh"
+                ? "超高"
+                : variant === "ultra"
+                  ? "极高"
                   : undefined
 
   if (translated) return translated

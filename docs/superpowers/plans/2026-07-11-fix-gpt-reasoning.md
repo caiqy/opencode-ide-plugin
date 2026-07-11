@@ -342,7 +342,7 @@ git commit -m "fix(provider): map GPT ultra reasoning to max"
 - Produces: `formatVariantName("ultra") === "极高"`; an unrecognized or non-GPT `"minimal"` uses the existing capitalized fallback `"Minimal"`.
 - Preserves: `onSelect` receives the original variant string and no model-specific WebGUI branch is introduced.
 
-- [ ] **Step 1: Replace obsolete minimal-label cases with failing ultra and fallback tests**
+- [x] **Step 1: Replace obsolete minimal-label cases with failing ultra and fallback tests**
 
 Replace the two `minimal` translation tests in `packages/opencode/webgui/src/components/VariantSelector.test.tsx` with these cases:
 
@@ -371,7 +371,7 @@ it("falls back to Minimal for a non-GPT minimal option", async () => {
 })
 ```
 
-- [ ] **Step 2: Run the focused WebGUI test and verify it fails**
+- [x] **Step 2: Run the focused WebGUI test and verify it fails**
 
 Run from `packages/opencode/webgui`:
 
@@ -381,7 +381,7 @@ bun run test:run src/components/VariantSelector.test.tsx
 
 Expected: FAIL because `ultra` has no Chinese label and `minimal` is still translated as `极低`.
 
-- [ ] **Step 3: Implement the label-only change**
+- [x] **Step 3: Implement the label-only change**
 
 In `formatVariantName`, remove the `minimal` branch and add `ultra` after `xhigh`; leave the final capitalization fallback unchanged:
 
@@ -395,7 +395,7 @@ In `formatVariantName`, remove the `minimal` branch and add `ultra` after `xhigh
 
 Do not add model detection, persistence migration, or selector state changes.
 
-- [ ] **Step 4: Run focused WebGUI test and verify it passes**
+- [x] **Step 4: Run focused WebGUI test and verify it passes**
 
 Run from `packages/opencode/webgui`:
 
@@ -405,7 +405,7 @@ bun run test:run src/components/VariantSelector.test.tsx
 
 Expected: PASS; the menu shows `极高 ultra`, the selected control shows compact `极高`, and an existing non-GPT `minimal` falls back to `Minimal`.
 
-- [ ] **Step 5: Run final package-scoped verification**
+- [x] **Step 5: Run final package-scoped verification**
 
 Run from `packages/opencode`:
 

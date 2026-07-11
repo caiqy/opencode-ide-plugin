@@ -10,5 +10,5 @@
 
 ## 3. WebGUI labels and verification
 
-- [ ] 3.1 Add `极高 ultra`, fallback `Minimal`, and stale saved-selection tests; remove the obsolete Chinese `minimal` label tests
-- [ ] 3.2 Run the relevant package tests, typechecks, and WebGUI build to verify model options and request behavior
+- [x] 3.1 Add `极高 ultra`, fallback `Minimal`, and stale saved-selection tests; remove the obsolete Chinese `minimal` label tests
+- [x] 3.2 Run the relevant package tests, typechecks, and WebGUI build to verify model options and request behavior
