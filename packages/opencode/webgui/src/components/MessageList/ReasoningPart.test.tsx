@@ -46,4 +46,32 @@ describe("ReasoningPart", () => {
     expect(screen.getByText("After")).toBeInTheDocument()
     expect(screen.queryByText(/hidden|comment/)).not.toBeInTheDocument()
   })
+
+  it("流式注释闭合前保持隐藏并在闭合后显示正文", () => {
+    const part = {
+      id: "r3",
+      sessionID: "s1",
+      messageID: "m1",
+      type: "reasoning" as const,
+      text: "\\<!-- hidden",
+      time: { start: 1 },
+    }
+    const view = render(
+      <PartOpenProvider items={[]}>
+        <ReasoningPart part={part} durationMs={1000} />
+      </PartOpenProvider>,
+    )
+
+    expect(screen.queryByRole("button", { name: "思考了 1 秒" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/hidden/)).not.toBeInTheDocument()
+
+    view.rerender(
+      <PartOpenProvider items={[]}>
+        <ReasoningPart part={{ ...part, text: "\\<!-- hidden -->After" }} durationMs={1000} />
+      </PartOpenProvider>,
+    )
+
+    expect(screen.getByText("After")).toBeInTheDocument()
+    expect(screen.queryByText(/hidden/)).not.toBeInTheDocument()
+  })
 })

@@ -13,7 +13,7 @@ export function ReasoningPart({ part, durationMs }: ReasoningPartProps) {
   const open = usePartOpen()
   const expanded = open.isOpen(part.id)
 
-  const text = (part.text || "").replace(/\\?<!--[\s\S]*?-->/g, "").trim()
+  const text = (part.text || "").replace(/\\?<!--[\s\S]*?(?:-->|$)/g, "").trim()
   if (!text) {
     return (
       <div>
