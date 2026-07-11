@@ -787,9 +787,7 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
       // models that support it.
       if (model.api.id.startsWith("openai/")) {
         const efforts = openaiReasoningEfforts(model.api.id, model.release_date)
-        return Object.fromEntries(
-          efforts.map((effort) => [effort, { reasoningEffort: openAIWireEffort(effort) }]),
-        )
+        return Object.fromEntries(efforts.map((effort) => [effort, { reasoningEffort: openAIWireEffort(effort) }]))
       }
       return Object.fromEntries(WIDELY_SUPPORTED_EFFORTS.map((effort) => [effort, { reasoningEffort: effort }]))
     }
@@ -1100,7 +1098,9 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
       }
       if (id.includes("gpt") || /\bo[1-9]/.test(id)) {
         const efforts = openaiReasoningEfforts(id, model.release_date)
-        return wrapInSapModelParams(Object.fromEntries(efforts.map((effort) => [effort, { reasoning_effort: effort }])))
+        return wrapInSapModelParams(
+          Object.fromEntries(efforts.map((effort) => [effort, { reasoning_effort: openAIWireEffort(effort) }])),
+        )
       }
       return wrapInSapModelParams(
         Object.fromEntries(["low", "medium", "high"].map((effort) => [effort, { reasoning_effort: effort }])),

@@ -4118,122 +4118,127 @@ describe("ProviderTransform.variants", () => {
         })
       }
     }
+  })
 
-    const gpt54And55Efforts = ["none", "low", "medium", "high", "xhigh"]
-    const gpt56FullEfforts = [...gpt54And55Efforts, "max", "ultra"]
+  const gpt54And55Efforts = ["none", "low", "medium", "high", "xhigh"]
+  const gpt56FullEfforts = [...gpt54And55Efforts, "max", "ultra"]
 
-    for (const testCase of [
-      { apiId: "gpt-5.4-mini", efforts: gpt54And55Efforts },
-      { apiId: "gpt-5.4-nano", efforts: gpt54And55Efforts },
-      { apiId: "gpt-5.6", efforts: gpt56FullEfforts },
-      { apiId: "gpt-5.6-sol", efforts: gpt56FullEfforts },
-      { apiId: "gpt-5.6-sol-2026-07-11", efforts: gpt56FullEfforts },
-      { apiId: "gpt-5.6-terra", efforts: gpt56FullEfforts },
-      { apiId: "gpt-5.6-luna", efforts: [...gpt54And55Efforts, "max"] },
-    ]) {
-      test(`${testCase.apiId} returns its exact reasoning matrix`, () => {
-        const result = ProviderTransform.variants(
-          createMockModel({
-            id: `openai/${testCase.apiId}`,
-            providerID: "openai",
-            api: { id: testCase.apiId, url: "https://api.openai.com", npm: "@ai-sdk/openai" },
-          }),
-        )
-        expect(Object.keys(result)).toEqual(testCase.efforts)
-        expect(result.minimal).toBeUndefined()
-      })
-    }
-
-    test("recognizes Bedrock Mantle's openai. GPT-5.6 catalog ID", () => {
+  for (const testCase of [
+    { apiId: "gpt-5.4-mini", efforts: gpt54And55Efforts },
+    { apiId: "gpt-5.4-nano", efforts: gpt54And55Efforts },
+    { apiId: "gpt-5.6", efforts: gpt56FullEfforts },
+    { apiId: "gpt-5.6-sol", efforts: gpt56FullEfforts },
+    { apiId: "gpt-5.6-sol-2026-07-11", efforts: gpt56FullEfforts },
+    { apiId: "gpt-5.6-terra", efforts: gpt56FullEfforts },
+    { apiId: "gpt-5.6-luna", efforts: [...gpt54And55Efforts, "max"] },
+  ]) {
+    test(`${testCase.apiId} returns its exact reasoning matrix`, () => {
       const result = ProviderTransform.variants(
         createMockModel({
-          id: "amazon-bedrock/openai.gpt-5.6-terra",
-          providerID: "amazon-bedrock",
-          api: {
-            id: "openai.gpt-5.6-terra",
-            url: "https://bedrock.example",
-            npm: "@ai-sdk/amazon-bedrock/mantle",
-          },
+          id: `openai/${testCase.apiId}`,
+          providerID: "openai",
+          api: { id: testCase.apiId, url: "https://api.openai.com", npm: "@ai-sdk/openai" },
         }),
       )
-      expect(Object.keys(result)).toEqual(gpt56FullEfforts)
+      expect(Object.keys(result)).toEqual(testCase.efforts)
+      expect(result.minimal).toBeUndefined()
     })
+  }
 
-    for (const testCase of [
-      {
-        npm: "@ai-sdk/openai",
-        apiId: "gpt-5.6-terra",
-        body: {
-          reasoningEffort: "max",
-          reasoningSummary: "auto",
-          include: ["reasoning.encrypted_content"],
+  test("recognizes Bedrock Mantle's openai. GPT-5.6 catalog ID", () => {
+    const result = ProviderTransform.variants(
+      createMockModel({
+        id: "amazon-bedrock/openai.gpt-5.6-terra",
+        providerID: "amazon-bedrock",
+        api: {
+          id: "openai.gpt-5.6-terra",
+          url: "https://bedrock.example",
+          npm: "@ai-sdk/amazon-bedrock/mantle",
         },
-      },
-      {
-        npm: "@ai-sdk/azure",
-        apiId: "gpt-5.6-terra",
-        body: {
-          reasoningEffort: "max",
-          reasoningSummary: "auto",
-          include: ["reasoning.encrypted_content"],
-        },
-      },
-      {
-        npm: "@ai-sdk/amazon-bedrock/mantle",
-        apiId: "openai.gpt-5.6-terra",
-        body: {
-          reasoningEffort: "max",
-          reasoningSummary: "auto",
-          include: ["reasoning.encrypted_content"],
-        },
-      },
-      { npm: "ai-gateway-provider", apiId: "openai/gpt-5.6-terra", body: { reasoningEffort: "max" } },
-      { npm: "@ai-sdk/gateway", apiId: "openai/gpt-5.6-terra", body: { reasoningEffort: "max" } },
-      {
-        npm: "@openrouter/ai-sdk-provider",
-        apiId: "openai/gpt-5.6-terra",
-        body: { reasoning: { effort: "max" } },
-      },
-    ]) {
-      test(`${testCase.npm} maps ultra to max in its variant body`, () => {
-        const variants = ProviderTransform.variants(
-          createMockModel({
-            id: `openai/${testCase.apiId}`,
-            api: { id: testCase.apiId, url: "https://api.test.com", npm: testCase.npm },
-          }),
-        )
-        expect(variants.ultra).toEqual(testCase.body)
-        expect(JSON.stringify(variants.ultra)).not.toContain("ultra")
-      })
-    }
+      }),
+    )
+    expect(Object.keys(result)).toEqual(gpt56FullEfforts)
+  })
 
-    for (const apiId of [
-      "gpt-5.60",
-      "gpt-5.4-sol",
-      "gpt-5.5-mini",
-      "vendor.gpt-5.6-sol",
-      "gpt-5.6-sol-custom",
-      "gpt-5.6-azure-deployment",
-    ]) {
-      test(`${apiId} keeps the non-GPT-5.6 fallback`, () => {
-        const result = ProviderTransform.variants(
-          createMockModel({ api: { id: apiId, url: "https://azure.example", npm: "@ai-sdk/azure" } }),
-        )
-        expect(Object.keys(result)).not.toContain("max")
-        expect(Object.keys(result)).not.toContain("ultra")
-      })
-    }
+  for (const testCase of [
+    {
+      npm: "@ai-sdk/openai",
+      apiId: "gpt-5.6-terra",
+      body: {
+        reasoningEffort: "max",
+        reasoningSummary: "auto",
+        include: ["reasoning.encrypted_content"],
+      },
+    },
+    {
+      npm: "@ai-sdk/azure",
+      apiId: "gpt-5.6-terra",
+      body: {
+        reasoningEffort: "max",
+        reasoningSummary: "auto",
+        include: ["reasoning.encrypted_content"],
+      },
+    },
+    {
+      npm: "@ai-sdk/amazon-bedrock/mantle",
+      apiId: "openai.gpt-5.6-terra",
+      body: {
+        reasoningEffort: "max",
+        reasoningSummary: "auto",
+        include: ["reasoning.encrypted_content"],
+      },
+    },
+    { npm: "ai-gateway-provider", apiId: "openai/gpt-5.6-terra", body: { reasoningEffort: "max" } },
+    { npm: "@ai-sdk/gateway", apiId: "openai/gpt-5.6-terra", body: { reasoningEffort: "max" } },
+    {
+      npm: "@openrouter/ai-sdk-provider",
+      apiId: "openai/gpt-5.6-terra",
+      body: { reasoning: { effort: "max" } },
+    },
+  ]) {
+    test(`${testCase.npm} maps ultra to max in its variant body`, () => {
+      const variants = ProviderTransform.variants(
+        createMockModel({
+          id: `openai/${testCase.apiId}`,
+          api: { id: testCase.apiId, url: "https://api.test.com", npm: testCase.npm },
+        }),
+      )
+      expect(variants.ultra).toEqual(testCase.body)
+      expect(JSON.stringify(variants.ultra)).not.toContain("ultra")
+    })
+  }
 
-    test("retains minimal for a non-GPT OpenAI-compatible fallback", () => {
+  for (const apiId of [
+    "gpt-5.60",
+    "gpt-5.4-sol",
+    "gpt-5.5-mini",
+    "vendor.gpt-5.6-sol",
+    "gpt-5.6-sol-custom",
+    "gpt-5.6-azure-deployment",
+  ]) {
+    test(`${apiId} keeps the non-GPT-5.6 fallback`, () => {
       const result = ProviderTransform.variants(
         createMockModel({
-          id: "test/reasoning-model",
-          api: { id: "reasoning-model", url: "https://api.test.com", npm: "@ai-sdk/gateway" },
+          id: apiId,
+          api: { id: apiId, url: "https://azure.example", npm: "@ai-sdk/azure" },
         }),
       )
-      expect(Object.keys(result)).toContain("minimal")
+      expect(Object.keys(result)).not.toContain("max")
+      expect(Object.keys(result)).not.toContain("ultra")
     })
+  }
 
+  test("retains minimal for a non-GPT OpenAI-compatible fallback", () => {
+    const result = ProviderTransform.variants(
+      createMockModel({
+        id: "test/reasoning-model",
+        api: { id: "reasoning-model", url: "https://api.test.com", npm: "@ai-sdk/gateway" },
+      }),
+    )
+    expect(Object.keys(result)).toContain("minimal")
+  })
+
+  describe("@ai-sdk/anthropic", () => {
     test("github copilot opus 4.7 returns only medium reasoning effort", () => {
       const model = createMockModel({
         id: "claude-opus-4.7",
@@ -4671,6 +4676,12 @@ describe("ProviderTransform.variants", () => {
         }
       })
     }
+
+    test("GPT-5.6 ultra maps to max under modelParams", () => {
+      const result = ProviderTransform.variants(sapModel("gpt-5.6-terra", "2026-07-11"))
+      expect(result.ultra).toEqual({ modelParams: { reasoning_effort: "max" } })
+      expect(JSON.stringify(result.ultra)).not.toContain("ultra")
+    })
 
     for (const apiId of [
       "gemini-3.1-flash-lite",

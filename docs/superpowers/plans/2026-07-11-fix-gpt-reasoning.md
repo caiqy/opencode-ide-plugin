@@ -208,7 +208,7 @@ bun test test/provider/transform.test.ts
 
 Expected: PASS; exact GPT-5.4/5.5/5.6 keys, Pro restrictions, aliases, dated snapshots, canonical `openai.` IDs, negative IDs, non-GPT `minimal`, and stale saved `minimal` fallback all pass.
 
-- [ ] **Step 5: Commit the matrix change**
+- [x] **Step 5: Commit the matrix change**
 
 ```bash
 git add packages/opencode/src/provider/transform.ts packages/opencode/test/provider/transform.test.ts
@@ -249,6 +249,8 @@ for (const testCase of [
   })
 }
 ```
+
+Also assert that the SAP AI GPT path keeps the `ultra` key while producing `{ modelParams: { reasoning_effort: "max" } }`.
 
 Extend `packages/opencode/test/provider/cf-ai-gateway-e2e.test.ts` using the existing `callThroughGateway` helper so the real AI Gateway path proves the wire body is `max`:
 
@@ -296,6 +298,7 @@ Apply it to the mapped effort in these existing `variants` branches:
 { reasoning: { effort: openAIWireEffort(effort) } } // @openrouter/ai-sdk-provider
 { reasoningEffort: openAIWireEffort(effort) }       // ai-gateway-provider and @ai-sdk/gateway OpenAI-shaped paths
 { reasoningEffort: openAIWireEffort(effort), reasoningSummary: "auto", include: INCLUDE_ENCRYPTED_REASONING } // Azure, OpenAI, Mantle
+{ modelParams: { reasoning_effort: openAIWireEffort(effort) } } // SAP AI
 ```
 
 Do not remap the variant object key: `Object.fromEntries` must keep `"ultra"` as its key. Do not map non-OpenAI provider effort fields.
@@ -324,7 +327,7 @@ bun test test/provider/openai-responses.test.ts
 
 Expected: PASS; a selected `max` reaches the OpenAI Responses `reasoning.effort` field.
 
-- [ ] **Step 5: Commit the wire mapping change**
+- [x] **Step 5: Commit the wire mapping change**
 
 ```bash
 git add packages/opencode/src/provider/transform.ts packages/opencode/test/provider/transform.test.ts packages/opencode/test/provider/cf-ai-gateway-e2e.test.ts packages/llm/src/protocols/utils/openai-options.ts packages/llm/test/provider/openai-responses.test.ts
@@ -434,7 +437,7 @@ bun run build
 
 Expected: PASS; `bun run build` completes `tsc -b` and the Vite production build.
 
-- [ ] **Step 6: Commit the WebGUI label change**
+- [x] **Step 6: Commit the WebGUI label change**
 
 ```bash
 git add packages/opencode/webgui/src/components/VariantSelector.tsx packages/opencode/webgui/src/components/VariantSelector.test.tsx
