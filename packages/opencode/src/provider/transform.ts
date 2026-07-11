@@ -528,7 +528,7 @@ const OPENAI_GPT5_CODEX_3_PLUS_EFFORTS = ["none", ...OPENAI_GPT5_CODEX_XHIGH_EFF
 const OPENAI_GPT54_55_EFFORTS = ["none", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
 const OPENAI_GPT54_55_PRO_EFFORTS = ["medium", "high", "xhigh"]
 const OPENAI_GPT56_EFFORTS = [...OPENAI_GPT54_55_EFFORTS, "max"]
-const OPENAI_GPT56_ULTRA_EFFORTS = [...OPENAI_GPT56_EFFORTS, "ultra"]
+const OPENAI_GPT56_ULTRA_EFFORTS = [...OPENAI_GPT54_55_EFFORTS, "ultra"]
 const openAIWireEffort = (effort: string) => (effort === "ultra" ? "max" : effort)
 
 // OpenAI rolled out the `none` reasoning_effort tier on this date (Responses API).

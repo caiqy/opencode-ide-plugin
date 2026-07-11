@@ -28,7 +28,7 @@
 - Consumes: `ProviderTransform.variants(model)`.
 - Produces: Sol/Terra/alias matrices without `max`, Luna matrix with `max`, and unchanged `ultra` request bodies containing wire value `max`.
 
-- [ ] **Step 1: Write failing matrix expectations**
+- [x] **Step 1: Write failing matrix expectations**
 
 In the existing GPT-5.6 table, replace the Sol/Terra/alias expected constant with:
 
@@ -44,7 +44,7 @@ Use `gpt56UltraEfforts` for `gpt-5.6`, `gpt-5.6-sol`, `gpt-5.6-sol-2026-07-11`, 
 
 Add `expect(result.max).toBeUndefined()` to the exact-matrix test cases that use `gpt56UltraEfforts`.
 
-- [ ] **Step 2: Run the focused test and verify it fails**
+- [x] **Step 2: Run the focused test and verify it fails**
 
 Run from `packages/opencode`:
 
@@ -54,7 +54,7 @@ bun test test/provider/transform.test.ts
 
 Expected: FAIL because Sol, Terra, aliases, snapshots, and Mantle still include `max` before `ultra`.
 
-- [ ] **Step 3: Remove max from the ultra-specific constant**
+- [x] **Step 3: Remove max from the ultra-specific constant**
 
 In `packages/opencode/src/provider/transform.ts`, replace:
 
@@ -70,7 +70,7 @@ const OPENAI_GPT56_ULTRA_EFFORTS = [...OPENAI_GPT54_55_EFFORTS, "ultra"]
 
 Do not change `OPENAI_GPT56_EFFORTS`, `openAIWireEffort`, or the `member === "luna"` branch.
 
-- [ ] **Step 4: Run focused provider tests and typecheck**
+- [x] **Step 4: Run focused provider tests and typecheck**
 
 Run from `packages/opencode`:
 
@@ -81,7 +81,7 @@ bun typecheck
 
 Expected: PASS. Existing `ultra` provider-body and AI Gateway tests continue to assert the wire value `max`; Luna keeps `max` and no `ultra` key.
 
-- [ ] **Step 5: Commit the simplification**
+- [x] **Step 5: Commit the simplification**
 
 ```bash
 git add packages/opencode/src/provider/transform.ts packages/opencode/test/provider/transform.test.ts

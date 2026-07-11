@@ -4121,15 +4121,15 @@ describe("ProviderTransform.variants", () => {
   })
 
   const gpt54And55Efforts = ["none", "low", "medium", "high", "xhigh"]
-  const gpt56FullEfforts = [...gpt54And55Efforts, "max", "ultra"]
+  const gpt56UltraEfforts = [...gpt54And55Efforts, "ultra"]
 
   for (const testCase of [
     { apiId: "gpt-5.4-mini", efforts: gpt54And55Efforts },
     { apiId: "gpt-5.4-nano", efforts: gpt54And55Efforts },
-    { apiId: "gpt-5.6", efforts: gpt56FullEfforts },
-    { apiId: "gpt-5.6-sol", efforts: gpt56FullEfforts },
-    { apiId: "gpt-5.6-sol-2026-07-11", efforts: gpt56FullEfforts },
-    { apiId: "gpt-5.6-terra", efforts: gpt56FullEfforts },
+    { apiId: "gpt-5.6", efforts: gpt56UltraEfforts },
+    { apiId: "gpt-5.6-sol", efforts: gpt56UltraEfforts },
+    { apiId: "gpt-5.6-sol-2026-07-11", efforts: gpt56UltraEfforts },
+    { apiId: "gpt-5.6-terra", efforts: gpt56UltraEfforts },
     { apiId: "gpt-5.6-luna", efforts: [...gpt54And55Efforts, "max"] },
   ]) {
     test(`${testCase.apiId} returns its exact reasoning matrix`, () => {
@@ -4142,6 +4142,7 @@ describe("ProviderTransform.variants", () => {
       )
       expect(Object.keys(result)).toEqual(testCase.efforts)
       expect(result.minimal).toBeUndefined()
+      if (testCase.efforts === gpt56UltraEfforts) expect(result.max).toBeUndefined()
     })
   }
 
@@ -4157,7 +4158,8 @@ describe("ProviderTransform.variants", () => {
         },
       }),
     )
-    expect(Object.keys(result)).toEqual(gpt56FullEfforts)
+    expect(Object.keys(result)).toEqual(gpt56UltraEfforts)
+    expect(result.max).toBeUndefined()
   })
 
   for (const testCase of [
