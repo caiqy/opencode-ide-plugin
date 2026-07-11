@@ -90,7 +90,10 @@ export function VariantSelector({
                   : "text-gray-900 dark:text-gray-100"
               }`}
             >
-              <span className="font-medium">默认</span>
+              <span className="flex items-center gap-2">
+                <span className="font-medium">默认</span>
+                <span className="text-gray-500 dark:text-gray-400">Default</span>
+              </span>
               {selectedVariant === undefined && (
                 <svg className="w-4 h-4 ml-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path
@@ -116,7 +119,10 @@ export function VariantSelector({
                       : "text-gray-900 dark:text-gray-100"
                   }`}
                 >
-                  <span className="font-medium">{formatVariantName(variant)}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-medium">{formatVariantName(variant)}</span>
+                    <span className="text-gray-500 dark:text-gray-400">{variant}</span>
+                  </span>
                   {isSelected && (
                     <svg className="w-4 h-4 ml-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path

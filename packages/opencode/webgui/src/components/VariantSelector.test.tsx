@@ -12,10 +12,10 @@ describe("VariantSelector", () => {
     expect(trigger).toHaveTextContent("默认")
 
     await user.click(trigger)
-    expect(screen.getAllByText("默认").length).toBeGreaterThan(1)
-    expect(screen.getByText("低")).toBeInTheDocument()
-    expect(screen.getByText("中")).toBeInTheDocument()
-    expect(screen.getByText("高")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /默认\s*Default/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /低\s*low/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /中\s*medium/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /高\s*high/ })).toBeInTheDocument()
   })
 
   it("选择选项时回调仍使用原始 variant 值", async () => {
@@ -34,8 +34,6 @@ describe("VariantSelector", () => {
     render(<VariantSelector variants={["minimal", "low", "medium"]} selectedVariant={undefined} onSelect={vi.fn()} />)
 
     await user.click(screen.getByTitle("选择推理强度"))
-    expect(screen.getByText("极低")).toBeInTheDocument()
-    expect(screen.getByText("低")).toBeInTheDocument()
-    expect(screen.getByText("中")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /极低\s*minimal/ })).toBeInTheDocument()
   })
 })
