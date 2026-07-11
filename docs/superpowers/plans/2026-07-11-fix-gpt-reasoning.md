@@ -2,6 +2,7 @@
 change: fix-gpt-reasoning
 design-doc: docs/superpowers/specs/2026-07-11-fix-gpt-reasoning-design.md
 base-ref: 94d6407e445f2df662118037a10cdc10b08dfff2
+archived-with: 2026-07-11-fix-gpt-reasoning
 ---
 
 # GPT Reasoning Options Implementation Plan
@@ -25,6 +26,7 @@ base-ref: 94d6407e445f2df662118037a10cdc10b08dfff2
 - Retain each provider's body shape: OpenAI, Azure, Bedrock Mantle, and AI Gateway use `reasoningEffort`; OpenRouter uses `reasoning.effort`.
 - Run tests and `bun typecheck` only from their owning package directories. Run the WebGUI production build from `packages/opencode/webgui`; it includes its TypeScript build.
 
+archived-with: 2026-07-11-fix-gpt-reasoning
 ---
 
 ### Task 1: Lock down the GPT effort matrix and stale-selection fallback
@@ -443,3 +445,4 @@ Expected: PASS; `bun run build` completes `tsc -b` and the Vite production build
 git add packages/opencode/webgui/src/components/VariantSelector.tsx packages/opencode/webgui/src/components/VariantSelector.test.tsx
 git commit -m "fix(webgui): label GPT ultra reasoning"
 ```
+

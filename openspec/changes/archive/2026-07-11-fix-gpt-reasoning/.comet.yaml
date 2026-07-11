@@ -1,6 +1,6 @@
 workflow: full
 language: en
-phase: verify
+phase: archive
 context_compression: off
 build_mode: executing-plans
 build_pause: null
@@ -13,12 +13,12 @@ auto_transition: true
 base_ref: 94d6407e445f2df662118037a10cdc10b08dfff2
 design_doc: docs/superpowers/specs/2026-07-11-fix-gpt-reasoning-design.md
 plan: docs/superpowers/plans/2026-07-11-fix-gpt-reasoning.md
-verify_result: pending
+verify_result: pass
 verification_report: docs/superpowers/reports/2026-07-11-fix-gpt-reasoning-verify.md
 branch_status: handled
 created_at: 2026-07-11
-verified_at: null
-archived: false
+verified_at: 2026-07-11
+archived: true
 direct_override: null
 build_command: bun --cwd packages/opencode typecheck && bun --cwd packages/llm
   typecheck && bun --cwd packages/opencode/webgui run build

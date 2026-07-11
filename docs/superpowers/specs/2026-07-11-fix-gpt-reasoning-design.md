@@ -2,6 +2,8 @@
 comet_change: fix-gpt-reasoning
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-11-fix-gpt-reasoning
+status: final
 ---
 
 # GPT Reasoning Options Design
@@ -56,3 +58,4 @@ If a persisted GPT selection still names the removed `minimal` variant, the exis
 ## Deliberate Exclusions
 
 No dependency, generated SDK change, model catalog synchronization, public API change, or proactive multi-agent behavior is included. `max` and `ultra` intentionally produce the same provider request in this change.
+
