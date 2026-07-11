@@ -5,8 +5,8 @@
 
 ## 2. OpenAI wire mapping
 
-- [ ] 2.1 Add failing tests for preserving `max` and mapping `ultra` to `max` in each affected provider body shape
-- [ ] 2.2 Allow the OpenAI protocol to send `max` while ensuring it never sends an `ultra` wire value
+- [x] 2.1 Add failing tests for preserving `max` and mapping `ultra` to `max` in each affected provider body shape
+- [x] 2.2 Allow the OpenAI protocol to send `max` while ensuring it never sends an `ultra` wire value
 
 ## 3. WebGUI labels and verification
 

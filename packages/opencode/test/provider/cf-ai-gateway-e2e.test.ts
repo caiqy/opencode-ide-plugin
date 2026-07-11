@@ -121,6 +121,16 @@ describe("cf-ai-gateway end-to-end (regression: #24432)", () => {
     expect(upstream?.reasoning_effort).toBe("xhigh")
   })
 
+  test("ultra variant lands max on the wire", async () => {
+    const model = cfModel("openai/gpt-5.6-terra")
+    const variants = ProviderTransform.variants(model)
+    const upstream = await callThroughGateway(
+      "openai/gpt-5.6-terra",
+      ProviderTransform.providerOptions(model, variants.ultra),
+    )
+    expect(upstream?.reasoning_effort).toBe("max")
+  })
+
   test("legacy buggy key 'cloudflare-ai-gateway' does NOT reach the wire (proves the bug)", async () => {
     // Sanity: confirms the bug class. If a future change accidentally restores
     // providerID-keyed providerOptions, this test fails before users notice.

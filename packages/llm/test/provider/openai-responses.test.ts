@@ -571,6 +571,20 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
+  it.effect("preserves max reasoning effort in Responses options", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+        LLM.request({
+          model,
+          prompt: "think deeply",
+          providerOptions: { openai: { reasoningEffort: "max" } },
+        }),
+      )
+
+      expect(prepared.body.reasoning).toEqual({ effort: "max" })
+    }),
+  )
+
   it.effect("accepts the full ResponseIncludable union", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(

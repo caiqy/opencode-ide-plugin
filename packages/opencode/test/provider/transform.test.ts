@@ -4159,6 +4159,54 @@ describe("ProviderTransform.variants", () => {
       expect(Object.keys(result)).toEqual(gpt56FullEfforts)
     })
 
+    for (const testCase of [
+      {
+        npm: "@ai-sdk/openai",
+        apiId: "gpt-5.6-terra",
+        body: {
+          reasoningEffort: "max",
+          reasoningSummary: "auto",
+          include: ["reasoning.encrypted_content"],
+        },
+      },
+      {
+        npm: "@ai-sdk/azure",
+        apiId: "gpt-5.6-terra",
+        body: {
+          reasoningEffort: "max",
+          reasoningSummary: "auto",
+          include: ["reasoning.encrypted_content"],
+        },
+      },
+      {
+        npm: "@ai-sdk/amazon-bedrock/mantle",
+        apiId: "openai.gpt-5.6-terra",
+        body: {
+          reasoningEffort: "max",
+          reasoningSummary: "auto",
+          include: ["reasoning.encrypted_content"],
+        },
+      },
+      { npm: "ai-gateway-provider", apiId: "openai/gpt-5.6-terra", body: { reasoningEffort: "max" } },
+      { npm: "@ai-sdk/gateway", apiId: "openai/gpt-5.6-terra", body: { reasoningEffort: "max" } },
+      {
+        npm: "@openrouter/ai-sdk-provider",
+        apiId: "openai/gpt-5.6-terra",
+        body: { reasoning: { effort: "max" } },
+      },
+    ]) {
+      test(`${testCase.npm} maps ultra to max in its variant body`, () => {
+        const variants = ProviderTransform.variants(
+          createMockModel({
+            id: `openai/${testCase.apiId}`,
+            api: { id: testCase.apiId, url: "https://api.test.com", npm: testCase.npm },
+          }),
+        )
+        expect(variants.ultra).toEqual(testCase.body)
+        expect(JSON.stringify(variants.ultra)).not.toContain("ultra")
+      })
+    }
+
     for (const apiId of [
       "gpt-5.60",
       "gpt-5.4-sol",

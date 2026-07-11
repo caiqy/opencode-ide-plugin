@@ -229,7 +229,7 @@ git commit -m "fix(opencode): correct GPT reasoning variants"
 - Produces: `{ reasoningEffort: "max" }` for OpenAI, Azure, Bedrock Mantle, and AI Gateway branches; `{ reasoning: { effort: "max" } }` for OpenRouter.
 - Preserves: `OpenAIOptions.reasoningEffort(request): ReasoningEffort | undefined`; OpenAI Responses accepts `max` and rejects no valid schema effort.
 
-- [ ] **Step 1: Write failing provider-body and Responses tests**
+- [x] **Step 1: Write failing provider-body and Responses tests**
 
 In `packages/opencode/test/provider/transform.test.ts`, add a table in the existing variants suite that uses a canonical GPT-5.6 Terra model and asserts both the key and exact provider-option body. Cover all affected branch shapes:
 
@@ -264,7 +264,7 @@ In `packages/llm/test/provider/openai-responses.test.ts`, add an `it.effect` nex
 expect(prepared.body.reasoning).toEqual({ effort: "max" })
 ```
 
-- [ ] **Step 2: Run focused tests and verify they fail**
+- [x] **Step 2: Run focused tests and verify they fail**
 
 Run from `packages/opencode`:
 
@@ -282,7 +282,7 @@ bun test test/provider/openai-responses.test.ts
 
 Expected: FAIL because `OpenAIReasoningEfforts` filters out `max`.
 
-- [ ] **Step 3: Implement the single wire-value conversion and retain max in Responses**
+- [x] **Step 3: Implement the single wire-value conversion and retain max in Responses**
 
 In `packages/opencode/src/provider/transform.ts`, add one pure conversion alongside the effort constants, then use it only where each OpenAI-shaped variant body is constructed:
 
@@ -306,7 +306,7 @@ In `packages/llm/src/protocols/utils/openai-options.ts`, remove only the `max` e
 export const OpenAIReasoningEfforts = ReasoningEfforts
 ```
 
-- [ ] **Step 4: Run focused tests and verify they pass**
+- [x] **Step 4: Run focused tests and verify they pass**
 
 Run from `packages/opencode`:
 

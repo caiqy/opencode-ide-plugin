@@ -529,6 +529,7 @@ const OPENAI_GPT54_55_EFFORTS = ["none", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
 const OPENAI_GPT54_55_PRO_EFFORTS = ["medium", "high", "xhigh"]
 const OPENAI_GPT56_EFFORTS = [...OPENAI_GPT54_55_EFFORTS, "max"]
 const OPENAI_GPT56_ULTRA_EFFORTS = [...OPENAI_GPT56_EFFORTS, "ultra"]
+const openAIWireEffort = (effort: string) => (effort === "ultra" ? "max" : effort)
 
 // OpenAI rolled out the `none` reasoning_effort tier on this date (Responses API).
 // Models released before it 400 on `reasoning_effort: "none"`, so we only expose
@@ -774,7 +775,7 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
         (model.api.id.startsWith("openai/") || id.includes("gpt")
           ? openaiCompatibleReasoningEfforts(model.api.id)
           : WIDELY_SUPPORTED_EFFORTS
-        ).map((effort) => [effort, { reasoning: { effort } }]),
+        ).map((effort) => [effort, { reasoning: { effort: openAIWireEffort(effort) } }]),
       )
 
     case "ai-gateway-provider": {
@@ -786,7 +787,9 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
       // models that support it.
       if (model.api.id.startsWith("openai/")) {
         const efforts = openaiReasoningEfforts(model.api.id, model.release_date)
-        return Object.fromEntries(efforts.map((effort) => [effort, { reasoningEffort: effort }]))
+        return Object.fromEntries(
+          efforts.map((effort) => [effort, { reasoningEffort: openAIWireEffort(effort) }]),
+        )
       }
       return Object.fromEntries(WIDELY_SUPPORTED_EFFORTS.map((effort) => [effort, { reasoningEffort: effort }]))
     }
@@ -853,7 +856,10 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
         )
       }
       return Object.fromEntries(
-        openaiCompatibleReasoningEfforts(model.api.id).map((effort) => [effort, { reasoningEffort: effort }]),
+        openaiCompatibleReasoningEfforts(model.api.id).map((effort) => [
+          effort,
+          { reasoningEffort: openAIWireEffort(effort) },
+        ]),
       )
 
     case "@ai-sdk/github-copilot":
@@ -909,7 +915,7 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
         openaiReasoningEfforts(id, model.release_date).map((effort) => [
           effort,
           {
-            reasoningEffort: effort,
+            reasoningEffort: openAIWireEffort(effort),
             reasoningSummary: "auto",
             include: INCLUDE_ENCRYPTED_REASONING,
           },
@@ -923,7 +929,7 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
         efforts.map((effort) => [
           effort,
           {
-            reasoningEffort: effort,
+            reasoningEffort: openAIWireEffort(effort),
             reasoningSummary: "auto",
             include: INCLUDE_ENCRYPTED_REASONING,
           },
