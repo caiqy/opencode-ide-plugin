@@ -20,8 +20,12 @@ created_at: 2026-07-11
 verified_at: null
 archived: false
 direct_override: null
-build_command: null
-verify_command: null
+build_command: bun --cwd packages/opencode typecheck && bun --cwd packages/llm
+  typecheck && bun --cwd packages/opencode/webgui run build
+verify_command: bun --cwd packages/opencode test test/provider/transform.test.ts
+  test/provider/cf-ai-gateway-e2e.test.ts && bun --cwd packages/llm test
+  test/provider/openai-responses.test.ts && bun --cwd packages/opencode/webgui
+  run test:run src/components/VariantSelector.test.tsx
 handoff_context: openspec/changes/fix-gpt-reasoning/.comet/handoff/design-context.json
 handoff_hash: cf86923cc95a12492e20bfce9ce87ea99fd87f027b6fc4d4fff860fcf3ea6b74
 classic_profile: full
