@@ -41,6 +41,7 @@ import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Truncate } from "@/tool/truncate"
 import { Image } from "@/image/image"
 import { decodeDataUrl } from "@/util/data-url"
+import { classifyAttachment } from "@/util/media"
 import { Process } from "@/util/process"
 import { Cause, Effect, Exit, Latch, Layer, Option, Scope, Context, Schema, Types } from "effect"
 import { InstanceState } from "@/effect/instance-state"
@@ -62,6 +63,7 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 
 const decodeMessageInfo = Schema.decodeUnknownExit(SessionV1.Info)
 const decodeMessagePart = Schema.decodeUnknownExit(SessionV1.Part)
+const FILE_SAMPLE_BYTES = 4096
 const MAX_MCP_RESOURCE_BLOB_BYTES = 10 * 1024 * 1024
 const SUPPORTED_MCP_RESOURCE_ATTACHMENT_MIMES = new Set([
   "application/pdf",
@@ -142,6 +144,20 @@ const layer = Layer.effect(
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
     const { db } = database
+    const readAttachmentSample = Effect.fn("SessionPrompt.readAttachmentSample")(function* (filepath: string) {
+      const stat = yield* fsys.stat(filepath).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      if (!stat || stat.type === "Directory" || Number(stat.size) === 0) return new Uint8Array()
+
+      return yield* Effect.scoped(
+        Effect.gen(function* () {
+          const file = yield* fsys.open(filepath, { flag: "r" })
+          return Option.getOrElse(
+            yield* file.readAlloc(Math.min(FILE_SAMPLE_BYTES, Number(stat.size))),
+            () => new Uint8Array(),
+          )
+        }),
+      ).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    })
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
         cancel: (sessionID: SessionID) => cancel(sessionID),
@@ -811,6 +827,25 @@ const layer = Layer.effect(
               yield* Effect.logInfo("file", { mime: part.mime })
               const filepath = fileURLToPath(part.url)
               const mime = (yield* fsys.isDir(filepath)) ? "application/x-directory" : part.mime
+
+              if (mime !== "application/x-directory") {
+                const sample = yield* readAttachmentSample(filepath)
+                if (sample) {
+                  const fallbackMime = mime === "text/plain" ? FSUtil.mimeType(filepath) : mime
+                  if (classifyAttachment(filepath, sample, fallbackMime).kind === "binary") {
+                    return [
+                      {
+                        messageID: info.id,
+                        sessionID: input.sessionID,
+                        type: "text",
+                        synthetic: true,
+                        text: `Referenced binary file path without reading contents: ${part.source?.path ?? filepath}`,
+                      },
+                      { ...part, messageID: info.id, sessionID: input.sessionID },
+                    ]
+                  }
+                }
+              }
 
               const { read } = yield* registry.named()
               const execRead = (args: Parameters<typeof read.execute>[0], extra?: Tool.Context["extra"]) => {

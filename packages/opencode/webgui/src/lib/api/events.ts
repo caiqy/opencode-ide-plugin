@@ -4,8 +4,8 @@ import type { SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
 // Event type definitions based on server Bus events
 export type ServerEvent =
   | { type: "server.connected"; properties: {} }
-  | { type: "session.created"; properties: { sessionID: string; session: any } }
-  | { type: "session.updated"; properties: { sessionID: string; session: any } }
+  | { type: "session.created"; properties: { sessionID: string; info: any } }
+  | { type: "session.updated"; properties: { sessionID: string; info: any } }
   | { type: "session.deleted"; properties: { info: { id: string } } }
   | { type: "session.error"; properties: { sessionID: string; error: any } }
   | {

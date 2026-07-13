@@ -8,7 +8,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { expect } from "bun:test"
 import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer } from "effect"
 import path from "path"
-import { fileURLToPath } from "url"
+import { fileURLToPath, pathToFileURL } from "url"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { Agent as AgentSvc } from "../../src/agent/agent"
 import { BackgroundJob } from "@/background/job"
@@ -2095,6 +2095,88 @@ noLLMServer.instance(
         (part) => part.type === "text" && part.synthetic && part.text.includes("Read tool failed to read"),
       )
       expect(hasFailure).toBe(true)
+
+      yield* sessions.remove(session.id)
+    }),
+  { config: cfg },
+)
+
+noLLMServer.instance(
+  "keeps binary file references as plain path mentions without read failures",
+  () =>
+    Effect.gen(function* () {
+      const { directory: dir } = yield* TestInstance
+      const events = yield* EventV2Bridge.Service
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({})
+      const errors: unknown[] = []
+      const off = yield* events.listen((event) => {
+        if (event.type !== Session.Event.Error.type) return Effect.void
+        const data = event.data as typeof Session.Event.Error.data.Type
+        if (data.sessionID === session.id) errors.push(data.error)
+        return Effect.void
+      })
+      const xlsx = path.join(dir, "report.xlsx")
+      yield* Effect.promise(() => Bun.write(xlsx, Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00])))
+
+      const message = yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [
+          { type: "text", text: "review @report.xlsx" },
+          { type: "file", mime: "text/plain", filename: "report.xlsx", url: pathToFileURL(xlsx).toString() },
+        ],
+      })
+      yield* off
+      const stored = yield* MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+      const text = stored.parts.filter((part) => part.type === "text").map((part) => part.text)
+
+      expect(text.some((value) => value.startsWith("Called the Read tool"))).toBe(false)
+      expect(text.some((value) => value.includes("Cannot read binary file"))).toBe(false)
+      expect(text).toContain(`Referenced binary file path without reading contents: ${xlsx}`)
+      expect(stored.parts.some((part) => part.type === "file" && part.filename === "report.xlsx")).toBe(true)
+      expect(errors).toEqual([])
+
+      yield* sessions.remove(session.id)
+    }),
+  { config: cfg },
+)
+
+noLLMServer.instance(
+  "keeps binary-only file references model-visible without read failures",
+  () =>
+    Effect.gen(function* () {
+      const { directory: dir } = yield* TestInstance
+      const events = yield* EventV2Bridge.Service
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({})
+      const errors: unknown[] = []
+      const off = yield* events.listen((event) => {
+        if (event.type !== Session.Event.Error.type) return Effect.void
+        const data = event.data as typeof Session.Event.Error.data.Type
+        if (data.sessionID === session.id) errors.push(data.error)
+        return Effect.void
+      })
+      const xlsx = path.join(dir, "report.xlsx")
+      yield* Effect.promise(() => Bun.write(xlsx, Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00])))
+
+      const message = yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [
+          { type: "file", mime: "text/plain", filename: "report.xlsx", url: pathToFileURL(xlsx).toString() },
+        ],
+      })
+      yield* off
+      const stored = yield* MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+      const text = stored.parts.filter((part) => part.type === "text").map((part) => part.text)
+
+      expect(text).toContain(`Referenced binary file path without reading contents: ${xlsx}`)
+      expect(errors).toEqual([])
 
       yield* sessions.remove(session.id)
     }),
