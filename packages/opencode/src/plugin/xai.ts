@@ -1,7 +1,7 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import { OAUTH_DUMMY_KEY } from "../auth"
 import { createServer } from "http"
-import { InstallationVersion } from "@opencode-ai/core/installation/version"
+import { Installation } from "../installation"
 import { OauthCallbackPage } from "@opencode-ai/core/oauth/page"
 
 // Public Grok-CLI OAuth client. xAI's auth server rejects loopback OAuth from
@@ -88,7 +88,7 @@ function authHeaders() {
   return {
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json",
-    "User-Agent": `opencode/${InstallationVersion}`,
+    "User-Agent": Installation.USER_AGENT,
   }
 }
 
@@ -528,7 +528,10 @@ export async function XaiAuthPlugin(input: PluginInput, options: XaiAuthPluginOp
             // so we never mutate the RequestInit the AI SDK may reuse on retry.
             // Headers.set overwrites case-insensitively, which kills the dummy
             // bearer the AI SDK injected from apiKey in a single line.
-            const headers = new Headers(requestInput instanceof Request ? requestInput.headers : undefined)
+            const headers = new Headers({ "User-Agent": Installation.USER_AGENT })
+            if (requestInput instanceof Request) {
+              requestInput.headers.forEach((value, key) => headers.set(key, value))
+            }
             if (init?.headers) {
               const entries =
                 init.headers instanceof Headers
@@ -541,7 +544,6 @@ export async function XaiAuthPlugin(input: PluginInput, options: XaiAuthPluginOp
               }
             }
             headers.set("authorization", `Bearer ${currentAuth.access}`)
-            headers.set("User-Agent", `opencode/${InstallationVersion}`)
 
             return fetch(requestInput, { ...init, headers })
           },

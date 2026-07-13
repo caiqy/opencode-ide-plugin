@@ -1,6 +1,6 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import { OAUTH_DUMMY_KEY } from "../auth"
-import { InstallationVersion } from "@opencode-ai/core/installation/version"
+import { Installation } from "../installation"
 import { OauthCallbackPage } from "@opencode-ai/core/oauth/page"
 import { createServer } from "http"
 import open from "open"
@@ -80,7 +80,7 @@ function authHeaders() {
   return {
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json",
-    "User-Agent": `opencode/${InstallationVersion}`,
+    "User-Agent": Installation.USER_AGENT,
   }
 }
 
@@ -367,7 +367,10 @@ export async function SnowflakeCortexAuthPlugin(_input: PluginInput): Promise<Ho
             }
 
             const prepareRequest = () => {
-              const headers = new Headers(requestInput instanceof Request ? requestInput.headers : undefined)
+              const headers = new Headers({ "User-Agent": Installation.USER_AGENT })
+              if (requestInput instanceof Request) {
+                requestInput.headers.forEach((value, key) => headers.set(key, value))
+              }
               if (init?.headers) {
                 const entries =
                   init.headers instanceof Headers
@@ -380,7 +383,6 @@ export async function SnowflakeCortexAuthPlugin(_input: PluginInput): Promise<Ho
                 }
               }
               headers.set("authorization", `Bearer ${currentOauth.access}`)
-              headers.set("User-Agent", `opencode/${InstallationVersion}`)
 
               let body = init?.body
               if (body && typeof body === "string") {

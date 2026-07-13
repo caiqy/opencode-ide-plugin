@@ -132,12 +132,12 @@ describe("plugin.xai", () => {
       expect(opts.baseURL).toBeUndefined()
 
       await opts.fetch!(new URL("/chat/completions", server.url), {
-        headers: { Authorization: `Bearer ${OAUTH_DUMMY_KEY}`, "x-keep": "yes" },
+        headers: { Authorization: `Bearer ${OAUTH_DUMMY_KEY}`, "user-agent": "third-party/1", "x-keep": "yes" },
       })
 
       expect(captured[0].get("authorization")).toBe("Bearer live-token")
       expect(captured[0].get("x-keep")).toBe("yes")
-      expect(captured[0].get("user-agent")).toMatch(/^opencode\//)
+      expect(captured[0].get("user-agent")).toBe("third-party/1")
     })
 
     test("does not mutate caller headers and supports HeadersInit shapes", async () => {

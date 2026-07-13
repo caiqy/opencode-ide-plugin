@@ -66,7 +66,7 @@ describe("plugin.snowflake-cortex", () => {
 
     try {
       await options.fetch("https://example.test/v1/chat", {
-        headers: { Authorization: `Bearer ${OAUTH_DUMMY_KEY}`, "x-keep": "yes" },
+        headers: { Authorization: `Bearer ${OAUTH_DUMMY_KEY}`, "user-agent": "third-party/1", "x-keep": "yes" },
       })
     } finally {
       globalThis.fetch = originalFetch
@@ -75,7 +75,7 @@ describe("plugin.snowflake-cortex", () => {
     expect(captured).toHaveLength(1)
     expect(captured[0].get("authorization")).toBe("Bearer access-live")
     expect(captured[0].get("x-keep")).toBe("yes")
-    expect(captured[0].get("user-agent")).toMatch(/^opencode\//)
+    expect(captured[0].get("user-agent")).toBe("third-party/1")
   })
 
   test("loader refreshes expired token with single-flight and persists refreshed oauth", async () => {

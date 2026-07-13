@@ -1,11 +1,33 @@
 import { afterEach, expect, mock, test } from "bun:test"
 import { CopilotModels } from "@/plugin/github-copilot/models"
 import { CopilotAuthPlugin } from "@/plugin/github-copilot/copilot"
+import { Installation } from "@/installation"
 
 const originalFetch = globalThis.fetch
 
 afterEach(() => {
   globalThis.fetch = originalFetch
+})
+
+test("preserves caller User-Agent and supplies an OpenCode default", async () => {
+  const captured: Headers[] = []
+  globalThis.fetch = mock((_request, init) => {
+    captured.push(new Headers(init?.headers))
+    return Promise.resolve(new Response("{}", { status: 200 }))
+  }) as unknown as typeof fetch
+  const hooks = await CopilotAuthPlugin({ client: {} } as any)
+  const options = await hooks.auth!.loader!(
+    async () => ({ type: "oauth", access: "access", refresh: "refresh", expires: Date.now() + 3600_000 }) as any,
+    {} as any,
+  )
+
+  await options.fetch!(new Request("https://example.test/chat", { headers: { "User-Agent": "request/1" } }), {
+    headers: new Headers({ "user-agent": "init/2" }),
+  })
+  await options.fetch!("https://example.test/chat")
+
+  expect(captured[0].get("user-agent")).toBe("init/2")
+  expect(captured[1].get("user-agent")).toBe(Installation.USER_AGENT)
 })
 
 test("preserves temperature support from existing provider models", async () => {

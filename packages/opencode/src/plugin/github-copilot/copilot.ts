@@ -1,6 +1,6 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import type { Model } from "@opencode-ai/sdk/v2"
-import { InstallationVersion } from "@opencode-ai/core/installation/version"
+import { Installation } from "@/installation"
 import { iife } from "@/util/iife"
 import { setTimeout as sleep } from "node:timers/promises"
 import { CopilotModels } from "./models"
@@ -70,9 +70,9 @@ export async function CopilotAuthPlugin(input: PluginInput): Promise<Hooks> {
         return CopilotModels.get(
           base(auth.enterpriseUrl),
           {
+            "User-Agent": Installation.USER_AGENT,
             ...(provider.options?.headers as Record<string, string> | undefined),
             Authorization: `Bearer ${auth.refresh}`,
-            "User-Agent": `opencode/${InstallationVersion}`,
             "X-GitHub-Api-Version": API_VERSION,
           },
           provider.models,
@@ -157,20 +157,18 @@ export async function CopilotAuthPlugin(input: PluginInput): Promise<Hooks> {
               return { isVision: false, isAgent: false }
             })
 
-            const headers: Record<string, string> = {
-              "x-initiator": isAgent ? "agent" : "user",
-              ...(init?.headers as Record<string, string>),
-              "User-Agent": `opencode/${InstallationVersion}`,
-              Authorization: `Bearer ${info.refresh}`,
-              "Openai-Intent": "conversation-edits",
-            }
+            const headers = new Headers(request instanceof Request ? request.headers : undefined)
+            if (init?.headers) new Headers(init.headers).forEach((value, key) => headers.set(key, value))
+            headers.delete("x-api-key")
+            headers.delete("authorization")
+            if (!headers.has("user-agent")) headers.set("User-Agent", Installation.USER_AGENT)
+            headers.set("x-initiator", isAgent ? "agent" : "user")
+            headers.set("Authorization", `Bearer ${info.refresh}`)
+            headers.set("Openai-Intent", "conversation-edits")
 
             if (isVision) {
-              headers["Copilot-Vision-Request"] = "true"
+              headers.set("Copilot-Vision-Request", "true")
             }
-
-            delete headers["x-api-key"]
-            delete headers["authorization"]
 
             return fetch(request, {
               ...init,
@@ -236,7 +234,7 @@ export async function CopilotAuthPlugin(input: PluginInput): Promise<Hooks> {
               headers: {
                 Accept: "application/json",
                 "Content-Type": "application/json",
-                "User-Agent": `opencode/${InstallationVersion}`,
+                "User-Agent": Installation.USER_AGENT,
               },
               body: JSON.stringify({
                 client_id: CLIENT_ID,
@@ -266,7 +264,7 @@ export async function CopilotAuthPlugin(input: PluginInput): Promise<Hooks> {
                     headers: {
                       Accept: "application/json",
                       "Content-Type": "application/json",
-                      "User-Agent": `opencode/${InstallationVersion}`,
+                      "User-Agent": Installation.USER_AGENT,
                     },
                     body: JSON.stringify({
                       client_id: CLIENT_ID,
