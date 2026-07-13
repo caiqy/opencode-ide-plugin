@@ -5,6 +5,7 @@ import { Deferred, Effect } from "effect"
 import type { Scope } from "effect"
 import { Credential } from "../../credential"
 import { InstallationVersion } from "../../installation/version"
+import { customizeUserAgent } from "../../installation/user-agent"
 import { Integration } from "../../integration"
 import { ModelV2 } from "../../model"
 import { OauthCallbackPage } from "../../oauth/page"
@@ -189,7 +190,7 @@ export const OpenAIPlugin = define({
 } satisfies PluginInternal.Plugin<PluginInternal.Requirements | Scope.Scope>)
 
 function headers(contentType: string) {
-  return { "Content-Type": contentType, "User-Agent": `opencode/${InstallationVersion}` }
+  return { "Content-Type": contentType, "User-Agent": customizeUserAgent(`opencode/${InstallationVersion}`) }
 }
 
 function exchange(code: string, redirect: string, pkce: Pkce) {

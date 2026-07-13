@@ -13,6 +13,7 @@ import { ModelsDev } from "@opencode-ai/core/models-dev"
 import { ModelsDevPlugin } from "@opencode-ai/core/plugin/models-dev"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { AbsolutePath } from "@opencode-ai/core/schema"
+import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
 import { location } from "../fixture/location"
 import { testEffect } from "../lib/effect"
 import { catalogHost, host, integrationHost } from "./host"
@@ -27,6 +28,45 @@ const layer = AppNodeBuilder.build(LayerNode.group([Catalog.node, Integration.no
 const it = testEffect(layer)
 
 describe("ModelsDevPlugin", () => {
+  it.live("identifies the UI in models.dev requests", () =>
+    Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const captured: Headers[] = []
+        const server = Bun.serve({
+          port: 0,
+          fetch(request) {
+            captured.push(request.headers)
+            return Response.json({})
+          },
+        })
+        const previous = {
+          url: Flag.OPENCODE_MODELS_URL,
+          path: Flag.OPENCODE_MODELS_PATH,
+          disabled: Flag.OPENCODE_DISABLE_MODELS_FETCH,
+        }
+        Flag.OPENCODE_MODELS_URL = server.url.origin
+        Flag.OPENCODE_MODELS_PATH = undefined
+        Flag.OPENCODE_DISABLE_MODELS_FETCH = false
+        return { captured, previous, server }
+      }),
+      ({ captured }) =>
+        Effect.gen(function* () {
+          const models = yield* ModelsDev.Service
+          yield* models.get()
+          expect(captured[0]?.get("user-agent")).toBe(
+            `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT} opencode-ui/${process.env.OPENCODE_UI_VERSION?.trim() || InstallationVersion}`,
+          )
+        }).pipe(Effect.provide(AppNodeBuilder.build(ModelsDev.node))),
+      ({ previous, server }) =>
+        Effect.sync(() => {
+          Flag.OPENCODE_MODELS_URL = previous.url
+          Flag.OPENCODE_MODELS_PATH = previous.path
+          Flag.OPENCODE_DISABLE_MODELS_FETCH = previous.disabled
+          server.stop(true)
+        }),
+    ),
+  )
+
   it.effect("projects models.dev modes as separate models instead of variants", () =>
     Effect.gen(function* () {
       const integrations = yield* Integration.Service

@@ -8,6 +8,7 @@ import { Flock } from "./util/flock"
 import { Hash } from "./util/hash"
 import { FSUtil } from "./fs-util"
 import { InstallationChannel, InstallationVersion } from "./installation/version"
+import { customizeUserAgent } from "./installation/user-agent"
 import { EventV2 } from "./event"
 import { makeGlobalNode } from "./effect/app-node"
 import { httpClient } from "./effect/app-node-platform"
@@ -15,7 +16,7 @@ import { httpClient } from "./effect/app-node-platform"
 export const CatalogModelStatus = Schema.Literals(["alpha", "beta", "deprecated"])
 export type CatalogModelStatus = typeof CatalogModelStatus.Type
 
-const USER_AGENT = `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT}`
+const USER_AGENT = customizeUserAgent(`opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT}`)
 
 const CostTier = Schema.Struct({
   input: Schema.Finite,
