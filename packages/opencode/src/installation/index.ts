@@ -12,6 +12,7 @@ import path from "path"
 import { makeRuntime } from "@opencode-ai/core/effect/runtime"
 import semver from "semver"
 import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
+import { customizeUserAgent } from "@opencode-ai/core/installation/user-agent"
 import { NpmConfig } from "@opencode-ai/core/npm-config"
 import { InstallationEvent } from "@opencode-ai/schema/installation-event"
 
@@ -38,8 +39,13 @@ export const Info = Schema.Struct({
 }).annotate({ identifier: "InstallationInfo" })
 export type Info = Schema.Schema.Type<typeof Info>
 
-export function userAgent(client = "cli") {
-  return `opencode/${InstallationChannel}/${InstallationVersion}/${client}`
+export function userAgent(options: { client?: string; products?: string[]; system?: string } = {}) {
+  const value = [
+    `opencode/${InstallationChannel}/${InstallationVersion}/${options.client ?? "cli"}`,
+    ...(options.products ?? []),
+    ...(options.system ? [`(${options.system})`] : []),
+  ].join(" ")
+  return customizeUserAgent(value)
 }
 
 export const USER_AGENT = userAgent()

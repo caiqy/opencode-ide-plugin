@@ -6,7 +6,7 @@ import { Effect, Layer, Stream } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { Installation } from "../../src/installation"
-import { InstallationChannel } from "@opencode-ai/core/installation/version"
+import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { NpmConfig } from "@opencode-ai/core/npm-config"
 import { testEffect } from "../lib/effect"
@@ -68,6 +68,14 @@ function testLayer(
 }
 
 describe("installation", () => {
+  testEffect(Layer.empty).effect("combines client products UI token and system comment in order", () =>
+    Effect.sync(() => {
+      expect(Installation.userAgent({ client: "app", products: ["provider/1", "tool/2"], system: "linux x64" })).toBe(
+        `opencode/${InstallationChannel}/${InstallationVersion}/app provider/1 tool/2 opencode-ui/${process.env.OPENCODE_UI_VERSION?.trim() || InstallationVersion} (linux x64)`,
+      )
+    }),
+  )
+
   describe("latest", () => {
     testEffect(testLayer(() => jsonResponse({ tag_name: "v1.2.3" }))).effect(
       "reads release version from GitHub releases",
