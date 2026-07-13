@@ -44,7 +44,7 @@ base-ref: 1f2cdf59fa1f59ff019d381827ba2ae1ef42ecd7
 - 产出：`customizeUserAgent(userAgent: string, uiVersion?: string): string`
 - 依赖：`InstallationVersion`，来自 `@opencode-ai/core/installation/version`。
 
-- [ ] **步骤 1：编写失败的表驱动测试**
+- [x] **步骤 1：编写失败的表驱动测试**
 
 ```ts
 import { describe, expect, test } from "bun:test"
@@ -66,13 +66,13 @@ describe("customizeUserAgent", () => {
 })
 ```
 
-- [ ] **步骤 2：运行测试确认 RED**
+- [x] **步骤 2：运行测试确认 RED**
 
 运行：在 `packages/core` 中执行 `bun test test/installation/user-agent.test.ts`
 
 预期：FAIL，报错无法解析 `@opencode-ai/core/installation/user-agent` 或未导出 `customizeUserAgent`。
 
-- [ ] **步骤 3：实现最小纯函数**
+- [x] **步骤 3：实现最小纯函数**
 
 在 `packages/core/src/installation/user-agent.ts` 添加以下实现；使用首 token 和产品 token 的空白分隔检查，不修改输入已有内容：
 
@@ -93,13 +93,13 @@ export function customizeUserAgent(userAgent: string, uiVersion = process.env.OP
 export * as UserAgent from "./user-agent"
 ```
 
-- [ ] **步骤 4：运行测试确认 GREEN**
+- [x] **步骤 4：运行测试确认 GREEN**
 
 运行：在 `packages/core` 中执行 `bun test test/installation/user-agent.test.ts`
 
 预期：PASS，7 个用例均通过，包含 comment 前插入和空白版本回退。
 
-- [ ] **步骤 5：提交**
+- [x] **步骤 5：提交**
 
 ```bash
 git add packages/core/src/installation/user-agent.ts packages/core/test/installation/user-agent.test.ts
@@ -116,7 +116,7 @@ git commit -m "feat(core): customize opencode user agent"
 - 消费：`customizeUserAgent(userAgent: string, uiVersion?: string): string`。
 - 产出：`userAgent(options?: { client?: string; products?: string[]; system?: string }): string` 和无参启动快照 `USER_AGENT`。
 
-- [ ] **步骤 1：编写失败的组合顺序测试**
+- [x] **步骤 1：编写失败的组合顺序测试**
 
 在 `describe("installation")` 首部添加：
 
@@ -130,13 +130,13 @@ testEffect(Layer.empty).effect("combines client products UI token and system com
 )
 ```
 
-- [ ] **步骤 2：运行测试确认 RED**
+- [x] **步骤 2：运行测试确认 RED**
 
 运行：在 `packages/opencode` 中执行 `bun test test/installation/installation.test.ts`
 
 预期：FAIL，`userAgent` 当前只接受字符串 client，且未组合 products/system/UI token。
 
-- [ ] **步骤 3：实现 options 组合并委托 Core**
+- [x] **步骤 3：实现 options 组合并委托 Core**
 
 将 `index.ts` 的版本导入扩展为 `customizeUserAgent`，并替换 helper：
 
@@ -153,13 +153,13 @@ export function userAgent(options: { client?: string; products?: string[]; syste
 export const USER_AGENT = userAgent()
 ```
 
-- [ ] **步骤 4：运行测试确认 GREEN**
+- [x] **步骤 4：运行测试确认 GREEN**
 
 运行：在 `packages/opencode` 中执行 `bun test test/installation/installation.test.ts`
 
 预期：PASS，新增断言确认顺序为 base、products、UI token、system comment；原 Installation 服务测试也全部通过。
 
-- [ ] **步骤 5：提交**
+- [x] **步骤 5：提交**
 
 ```bash
 git add packages/opencode/src/installation/index.ts packages/opencode/test/installation/installation.test.ts
@@ -181,7 +181,7 @@ git commit -m "feat(opencode): compose UI user agent"
 - 消费：`customizeUserAgent`；Core 调用点仍自行构造其既有 `opencode/...`、provider 产品和系统 comment。
 - 产出：所有 Core 自建 `opencode/...` header 都含 UI token，且不改变既有产品/comment 内容。
 
-- [ ] **步骤 1：在 models.dev 测试中编写失败的最终请求 header 断言**
+- [x] **步骤 1：在 models.dev 测试中编写失败的最终请求 header 断言**
 
 在 `models-dev.test.ts` 增加一个使用本地 `Bun.serve` 的 `it.live` 用例：设置 `Flag.OPENCODE_MODELS_URL = server.url`、禁用本地 models 路径和自动抓取，调用 `ModelsDev.Service.get()`，并在服务端保存请求 headers。
 
@@ -193,13 +193,13 @@ expect(captured[0].get("user-agent")).toBe(
 
 在 `Effect.acquireUseRelease` 中保存并恢复每个被改动的 `Flag`，保证测试不污染其他 models-dev 测试。
 
-- [ ] **步骤 2：运行测试确认 RED**
+- [x] **步骤 2：运行测试确认 RED**
 
 运行：在 `packages/core` 中执行 `bun test test/plugin/models-dev.test.ts`
 
 预期：FAIL，捕获的 `models.dev/api.json` 请求 header 缺少 `opencode-ui/`。
 
-- [ ] **步骤 3：迁移 Core 构造表达式**
+- [x] **步骤 3：迁移 Core 构造表达式**
 
 将 `models-dev.ts` 的模块常量替换为启动快照形式：
 
@@ -209,13 +209,13 @@ const USER_AGENT = customizeUserAgent(`opencode/${InstallationChannel}/${Install
 
 在 `websearch.ts` 和四个 provider plugin 文件中保留原有字符串模板，只用 `customizeUserAgent(...)` 包裹其完整 UA 值。provider 产品和 `(${os.platform()} ${os.release()}; ${os.arch()})` comment 必须仍在 UI token 两侧保持原顺序。
 
-- [ ] **步骤 4：运行测试确认 GREEN**
+- [x] **步骤 4：运行测试确认 GREEN**
 
 运行：在 `packages/core` 中执行 `bun test test/installation/user-agent.test.ts test/plugin/models-dev.test.ts test/plugin/provider-gitlab.test.ts test/plugin/provider-cloudflare-workers-ai.test.ts test/plugin/provider-cloudflare-ai-gateway.test.ts`
 
 预期：PASS，models.dev 请求含 UI token，既有 provider header 行为不回归。
 
-- [ ] **步骤 5：提交**
+- [x] **步骤 5：提交**
 
 ```bash
 git add packages/core/src/models-dev.ts packages/core/src/tool/websearch.ts packages/core/src/plugin/provider packages/core/test/plugin/models-dev.test.ts
@@ -236,7 +236,7 @@ git commit -m "refactor(core): reuse UI user agent helper"
 - 消费：`Installation.USER_AGENT` 用于无附加内容路径；`Installation.userAgent({ products, system })` 用于 provider 产品或系统 comment 路径。
 - 产出：OpenCode 构造的默认 UA 含 UI token，后续 header 合并顺序不变。
 
-- [ ] **步骤 1：编写失败的 Installation helper 调用断言**
+- [x] **步骤 1：编写失败的 Installation helper 调用断言**
 
 在 `packages/opencode/test/installation/installation.test.ts` 添加以下精确组合用例，作为迁移调用点所依赖的 provider/system 契约：
 
@@ -246,13 +246,13 @@ expect(Installation.userAgent({ products: ["gitlab-ai-provider/1"], system: "lin
 )
 ```
 
-- [ ] **步骤 2：运行测试确认 RED**
+- [x] **步骤 2：运行测试确认 RED**
 
 运行：在 `packages/opencode` 中执行 `bun test test/installation/installation.test.ts`
 
 预期：FAIL，当前 `userAgent` 尚未接受 options 或不会插入 UI token。
 
-- [ ] **步骤 3：替换 OpenCode 自建 UA**
+- [x] **步骤 3：替换 OpenCode 自建 UA**
 
 按下列规则替换，不改变 headers 对象展开位置：
 
@@ -269,13 +269,13 @@ expect(Installation.userAgent({ products: ["gitlab-ai-provider/1"], system: "lin
 
 对 `provider/models.ts`、LLM request、DigitalOcean、Codex 的纯默认 UA 直接使用 `Installation.USER_AGENT`。对 `provider/provider.ts` 三条 provider UA 使用 `Installation.userAgent` 并传入各自既有 provider product/system；对 `tool/websearch.ts` 使用 `Installation.USER_AGENT`。保留 `tool/webfetch.ts` 的裸 `opencode` 兼容性 header，不作修改。
 
-- [ ] **步骤 4：运行测试确认 GREEN**
+- [x] **步骤 4：运行测试确认 GREEN**
 
 运行：在 `packages/opencode` 中执行 `bun test test/installation/installation.test.ts`
 
 预期：PASS，默认、provider product 和 system comment 的组合均为正确顺序。
 
-- [ ] **步骤 5：提交**
+- [x] **步骤 5：提交**
 
 ```bash
 git add packages/opencode/src/provider/models.ts packages/opencode/src/provider/provider.ts packages/opencode/src/session/llm/request.ts packages/opencode/src/tool/websearch.ts packages/opencode/src/plugin/digitalocean.ts packages/opencode/src/plugin/openai/codex.ts packages/opencode/test/installation/installation.test.ts
@@ -296,7 +296,7 @@ git commit -m "refactor(opencode): reuse installation user agent"
 - 消费：`Installation.USER_AGENT` 和原生 `Headers`。
 - 产出：xAI/Snowflake 先设 OpenCode 默认 UA、后合并调用 headers；Copilot 合并 Request headers 后合并 init headers，只有无 UA 时设默认值。
 
-- [ ] **步骤 1：编写三个失败的最终请求测试**
+- [x] **步骤 1：编写三个失败的最终请求测试**
 
 在 xAI 的本地 `Bun.serve` 测试中传入小写 UA，断言服务端看到该值：
 
@@ -311,13 +311,13 @@ expect(captured[0].get("user-agent")).toBe("third-party/1")
 
 在 `github-copilot-models.test.ts` 新增 loader-fetch 测试：以 OAuth auth 调用 `CopilotAuthPlugin`，将 `new Request(url, { headers: { "User-Agent": "request/1" } })` 作为 input，并传入 `headers: new Headers({ "user-agent": "init/2" })`；mock fetch 捕获 `init.headers`，断言最终 UA 为 `init/2`。再以无 UA 的 Request/init 调用一次，断言最终 UA 等于 `Installation.USER_AGENT`。
 
-- [ ] **步骤 2：运行测试确认 RED**
+- [x] **步骤 2：运行测试确认 RED**
 
 运行：在 `packages/opencode` 中执行 `bun test test/plugin/xai.test.ts test/plugin/snowflake-cortex.test.ts test/plugin/github-copilot-models.test.ts`
 
 预期：FAIL，xAI、Snowflake 与 Copilot wrapper 目前会在调用者 headers 之后强制设置 `opencode/...`。
 
-- [ ] **步骤 3：以原生 Headers 保持 fetch 优先级**
+- [x] **步骤 3：以原生 Headers 保持 fetch 优先级**
 
 将 xAI 和 Snowflake 的 wrapper 改成先在 `Headers` 上设置 `Installation.USER_AGENT`，再以现有调用者 headers 逐个 `set` 覆盖；不得在合并之后再写 User-Agent。
 
@@ -334,13 +334,13 @@ headers.set("Openai-Intent", "conversation-edits")
 
 继续删除 `x-api-key`/`authorization` 后使用这个 `headers` 调用 fetch。Copilot 的 models discovery、device-code 和 polling requests 改用 `Installation.USER_AGENT`，但不改变它们自己的认证/协议 headers。
 
-- [ ] **步骤 4：运行测试确认 GREEN**
+- [x] **步骤 4：运行测试确认 GREEN**
 
 运行：在 `packages/opencode` 中执行 `bun test test/plugin/xai.test.ts test/plugin/snowflake-cortex.test.ts test/plugin/github-copilot-models.test.ts`
 
 预期：PASS，三条最终请求均保留大小写不同的第三方 UA；Copilot 证明 Request headers 与 `Headers` 类型 init headers 都受原生合并规则处理，且无调用者 UA 时才补 OpenCode 默认值。
 
-- [ ] **步骤 5：提交**
+- [x] **步骤 5：提交**
 
 ```bash
 git add packages/opencode/src/plugin/xai.ts packages/opencode/src/plugin/snowflake-cortex.ts packages/opencode/src/plugin/github-copilot/copilot.ts packages/opencode/test/plugin/xai.test.ts packages/opencode/test/plugin/snowflake-cortex.test.ts packages/opencode/test/plugin/github-copilot-models.test.ts
@@ -355,7 +355,7 @@ git commit -m "fix(opencode): preserve provider user agent overrides"
 **接口：**
 - 验收：所有自建 `opencode/...` UA 走 Core helper 或 Installation 入口；明确排除项保留且均有分类理由。
 
-- [ ] **步骤 1：运行 Core 聚焦测试**
+- [x] **步骤 1：运行 Core 聚焦测试**
 
 运行：在 `packages/core` 中执行：
 
@@ -365,7 +365,7 @@ bun test test/installation/user-agent.test.ts test/plugin/models-dev.test.ts tes
 
 预期：PASS，纯函数、models-dev 请求与 Core provider headers 均通过。
 
-- [ ] **步骤 2：运行 OpenCode 聚焦测试**
+- [x] **步骤 2：运行 OpenCode 聚焦测试**
 
 运行：在 `packages/opencode` 中执行：
 
@@ -375,13 +375,13 @@ bun test test/installation/installation.test.ts test/plugin/xai.test.ts test/plu
 
 预期：PASS，Installation 组合与三个 provider 覆盖路径均通过。
 
-- [ ] **步骤 3：分别执行类型检查**
+- [x] **步骤 3：分别执行类型检查**
 
 运行：在 `packages/core` 中执行 `bun typecheck`；在 `packages/opencode` 中执行 `bun typecheck`。
 
 预期：两条命令均以退出码 0 完成；不得在仓库根目录运行测试或 typecheck。
 
-- [ ] **步骤 4：扫描并逐项分类残留**
+- [x] **步骤 4：扫描并逐项分类残留**
 
 运行：在仓库根目录执行：
 
@@ -391,7 +391,7 @@ rg -n 'User-Agent|opencode/' packages/core/src packages/opencode/src packages/co
 
 预期：Core/OpenCode 的自建完整 `opencode/...` header 不再绕过 helper/Installation；允许残留仅为 `packages/console` 独立产品 UA、两处 webfetch 裸 `opencode` 兼容路径，以及 provider/SDK 后续合并的第三方 UA。检查每条匹配的上下文，确认没有把第三方 UA 传给定制函数。
 
-- [ ] **步骤 5：审查最终差异并提交**
+- [x] **步骤 5：审查最终差异并提交**
 
 运行：`git diff --check 1f2cdf59fa1f59ff019d381827ba2ae1ef42ecd7 -- packages/core packages/opencode`，再审阅 `git diff 1f2cdf59fa1f59ff019d381827ba2ae1ef42ecd7 -- packages/core packages/opencode`。
 
