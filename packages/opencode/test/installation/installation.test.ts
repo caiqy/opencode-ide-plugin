@@ -73,6 +73,9 @@ describe("installation", () => {
       expect(Installation.userAgent({ client: "app", products: ["provider/1", "tool/2"], system: "linux x64" })).toBe(
         `opencode/${InstallationChannel}/${InstallationVersion}/app provider/1 tool/2 opencode-ui/${process.env.OPENCODE_UI_VERSION?.trim() || InstallationVersion} (linux x64)`,
       )
+      expect(Installation.userAgent({ products: ["gitlab-ai-provider/1"], system: "linux 1.0; x64" })).toBe(
+        `opencode/${InstallationChannel}/${InstallationVersion}/cli gitlab-ai-provider/1 opencode-ui/${process.env.OPENCODE_UI_VERSION?.trim() || InstallationVersion} (linux 1.0; x64)`,
+      )
     }),
   )
 
