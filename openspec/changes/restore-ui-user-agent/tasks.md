@@ -14,3 +14,5 @@
 - [x] 3.1 运行 Installation、provider、插件和 LLM 相关聚焦测试
 - [x] 3.2 分别运行 `packages/core` 与 `packages/opencode` 类型检查，并扫描剩余硬编码 OpenCode User-Agent
 - [x] 3.3 审查最终差异，确认没有数据库、协议、依赖或第三方 UA 行为变更
+- [x] 3.4 支持 comment 后已有 UI 产品的幂等判定，并避免把 comment 内容误判为产品
+- [x] 3.5 移除打包级 Bun 全局 OpenCode User-Agent，并将 script 纳入残留扫描

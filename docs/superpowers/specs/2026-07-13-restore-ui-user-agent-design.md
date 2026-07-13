@@ -17,7 +17,7 @@ canonical_spec: openspec
 该函数接收完整 User-Agent 字符串和可选 UI 版本：
 
 1. 读取首个空白分隔 token；它不以 `opencode/` 开头时原样返回。
-2. 扫描产品 token；已存在 `opencode-ui/*` 时原样返回。
+2. 扫描所有 comment 外的产品 token；已存在 `opencode-ui/*` 时原样返回。comment 可出现在产品序列中间，其内部文本不参与产品判定。
 3. 对显式 UI 版本去除首尾空白；没有有效值时回退 `InstallationVersion`。
 4. 将 `opencode-ui/<version>` 插入现有 comment 之前；没有 comment 时追加到末尾。
 
@@ -51,6 +51,8 @@ userAgent(options?: { client?: string; products?: string[]; system?: string }): 
 - `packages/console` 的产品 UA，它不以 `opencode/` 开头或属于独立服务。
 - WebFetch 兼容性路径中的裸 `opencode`，它不满足首 token `opencode/` 契约。
 - SDK 或 provider 在后续 header 合并中提供的 User-Agent。
+
+打包脚本删除 Bun `--user-agent=opencode/...` 全局默认。该参数无法读取 backend 启动时注入的 UI 版本，也会把没有显式 OpenCode 归属的第三方 fetch 标记为 OpenCode；需要 OpenCode UA 的运行时调用点必须显式使用统一入口。
 
 ## Header 顺序
 

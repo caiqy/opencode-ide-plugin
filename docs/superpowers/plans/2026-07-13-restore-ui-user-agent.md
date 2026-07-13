@@ -410,3 +410,15 @@ git commit -m "test: cover UI user agent restoration"
 - OpenCode 模型目录、LLM、provider、工具、Codex 和 DigitalOcean 构造点由 Task 4 覆盖。
 - xAI、Snowflake、Copilot 的第三方后置 header 覆盖及 Copilot HeadersInit/Request 形态由 Task 5 覆盖。
 - 聚焦测试、包内 typecheck、残留扫描和无 schema/protocol/dependency 变更审查由 Task 6 覆盖。
+
+### Task 7: 修复 comment 后产品的幂等判定
+
+- [x] **步骤 1：添加 comment 后 UI 产品的失败测试并确认 RED**
+- [x] **步骤 2：最小解析 comment 外 token并确认 GREEN**
+- [x] **步骤 3：提交幂等修复**
+
+### Task 8: 删除打包级全局 OpenCode UA
+
+- [x] **步骤 1：删除 `script/build.ts` 的 `--user-agent` execArgv**
+- [x] **步骤 2：扫描 `src` 与 `script` 并运行两包 typecheck**
+- [x] **步骤 3：提交打包配置修复**

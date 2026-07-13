@@ -31,12 +31,13 @@ Core Installation 模块提供接收已有 UA 字符串的纯函数。函数只�
 
 ### 在构造点迁移，不在最终 header 合并后强制覆盖
 
-所有硬编码 `opencode/...` 的本地构造改用统一 helper；`input.model.headers`、插件 hook、fetch `Request`/`init` headers 或用户配置保持后置覆盖。当前强制写回默认 UA 的认证 wrapper 调整为先设默认值、再合并调用者 headers。由此，第三方 UA 即使出现在最终请求中也不会被重新定制。
+所有硬编码 `opencode/...` 的本地构造改用统一 helper；`input.model.headers`、插件 hook、fetch `Request`/`init` headers 或用户配置保持后置覆盖。当前强制写回默认 UA 的认证 wrapper 调整为先设默认值、再合并调用者 headers。打包脚本不再通过 Bun `--user-agent` 为所有未显式归属的请求强制设置 OpenCode UA。由此，第三方 UA 即使出现在最终请求中也不会被重新定制。
 
 ## Risks / Trade-offs
 
 - [遗漏新的硬编码 OpenCode UA] → 搜索所有 `User-Agent` 与 `opencode/` 构造点，并留下 helper 单测和代表性调用点测试。
 - [重复追加 UI 产品] → 纯函数先检查已有 `opencode-ui/*` token，保证幂等。
+- [comment 内容误判或 comment 后产品遗漏] → 只把 comment 外 token 视为产品，并覆盖 comment 前后位置。
 - [误判包含 opencode 字样的第三方 UA] → 只检查首个产品 token，不做任意子串匹配。
 - [模块加载时缓存错误 UI 版本] → 动态 helper 在调用时读取环境变量；仅常量语义保持与现有代码一致。
 
