@@ -9,6 +9,11 @@ describe("customizeUserAgent", () => {
     ["third-party/1 opencode/2", "9", "third-party/1 opencode/2"],
     ["opencode/2", "9", "opencode/2 opencode-ui/9"],
     ["opencode/2 opencode-ui/old", "9", "opencode/2 opencode-ui/old"],
+    [
+      "opencode/2 (compatible; opencode-ui/old)",
+      "9",
+      "opencode/2 opencode-ui/9 (compatible; opencode-ui/old)",
+    ],
     ["opencode/2 provider/1 (linux x64)", " 9 ", "opencode/2 provider/1 opencode-ui/9 (linux x64)"],
     ["opencode/2", "   ", `opencode/2 opencode-ui/${InstallationVersion}`],
   ])("customizes %p", (input, version, expected) => {

@@ -79,6 +79,21 @@ describe("installation", () => {
     }),
   )
 
+  testEffect(Layer.empty).effect("keeps USER_AGENT as a process-start snapshot", () =>
+    Effect.sync(() => {
+      const previous = process.env.OPENCODE_UI_VERSION
+      const snapshot = Installation.USER_AGENT
+      try {
+        process.env.OPENCODE_UI_VERSION = "runtime-version"
+        expect(Installation.userAgent()).toContain("opencode-ui/runtime-version")
+        expect(Installation.USER_AGENT).toBe(snapshot)
+      } finally {
+        if (previous === undefined) delete process.env.OPENCODE_UI_VERSION
+        else process.env.OPENCODE_UI_VERSION = previous
+      }
+    }),
+  )
+
   describe("latest", () => {
     testEffect(testLayer(() => jsonResponse({ tag_name: "v1.2.3" }))).effect(
       "reads release version from GitHub releases",
