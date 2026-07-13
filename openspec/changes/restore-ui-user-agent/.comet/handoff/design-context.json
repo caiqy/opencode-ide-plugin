@@ -1,0 +1,14 @@
+{
+  "change": "restore-ui-user-agent",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "24c25ea69d8bfee89599233cf468750e8a4498a298ee8a7cef176e2cd4655b04",
+  "files": [
+    { "path": "openspec/changes/restore-ui-user-agent/proposal.md", "sha256": "c83220546b0a3c9cc1ac4008111df2cbb6e7dc6e4317e60c64010772371666c0" },
+    { "path": "openspec/changes/restore-ui-user-agent/design.md", "sha256": "91a867a6ff6bb6b34f8dff4b4430b0756d49269aed1252a6ae5e6c1668bbf3d2" },
+    { "path": "openspec/changes/restore-ui-user-agent/tasks.md", "sha256": "8c85902a1d91f717fbfedc24d7060526b804e3b7e2c6878d38b0a5a49c57d967" },
+    { "path": "openspec/changes/restore-ui-user-agent/specs/user-agent-customization/spec.md", "sha256": "2ae150ded2dbcd65a5b39811f90b5892dcf1ca353195cc352f226ef68fad5b71" }
+  ]
+}
