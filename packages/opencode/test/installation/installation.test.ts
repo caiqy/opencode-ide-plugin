@@ -1,4 +1,5 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
+import path from "node:path"
 import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { httpClient } from "@opencode-ai/core/effect/app-node-platform"
@@ -68,6 +69,25 @@ function testLayer(
 }
 
 describe("installation", () => {
+  test("captures the injected UI version when the module first loads", async () => {
+    const process = Bun.spawn(
+      [
+        Bun.which("bun")!,
+        "-e",
+        'const { USER_AGENT } = await import("./src/installation/index.ts"); process.stdout.write(USER_AGENT)',
+      ],
+      {
+        cwd: path.join(import.meta.dir, "../.."),
+        env: { ...globalThis.process.env, OPENCODE_UI_VERSION: "startup-version" },
+        stdout: "pipe",
+      },
+    )
+    const output = await new Response(process.stdout).text()
+
+    expect(await process.exited).toBe(0)
+    expect(output).toContain("opencode-ui/startup-version")
+  })
+
   testEffect(Layer.empty).effect("combines client products UI token and system comment in order", () =>
     Effect.sync(() => {
       expect(Installation.userAgent({ client: "app", products: ["provider/1", "tool/2"], system: "linux x64" })).toBe(
