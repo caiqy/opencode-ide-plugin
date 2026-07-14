@@ -1,6 +1,6 @@
 workflow: full
 language: zh-CN
-phase: verify
+phase: archive
 context_compression: off
 build_mode: executing-plans
 build_pause: null
@@ -13,13 +13,13 @@ auto_transition: true
 base_ref: 1f2cdf59fa1f59ff019d381827ba2ae1ef42ecd7
 design_doc: docs/superpowers/specs/2026-07-13-restore-ui-user-agent-design.md
 plan: docs/superpowers/plans/2026-07-13-restore-ui-user-agent.md
-verify_result: pending
+verify_result: pass
 verification_report: docs/superpowers/reports/2026-07-13-restore-ui-user-agent-verify.md
 branch_status: handled
 created_at: 2026-07-13
-verified_at: null
-archive_confirmation: null
-archived: false
+verified_at: 2026-07-14
+archive_confirmation: confirmed
+archived: true
 direct_override: null
 handoff_context: openspec/changes/restore-ui-user-agent/.comet/handoff/design-context.json
 handoff_hash: 24c25ea69d8bfee89599233cf468750e8a4498a298ee8a7cef176e2cd4655b04

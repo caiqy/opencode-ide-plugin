@@ -2,6 +2,7 @@
 change: restore-ui-user-agent
 design-doc: docs/superpowers/specs/2026-07-13-restore-ui-user-agent-design.md
 base-ref: 1f2cdf59fa1f59ff019d381827ba2ae1ef42ecd7
+archived-with: 2026-07-14-restore-ui-user-agent
 ---
 
 # 恢复 UI User-Agent 实施计划

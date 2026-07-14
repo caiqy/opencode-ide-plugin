@@ -2,6 +2,8 @@
 comet_change: restore-ui-user-agent
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-14-restore-ui-user-agent
+status: final
 ---
 
 # 恢复 UI User-Agent 技术设计

@@ -4,5 +4,6 @@
   "openspec_tasks": "openspec/changes/restore-ui-user-agent/tasks.md",
   "openspec_delta_spec": "openspec/changes/restore-ui-user-agent/specs/user-agent-customization/spec.md",
   "handoff_context": "openspec/changes/restore-ui-user-agent/.comet/handoff/design-context.json",
-  "handoff_markdown": "openspec/changes/restore-ui-user-agent/.comet/handoff/design-context.md"
+  "handoff_markdown": "openspec/changes/restore-ui-user-agent/.comet/handoff/design-context.md",
+  "archive_directory": "openspec/changes/archive/2026-07-14-restore-ui-user-agent"
 }

@@ -10,12 +10,13 @@
 
 ## 验证证据
 
-- Core 聚焦测试：39 pass，0 fail。
-- OpenCode 聚焦测试：55 pass，0 fail。
+- 2026-07-14 重新运行 Core 聚焦测试：39 pass，0 fail，64 assertions。
+- 2026-07-14 重新运行 OpenCode 聚焦测试：55 pass，0 fail，175 assertions。
 - `packages/core`：`bun typecheck` 退出码 0。
 - `packages/opencode`：`bun typecheck` 退出码 0。
 - 残留扫描覆盖 `packages/core/src`、`packages/opencode/src`、`packages/opencode/script` 与 `packages/console`。
-- 最终代码审查：无 Critical 或 Important。
+- 最终独立代码审查：READY，无 Critical、Important 或 Minor。
+- `git diff --check 1f2cdf59fa1f59ff019d381827ba2ae1ef42ecd7 -- packages/core packages/opencode` 通过。
 
 ## 规格映射
 
@@ -34,7 +35,9 @@
 
 ## 分支处理
 
-用户选择保留 `restore-ui-agent` 分支，稍后自行处理；未推送、未合并。
+用户选择将整个 `restore-ui-agent` 分支本地合并到 `ide-plugin`，随后明确要求 commit & push。`ide-plugin`、`origin/ide-plugin` 与 `restore-ui-agent` 均指向 `4891af937af315bd3992baf480dc96b672d30d7e`。
+
+分支在 User-Agent change 之后还包含独立的 retry regression 修复与 release/lockfile 同步提交；这些不改变本 change 的 User-Agent requirements、design 或 scenario 验证结论。
 
 ## 结论
 
