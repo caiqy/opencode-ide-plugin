@@ -4,6 +4,7 @@ import { Cause, Clock, Duration, Effect, Schedule } from "effect"
 import { MessageV2 } from "./message-v2"
 import { iife } from "@/util/iife"
 import { isRecord } from "@/util/record"
+import { ProviderError } from "@/provider/error"
 
 export type Err = ReturnType<NamedError["toObject"]>
 
@@ -71,6 +72,10 @@ export function retryable(error: Err, provider: string) {
   // context overflow errors should not be retried
   if (SessionV1.ContextOverflowError.isInstance(error)) return undefined
   if (SessionV1.APIError.isInstance(error)) {
+    const structured = ProviderError.parseStreamError(error.data.responseBody)
+    if (structured?.type === "context_overflow" || (structured?.type === "api_error" && !structured.isRetryable)) {
+      return undefined
+    }
     const status = error.data.statusCode
     // 5xx errors are transient server failures and should always be retried,
     // even when the provider SDK doesn't explicitly mark them as retryable.

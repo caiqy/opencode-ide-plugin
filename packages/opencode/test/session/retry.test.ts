@@ -240,6 +240,22 @@ describe("session.retry.retryable", () => {
     expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
   })
 
+  test("does not let a 5xx status override a structured permanent error", () => {
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({
+        message: "Invalid API key",
+        isRetryable: false,
+        statusCode: 500,
+        responseBody: JSON.stringify({
+          type: "error",
+          error: { code: "invalid_api_key", message: "Invalid API key" },
+        }),
+      }).toObject(),
+    )
+
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+  })
+
   test("retries ZlibError decompression failures", () => {
     const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
       new SessionV1.APIError({
