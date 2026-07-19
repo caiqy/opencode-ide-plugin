@@ -4,18 +4,17 @@
 - Plan: `docs/superpowers/plans/2026-07-20-compatible-image-model.md`
 - Review mode: `standard`
 - TDD mode: `tdd`
-- Current task: `Task 1: Marker resolver 测试与实现闭环`
+- Current task: `Task 2: GenerateImageTool 接线测试与实现闭环`
 - OpenSpec mappings:
-  - `1.1 扩展 generate-image-config 测试，覆盖唯一标记、对象键寻址、新标记优先、旧字段回退和完整工具参数绕过默认值`（Task 1 仅完成 resolver 部分）
-  - `1.2 增加非布尔标记、多个启用标记、false 标记、项目层显式覆盖及缺失默认值场景`
-  - `2.1 从显式 cfg.provider 模型节点解析唯一的 defaultForImageGeneration 标记，并生成 provider/model 默认值`
+  - `1.1 扩展 generate-image-config 测试，覆盖唯一标记、对象键寻址、新标记优先、旧字段回退和完整工具参数绕过默认值`（完成完整工具参数绕过部分）
+  - `2.2 将兼容默认值接入 GenerateImageTool，保留现有参数覆盖和旧 image_model 回退语义`
 - Stage: `checkoff`
-- Implementation base: `a5defaf2d4adc70abeca45dd785527e4b678f08d`
-- Implementation commit: `9dc4cf8d76 feat(opencode): resolve configured image model`
-- Changed files: `packages/opencode/src/tool/generate-image/config.ts`, `packages/opencode/test/tool/generate-image-config.test.ts`
-- RED evidence: `bun test test/tool/generate-image-config.test.ts` failed because `resolveConfiguredImageModel` was not exported
-- GREEN evidence: the same command passed with 20 tests and 69 assertions; `bun typecheck` and scoped `git diff --check` also passed
-- Risk signals: none; diff is 156 lines and confined to the generate-image config module and its test
-- Task review triggered: no (`standard`, no risk signal)
+- Implementation base: `60a9f4a1e3`
+- Implementation commit: `8cc0b8597d feat(opencode): use image model marker in tool`
+- Changed files: `packages/opencode/src/tool/generate-image.ts`, `packages/opencode/test/tool/generate-image.test.ts`
+- RED evidence: `bun test test/tool/generate-image.test.ts` produced 33 passes and one expected marker-default failure while complete explicit overrides passed
+- GREEN evidence: `bun test test/tool/generate-image.test.ts test/tool/generate-image-config.test.ts` passed 54 tests and 159 assertions; `bun typecheck` and scoped `git diff --check` passed
+- Risk signals: cross-module sibling integration and user-facing tool default-selection behavior
+- Task review triggered: yes (`standard`, risk signals present)
 - Review/fix round: `0/1`
-- Outstanding findings: none
+- Outstanding findings: none; reviewer reported spec compliant and quality approved with no findings. The evidence-only warning was resolved from the implementer report and agent result, which both record the same commands and outcomes.

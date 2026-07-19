@@ -126,7 +126,7 @@ Expected: 提交后本任务分支为绿；暂存区不包含计划、OpenSpec�
 
 **消费接口：** Task 1 的 `resolveConfiguredImageModel(cfg.provider, cfg.image_model)` 和现有 `resolveModelParts({ imageModel, provider, model })`。
 
-- [ ] **Task 2 / Step 1: 写入工具接线的失败测试**
+- [x] **Task 2 / Step 1: 写入工具接线的失败测试**
 
 在 `describe("generate_image tool", ...)` 中，复用 `providerLayer`、`initTool`、`provideTmpdirInstance` 与本地 `Bun.serve`。添加未提供 provider/model 的调用，项目 config 为：
 
@@ -142,7 +142,7 @@ Expected: 提交后本任务分支为绿；暂存区不包含计划、OpenSpec�
 
 断言 request JSON 的 `model` 是 `gpt-image-2`，permission `patterns` 是 `["openai/gpt-image-2"]`，result metadata 含同一 provider/model。再添加完整 `{ provider: "openai", model: "gpt-image-2" }` 调用，配置带两个 `true` 或一个字符串 marker；断言 handler 成功收到 `gpt-image-2`，没有默认 marker 错误。
 
-- [ ] **Task 2 / Step 2: 运行 RED 证据**
+- [x] **Task 2 / Step 2: 运行 RED 证据**
 
 工作目录：`packages/opencode`
 
@@ -150,7 +150,7 @@ Run: `bun test test/tool/generate-image.test.ts`
 
 Expected: 未提供工具覆盖的 marker 选择用例 FAIL；完整 provider+model 绕过用例可 PASS，作为既有恢复通道的回归保护。
 
-- [ ] **Task 2 / Step 3: 接入惰性默认值解析**
+- [x] **Task 2 / Step 3: 接入惰性默认值解析**
 
 将 resolver 加入 `./generate-image/config` import。在 `const cfg = yield* config.get()` 后写入：
 
@@ -161,7 +161,7 @@ const modelParts = resolveModelParts({ imageModel, provider: providerOverride, m
 
 完整参数时绝不调用 resolver；只有一个覆盖参数时仍交由既有 `resolveModelParts` 矩阵处理。将 `Parameters.model` 的 description 从 `configured image_model` 改为 `configured default image model`，但不改变参数 schema 结构。
 
-- [ ] **Task 2 / Step 4: 运行 GREEN 证据**
+- [x] **Task 2 / Step 4: 运行 GREEN 证据**
 
 工作目录：`packages/opencode`
 
@@ -169,7 +169,7 @@ Run: `bun test test/tool/generate-image.test.ts test/tool/generate-image-config.
 
 Expected: PASS；marker 自动选择、显式参数绕过、旧 `image_model` 回退、permission metadata、编辑输入和图片落盘回归全部通过，所有 API 调用仍由测试的 `Bun.serve` 处理。
 
-- [ ] **Task 2 / Step 5: 提交闭环（实施 agent 执行）**
+- [x] **Task 2 / Step 5: 提交闭环（实施 agent 执行）**
 
 ```bash
 git add packages/opencode/src/tool/generate-image.ts packages/opencode/test/tool/generate-image.test.ts

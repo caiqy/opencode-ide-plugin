@@ -1,12 +1,12 @@
 ## 1. 锁定配置行为
 
-- [ ] 1.1 扩展 `generate-image-config` 测试，覆盖唯一标记、对象键寻址、新标记优先、旧字段回退和完整工具参数绕过默认值
+- [x] 1.1 扩展 `generate-image-config` 测试，覆盖唯一标记、对象键寻址、新标记优先、旧字段回退和完整工具参数绕过默认值
 - [x] 1.2 增加非布尔标记、多个启用标记、`false` 标记、项目层显式覆盖及缺失默认值场景
 
 ## 2. 实现兼容解析
 
 - [x] 2.1 从显式 `cfg.provider` 模型节点解析唯一的 `defaultForImageGeneration` 标记，并生成 provider/model 默认值
-- [ ] 2.2 将兼容默认值接入 `GenerateImageTool`，保留现有参数覆盖和旧 `image_model` 回退语义
+- [x] 2.2 将兼容默认值接入 `GenerateImageTool`，保留现有参数覆盖和旧 `image_model` 回退语义
 - [ ] 2.3 更新缺失、无效和歧义错误，使其指向新配置形态及冲突模型
 
 ## 3. 迁移用户配置说明
