@@ -33,7 +33,7 @@ OpenCode UI (unofficial) 是一个将本地 OpenCode AI 工作流带入 IDE 的�
 - `provider.openai.models["gpt-image-2"].options.imageApi`: `openai-compatible`
 - `provider.openai.models["gpt-image-2"].options.defaultForImageGeneration`: `true`
 
-新的 provider model marker 优先于旧顶层 `image_model` 字段。只有未设置任何 marker 时才会回退到旧字段，且运行时不会发出警告。迁移时先添加 marker 并验证定制版，再删除顶层字段。官方版只保证严格加载该配置，不承诺 `generate_image` 功能可用。
+新的 provider model marker 优先于旧顶层 `image_model` 字段。没有任何启用（值为 `true`）的 marker 时才会回退到旧字段；值为 `false` 的 marker 不启用对应节点，但如果仍保留旧字段且没有任何值为 `true` 的 marker，仍会回退到旧字段，且运行时不会发出警告。迁移时先添加 marker 并验证定制版，再删除顶层字段。官方版只保证严格加载该配置，不承诺 `generate_image` 功能可用。
 
 ## 重要说明
 
