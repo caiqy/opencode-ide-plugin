@@ -780,6 +780,93 @@ describe("generate_image persist", () => {
 })
 
 describe("generate_image tool", () => {
+  it.live("uses the configured image model marker when no override is provided", () =>
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          let requestBody: Record<string, unknown> | undefined
+          const asks: unknown[] = []
+          using server = Bun.serve({
+            port: 0,
+            fetch: async (request) => {
+              requestBody = await request.json()
+              return Response.json({ data: [{ b64_json: pngBase64 }] })
+            },
+          })
+
+          const tool = yield* initTool(providerLayer(String(server.url)))
+          const result = yield* tool.execute(
+            { prompt: "draw a cat" },
+            {
+              ...toolCtx,
+              ask: (req) =>
+                Effect.sync(() => {
+                  asks.push(req)
+                }),
+            },
+          )
+
+          expect(requestBody).toMatchObject({ model: "gpt-image-2" })
+          expect(asks).toEqual([
+            expect.objectContaining({
+              patterns: ["openai/gpt-image-2"],
+              metadata: expect.objectContaining({ provider: "openai", model: "gpt-image-2" }),
+            }),
+          ])
+          expect(result.metadata).toMatchObject({ provider: "openai", model: "gpt-image-2" })
+        }),
+      {
+        config: {
+          provider: {
+            openai: {
+              models: { "gpt-image-2": { options: { defaultForImageGeneration: true } } },
+            },
+          },
+        },
+      },
+    ),
+  )
+
+  it.live("uses complete provider and model overrides without resolving configured markers", () =>
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          let requestBody: Record<string, unknown> | undefined
+          using server = Bun.serve({
+            port: 0,
+            fetch: async (request) => {
+              requestBody = await request.json()
+              return Response.json({ data: [{ b64_json: pngBase64 }] })
+            },
+          })
+
+          const tool = yield* initTool(providerLayer(String(server.url)))
+          const result = yield* tool.execute(
+            { prompt: "draw a cat", provider: "openai", model: "gpt-image-2" },
+            {
+              ...toolCtx,
+              ask: () => Effect.void,
+            },
+          )
+
+          expect(requestBody).toMatchObject({ model: "gpt-image-2" })
+          expect(result.metadata).toMatchObject({ provider: "openai", model: "gpt-image-2" })
+        }),
+      {
+        config: {
+          provider: {
+            openai: {
+              models: {
+                "gpt-image-2": { options: { defaultForImageGeneration: true } },
+                "gpt-image-3": { options: { defaultForImageGeneration: true } },
+              },
+            },
+          },
+        },
+      },
+    ),
+  )
+
   it.live("rejects generate action images before provider call", () =>
     Effect.gen(function* () {
       let called = false

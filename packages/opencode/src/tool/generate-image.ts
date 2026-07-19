@@ -7,7 +7,13 @@ import { InstanceState } from "@/effect/instance-state"
 import * as Tool from "./tool"
 import DESCRIPTION from "./generate-image.txt"
 import { callOpenAICompatible } from "./generate-image/openai-compatible"
-import { pickAdapter, resolveCredentials, resolveImageFieldStyle, resolveModelParts } from "./generate-image/config"
+import {
+  pickAdapter,
+  resolveConfiguredImageModel,
+  resolveCredentials,
+  resolveImageFieldStyle,
+  resolveModelParts,
+} from "./generate-image/config"
 import { decodeImageInput, validateMask, validatePrompt } from "./generate-image/input"
 import { persistImages } from "./generate-image/persist"
 
@@ -23,7 +29,7 @@ export const Parameters = Schema.Struct({
   prompt: Prompt.annotate({ description: "Text prompt for a single image (use n for count)" }),
   provider: Schema.optional(Schema.String).annotate({ description: "Optional provider override" }),
   model: Schema.optional(Schema.String).annotate({
-    description: "Optional model override; omit to use configured image_model.",
+    description: "Optional model override; omit to use configured default image model.",
   }),
   images: Schema.optional(Schema.Array(Schema.String)).annotate({
     description: "Project-relative image paths or data URLs for edit inputs",
@@ -90,8 +96,10 @@ export const GenerateImageTool = Tool.define(
           }
 
           const cfg = yield* config.get()
+          const imageModel =
+            providerOverride && modelOverride ? undefined : resolveConfiguredImageModel(cfg.provider, cfg.image_model)
           const modelParts = resolveModelParts({
-            imageModel: cfg.image_model,
+            imageModel,
             provider: providerOverride,
             model: modelOverride,
           })
