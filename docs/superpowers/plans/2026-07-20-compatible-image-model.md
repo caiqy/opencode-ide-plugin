@@ -338,7 +338,7 @@ Expected: exit 0；无 whitespace error，分支改动仅包含 Tasks 1-4 的允
 
 **验证性质：** 这是纯验证任务。用户已批准不伪造 RED；使用下载到系统临时目录的官方 schema 与临时 validator，不修改 `package.json`、lockfile 或仓库文件。
 
-- [ ] **Task 6 / Step 1: 创建临时代表性 JSON 和下载官方 schema**
+- [x] **Task 6 / Step 1: 创建临时代表性 JSON 和下载官方 schema**
 
 工作目录：仓库根。运行以下 PowerShell，生成标准 JSON，且将远程 refs 下载为本地文件供 Ajv 显式注册：
 
@@ -371,7 +371,7 @@ Invoke-WebRequest -Uri "https://models.dev/model-schema.json" -OutFile $modelSch
 
 Expected: 三个临时文件存在；代表性配置没有顶层 `image_model`，且 `$schema` 和 `$modelSchema` 均来自官方地址。
 
-- [ ] **Task 6 / Step 2: 以本地下载的官方 schema 执行严格验证**
+- [x] **Task 6 / Step 2: 以本地下载的官方 schema 执行严格验证**
 
 继续使用 Step 1 的同一 PowerShell session：
 
@@ -381,7 +381,7 @@ bunx --yes ajv-cli@5 validate --spec=draft2020 --strict=true -s $schema -r $mode
 
 Expected: exit 0 且输出 `valid`。`-s` 指向已下载的官方 schema，`-r` 注册官方 models.dev ref，因此不依赖 ajv-cli 从 URL 自动抓取 schema；`bunx` 只使用临时 CLI cache，不写 `package.json` 或 lockfile。
 
-- [ ] **Task 6 / Step 3: 检查迁移样例并清理临时目录**
+- [x] **Task 6 / Step 3: 检查迁移样例并清理临时目录**
 
 工作目录：仓库根。仍在同一 PowerShell session 执行：
 

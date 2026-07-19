@@ -17,4 +17,4 @@
 ## 4. 验证
 
 - [x] 4.1 在 `packages/opencode` 运行聚焦测试和 `bun typecheck`
-- [ ] 4.2 使用官方发布的 `https://opencode.ai/config.json` 或官方 CLI 验证迁移后示例可被严格加载，并确认配置不含定制顶层字段
+- [x] 4.2 使用官方发布的 `https://opencode.ai/config.json` 或官方 CLI 验证迁移后示例可被严格加载，并确认配置不含定制顶层字段
