@@ -4,16 +4,16 @@
 - Plan: `docs/superpowers/plans/2026-07-20-compatible-image-model.md`
 - Review mode: `standard`
 - TDD mode: `tdd`
-- Current task: `Task 6: 官方 schema 严格兼容验证`
+- Current task: all plan tasks complete
 - OpenSpec mappings:
-  - `4.2 使用官方发布的 https://opencode.ai/config.json 或官方 CLI 验证迁移后示例可被严格加载，并确认配置不含定制顶层字段`
-- Stage: `checkoff`
-- Implementation base: `28a847870f`
-- Implementation commit: not applicable (verification-only task)
-- Changed files: none expected
-- RED evidence: not applicable by user-approved verification exemption
-- GREEN evidence: downloaded official config and models.dev schemas; `ajv-cli@5.0.0` Draft 2020 strict validation passed the representative JSON fixture after registering the official annotation keywords `allowComments` and `allowTrailingCommas`; fixture and sample contain no top-level `image_model`
-- Risk signals: `DONE_WITH_CONCERNS`; the actual JSONC sample was checked for the forbidden field but the representative standard JSON fixture was the object strictly validated
-- Task review triggered: yes (`standard`, DONE_WITH_CONCERNS)
-- Review/fix round: `0/1`
-- Outstanding findings: none. Reviewer reported spec compliant and quality approved. Accepted Minor: do not persist the temporary annotation module because the report records both registered boolean annotation names, strict validation remained enabled, and the task requires cleanup rather than a reusable validator.
+- all nine OpenSpec tasks are checked
+- Stage: `done`
+- Implementation base: `a5defaf2d4adc70abeca45dd785527e4b678f08d`
+- Implementation commit: `9dc4cf8d76`, `8cc0b8597d`, `464af76854`, `91500b7812`
+- Changed files: implementation, focused tests, sample, shared release content, generated host documents, and coordination artifacts recorded in the plan
+- RED evidence: Tasks 1-3 contain per-task RED evidence; Task 4 contains the approved migration baseline; Tasks 5-6 are approved verification-only exceptions
+- GREEN evidence: 54 focused tests and 159 assertions passed; `bun typecheck` passed; release content is in sync; official schema strict validation returned `valid`
+- Risk signals: final whole-change correctness, security, and boundary review required by `standard`
+- Task review triggered: final lightweight review
+- Review/fix round: `1/1`
+- Outstanding findings: none. Final re-review confirmed the Important wording issue is fixed, found no new Critical/Important/Minor issues, and returned `Ready to merge: Yes`. Task 6 audit-only Minor remains accepted.
