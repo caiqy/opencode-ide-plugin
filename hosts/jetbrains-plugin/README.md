@@ -27,13 +27,15 @@ OpenCode UI (unofficial) 是一个将本地 OpenCode AI 工作流带入 IDE 的�
 
 例如，如果你使用 OpenAI-compatible 图片接口，可以参考下面这组最小示例键值：
 
-- `image_model`: `openai/gpt-image-2`
 - `provider.openai.options.baseURL`: 你的图片接口地址
 - `provider.openai.options.apiKey`: 你的接口密钥
 - `provider.openai.models["gpt-image-2"].limit.context`: `128000`
 - `provider.openai.models["gpt-image-2"].limit.input`: `128000`
 - `provider.openai.models["gpt-image-2"].limit.output`: `32000`
 - `provider.openai.models["gpt-image-2"].options.imageApi`: `openai-compatible`
+- `provider.openai.models["gpt-image-2"].options.defaultForImageGeneration`: `true`
+
+新的 provider model marker 优先于旧顶层 `image_model` 字段。只有未设置任何 marker 时才会回退到旧字段，且运行时不会发出警告。迁移时先添加 marker 并验证定制版，再删除顶层字段。官方版只保证严格加载该配置，不承诺 `generate_image` 功能可用。
 
 ## 重要说明
 
