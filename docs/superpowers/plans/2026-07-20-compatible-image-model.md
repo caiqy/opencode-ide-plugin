@@ -240,7 +240,7 @@ Expected: 提交后分支为绿，且本提交只包含错误契约及其实现�
 - 修改：`docs/release-content/description.shared.md:17-32`
 - 生成：`hosts/vscode-plugin/README.md`、`hosts/jetbrains-plugin/README.md`、`hosts/jetbrains-plugin/description.html`
 
-- [ ] **Task 4 / Step 1: 记录变更前失败基线**
+- [x] **Task 4 / Step 1: 记录变更前失败基线**
 
 工作目录：仓库根
 
@@ -252,7 +252,7 @@ rg -n '"image_model"\s*:|`image_model`:' samples/opencode.jsonc docs/release-con
 
 Expected: exit 0；输出样例和发布内容中的旧顶层键值示例。此命令是迁移前证据，不是测试失败。
 
-- [ ] **Task 4 / Step 2: 一次完成样例和 shared 文档迁移**
+- [x] **Task 4 / Step 2: 一次完成样例和 shared 文档迁移**
 
 从 `samples/opencode.jsonc` 删除顶层 `image_model`。在既有 `provider.openai.models["gpt-image-2"].options` 保留 `imageApi: "openai-compatible"`，并加入：
 
@@ -262,7 +262,7 @@ Expected: exit 0；输出样例和发布内容中的旧顶层键值示例。此�
 
 在两个 `docs/release-content/*.shared.md` 的“生图配置要点”同步替换旧键值示例为 `provider.openai.models["gpt-image-2"].options.defaultForImageGeneration: true`。同一处准确记录：新 marker 优先、旧顶层字段只在无 marker 时回退且不产生运行时警告、先添加 marker 验证定制版后删除旧字段、官方版只保证严格加载配置而不承诺 `generate_image` 功能。两份 shared 文档主体保持一致。
 
-- [ ] **Task 4 / Step 3: 从仓库根生成并检查发布内容**
+- [x] **Task 4 / Step 3: 从仓库根生成并检查发布内容**
 
 工作目录：仓库根
 
@@ -270,7 +270,7 @@ Run: `bun run release-content:sync; if ($?) { bun run release-content:check }`
 
 Expected: sync 成功并输出 `updated 6 release content files`，随后输出 `release content is in sync`。只由 `script/release-content.ts:132-177` 更新生成 README/HTML，禁止手工编辑带 generated banner 的文件。
 
-- [ ] **Task 4 / Step 4: 验证迁移结果并提交闭环**
+- [x] **Task 4 / Step 4: 验证迁移结果并提交闭环**
 
 工作目录：仓库根
 

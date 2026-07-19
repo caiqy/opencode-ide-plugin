@@ -11,8 +11,8 @@
 
 ## 3. 迁移用户配置说明
 
-- [ ] 3.1 将样例配置和 VS Code、JetBrains、发布说明中的顶层 `image_model` 示例迁移为 provider model 标记
-- [ ] 3.2 记录旧字段的过渡兼容、新标记优先级和官方版仅保证正常加载的边界
+- [x] 3.1 将样例配置和 VS Code、JetBrains、发布说明中的顶层 `image_model` 示例迁移为 provider model 标记
+- [x] 3.2 记录旧字段的过渡兼容、新标记优先级和官方版仅保证正常加载的边界
 
 ## 4. 验证
 
