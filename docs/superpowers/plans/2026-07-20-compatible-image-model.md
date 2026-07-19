@@ -189,7 +189,7 @@ Expected: 提交后分支为绿，且不暂存 Task 1 以外的协调产物。
 
 **消费接口：** Task 1 的类型/歧义错误与 Task 2 的惰性解析路径。
 
-- [ ] **Task 3 / Step 1: 写入错误引导的失败断言**
+- [x] **Task 3 / Step 1: 写入错误引导的失败断言**
 
 把当前匹配 `configure { "image_model": "openai/gpt-image-2" }` 的缺失/仅 provider/仅 model 断言改为要求新 marker 示例和 `or pass provider and model`。固定示例包含：
 
@@ -199,7 +199,7 @@ provider.openai.models.gpt-image-2.options.defaultForImageGeneration: true
 
 保留 malformed legacy `image_model` 的验证语义，但不再把旧字段作为新用户的首选配置示例；为 provider 覆盖默认 provider 的错误也要求新引导。
 
-- [ ] **Task 3 / Step 2: 运行 RED 证据**
+- [x] **Task 3 / Step 2: 运行 RED 证据**
 
 工作目录：`packages/opencode`
 
@@ -207,11 +207,11 @@ Run: `bun test test/tool/generate-image-config.test.ts`
 
 Expected: FAIL，仅因旧 `imageModelGuidance`/provider override 文案不符合新断言；Task 1 的解析行为仍 PASS。
 
-- [ ] **Task 3 / Step 3: 最小化更新错误文案**
+- [x] **Task 3 / Step 3: 最小化更新错误文案**
 
 将 `imageModelGuidance` 改为 marker 配置加完整参数替代方案，使 `resolveModelParts` 的缺失分支复用该常量。保留 `model is required when provider overrides image_model provider` 的行为，但附加相同新引导。不得新增旧字段的运行时弃用警告，非布尔和歧义错误继续分别给出完整路径和排序冲突项。
 
-- [ ] **Task 3 / Step 4: 运行 GREEN 证据**
+- [x] **Task 3 / Step 4: 运行 GREEN 证据**
 
 工作目录：`packages/opencode`
 
@@ -219,7 +219,7 @@ Run: `bun test test/tool/generate-image-config.test.ts test/tool/generate-image.
 
 Expected: PASS；缺失、局部覆盖、非布尔和歧义错误都指向 marker，完整参数仍是恢复路径，全部工具回归通过。
 
-- [ ] **Task 3 / Step 5: 提交闭环（实施 agent 执行）**
+- [x] **Task 3 / Step 5: 提交闭环（实施 agent 执行）**
 
 ```bash
 git add packages/opencode/src/tool/generate-image/config.ts packages/opencode/test/tool/generate-image-config.test.ts

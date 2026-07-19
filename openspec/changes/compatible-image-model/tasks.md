@@ -7,7 +7,7 @@
 
 - [x] 2.1 从显式 `cfg.provider` 模型节点解析唯一的 `defaultForImageGeneration` 标记，并生成 provider/model 默认值
 - [x] 2.2 将兼容默认值接入 `GenerateImageTool`，保留现有参数覆盖和旧 `image_model` 回退语义
-- [ ] 2.3 更新缺失、无效和歧义错误，使其指向新配置形态及冲突模型
+- [x] 2.3 更新缺失、无效和歧义错误，使其指向新配置形态及冲突模型
 
 ## 3. 迁移用户配置说明
 
