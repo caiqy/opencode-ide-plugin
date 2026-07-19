@@ -5,7 +5,8 @@ export type AdapterID = "openai-compatible"
 
 export type ImageFieldStyle = "brackets" | "repeated"
 
-const imageModelGuidance = 'configure { "image_model": "openai/gpt-image-2" } or pass provider and model'
+const imageModelGuidance =
+  "configure provider.openai.models.gpt-image-2.options.defaultForImageGeneration: true or pass provider and model"
 
 export function resolveConfiguredImageModel(provider: ConfigV1.Info["provider"], imageModel?: string) {
   const defaults = Object.entries(provider ?? {}).flatMap(([providerID, provider]) =>
@@ -53,7 +54,7 @@ export function resolveModelParts(input: { imageModel?: string; provider?: strin
         return parsed
       }
 
-      throw new Error("model is required when provider overrides image_model provider")
+      throw new Error(`model is required when provider overrides image_model provider; ${imageModelGuidance}`)
     }
 
     if (model) {

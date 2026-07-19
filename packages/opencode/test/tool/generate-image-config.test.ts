@@ -297,29 +297,29 @@ describe("generate_image config", () => {
     })
 
     expect(() => resolveModelParts({ imageModel: "openai/gpt-image-2", provider: "openrouter" })).toThrow(
-      "model is required when provider overrides image_model provider",
+      "model is required when provider overrides image_model provider; configure provider.openai.models.gpt-image-2.options.defaultForImageGeneration: true or pass provider and model",
     )
 
     expect(() => resolveModelParts({ provider: "openai" })).toThrow(
-      /configure \{ "image_model": "openai\/gpt-image-2" \} or pass provider and model/,
+      /configure provider\.openai\.models\.gpt-image-2\.options\.defaultForImageGeneration: true or pass provider and model/,
     )
 
     expect(() => resolveModelParts({ model: "gpt-image-2" })).toThrow(
-      /configure \{ "image_model": "openai\/gpt-image-2" \} or pass provider and model/,
+      /configure provider\.openai\.models\.gpt-image-2\.options\.defaultForImageGeneration: true or pass provider and model/,
     )
   })
 
   test("resolveModelParts missing configuration errors include setup guidance", () => {
     expect(() => resolveModelParts({})).toThrow(
-      /configure \{ "image_model": "openai\/gpt-image-2" \} or pass provider and model/,
+      /configure provider\.openai\.models\.gpt-image-2\.options\.defaultForImageGeneration: true or pass provider and model/,
     )
 
     expect(() => resolveModelParts({ provider: "openai" })).toThrow(
-      /configure \{ "image_model": "openai\/gpt-image-2" \} or pass provider and model/,
+      /configure provider\.openai\.models\.gpt-image-2\.options\.defaultForImageGeneration: true or pass provider and model/,
     )
 
     expect(() => resolveModelParts({ model: "gpt-image-2" })).toThrow(
-      /configure \{ "image_model": "openai\/gpt-image-2" \} or pass provider and model/,
+      /configure provider\.openai\.models\.gpt-image-2\.options\.defaultForImageGeneration: true or pass provider and model/,
     )
   })
 
