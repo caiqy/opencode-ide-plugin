@@ -302,7 +302,7 @@ Expected: 提交后分支为绿；不暂存其他 generated 文件、计划或�
 
 **验证性质：** 这是纯验证任务。用户已批准不伪造 RED；记录实际命令、退出码和结果即可，不添加测试或实现代码。
 
-- [ ] **Task 5 / Step 1: 运行聚焦行为测试**
+- [x] **Task 5 / Step 1: 运行聚焦行为测试**
 
 工作目录：`packages/opencode`
 
@@ -310,7 +310,7 @@ Run: `bun test test/tool/generate-image-config.test.ts test/tool/generate-image.
 
 Expected: exit 0；覆盖唯一/false/无效/歧义 marker、项目层显式 false、legacy 回退、完整参数绕过和工具接线。
 
-- [ ] **Task 5 / Step 2: 运行 package 类型检查**
+- [x] **Task 5 / Step 2: 运行 package 类型检查**
 
 工作目录：`packages/opencode`
 
@@ -318,13 +318,13 @@ Run: `bun typecheck`
 
 Expected: exit 0；resolver、`GenerateImageTool` 和现有 `ConfigV1.Info["provider"]` 类型兼容，未产生 schema、SDK 或 generated 改动。
 
-- [ ] **Task 5 / Step 3: 记录范围证据**
+- [x] **Task 5 / Step 3: 记录范围证据**
 
 工作目录：仓库根
 
-Run: `git diff --check; if ($?) { git diff --name-only }`
+Run: `git diff --check a5defaf2d4adc70abeca45dd785527e4b678f08d..HEAD; if ($?) { git diff --name-only a5defaf2d4adc70abeca45dd785527e4b678f08d..HEAD }`
 
-Expected: exit 0；无 whitespace error，改动仅在 Tasks 1-4 的允许文件内。主会话协调者据此勾选 `4.1`，实施 agent 不勾选任何 checkbox。
+Expected: exit 0；无 whitespace error，分支改动仅包含 Tasks 1-4 的允许文件和主会话已提交的计划、OpenSpec tasks、subagent 进度文件，不包含 schema、SDK、lockfile 或其他实现范围。主会话协调者据此勾选 `4.1`，实施 agent 不勾选任何 checkbox。
 
 ### Task 6: 官方 schema 严格兼容验证
 
