@@ -1,10 +1,26 @@
 import { Provider } from "../../provider"
+import type { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 
 export type AdapterID = "openai-compatible"
 
 export type ImageFieldStyle = "brackets" | "repeated"
 
 const imageModelGuidance = 'configure { "image_model": "openai/gpt-image-2" } or pass provider and model'
+
+export function resolveConfiguredImageModel(provider: ConfigV1.Info["provider"], imageModel?: string) {
+  const defaults = Object.entries(provider ?? {}).flatMap(([providerID, provider]) =>
+    Object.entries(provider.models ?? {}).flatMap(([modelID, model]) => {
+      const value = model.options?.defaultForImageGeneration
+      const path = `provider.${providerID}.models.${modelID}.options.defaultForImageGeneration`
+      if (value === undefined || value === false) return []
+      if (typeof value !== "boolean") throw new Error(`${path} must be a boolean`)
+      return [`${providerID}/${modelID}`]
+    }),
+  )
+  if (defaults.length === 0) return imageModel
+  if (defaults.length === 1) return defaults[0]
+  throw new Error(`Multiple image model defaults configured: ${defaults.sort().join(", ")}`)
+}
 
 export function resolveModelParts(input: { imageModel?: string; provider?: string; model?: string }) {
   const imageModel = optionalTrimmed(input.imageModel)

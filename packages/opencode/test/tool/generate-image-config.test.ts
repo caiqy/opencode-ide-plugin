@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { Global } from "@opencode-ai/core/global"
 import { Config } from "../../src/config"
 import { Permission } from "../../src/permission"
 import { Instance } from "../../src/project/instance"
@@ -9,6 +10,7 @@ import {
   normalizeBaseURL,
   pickAdapter,
   resolveCredentials,
+  resolveConfiguredImageModel,
   resolveImageFieldStyle,
   resolveModelParts,
 } from "../../src/tool/generate-image/config"
@@ -42,6 +44,34 @@ describe("generate_image config", () => {
       fn: async () => {
         const config = await getConfig()
         expect(config.image_model).toBe("openai/gpt-image-2")
+      },
+    })
+  })
+
+  test("loads defaultForImageGeneration from open model options", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          `${dir}/opencode.json`,
+          JSON.stringify({
+            $schema: "https://opencode.ai/config.json",
+            provider: {
+              openai: {
+                models: {
+                  "gpt-image-2": { options: { defaultForImageGeneration: true } },
+                },
+              },
+            },
+          }),
+        )
+      },
+    })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const config = await getConfig()
+        expect(config.provider?.openai?.models?.["gpt-image-2"]?.options?.defaultForImageGeneration).toBe(true)
       },
     })
   })
@@ -100,6 +130,116 @@ describe("generate_image config", () => {
     const rules = Permission.fromConfig({ generate_image: { "openai/*": "allow" } })
     expect(rules).toEqual([{ permission: "generate_image", pattern: "openai/*", action: "allow" }])
     expect(Permission.evaluate("generate_image", "openai/gpt-image-2", rules).action).toBe("allow")
+  })
+
+  test("resolveConfiguredImageModel prefers a unique configured marker over image_model", () => {
+    expect(
+      resolveConfiguredImageModel(
+        {
+          openai: {
+            models: {
+              "gpt-image-2": { id: "api-image-id", options: { defaultForImageGeneration: true } },
+            },
+          },
+        },
+        "legacy/image",
+      ),
+    ).toBe("openai/gpt-image-2")
+
+    expect(resolveConfiguredImageModel({ openai: { models: { "gpt-image-2": { options: {} } } } }, "legacy/image")).toBe(
+      "legacy/image",
+    )
+    expect(
+      resolveConfiguredImageModel(
+        { openai: { models: { "gpt-image-2": { options: { defaultForImageGeneration: false } } } } },
+        undefined,
+      ),
+    ).toBeUndefined()
+    expect(resolveConfiguredImageModel(undefined, undefined)).toBeUndefined()
+  })
+
+  test("resolveConfiguredImageModel rejects invalid and ambiguous markers", () => {
+    expect(() =>
+      resolveConfiguredImageModel({ openai: { models: { "gpt-image-2": { options: { defaultForImageGeneration: "yes" } } } } }),
+    ).toThrow("provider.openai.models.gpt-image-2.options.defaultForImageGeneration must be a boolean")
+
+    expect(() =>
+      resolveConfiguredImageModel({
+        zeta: { models: { "image-z": { options: { defaultForImageGeneration: true } } } },
+        alpha: { models: { "image-a": { options: { defaultForImageGeneration: true } } } },
+      }),
+    ).toThrow("alpha/image-a, zeta/image-z")
+  })
+
+  test("resolveConfiguredImageModel uses the project marker that explicitly disables the global default", async () => {
+    await using global = await tmpdir({
+      config: {
+        provider: {
+          openai: { models: { "gpt-image-2": { options: { defaultForImageGeneration: true } } } },
+        },
+      },
+    })
+    await using project = await tmpdir({
+      config: {
+        provider: {
+          openai: {
+            models: {
+              "gpt-image-2": { options: { defaultForImageGeneration: false } },
+              "gpt-image-3": { options: { defaultForImageGeneration: true } },
+            },
+          },
+        },
+      },
+    })
+    const previous = Global.Path.config
+    ;(Global.Path as { config: string }).config = global.path
+    await AppRuntime.runPromise(Config.use.invalidate())
+
+    try {
+      await Instance.provide({
+        directory: project.path,
+        fn: async () => {
+          const config = await getConfig()
+          expect(resolveConfiguredImageModel(config.provider)).toBe("openai/gpt-image-3")
+        },
+      })
+    } finally {
+      ;(Global.Path as { config: string }).config = previous
+      await AppRuntime.runPromise(Config.use.invalidate())
+    }
+  })
+
+  test("resolveConfiguredImageModel reports merged defaults when project config omits false", async () => {
+    await using global = await tmpdir({
+      config: {
+        provider: {
+          openai: { models: { "gpt-image-2": { options: { defaultForImageGeneration: true } } } },
+        },
+      },
+    })
+    await using project = await tmpdir({
+      config: {
+        provider: {
+          openai: { models: { "gpt-image-3": { options: { defaultForImageGeneration: true } } } },
+        },
+      },
+    })
+    const previous = Global.Path.config
+    ;(Global.Path as { config: string }).config = global.path
+    await AppRuntime.runPromise(Config.use.invalidate())
+
+    try {
+      await Instance.provide({
+        directory: project.path,
+        fn: async () => {
+          const config = await getConfig()
+          expect(() => resolveConfiguredImageModel(config.provider)).toThrow("openai/gpt-image-2, openai/gpt-image-3")
+        },
+      })
+    } finally {
+      ;(Global.Path as { config: string }).config = previous
+      await AppRuntime.runPromise(Config.use.invalidate())
+    }
   })
 
   test("resolveModelParts uses Provider.parseModel semantics for nested model ids", () => {
