@@ -38,7 +38,8 @@ jobs:
         run: bun run release-content:check
 
       - name: Replay gate before release
-        run: bun --cwd packages/opencode run test:anthropic:replay
+        working-directory: packages/opencode
+        run: bun run test:anthropic:replay
 
       - name: Determine version
         id: version
