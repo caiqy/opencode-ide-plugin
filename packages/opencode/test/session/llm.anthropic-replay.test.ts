@@ -6,7 +6,7 @@ import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import path from "path"
 import { tool, type ToolSet } from "ai"
-import { Cause, Effect, Exit, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, Stream } from "effect"
 import z from "zod"
 import { LLM } from "../../src/session/llm"
 import { Provider } from "../../src/provider/provider"
@@ -14,6 +14,7 @@ import { ModelsDev } from "../../src/provider/models"
 import { Filesystem } from "../../src/util/filesystem"
 import { createEventResponse } from "../fixture/sse"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { Plugin } from "@/plugin"
 import { testEffect } from "../lib/effect"
 import type { Agent } from "../../src/agent/agent"
 import type { MessageV2 } from "../../src/session/message-v2"
@@ -21,8 +22,16 @@ import { SessionID, MessageID } from "../../src/session/schema"
 
 const ModelID = ModelV2.ID
 const ProviderID = ProviderV2.ID
+const plugin = Layer.mock(Plugin.Service)({
+  init: () => Effect.void,
+  list: () => Effect.succeed([]),
+  trigger: <Name extends string, Input, Output>(_name: Name, _input: Input, output: Output) => Effect.succeed(output),
+})
 const it = testEffect(
-  AppNodeBuilder.build(LayerNode.group([LLM.node, Provider.node]), [[RuntimeFlags.node, RuntimeFlags.layer()]]),
+  AppNodeBuilder.build(LayerNode.group([LLM.node, Provider.node]), [
+    [RuntimeFlags.node, RuntimeFlags.layer()],
+    [Plugin.node, plugin],
+  ]),
 )
 
 type Capture = {
