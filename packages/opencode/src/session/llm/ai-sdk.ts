@@ -1,4 +1,4 @@
-import { FinishReason, LLMEvent, ProviderMetadata, ToolResultValue } from "@opencode-ai/llm"
+import { FinishReason, isContextOverflow, LLMEvent, ProviderMetadata, ToolResultValue } from "@opencode-ai/llm"
 import { Effect, Schema } from "effect"
 import { type streamText } from "ai"
 import { errorMessage } from "@/util/error"
@@ -15,6 +15,33 @@ export function adapterState() {
     currentReasoningID: undefined as string | undefined,
     toolNames: {} as Record<string, string>,
     copilotTotalNanoAiu: undefined as number | undefined,
+    providerError: undefined as { message: string; code?: string; classification?: "context-overflow" } | undefined,
+  }
+}
+
+function recordProviderError(state: ReturnType<typeof adapterState>, raw: unknown) {
+  if (!raw || typeof raw !== "object") return
+  const item = raw as Record<string, unknown>
+  const source =
+    item.type === "response.failed" && item.response && typeof item.response === "object"
+      ? item.response
+      : item.type === "error"
+        ? item
+        : undefined
+  if (!source || typeof source !== "object") return
+  const data = source as Record<string, unknown>
+  const fields = data.error && typeof data.error === "object" ? (data.error as Record<string, unknown>) : data
+  const message = typeof fields.message === "string" && fields.message.length > 0 ? fields.message : undefined
+  const code = typeof fields.code === "string" && fields.code.length > 0 ? fields.code : undefined
+  if (!message && !code) return
+  if (state.providerError?.code && code === "upstream_error") return
+  state.providerError = {
+    message: message ?? code ?? "Provider stream finished with error",
+    code,
+    classification:
+      code === "context_too_large" || code === "context_length_exceeded" || (message && isContextOverflow(message))
+        ? "context-overflow"
+        : undefined,
   }
 }
 
@@ -84,7 +111,9 @@ export function toLLMEvents(
     case "start-step":
       return Effect.succeed([LLMEvent.stepStart({ index: state.step })])
 
-    case "finish-step":
+    case "finish-step": {
+      const error = state.providerError
+      state.providerError = undefined
       return Effect.sync(() => {
         const original = providerMetadata(event.providerMetadata)
         const metadata =
@@ -98,15 +127,22 @@ export function toLLMEvents(
                 },
               }
         state.copilotTotalNanoAiu = undefined
+        const finish = LLMEvent.stepFinish({
+          index: state.step++,
+          reason: finishReason(event.finishReason),
+          usage: usage(event.usage),
+          providerMetadata: metadata,
+        })
+        if (event.finishReason !== "error" && !error) return [finish]
         return [
-          LLMEvent.stepFinish({
-            index: state.step++,
-            reason: finishReason(event.finishReason),
-            usage: usage(event.usage),
-            providerMetadata: metadata,
+          finish,
+          LLMEvent.providerError({
+            message: error?.message ?? "Provider stream finished with error",
+            classification: error?.classification,
           }),
         ]
       })
+    }
 
     case "finish":
       return Effect.sync(() => {
@@ -274,6 +310,7 @@ export function toLLMEvents(
     case "raw":
       return Effect.sync(() => {
         state.copilotTotalNanoAiu = copilotTotalNanoAiu(event.rawValue) ?? state.copilotTotalNanoAiu
+        recordProviderError(state, event.rawValue)
         return []
       })
 

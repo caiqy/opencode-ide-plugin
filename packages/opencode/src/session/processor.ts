@@ -120,10 +120,12 @@ const layer = Layer.effect(
       let aborted = false
 
       const parse = (e: unknown) =>
-        MessageV2.fromError(e, {
-          providerID: input.model.providerID,
-          aborted,
-        })
+        SessionV1.ContextOverflowError.isInstance(e)
+          ? e
+          : MessageV2.fromError(e, {
+              providerID: input.model.providerID,
+              aborted,
+            })
 
       const settleToolCall = Effect.fn("SessionProcessor.settleToolCall")(function* (toolCallID: string) {
         const done = ctx.toolcalls[toolCallID]?.done
@@ -449,6 +451,9 @@ const layer = Layer.effect(
           }
 
           case "provider-error":
+            if (value.classification === "context-overflow") {
+              throw new SessionV1.ContextOverflowError({ message: value.message })
+            }
             throw new Error(value.message)
 
           case "step-start":

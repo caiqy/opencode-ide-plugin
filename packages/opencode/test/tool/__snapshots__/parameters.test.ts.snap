@@ -110,7 +110,7 @@ exports[`tool parameters JSON Schema (wire shape) generate_image 1`] = `
       "type": "string",
     },
     "model": {
-      "description": "Optional model override; omit to use configured image_model.",
+      "description": "Optional model override; omit to use configured default image model.",
       "type": "string",
     },
     "n": {

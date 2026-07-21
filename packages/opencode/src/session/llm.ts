@@ -32,6 +32,15 @@ import { LLMRequestPrep } from "./llm/request"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
+export function includeRawChunks(model: Provider.Model, provider: Provider.Info) {
+  if (model.providerID.includes("github-copilot")) return true
+  if (model.api.npm === "@ai-sdk/openai") return true
+  if (model.api.npm === "@ai-sdk/azure") {
+    return !Boolean({ ...provider.options, ...model.options }.useCompletionUrls)
+  }
+  return undefined
+}
+
 export type StreamInput = {
   user: SessionV1.User
   sessionID: string
@@ -291,8 +300,8 @@ const live: Layer.Layer<
               }),
             )
           },
-          // Copilot returns the authoritative billed amount only in provider-specific response fields.
-          includeRawChunks: input.model.providerID.includes("github-copilot"),
+          // Responses API errors and Copilot billing are only available in raw provider chunks.
+          includeRawChunks: includeRawChunks(input.model, item),
           async experimental_repairToolCall(failed) {
             const lower = failed.toolCall.toolName.toLowerCase()
             if (lower !== failed.toolCall.toolName && prepared.tools[lower]) {

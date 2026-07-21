@@ -427,6 +427,11 @@ describe("tool.task", () => {
             action: "deny",
           },
           {
+            permission: "task",
+            pattern: "*",
+            action: "deny",
+          },
+          {
             permission: "bash",
             pattern: "*",
             action: "deny",

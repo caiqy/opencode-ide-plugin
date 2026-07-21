@@ -1,22 +1,29 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
+import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
+import { afterAll, beforeAll, beforeEach, describe, expect } from "bun:test"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import path from "path"
 import { tool, type ToolSet } from "ai"
+import { Cause, Effect, Exit, Stream } from "effect"
 import z from "zod"
 import { LLM } from "../../src/session/llm"
-import { Instance } from "../../src/project/instance"
 import { Provider } from "../../src/provider/provider"
 import { ModelsDev } from "../../src/provider/models"
 import { Filesystem } from "../../src/util/filesystem"
-import { tmpdir } from "../fixture/fixture"
 import { createEventResponse } from "../fixture/sse"
+import { RuntimeFlags } from "@/effect/runtime-flags"
+import { testEffect } from "../lib/effect"
 import type { Agent } from "../../src/agent/agent"
 import type { MessageV2 } from "../../src/session/message-v2"
 import { SessionID, MessageID } from "../../src/session/schema"
 
 const ModelID = ModelV2.ID
 const ProviderID = ProviderV2.ID
+const it = testEffect(
+  AppNodeBuilder.build(LayerNode.group([LLM.node, Provider.node]), [[RuntimeFlags.node, RuntimeFlags.layer()]]),
+)
 
 type Capture = {
   url: URL
@@ -72,110 +79,80 @@ async function loadChunks(name: string) {
     })
 }
 
-function countTypeErr(part: unknown) {
-  if (!part || typeof part !== "object") return 0
-  const rec = part as Record<string, unknown>
-  const t = rec.type
-  if (t !== "error") return 0
-  const err = rec.error
-  const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
-  return msg.includes("AI_TypeValidationError") ? 1 : 0
-}
-
-async function run(name: string, tools: ToolSet = {}) {
+function config(): Partial<ConfigV1.Info> {
   const server = state.server
   if (!server) throw new Error("Server not initialized")
-
-  const providerID = "anthropic"
-  const modelID = "claude-3-5-sonnet-20241022"
-  const fixture = await loadFixture(providerID, modelID)
-  const chunks = await loadChunks(name)
-  const request = waitRequest("/messages", createEventResponse(chunks))
-
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "opencode.json"),
-        JSON.stringify({
-          $schema: "https://opencode.ai/config.json",
-          enabled_providers: [providerID],
-          provider: {
-            [providerID]: {
-              options: {
-                apiKey: "test-anthropic-key",
-                baseURL: `${server.url.origin}/v1`,
-              },
-            },
-          },
-        }),
-      )
+  return {
+    enabled_providers: ["anthropic"],
+    provider: {
+      anthropic: {
+        options: {
+          apiKey: "test-anthropic-key",
+          baseURL: `${server.url.origin}/v1`,
+        },
+      },
     },
-  })
+  }
+}
 
-  return await Instance.provide({
-    directory: tmp.path,
-    fn: async () => {
-      const resolved = await Provider.getModel(ProviderID.make(providerID), ModelID.make(fixture.model.id))
-      const sessionID = SessionID.make(`session-${name}`)
-      const agent = {
-        name: "test",
-        mode: "primary",
-        options: {},
-        permission: [{ permission: "*", pattern: "*", action: "allow" }],
-        temperature: 0.4,
-        topP: 0.9,
-      } satisfies Agent.Info
+function run(name: string, tools: ToolSet = {}) {
+  return Effect.gen(function* () {
+    const providerID = ProviderID.make("anthropic")
+    const fixture = yield* Effect.promise(() => loadFixture(providerID, "claude-3-5-sonnet-20241022"))
+    const chunks = yield* Effect.promise(() => loadChunks(name))
+    const request = waitRequest("/messages", createEventResponse(chunks))
+    const provider = yield* Provider.Service
+    const llm = yield* LLM.Service
+    const resolved = yield* provider.getModel(providerID, ModelID.make(fixture.model.id))
+    const sessionID = SessionID.make(`session-${name}`)
+    const agent = {
+      name: "test",
+      mode: "primary",
+      options: {},
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      temperature: 0.4,
+      topP: 0.9,
+    } satisfies Agent.Info
 
-      const user = {
-        id: MessageID.make(`msg-${name}`),
-        sessionID,
-        role: "user",
-        time: { created: Date.now() },
-        agent: agent.name,
-        model: { providerID: ProviderID.make(providerID), modelID: resolved.id },
-      } satisfies MessageV2.User
-
-      const stream = await LLM.stream({
-        user,
+    const result = yield* llm
+      .stream({
+        user: {
+          id: MessageID.make(`msg-${name}`),
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerID, modelID: resolved.id },
+        } satisfies MessageV2.User,
         sessionID,
         model: resolved,
         agent,
         system: ["You are a helpful assistant."],
-        abort: new AbortController().signal,
         messages: [{ role: "user", content: "Hello" }],
         tools,
       })
+      .pipe(Stream.runCollect, Effect.exit)
+    const capture = yield* Effect.promise(() => request)
+    expect(capture.url.pathname.endsWith("/messages")).toBe(true)
 
-      let done = false
-      let text = ""
-      let calls = 0
-      let input: unknown
-      let typeErrs = 0
-      let thrown = ""
-
-      try {
-        for await (const part of stream.fullStream) {
-          typeErrs += countTypeErr(part)
-          if (!part || typeof part !== "object") continue
-          const rec = part as Record<string, unknown>
-          const t = rec.type
-          if (t === "text-delta" && typeof rec.text === "string") text += rec.text
-          if (typeof t === "string" && t.includes("tool-call")) {
-            calls += 1
-            if (input === undefined) input = rec.input
-          }
-        }
-        done = true
-      } catch (err) {
-        thrown = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
-        if (thrown.includes("AI_TypeValidationError")) typeErrs += 1
-      }
-
-      const capture = await request
-      expect(capture.url.pathname.endsWith("/messages")).toBe(true)
-
-      return { done, text, calls, input, typeErrs, thrown }
-    },
+    const events = Exit.isSuccess(result) ? Array.from(result.value) : []
+    const thrown = Exit.isFailure(result)
+      ? Cause.prettyErrors(result.cause)
+          .map((error) => `${error.name}: ${error.message}`)
+          .join("\n")
+      : ""
+    const calls = events.filter((event) => event.type === "tool-call")
+    return {
+      done: Exit.isSuccess(result),
+      text: events
+        .filter((event) => event.type === "text-delta")
+        .map((event) => event.text)
+        .join(""),
+      calls: calls.length,
+      input: calls[0]?.input,
+      typeErrs: thrown.includes("AI_TypeValidationError") ? 1 : 0,
+      thrown,
+    }
   })
 }
 
@@ -205,37 +182,50 @@ afterAll(() => {
 })
 
 describe("session.llm.anthropic.replay", () => {
-  test("normal replay should finish with text output", async () => {
-    const out = await run("normal")
-    expect(out.typeErrs).toBe(0)
-    expect(out.thrown).toBe("")
-    expect(out.done).toBe(true)
-    expect(out.text).toBe("Hello")
-  })
-
-  test("missing-text replay should not throw AI_TypeValidationError", async () => {
-    const out = await run("missing-text")
-    expect(out.typeErrs).toBe(0)
-    expect(out.thrown).toBe("")
-    expect(out.done).toBe(true)
-    expect(out.text.includes("你好")).toBe(true)
-  })
-
-  test("tool-mixed replay should preserve tool calls", async () => {
-    const tools = {
-      question: tool({
-        description: "answer question",
-        inputSchema: z.object({ q: z.string() }),
-        execute: async () => "ok",
+  it.instance(
+    "normal replay should finish with text output",
+    () =>
+      Effect.gen(function* () {
+        const out = yield* run("normal")
+        expect(out.typeErrs).toBe(0)
+        expect(out.thrown).toBe("")
+        expect(out.done).toBe(true)
+        expect(out.text).toBe("Hello")
       }),
-    } satisfies ToolSet
+    { config },
+  )
 
-    const out = await run("tool-mixed", tools)
-    expect(out.typeErrs).toBe(0)
-    expect(out.thrown).toBe("")
-    expect(out.done).toBe(true)
-    expect(out.calls > 0).toBe(true)
-    const q = out.input && typeof out.input === "object" ? (out.input as Record<string, unknown>).q : undefined
-    expect(q).toBe("hi")
-  })
+  it.instance(
+    "missing-text replay should not throw AI_TypeValidationError",
+    () =>
+      Effect.gen(function* () {
+        const out = yield* run("missing-text")
+        expect(out.thrown).toBe("")
+        expect(out.typeErrs).toBe(0)
+        expect(out.done).toBe(true)
+        expect(out.text.includes("你好")).toBe(true)
+      }),
+    { config },
+  )
+
+  it.instance(
+    "tool-mixed replay should preserve tool calls",
+    () =>
+      Effect.gen(function* () {
+        const out = yield* run("tool-mixed", {
+          question: tool({
+            description: "answer question",
+            inputSchema: z.object({ q: z.string() }),
+            execute: async () => "ok",
+          }),
+        })
+        expect(out.typeErrs).toBe(0)
+        expect(out.thrown).toBe("")
+        expect(out.done).toBe(true)
+        expect(out.calls > 0).toBe(true)
+        const q = out.input && typeof out.input === "object" ? (out.input as Record<string, unknown>).q : undefined
+        expect(q).toBe("hi")
+      }),
+    { config },
+  )
 })

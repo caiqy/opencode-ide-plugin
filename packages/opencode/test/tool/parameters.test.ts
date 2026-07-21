@@ -177,7 +177,9 @@ describe("tool parameters", () => {
         properties?: Record<string, { description?: string }>
       }
 
-      expect(schema.properties?.model?.description).toBe("Optional model override; omit to use configured image_model.")
+      expect(schema.properties?.model?.description).toBe(
+        "Optional model override; omit to use configured default image model.",
+      )
     })
 
     test("rejects fractional n", () => {

@@ -82,6 +82,56 @@ function wrapSSE(res: Response, ms: number, ctl: AbortController) {
   })
 }
 
+function normalizeAnthropic(res: Response) {
+  if (!res.body) return res
+  if (!res.headers.get("content-type")?.includes("text/event-stream")) return res
+
+  const fix = (event: string) =>
+    event
+      .split(/\r?\n/)
+      .map((line) => {
+        if (!line.startsWith("data: ")) return line
+        let json: unknown
+        try {
+          json = JSON.parse(line.slice(6))
+        } catch {
+          return line
+        }
+        if (!json || typeof json !== "object") return line
+        const item = json as Record<string, unknown>
+        if (item.type !== "content_block_start") return line
+        if (!item.content_block || typeof item.content_block !== "object") return line
+        const block = item.content_block as Record<string, unknown>
+        if (block.type !== "text" || typeof block.text === "string") return line
+        return `data: ${JSON.stringify({ ...item, content_block: { ...block, text: "" } })}`
+      })
+      .join("\n")
+
+  let buf = ""
+  const body = res.body
+    .pipeThrough(new TextDecoderStream())
+    .pipeThrough(
+      new TransformStream<string, string>({
+        transform(chunk, ctrl) {
+          buf += chunk
+          const parts = buf.split(/\r?\n\r?\n/)
+          buf = parts.pop() ?? ""
+          for (const part of parts) ctrl.enqueue(`${fix(part)}\n\n`)
+        },
+        flush(ctrl) {
+          if (buf.length > 0) ctrl.enqueue(fix(buf))
+        },
+      }),
+    )
+    .pipeThrough(new TextEncoderStream())
+
+  return new Response(body, {
+    headers: new Headers(res.headers),
+    status: res.status,
+    statusText: res.statusText,
+  })
+}
+
 function timeoutController(ms: number) {
   const ctl = new AbortController()
   const id = setTimeout(() => ctl.abort(new ProviderError.HeaderTimeoutError(ms)), ms)
@@ -1756,8 +1806,9 @@ const layer = Layer.effect(
             timeout: false,
           }).finally(() => headerTimeoutCtl?.clear())
 
-          if (!chunkAbortCtl) return res
-          return wrapSSE(res, chunkTimeout, chunkAbortCtl)
+          const out = model.api.npm === "@ai-sdk/anthropic" ? normalizeAnthropic(res) : res
+          if (!chunkAbortCtl) return out
+          return wrapSSE(out, chunkTimeout, chunkAbortCtl)
         }
 
         const bundledLoader = BUNDLED_PROVIDERS[model.api.npm]
