@@ -48,6 +48,7 @@ target
 .specify
 .playwright-mcp
 .understand-anything
+paseo.json
 
 # ---- Java/Kotlin/Gradle ----
 .gradle/
