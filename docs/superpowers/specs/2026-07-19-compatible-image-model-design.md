@@ -2,6 +2,8 @@
 comet_change: compatible-image-model
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-24-compatible-image-model
+status: final
 ---
 
 # 官方配置兼容的图片默认模型设计

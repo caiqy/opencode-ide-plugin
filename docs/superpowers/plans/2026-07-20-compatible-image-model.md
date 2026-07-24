@@ -2,6 +2,7 @@
 change: compatible-image-model
 design-doc: docs/superpowers/specs/2026-07-19-compatible-image-model-design.md
 base-ref: a5defaf2d4adc70abeca45dd785527e4b678f08d
+archived-with: 2026-07-24-compatible-image-model
 ---
 
 # 兼容图片默认模型实施计划

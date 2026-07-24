@@ -18,11 +18,13 @@ verification_report: docs/superpowers/reports/2026-07-20-compatible-image-model-
 branch_status: handled
 created_at: 2026-07-19
 verified_at: 2026-07-20
-archive_confirmation: pending
-archived: false
+archive_confirmation: confirmed
+archived: true
 direct_override: null
 handoff_context: openspec/changes/compatible-image-model/.comet/handoff/design-context.json
 handoff_hash: 91a36c0e81466b9e87d2914f97fe9b3448989bf26dd9639e9c57f9b16c932b79
 classic_profile: full
 classic_migration: 1
 run_id: 3a553587-fe5a-401f-a410-791e11cdef48
+bound_branch: ide-plugin
+verify_failures: 0
