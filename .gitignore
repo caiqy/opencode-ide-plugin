@@ -97,3 +97,9 @@ tsconfig.tsbuildinfo
 
 # Superpowers skills (injected by gsd-superpowers-init)
 .skills/superpowers/
+
+# Comet-generated local state
+/.comet/
+/.opencode/rules/comet-workflow-guard.md
+/.opencode/skills/comet*/
+/openspec/changes/**/.comet/
