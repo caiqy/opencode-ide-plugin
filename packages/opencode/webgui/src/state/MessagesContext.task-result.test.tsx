@@ -24,6 +24,7 @@ vi.mock("../lib/api/sdkClient", () => ({
 
 vi.mock("../lib/ideBridge", () => ({
   reloadPath: vi.fn(),
+  ideBridge: { isInstalled: () => false, send: vi.fn() },
 }))
 
 vi.mock("./SessionContext", () => ({

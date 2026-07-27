@@ -4,7 +4,9 @@ import {
   checkDraftSessionReusable,
   findReusableDefaultSessionFallback,
   findReusableDefaultSession,
+  handleIdeBridgeUiEvent,
   handleSessionUiEvent,
+  ideSessionExists,
   prepareSession,
   reuseCheckFromResponses,
 } from "./App"
@@ -603,6 +605,92 @@ describe("checkDraftSessionReusable", () => {
 })
 
 describe("handleSessionUiEvent", () => {
+  it("openSession 事件会切换到对应会话", () => {
+    const switchSession = vi.fn().mockResolvedValue(true)
+    const sessionExists = vi.fn((sessionID: string) => sessionID === "s1")
+    const generation = { current: 0 }
+
+    expect(
+      handleIdeBridgeUiEvent(
+        { type: "openSession", payload: { sessionID: "s1" } },
+        switchSession,
+        sessionExists,
+        generation,
+      ),
+    ).toBe(true)
+    expect(switchSession).toHaveBeenCalledWith("s1")
+    expect(handleIdeBridgeUiEvent({ type: "openSession", payload: {} }, switchSession, sessionExists, generation)).toBe(false)
+  })
+
+  it("openSession 遇到不存在的会话时消费事件但不切换", () => {
+    const switchSession = vi.fn().mockResolvedValue(true)
+    const sessionExists = vi.fn().mockReturnValue(false)
+
+    expect(
+      handleIdeBridgeUiEvent(
+        { type: "openSession", payload: { sessionID: "missing" } },
+        switchSession,
+        sessionExists,
+        { current: 0 },
+      ),
+    ).toBe(true)
+    expect(sessionExists).toHaveBeenCalledWith("missing")
+    expect(switchSession).not.toHaveBeenCalled()
+  })
+
+  it("openSession 异步放行隐藏会话", async () => {
+    const switchSession = vi.fn().mockResolvedValue(true)
+    const sessionExists = vi.fn().mockResolvedValue(true)
+
+    handleIdeBridgeUiEvent(
+      { type: "openSession", payload: { sessionID: "subagent" } },
+      switchSession,
+      sessionExists as unknown as (sessionID: string) => boolean,
+      { current: 0 },
+    )
+    await Promise.resolve()
+
+    expect(switchSession).toHaveBeenCalledTimes(1)
+    expect(switchSession).toHaveBeenCalledWith("subagent")
+  })
+
+  it("openSession 异步忽略已删除会话", async () => {
+    const switchSession = vi.fn().mockResolvedValue(true)
+    const sessionExists = vi.fn().mockResolvedValue(false)
+
+    handleIdeBridgeUiEvent(
+      { type: "openSession", payload: { sessionID: "deleted" } },
+      switchSession,
+      sessionExists as unknown as (sessionID: string) => boolean,
+      { current: 0 },
+    )
+    await Promise.resolve()
+
+    expect(switchSession).not.toHaveBeenCalled()
+  })
+
+  it("连续 openSession 异步校验乱序完成时只切换最后目标", async () => {
+    const switchSession = vi.fn().mockResolvedValue(true)
+    const generation = { current: 0 }
+    const pending: Array<(exists: boolean) => void> = []
+    const sessionExists = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          pending.push(resolve)
+        }),
+    )
+
+    handleIdeBridgeUiEvent({ type: "openSession", payload: { sessionID: "first" } }, switchSession, sessionExists, generation)
+    handleIdeBridgeUiEvent({ type: "openSession", payload: { sessionID: "second" } }, switchSession, sessionExists, generation)
+    pending[1]?.(true)
+    await Promise.resolve()
+    pending[0]?.(true)
+    await Promise.resolve()
+
+    expect(switchSession).toHaveBeenCalledTimes(1)
+    expect(switchSession).toHaveBeenCalledWith("second")
+  })
+
   it("session.idle 会恢复对应会话的 idle 状态且不弹 toast", () => {
     const showToast = vi.fn()
     const setSessionIdle = vi.fn()
@@ -643,5 +731,21 @@ describe("handleSessionUiEvent", () => {
       variant: "info",
       duration: 5000,
     })
+  })
+})
+
+describe("ideSessionExists", () => {
+  it("始终通过 SDK 校验隐藏和已删除会话", async () => {
+    vi.mocked(sdk.session.get)
+      .mockResolvedValueOnce(sessionGetResult({ id: "subagent" }, null))
+      .mockResolvedValueOnce(sessionGetResult(null, { status: 404 }))
+      .mockRejectedValueOnce(new Error("offline"))
+
+    await expect(ideSessionExists("subagent")).resolves.toBe(true)
+    await expect(ideSessionExists("deleted")).resolves.toBe(false)
+    await expect(ideSessionExists("unknown")).resolves.toBe(false)
+    expect(sdk.session.get).toHaveBeenNthCalledWith(1, { path: { id: "subagent" } })
+    expect(sdk.session.get).toHaveBeenNthCalledWith(2, { path: { id: "deleted" } })
+    expect(sdk.session.get).toHaveBeenNthCalledWith(3, { path: { id: "unknown" } })
   })
 })

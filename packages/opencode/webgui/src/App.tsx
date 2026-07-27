@@ -81,6 +81,40 @@ export function handleSessionUiEvent(input: {
   })
 }
 
+export function handleIdeBridgeUiEvent(
+  msg: unknown,
+  switchSession: (sessionID: string) => unknown,
+  sessionExists: (sessionID: string) => boolean | Promise<boolean>,
+  requestGeneration: { current: number },
+) {
+  if (!msg || typeof msg !== "object") return false
+  const event = msg as { type?: unknown; payload?: { sessionID?: unknown } }
+  if (event.type !== "openSession") return false
+  if (typeof event.payload?.sessionID !== "string" || !event.payload.sessionID) return false
+  const sessionID = event.payload.sessionID
+  const generation = ++requestGeneration.current
+  const switchIfExists = (exists: boolean) => {
+    if (!exists || generation !== requestGeneration.current) return
+    try {
+      void Promise.resolve(switchSession(sessionID)).catch(() => {})
+    } catch {}
+  }
+  const exists = sessionExists(sessionID)
+  if (typeof exists === "boolean") {
+    switchIfExists(exists)
+    return true
+  }
+  void exists.then(switchIfExists).catch(() => {})
+  return true
+}
+
+export async function ideSessionExists(sessionID: string) {
+  return sdk.session
+    .get({ path: { id: sessionID } })
+    .then((response) => Boolean(response.data))
+    .catch(() => false)
+}
+
 export type ReuseCheck = "reusable" | "not_reusable" | "unknown"
 type SessionCandidate = { id: string }
 type DefaultSessionInput = Pick<Session, "id" | "title" | "parentID"> & {
@@ -247,6 +281,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     insertPlainWithMentions: (value: string) => void
   }>(null)
   const dropCoordinatorRef = useRef<ReturnType<typeof createDropCoordinator> | null>(null)
+  const ideOpenSessionGeneration = useRef(0)
   if (!dropCoordinatorRef.current) {
     dropCoordinatorRef.current = createDropCoordinator({
       focus: () => messageInputRef.current?.focus(),
@@ -440,6 +475,15 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
 
     const handler = (msg: any) => {
       if (!msg || typeof msg !== "object") return
+      if (
+        handleIdeBridgeUiEvent(
+          msg,
+          handleSwitchSession,
+          ideSessionExists,
+          ideOpenSessionGeneration,
+        )
+      )
+        return
       if (msg.type === "insertPaths") {
         const paths = (msg.payload?.paths ?? msg.paths) as string[] | undefined
         if (Array.isArray(paths) && paths.length > 0) {
@@ -502,7 +546,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
       ideBridge.off(handler)
       window.removeEventListener("message", windowHandler)
     }
-  }, [])
+  }, [handleSwitchSession])
 
   // Accept drop anywhere in the webview (VSCode iframe)
   useEffect(() => {

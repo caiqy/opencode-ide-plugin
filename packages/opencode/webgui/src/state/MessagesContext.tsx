@@ -6,6 +6,7 @@ import * as Store from "../lib/messagesStore"
 import { sdk } from "../lib/api/sdkClient"
 import { useSession } from "./SessionContext"
 import { reloadPath } from "../lib/ideBridge"
+import { sendIdeNotification, shouldNotifySessionIdle } from "../lib/ideNotifications"
 import { adaptPart } from "../lib/task-part"
 
 const PAGE = 50
@@ -186,6 +187,10 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const setReasoning = session.setReasoning
   const setSessionIdle = session.setSessionIdle
   const reasoningPartsBySessionRef = useRef<Map<string, Set<string>>>(new Map())
+  const notificationStatusRef = useRef<Record<string, string>>({})
+  const notificationErroredRef = useRef(new Set<string>())
+  const notifiedPermissionsRef = useRef(new Map<string, string>())
+  const notifiedQuestionsRef = useRef(new Map<string, string>())
 
   const setMessages = useCallback<React.Dispatch<React.SetStateAction<Message[]>>>((next) => {
     const rows = typeof next === "function" ? next(messagesRef.current) : next
@@ -624,6 +629,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     (event: ServerEvent) => {
       if (event.type === "session.error") {
         const { sessionID, error } = event.properties as { sessionID: string; error: unknown }
+        notificationErroredRef.current.add(sessionID)
         console.error("[MessagesContext] Session error:", sessionID, error)
         addSessionError(sessionID, error)
       }
@@ -990,19 +996,69 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     if (event.type !== "permission.asked") return
     const perm = event.properties as PermissionRequest
     touchPending("permission", perm.id)
+    const first = !notifiedPermissionsRef.current.has(perm.id)
+    notifiedPermissionsRef.current.set(perm.id, perm.sessionID)
+    if (first) {
+      sendIdeNotification(
+        "permission",
+        perm.sessionID,
+        session.currentSession?.id ?? null,
+        typeof perm.metadata?.title === "string" ? perm.metadata.title : perm.permission,
+      )
+    }
     setPermissions((prev) => {
       const exists = prev.some((p) => p.id === perm.id)
       if (exists) return prev.map((p) => (p.id === perm.id ? perm : p))
       return [...prev, perm]
     })
-  }, [touchPending])
+  }, [session.currentSession?.id, touchPending])
 
   const handlePermissionReplied = useCallback((event: ServerEvent) => {
     if (event.type !== "permission.replied") return
     const { requestID } = event.properties as { sessionID: string; requestID: string; reply: string }
     touchPending("permission", requestID)
+    notifiedPermissionsRef.current.delete(requestID)
     setPermissions((prev) => prev.filter((p) => p.id !== requestID))
   }, [touchPending])
+
+  const handleSessionStatusNotification = useCallback((event: ServerEvent) => {
+    if (event.type !== "session.status") return
+    const sessionID = event.properties.sessionID
+    const status = event.properties.status.type
+    const previous = notificationStatusRef.current[sessionID]
+    notificationStatusRef.current[sessionID] = status
+    if (status === "busy" || status === "retry") notificationErroredRef.current.delete(sessionID)
+    if (notificationErroredRef.current.has(sessionID)) return
+    if (!shouldNotifySessionIdle(previous, status)) return
+
+    const assistant = messagesRef.current
+      .filter((message) => message.info.sessionID === sessionID && message.info.role === "assistant")
+      .at(-1)
+    sendIdeNotification(
+      "finished",
+      sessionID,
+      session.currentSession?.id ?? null,
+      assistant?.parts
+        .filter((part): part is Extract<WebguiPart, { type: "text" }> => part.type === "text")
+        .map((part) => part.text)
+        .join(""),
+    )
+  }, [session.currentSession?.id])
+
+  const handleSessionDeletedNotification = useCallback((event: ServerEvent) => {
+    if (event.type !== "session.deleted") return
+    const sessionID = event.properties.info?.id
+    if (!sessionID) return
+    delete notificationStatusRef.current[sessionID]
+    notificationErroredRef.current.delete(sessionID)
+    for (const [requestID, targetSessionID] of notifiedPermissionsRef.current) {
+      if (targetSessionID === sessionID) notifiedPermissionsRef.current.delete(requestID)
+    }
+    for (const [requestID, targetSessionID] of notifiedQuestionsRef.current) {
+      if (targetSessionID === sessionID) notifiedQuestionsRef.current.delete(requestID)
+    }
+    setPermissions((prev) => prev.filter((permission) => permission.sessionID !== sessionID))
+  }, [])
 
   const getPermissionForCall = useCallback(
     (sessionID: string, callID?: string | null) => {
@@ -1035,6 +1091,16 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     if (event.type !== "question.asked") return
     const request = event.properties as QuestionRequest
     touchPending("question", request.id)
+    const first = !notifiedQuestionsRef.current.has(request.id)
+    notifiedQuestionsRef.current.set(request.id, request.sessionID)
+    if (first) {
+      sendIdeNotification(
+        "question",
+        request.sessionID,
+        session.currentSession?.id ?? null,
+        request.questions[0]?.question,
+      )
+    }
     console.log("[MessagesContext] Question asked:", request.id, request.sessionID)
     setQuestions((prev) => {
       const newMap = new Map(prev)
@@ -1052,12 +1118,13 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       }
       return newMap
     })
-  }, [touchPending])
+  }, [session.currentSession?.id, touchPending])
 
   const handleQuestionReplied = useCallback((event: ServerEvent) => {
     if (event.type !== "question.replied") return
     const { sessionID, requestID } = event.properties as { sessionID: string; requestID: string }
     touchPending("question", requestID)
+    notifiedQuestionsRef.current.delete(requestID)
     console.log("[MessagesContext] Question replied:", requestID, sessionID)
     setQuestions((prev) => {
       const newMap = new Map(prev)
@@ -1076,6 +1143,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     if (event.type !== "question.rejected") return
     const { sessionID, requestID } = event.properties as { sessionID: string; requestID: string }
     touchPending("question", requestID)
+    notifiedQuestionsRef.current.delete(requestID)
     console.log("[MessagesContext] Question rejected:", requestID, sessionID)
     setQuestions((prev) => {
       const newMap = new Map(prev)
@@ -1207,6 +1275,8 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   useEventHandler(emitter ?? null, "message.part.updated", handlePartUpdated)
   useEventHandler(emitter ?? null, "message.part.delta", handlePartDelta)
   useEventHandler(emitter ?? null, "session.error", handleSessionError)
+  useEventHandler(emitter ?? null, "session.status", handleSessionStatusNotification)
+  useEventHandler(emitter ?? null, "session.deleted", handleSessionDeletedNotification)
   useEventHandler(emitter ?? null, "session.compacted", handleSessionCompacted)
   useEventHandler(emitter ?? null, "message.removed", handleMessageRemoved)
   useEventHandler(emitter ?? null, "message.part.removed", handlePartRemoved)

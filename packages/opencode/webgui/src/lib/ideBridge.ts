@@ -190,7 +190,13 @@ class IdeBridge {
     this.doSend(msg)
   }
 
-  private async doSend(msg: Message, retryCount = 0) {
+  sendTransient(msg: Message) {
+    if (!bridgeBase || !token || !this.ready) return false
+    this.doSend(msg, 0, false)
+    return true
+  }
+
+  private async doSend(msg: Message, retryCount = 0, allowRetry = true) {
     if (!bridgeBase || !token) return
 
     try {
@@ -202,7 +208,7 @@ class IdeBridge {
 
       if (!response.ok) {
         console.warn("[ideBridge] Send failed with status:", response.status)
-        if (response.status >= 500 && retryCount < 3) {
+        if (allowRetry && response.status >= 500 && retryCount < 3) {
           this.requeueWithBackoff(msg, retryCount)
           return
         }
@@ -210,7 +216,7 @@ class IdeBridge {
       }
     } catch (e) {
       console.warn("[ideBridge] Send failed:", e)
-      if (retryCount < 3) {
+      if (allowRetry && retryCount < 3) {
         this.requeueWithBackoff(msg, retryCount)
         return
       }

@@ -41,6 +41,7 @@ describe("ideBridge connected metadata", () => {
 
   afterEach(() => {
     window.history.replaceState({}, "", "/")
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
     vi.useRealTimers()
   })
@@ -205,6 +206,38 @@ describe("ideBridge connected metadata", () => {
 
     expect(bad).toHaveBeenCalledTimes(1)
     expect(String(bad.mock.calls[0]?.[0])).toContain("offline")
+  })
+
+  it.each([
+    ["网络错误", () => Promise.reject(new Error("offline"))],
+    ["HTTP 5xx", () => Promise.resolve({ ok: false, status: 500 })],
+  ])("易失通知遇到%s后断线重连也不会补发", async (_name, fail) => {
+    const send = vi.fn().mockImplementationOnce(fail).mockResolvedValue({ ok: true })
+    vi.stubGlobal("fetch", send)
+    vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" })
+
+    const { ideBridge } = await import("./ideBridge")
+    const { sendIdeNotification } = await import("./ideNotifications")
+    ideBridge.init()
+
+    const source = MockEventSource.all[0]
+    expect(source).toBeDefined()
+    source.onopen?.call(source as unknown as EventSource, new Event("open"))
+
+    expect(sendIdeNotification("finished", "s1", null)).toBe(true)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    source.onerror?.call(source as unknown as EventSource, new Event("error"))
+    await vi.advanceTimersByTimeAsync(1000)
+
+    const next = MockEventSource.all[1]
+    expect(next).toBeDefined()
+    next.onopen?.call(next as unknown as EventSource, new Event("open"))
+    await vi.runAllTimersAsync()
+
+    expect(send).toHaveBeenCalledTimes(1)
   })
 
   it("timeout 后不会再触发 fetch/send", async () => {

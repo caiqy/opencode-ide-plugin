@@ -6,6 +6,10 @@ import { EventEmitter, type ServerEvent } from "../lib/api/events"
 const mocks = vi.hoisted(() => ({
   setReasoning: vi.fn(),
   setSessionIdle: vi.fn(),
+  bridgeInstalled: vi.fn(),
+  bridgeSend: vi.fn(),
+  bridgeReady: true,
+  currentSession: null as { id: string } | null,
 }))
 
 vi.mock("../lib/api/sdkClient", () => ({
@@ -27,10 +31,23 @@ vi.mock("../lib/api/sdkClient", () => ({
 
 vi.mock("../lib/ideBridge", () => ({
   reloadPath: vi.fn(),
+  ideBridge: {
+    get ready() {
+      return mocks.bridgeReady
+    },
+    isInstalled: mocks.bridgeInstalled,
+    send: mocks.bridgeSend,
+    sendTransient: (msg: unknown) => {
+      if (!mocks.bridgeInstalled() || !mocks.bridgeReady) return false
+      mocks.bridgeSend(msg)
+      return true
+    },
+  },
 }))
 
 vi.mock("./SessionContext", () => ({
   useSession: () => ({
+    currentSession: mocks.currentSession,
     setReasoning: mocks.setReasoning,
     setSessionIdle: mocks.setSessionIdle,
   }),
@@ -38,6 +55,8 @@ vi.mock("./SessionContext", () => ({
 
 import { sdk } from "../lib/api/sdkClient"
 import { MessagesProvider, useMessages } from "./MessagesContext"
+
+const hasFocus = vi.spyOn(document, "hasFocus")
 
 let api: ReturnType<typeof useMessages> | null = null
 
@@ -54,14 +73,17 @@ function mount(emitter: EventEmitter) {
   )
 }
 
-function ask(requestID: string, sessionID = "s1") {
+function ask(
+  requestID: string,
+  sessionID = "s1",
+  questions: QuestionRequest["questions"] = [{ header: "Choice", question: "Which option?", options: [] }],
+) {
   return {
     type: "question.asked",
     properties: {
       id: requestID,
       sessionID,
-      question: "q",
-      options: [],
+      questions,
       tool: {
         messageID: "m1",
         callID: "c1",
@@ -107,7 +129,229 @@ describe("MessagesContext questions", () => {
     ;(sdk.question.reject as unknown as ReturnType<typeof vi.fn>).mockReset()
     mocks.setReasoning.mockReset()
     mocks.setSessionIdle.mockReset()
+    mocks.bridgeInstalled.mockReset().mockReturnValue(false)
+    mocks.bridgeSend.mockReset()
+    mocks.bridgeReady = true
+    mocks.currentSession = null
+    hasFocus.mockReturnValue(false)
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" })
     api = null
+  })
+
+  it("同一权限请求只通知一次，回复后释放去重 ID", async () => {
+    const emitter = new EventEmitter()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    mount(emitter)
+
+    await act(async () => {
+      emitter.emit(permissionAsked("p1"))
+      emitter.emit(permissionAsked("p1"))
+    })
+    expect(mocks.bridgeSend).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      emitter.emit({
+        type: "permission.replied",
+        properties: { sessionID: "s1", requestID: "p1", reply: "once" },
+      } as ServerEvent)
+      emitter.emit(permissionAsked("p1"))
+    })
+    expect(mocks.bridgeSend).toHaveBeenCalledTimes(2)
+  })
+
+  it("会话删除后释放权限通知去重 ID", async () => {
+    const emitter = new EventEmitter()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    mount(emitter)
+
+    await act(async () => {
+      emitter.emit(permissionAsked("p1"))
+      emitter.emit({
+        type: "session.deleted",
+        properties: { info: { id: "s1" } },
+      } as unknown as ServerEvent)
+      emitter.emit(permissionAsked("p1"))
+    })
+
+    expect(mocks.bridgeSend).toHaveBeenCalledTimes(2)
+  })
+
+  it("后台的同一提问请求只通知一次，并使用第一道问题", async () => {
+    const emitter = new EventEmitter()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    mount(emitter)
+
+    await act(async () => {
+      emitter.emit(
+        ask("q1", "s1", [
+          { header: "First", question: "Which option?", options: [] },
+          { header: "Second", question: "Ignore this preview", options: [] },
+        ]),
+      )
+      emitter.emit(ask("q1"))
+    })
+
+    expect(mocks.bridgeSend).toHaveBeenCalledTimes(1)
+    expect(mocks.bridgeSend).toHaveBeenCalledWith({
+      type: "showSystemNotification",
+      payload: { sessionID: "s1", title: "Agent has a question", body: "Which option?" },
+    })
+  })
+
+  it("回复、拒绝和会话删除会释放提问通知 ID", async () => {
+    const emitter = new EventEmitter()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    mount(emitter)
+
+    await act(async () => {
+      emitter.emit(ask("q1"))
+      emitter.emit({ type: "question.replied", properties: { sessionID: "s1", requestID: "q1", answers: [] } })
+      emitter.emit(ask("q1"))
+      emitter.emit({ type: "question.rejected", properties: { sessionID: "s1", requestID: "q1" } })
+      emitter.emit(ask("q1"))
+      emitter.emit({ type: "session.deleted", properties: { info: { id: "s1" } } } as unknown as ServerEvent)
+      emitter.emit(ask("q1"))
+    })
+
+    expect(mocks.bridgeSend).toHaveBeenCalledTimes(4)
+  })
+
+  it("前台或 Bridge 未 ready 的提问重放时仍不通知", async () => {
+    const emitter = new EventEmitter()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    mocks.currentSession = { id: "s1" }
+    hasFocus.mockReturnValue(true)
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+    mount(emitter)
+
+    await act(async () => emitter.emit(ask("focused")))
+    hasFocus.mockReturnValue(false)
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" })
+    await act(async () => emitter.emit(ask("focused")))
+
+    mocks.bridgeReady = false
+    await act(async () => emitter.emit(ask("not-ready")))
+    mocks.bridgeReady = true
+    await act(async () => emitter.emit(ask("not-ready")))
+
+    expect(mocks.bridgeSend).not.toHaveBeenCalled()
+  })
+
+  it("question hydration 只恢复状态而不补发通知", async () => {
+    vi.mocked(sdk.question.list).mockResolvedValueOnce({
+      data: [ask("q1").properties as QuestionRequest],
+      error: null,
+    })
+    vi.mocked(sdk.permissions.list).mockResolvedValueOnce({ data: [], error: null })
+    const emitter = new EventEmitter()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    mount(emitter)
+
+    await act(async () => emitter.emit({ type: "server.connected", properties: {} }))
+
+    await waitFor(() => expect(api?.getQuestionsBySession("s1").map((item) => item.id)).toEqual(["q1"]))
+    expect(mocks.bridgeSend).not.toHaveBeenCalled()
+  })
+
+  it("前台抑制的权限请求重放时仍不通知", async () => {
+    const emitter = new EventEmitter()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    mocks.currentSession = { id: "s1" }
+    hasFocus.mockReturnValue(true)
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+    mount(emitter)
+
+    await act(async () => {
+      emitter.emit(permissionAsked("p1"))
+    })
+    expect(mocks.bridgeSend).not.toHaveBeenCalled()
+
+    hasFocus.mockReturnValue(false)
+    await act(async () => {
+      emitter.emit(permissionAsked("p1"))
+    })
+    expect(mocks.bridgeSend).not.toHaveBeenCalled()
+  })
+
+  it("未 ready 的权限请求回复后不会在 bridge ready 时迟到通知", async () => {
+    const emitter = new EventEmitter()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    mocks.bridgeReady = false
+    mount(emitter)
+
+    await act(async () => {
+      emitter.emit(permissionAsked("p1"))
+      emitter.emit({
+        type: "permission.replied",
+        properties: { sessionID: "s1", requestID: "p1", reply: "once" },
+      } as ServerEvent)
+    })
+
+    mocks.bridgeReady = true
+    await act(async () => window.dispatchEvent(new Event("opencode:idebridge-ready")))
+    expect(mocks.bridgeSend).not.toHaveBeenCalled()
+  })
+
+  it("会话从 busy 进入 idle 时只通知一次", async () => {
+    const emitter = new EventEmitter()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    mount(emitter)
+
+    await act(async () => {
+      emitter.emit({
+        type: "session.status",
+        properties: { sessionID: "s1", status: { type: "busy" } },
+      } as ServerEvent)
+      emitter.emit({
+        type: "session.status",
+        properties: { sessionID: "s1", status: { type: "idle" } },
+      } as ServerEvent)
+      emitter.emit({
+        type: "session.status",
+        properties: { sessionID: "s1", status: { type: "idle" } },
+      } as ServerEvent)
+    })
+
+    expect(mocks.bridgeSend).toHaveBeenCalledTimes(1)
+    expect(mocks.bridgeSend).toHaveBeenCalledWith({
+      type: "showSystemNotification",
+      payload: { sessionID: "s1", title: "Agent finished", body: "Finished working." },
+    })
+  })
+
+  it("错误轮次的清理 idle 不通知且下一轮正常完成只通知一次", async () => {
+    const emitter = new EventEmitter()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    mount(emitter)
+
+    await act(async () => {
+      emitter.emit({
+        type: "session.status",
+        properties: { sessionID: "s1", status: { type: "busy" } },
+      } as ServerEvent)
+      emitter.emit({
+        type: "session.error",
+        properties: { sessionID: "s1", error: { name: "UnknownError", message: "boom" } },
+      } as ServerEvent)
+      emitter.emit({
+        type: "session.status",
+        properties: { sessionID: "s1", status: { type: "idle" } },
+      } as ServerEvent)
+      emitter.emit({
+        type: "session.status",
+        properties: { sessionID: "s1", status: { type: "busy" } },
+      } as ServerEvent)
+      emitter.emit({
+        type: "session.status",
+        properties: { sessionID: "s1", status: { type: "idle" } },
+      } as ServerEvent)
+    })
+
+    expect(mocks.bridgeSend).toHaveBeenCalledTimes(1)
+    expect(mocks.bridgeSend).toHaveBeenCalledWith({
+      type: "showSystemNotification",
+      payload: { sessionID: "s1", title: "Agent finished", body: "Finished working." },
+    })
   })
 
   it("replyQuestion 遇到结构化 error 时不应移除本地问题", async () => {
