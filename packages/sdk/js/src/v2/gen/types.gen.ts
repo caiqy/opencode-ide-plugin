@@ -1930,6 +1930,7 @@ export type Config = {
   small_model?: string
   image_model?: string
   default_agent?: string
+  subagent_depth?: number
   username?: string
   mode?: {
     build?: AgentConfig
