@@ -71,13 +71,28 @@ suite("WebviewController Test Suite", () => {
   }
 
   test("readUris 只把解析结果返回 webview，不通过 bridge 直接插入", async () => {
-    sinon.stub(vscode.workspace.fs, "stat").resolves({ type: vscode.FileType.File } as vscode.FileStat)
-    sinon.stub(vscode.workspace.fs, "readFile").resolves(Buffer.from("content"))
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+    assert.ok(workspaceFolder)
+    const uri = vscode.Uri.joinPath(workspaceFolder.uri, ".gitkeep")
     const { controller, webview, bridgeSend, receiveMessage } = await loadController()
 
-    await receiveMessage({ type: "readUris", uris: ["file:///C:/repo/a.ts"] })
+    await receiveMessage({ type: "readUris", uris: [uri.toString()] })
 
-    assert.ok((webview.postMessage as unknown as sinon.SinonStub).calledWithMatch({ type: "readUrisResult" }))
+    const message = (webview.postMessage as unknown as sinon.SinonStub)
+      .getCalls()
+      .map((call) => call.args[0])
+      .find((value) => value.type === "readUrisResult")
+    assert.ok(message)
+    assert.deepStrictEqual(message.results, [
+      {
+        uri: uri.toString(),
+        ok: true,
+        webviewUri: uri.toString(),
+        data: Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("base64"),
+      },
+    ])
+    assert.deepStrictEqual(message.filePaths, [uri.fsPath])
+    assert.deepStrictEqual(message.directoryPaths, [])
     assert.ok(!bridgeSend.calledWithMatch("session-save-image", sinon.match({ type: "insertPaths" })))
 
     controller.dispose()
