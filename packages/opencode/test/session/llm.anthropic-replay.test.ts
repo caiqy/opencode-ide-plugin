@@ -10,8 +10,6 @@ import { Cause, Effect, Exit, Layer, Stream } from "effect"
 import z from "zod"
 import { LLM } from "../../src/session/llm"
 import { Provider } from "../../src/provider/provider"
-import { ModelsDev } from "../../src/provider/models"
-import { Filesystem } from "../../src/util/filesystem"
 import { createEventResponse } from "../fixture/sse"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Plugin } from "@/plugin"
@@ -20,8 +18,8 @@ import type { Agent } from "../../src/agent/agent"
 import type { MessageV2 } from "../../src/session/message-v2"
 import { SessionID, MessageID } from "../../src/session/schema"
 
-const ModelID = ModelV2.ID
 const ProviderID = ProviderV2.ID
+const modelID = ModelV2.ID.make("claude-sonnet-4-5")
 const plugin = Layer.mock(Plugin.Service)({
   init: () => Effect.void,
   list: () => Effect.succeed([]),
@@ -59,16 +57,6 @@ function waitRequest(pathname: string, response: Response) {
   return pending.promise
 }
 
-async function loadFixture(providerID: string, modelID: string) {
-  const fixturePath = path.join(import.meta.dir, "../tool/fixtures/models-api.json")
-  const data = await Filesystem.readJson<Record<string, ModelsDev.Provider>>(fixturePath)
-  const provider = data[providerID]
-  if (!provider) throw new Error(`Missing provider in fixture: ${providerID}`)
-  const model = provider.models[modelID]
-  if (!model) throw new Error(`Missing model in fixture: ${modelID}`)
-  return { provider, model }
-}
-
 async function loadChunks(name: string) {
   const file = path.join(import.meta.dir, `../fixtures/anthropic-sse/${name}.jsonl`)
   const text = await Bun.file(file).text()
@@ -95,6 +83,17 @@ function config(): Partial<ConfigV1.Info> {
     enabled_providers: ["anthropic"],
     provider: {
       anthropic: {
+        npm: "@ai-sdk/anthropic",
+        api: "https://api.anthropic.com/v1",
+        models: {
+          [modelID]: {
+            name: "Claude Sonnet 4.5",
+            temperature: true,
+            tool_call: true,
+            limit: { context: 1_000_000, output: 64_000 },
+            modalities: { input: ["text"], output: ["text"] },
+          },
+        },
         options: {
           apiKey: "test-anthropic-key",
           baseURL: `${server.url.origin}/v1`,
@@ -107,12 +106,11 @@ function config(): Partial<ConfigV1.Info> {
 function run(name: string, tools: ToolSet = {}) {
   return Effect.gen(function* () {
     const providerID = ProviderID.make("anthropic")
-    const fixture = yield* Effect.promise(() => loadFixture(providerID, "claude-3-5-sonnet-20241022"))
     const chunks = yield* Effect.promise(() => loadChunks(name))
     const request = waitRequest("/messages", createEventResponse(chunks))
     const provider = yield* Provider.Service
     const llm = yield* LLM.Service
-    const resolved = yield* provider.getModel(providerID, ModelID.make(fixture.model.id))
+    const resolved = yield* provider.getModel(providerID, modelID)
     const sessionID = SessionID.make(`session-${name}`)
     const agent = {
       name: "test",
