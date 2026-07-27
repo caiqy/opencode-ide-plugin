@@ -4,6 +4,10 @@
 - The default branch in this repo is `dev`.
 - Local `main` ref may not exist; use `dev` or `origin/dev` for diffs.
 
+## Development Environment
+
+- Local development tool versions are managed by `vfox`. Check and use vfox-managed versions before assuming or installing Bun, Node.js, Java/JDK, or other tooling.
+
 ## Branch Names
 
 Use a short branch name of at most three words, separated by hyphens. Do not use slashes or type prefixes such as `feat/` or `fix/`.
