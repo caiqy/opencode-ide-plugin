@@ -181,7 +181,7 @@
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile && pnpm run lint",
     "lint": "eslint src --ext ts",
-    "test": "vscode-test",
+    "test": "node ./scripts/run-vscode-tests.mjs",
     "test:script": "./scripts/test.sh",
     "package": "cd ../ && ./scripts/build_vscode.sh --production --skip-tests",
     "package:dev": "cd ../ && ./scripts/build_vscode.sh --skip-tests",
