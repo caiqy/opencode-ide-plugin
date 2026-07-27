@@ -10,12 +10,20 @@ import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.wm.WindowManager
+import com.intellij.util.IconUtil
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import paviko.opencode.update.PluginUpdateService
 import paviko.opencode.update.PluginVersionSource
 import paviko.opencode.update.installedPluginVersionSource
+import java.awt.Frame
+import java.awt.GraphicsEnvironment
+import java.awt.SystemTray
+import java.awt.TrayIcon
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.io.File
@@ -24,6 +32,7 @@ import java.net.InetSocketAddress
 import java.net.URL
 import java.net.URLDecoder
 import java.util.*
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -55,6 +64,46 @@ object IdeBridge {
     }
 
     @Volatile
+    internal var notificationHook: (Project, String, String, String, () -> Unit) -> Unit = { _, _, title, body, onClick ->
+        showSystemNotification(title, body, onClick)
+    }
+
+    @Volatile
+    internal var notificationClickHook: (Project, () -> Unit) -> Unit = { project, openSession ->
+        ApplicationManager.getApplication().invokeLater {
+            try {
+                val frame = WindowManager.getInstance().getFrame(project) as? Frame
+                if (frame != null) {
+                    frame.extendedState = frame.extendedState and Frame.ICONIFIED.inv()
+                    frame.isVisible = true
+                    frame.toFront()
+                    frame.requestFocus()
+                }
+            } catch (t: Throwable) {
+                LOG.info("Failed to focus project frame", t)
+            }
+
+            try {
+                ToolWindowManager.getInstance(project).getToolWindow("OpenCode")?.show()
+            } catch (t: Throwable) {
+                LOG.info("Failed to show OpenCode tool window", t)
+            }
+
+            try {
+                executor.execute {
+                    try {
+                        openSession()
+                    } catch (t: Throwable) {
+                        LOG.info("Failed to open session from notification click", t)
+                    }
+                }
+            } catch (t: Throwable) {
+                LOG.info("Failed to open session from notification click", t)
+            }
+        }
+    }
+
+    @Volatile
     internal var installStartRunner: ((() -> Unit) -> Unit)? = null
 
     @Volatile
@@ -70,6 +119,7 @@ object IdeBridge {
     private var port: Int = 0
     private val sessions = ConcurrentHashMap<String, Session>()
     private val projectToSession = ConcurrentHashMap<Project, String>()
+    private val activeTrayIcons = ConcurrentHashMap<TrayIcon, SystemTray>()
     @Volatile private var executor = Executors.newCachedThreadPool()
     private var keepaliveTimer: java.util.Timer? = null
 
@@ -102,6 +152,7 @@ object IdeBridge {
         keepaliveTimer?.cancel()
         keepaliveTimer = null
         sessions.keys.toList().forEach(::removeSession)
+        activeTrayIcons.entries.toList().forEach { removeTrayIcon(it.value, it.key) }
         server?.stop(0)
         server = null
         try {
@@ -494,6 +545,28 @@ object IdeBridge {
                     }
                 }
 
+                "showSystemNotification" -> {
+                    val targetSessionID = payload?.get("sessionID")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                        ?.asString?.trim()
+                    val title = payload?.get("title")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                        ?.asString?.trim()
+                    val content = payload?.get("body")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                        ?.asString?.trim()
+                    if (targetSessionID.isNullOrEmpty() || title.isNullOrEmpty() || content.isNullOrEmpty()) {
+                        replyError(session, id, "Missing sessionID, title, or body")
+                    } else {
+                        val clicked = AtomicBoolean(false)
+                        notificationHook(session.project, targetSessionID, title, content) {
+                            if (clicked.compareAndSet(false, true)) {
+                                notificationClickHook(session.project) {
+                                    send(session.id, "openSession", mapOf("sessionID" to targetSessionID))
+                                }
+                            }
+                        }
+                        replyOk(session, id)
+                    }
+                }
+
                 "openPluginManager" -> {
                     try {
                         openPluginSettings(session.project)
@@ -595,6 +668,48 @@ object IdeBridge {
 
     private fun scheduleInstallStart(task: () -> Unit) {
         installStartRunner?.invoke(task) ?: executor.execute(task)
+    }
+
+    @Synchronized
+    private fun showSystemNotification(title: String, body: String, onClick: () -> Unit) {
+        if (GraphicsEnvironment.isHeadless() || !SystemTray.isSupported()) {
+            LOG.info("System tray notifications unavailable; skipping notification")
+            return
+        }
+
+        try {
+            val tray = SystemTray.getSystemTray()
+            val trayIcon = TrayIcon(
+                IconUtil.toImage(IconLoader.getIcon("/icons/opencodeToolWindow.svg", IdeBridge::class.java)),
+                "OpenCode",
+            ).apply {
+                isImageAutoSize = true
+            }
+            val remove = Runnable { removeTrayIcon(tray, trayIcon) }
+            trayIcon.addActionListener {
+                remove.run()
+                onClick()
+            }
+            try {
+                tray.add(trayIcon)
+                activeTrayIcons[trayIcon] = tray
+                trayIcon.displayMessage(title, body, TrayIcon.MessageType.NONE)
+                CompletableFuture.delayedExecutor(15, TimeUnit.SECONDS).execute(remove)
+            } catch (t: Throwable) {
+                remove.run()
+                throw t
+            }
+        } catch (t: Throwable) {
+            LOG.info("Failed to show system notification", t)
+        }
+    }
+
+    private fun removeTrayIcon(tray: SystemTray, trayIcon: TrayIcon) {
+        activeTrayIcons.remove(trayIcon, tray)
+        try {
+            tray.remove(trayIcon)
+        } catch (_: Throwable) {
+        }
     }
 
     private fun openPluginSettings(project: Project) {
