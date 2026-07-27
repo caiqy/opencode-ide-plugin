@@ -102,7 +102,7 @@ if "%PACKAGE_ONLY%"=="false" (
     echo [INFO] Installing dependencies...
     where pnpm >nul 2>&1
     if not errorlevel 1 (
-        call pnpm install
+        call pnpm install --frozen-lockfile
     ) else (
         where npm >nul 2>&1
         if errorlevel 1 (
@@ -252,9 +252,9 @@ if "%MISSING_BINARIES%"=="true" (
 )
 
 if "%BUILD_TYPE%"=="production" (
-    call %VSCE_CMD% package --no-dependencies --allow-missing-repository --out "opencode-vscode-%TIMESTAMP%.vsix"
+    call %VSCE_CMD% package --allow-missing-repository --out "opencode-vscode-%TIMESTAMP%.vsix"
 ) else (
-    call %VSCE_CMD% package --pre-release --no-dependencies --allow-missing-repository --out "opencode-vscode-dev-%TIMESTAMP%.vsix"
+    call %VSCE_CMD% package --pre-release --allow-missing-repository --out "opencode-vscode-dev-%TIMESTAMP%.vsix"
 )
 if errorlevel 1 exit /b 1
 

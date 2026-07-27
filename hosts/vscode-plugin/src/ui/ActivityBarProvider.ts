@@ -26,6 +26,7 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
     } catch {}
     this.controller = undefined
     this.view = undefined
+    this.pendingSessionID = undefined
     this.loadGeneration++
   }
   private context: vscode.ExtensionContext
@@ -37,6 +38,7 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView
   private mem = new Map<string, string>()
   private loadGeneration = 0
+  private pendingSessionID?: string
 
   constructor(context: vscode.ExtensionContext, backendLauncher: BackendLauncher, settingsManager: SettingsManager) {
     this.context = context
@@ -48,6 +50,14 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
   private static readonly SW_LOAD_RETRY_DEADLINE_MS = 30_000
   private static readonly SW_LOAD_RETRY_INITIAL_DELAY_MS = 500
   private static readonly SW_LOAD_RETRY_MAX_DELAY_MS = 4_000
+
+  openSession(sessionID: string): void {
+    if (this.controller?.openSession(sessionID)) {
+      this.pendingSessionID = undefined
+      return
+    }
+    this.pendingSessionID = sessionID
+  }
 
   async resolveWebviewView(webviewView: vscode.WebviewView): Promise<void> {
     logger.appendLine("resolveWebviewView called - initializing or reinitializing webview")
@@ -217,6 +227,8 @@ export class ActivityBarProvider implements vscode.WebviewViewProvider {
             this.controller = undefined
             return
           }
+
+          if (this.pendingSessionID) this.openSession(this.pendingSessionID)
 
           // Prefer routing commands to this view when visible
           if (webviewView.visible) {

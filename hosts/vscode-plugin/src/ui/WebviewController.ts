@@ -8,6 +8,7 @@ import { PathInserter } from "../utils/PathInserter"
 import { getUpdateService, logger } from "../globals"
 import type { SaveImageResult } from "./IdeBridgeServer"
 import { bridgeServer } from "./IdeBridgeServer"
+import { showSystemNotification } from "./systemNotification"
 
 /**
  * Shared webview controller to manage common UI lifecycle and messaging
@@ -54,6 +55,11 @@ export class WebviewController {
 
   getCommunicationBridge(): CommunicationBridge | undefined {
     return this.communicationBridge
+  }
+
+  openSession(sessionID: string): boolean {
+    if (!this.bridgeSessionId) return false
+    return bridgeServer.openSession(this.bridgeSessionId, sessionID)
   }
 
   /**
@@ -157,6 +163,20 @@ export class WebviewController {
               () => undefined,
               (e) => logger.appendLine(`restartHost reload failed: ${e}`),
             )
+          },
+          showSystemNotification: async (sessionID, title, body) => {
+            if (!this.bridgeSessionId) {
+              logger.appendLine(`system notification skipped without bridge session: ${sessionID}`)
+              return
+            }
+
+            await showSystemNotification({
+              bridgeSessionID: this.bridgeSessionId,
+              sessionID,
+              title,
+              body,
+              extensionUri: this.context.extensionUri,
+            })
           },
           storageGet: this.storageGet,
           storageSet: this.storageSet,

@@ -12,6 +12,7 @@ export interface SessionHandlers {
   clipboardWrite: (text: string) => Promise<void>
   saveImage?: (url: string, filename: string) => Promise<SaveImageResult | void>
   restartHost?: () => Promise<void>
+  showSystemNotification?: (sessionID: string, title: string, body: string) => Promise<void>
   storageGet?: (scope: StorageScope, keys: string[]) => Promise<Record<string, string | undefined>>
   storageSet?: (scope: StorageScope, key: string, value: string) => Promise<void>
   getExtensionVersion?: () => Promise<Record<string, unknown>>
@@ -37,6 +38,7 @@ interface Session {
   handlers: SessionHandlers
   metadata: SessionMetadata
   sseClients: Set<http.ServerResponse>
+  pendingOpenSessionID?: string
 }
 
 interface Message {
@@ -151,6 +153,21 @@ class IdeBridgeServer {
     this.broadcastSSE(session, JSON.stringify(msg))
   }
 
+  openSession(bridgeSessionID: string, sessionID: string): boolean {
+    const session = this.sessions.get(bridgeSessionID)
+    if (!session) return false
+    if (session.sseClients.size === 0) {
+      session.pendingOpenSessionID = sessionID
+      return true
+    }
+
+    this.send(bridgeSessionID, {
+      type: "openSession",
+      payload: { sessionID },
+    })
+    return true
+  }
+
   private handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     // CORS headers
     res.setHeader("Access-Control-Allow-Origin", "*")
@@ -215,6 +232,11 @@ class IdeBridgeServer {
       if (session.metadata.restartMode) data.restartMode = session.metadata.restartMode
       const connected = JSON.stringify(data)
       res.write(`event: connected\ndata: ${connected}\n\n`)
+      if (session.pendingOpenSessionID) {
+        const sessionID = session.pendingOpenSessionID
+        session.pendingOpenSessionID = undefined
+        this.openSession(session.id, sessionID)
+      }
     } catch (e) {
       logger.appendLine(`IdeBridgeServer failed to init SSE: ${e}`)
     }
@@ -312,6 +334,30 @@ class IdeBridgeServer {
               logger.appendLine(`[${session.id}] restartHost failed after reply: ${e}`)
             })
           }, 0)
+          break
+
+        case "showSystemNotification":
+          if (!session.handlers.showSystemNotification) {
+            this.replyError(session, id, "showSystemNotification not supported")
+            break
+          }
+          if (
+            typeof payload?.sessionID !== "string" ||
+            typeof payload?.title !== "string" ||
+            typeof payload?.body !== "string" ||
+            !payload.sessionID.trim() ||
+            !payload.title.trim() ||
+            !payload.body.trim()
+          ) {
+            this.replyError(session, id, "Missing sessionID, title, or body")
+            break
+          }
+          await session.handlers.showSystemNotification(
+            payload.sessionID.trim(),
+            payload.title.trim(),
+            payload.body.trim(),
+          )
+          this.replyOk(session, id)
           break
 
         case "ensureAndOpenFile": {

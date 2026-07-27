@@ -9,6 +9,7 @@ import { logger, setUpdateService } from "./globals"
 import { ReleaseChecker } from "./update/ReleaseChecker"
 import { UpdateInstaller } from "./update/UpdateInstaller"
 import { UpdateService } from "./update/UpdateService"
+import { parseSystemNotificationUri } from "./ui/systemNotification"
 
 function withCacheBuster(url: string, version: string): string {
   if (url.includes("v=")) {
@@ -46,6 +47,7 @@ class OpenCodeExtension {
   private activityBarProvider?: ActivityBarProvider
   private updateService?: UpdateService
   private registration?: vscode.Disposable
+  private uriHandlerRegistration?: vscode.Disposable
   private context?: vscode.ExtensionContext
   private disposed = false
 
@@ -133,6 +135,12 @@ class OpenCodeExtension {
     this.registration = vscode.window.registerWebviewViewProvider("opencode.main", this.activityBarProvider, {
       webviewOptions: { retainContextWhenHidden: true },
     })
+    this.uriHandlerRegistration = vscode.window.registerUriHandler({
+      handleUri: async (uri) => {
+        await this.handleSystemNotificationUri(uri)
+      },
+    })
+    this.context?.subscriptions.push(this.uriHandlerRegistration)
 
     logger.appendLine("Core components initialized")
   }
@@ -355,6 +363,22 @@ class OpenCodeExtension {
     }
   }
 
+  private async handleSystemNotificationUri(uri: vscode.Uri): Promise<void> {
+    const target = parseSystemNotificationUri(uri)
+    if (!target) {
+      return
+    }
+
+    try {
+      await vscode.commands.executeCommand("workbench.view.extension.opencode")
+      if (!bridgeServer.openSession(target.bridgeSessionID, target.sessionID)) {
+        this.activityBarProvider?.openSession(target.sessionID)
+      }
+    } catch (error) {
+      logger.appendLine(`system notification URI handler failed: ${error}`)
+    }
+  }
+
   /**
    * Get the webview manager instance
    * @returns WebviewManager instance or undefined
@@ -411,6 +435,10 @@ class OpenCodeExtension {
     if (this.activityBarProvider) {
       drop("activityBarProvider", () => this.activityBarProvider!.dispose())
       this.activityBarProvider = undefined
+    }
+    if (this.uriHandlerRegistration) {
+      drop("uriHandlerRegistration", () => this.uriHandlerRegistration!.dispose())
+      this.uriHandlerRegistration = undefined
     }
     if (this.registration) {
       drop("registration", () => this.registration!.dispose())

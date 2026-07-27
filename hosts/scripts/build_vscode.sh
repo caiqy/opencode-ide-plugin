@@ -252,9 +252,9 @@ if [ "$MISSING_BINARIES" = true ]; then
 fi
 
 if [ "$BUILD_TYPE" = "production" ]; then
-  eval "$VSCE_CMD package --no-dependencies --allow-missing-repository --out 'opencode-vscode-${TIMESTAMP}.vsix'"
+  eval "$VSCE_CMD package --allow-missing-repository --out 'opencode-vscode-${TIMESTAMP}.vsix'"
 else
-  eval "$VSCE_CMD package --pre-release --no-dependencies --allow-missing-repository --out 'opencode-vscode-dev-${TIMESTAMP}.vsix'"
+  eval "$VSCE_CMD package --pre-release --allow-missing-repository --out 'opencode-vscode-dev-${TIMESTAMP}.vsix'"
 fi
 
 print_status "Build completed successfully!"

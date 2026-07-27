@@ -619,6 +619,98 @@ suite("IdeBridgeServer restartHost", () => {
   })
 })
 
+suite("IdeBridgeServer showSystemNotification", () => {
+  let baseUrl: string
+  let token: string
+  let sessionId: string
+  let notifications: Array<{ sessionID: string; title: string; body: string }>
+
+  setup(async () => {
+    notifications = []
+    const session = await bridgeServer.createSession({
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+      showSystemNotification: async (targetSessionID, title, body) => {
+        notifications.push({ sessionID: targetSessionID, title, body })
+      },
+    } as SessionHandlers & {
+      showSystemNotification: (sessionID: string, title: string, body: string) => Promise<void>
+    })
+    baseUrl = session.baseUrl
+    token = session.token
+    sessionId = session.sessionId
+  })
+
+  teardown(() => bridgeServer.removeSession(sessionId))
+
+  test("showSystemNotification 路由统一 sessionID、标题和正文", async () => {
+    const res = await requestReply(baseUrl, token, {
+      type: "showSystemNotification",
+      payload: {
+        sessionID: "  session-123  ",
+        title: "  Agent finished  ",
+        body: "  Finished working.  ",
+      },
+    })
+
+    assert.strictEqual(res.ok, true)
+    assert.deepStrictEqual(notifications, [
+      { sessionID: "session-123", title: "Agent finished", body: "Finished working." },
+    ])
+  })
+
+  ;[
+    {
+      name: "缺少 sessionID",
+      payload: { title: "Agent finished", body: "Finished working." },
+    },
+    {
+      name: "空白 sessionID",
+      payload: { sessionID: " ", title: "Agent finished", body: "Finished working." },
+    },
+    {
+      name: "非字符串 sessionID",
+      payload: { sessionID: 1, title: "Agent finished", body: "Finished working." },
+    },
+    {
+      name: "缺少 title",
+      payload: { sessionID: "session-123", body: "Finished working." },
+    },
+    {
+      name: "空白 title",
+      payload: { sessionID: "session-123", title: " ", body: "Finished working." },
+    },
+    {
+      name: "非字符串 title",
+      payload: { sessionID: "session-123", title: 1, body: "Finished working." },
+    },
+    {
+      name: "缺少 body",
+      payload: { sessionID: "session-123", title: "Agent finished" },
+    },
+    {
+      name: "空白 body",
+      payload: { sessionID: "session-123", title: "Agent finished", body: " " },
+    },
+    {
+      name: "非字符串 body",
+      payload: { sessionID: "session-123", title: "Agent finished", body: 1 },
+    },
+  ].forEach(({ name, payload }) => {
+    test(`showSystemNotification 拒绝${name}`, async () => {
+      const res = await requestReply(baseUrl, token, {
+        type: "showSystemNotification",
+        payload,
+      })
+
+      assert.strictEqual(res.ok, false)
+      assert.deepStrictEqual(notifications, [])
+    })
+  })
+})
+
 suite("IdeBridgeServer update bridge", () => {
   let baseUrl: string
   let token: string
@@ -814,6 +906,51 @@ suite("IdeBridgeServer protocol", () => {
       assert.strictEqual(res.status, 400)
       assert.strictEqual(res.reply.ok, false)
       assert.strictEqual(String(res.reply.error).includes("openFile failed"), true)
+    } finally {
+      bridgeServer.removeSession(session.sessionId)
+    }
+  })
+
+  test("openSession 在 SSE 连接建立后发送暂存的目标会话", async () => {
+    const session = await bridgeServer.createSession({
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+    })
+    const server = bridgeServer as typeof bridgeServer & {
+      openSession?: (bridgeSessionID: string, sessionID: string) => boolean
+    }
+
+    try {
+      assert.ok(server.openSession)
+      assert.strictEqual(server.openSession(session.sessionId, "target-session"), true)
+      const sse = await openSSE(`${session.baseUrl}/events?token=${session.token}`)
+
+      try {
+        sse.res.setEncoding("utf8")
+        const message = await new Promise<{ type?: string; payload?: { sessionID?: string } }>((resolve, reject) => {
+          let buffer = ""
+          const timer = setTimeout(() => reject(new Error("timeout waiting openSession")), TIMEOUT)
+          sse.res.on("data", (chunk: string) => {
+            buffer += chunk
+            for (const event of buffer.split("\n\n")) {
+              const line = event.split("\n").find((item) => item.startsWith("data:"))
+              if (!line) continue
+              const value = JSON.parse(line.slice(5).trim()) as { type?: string; payload?: { sessionID?: string } }
+              if (value.type !== "openSession") continue
+              clearTimeout(timer)
+              resolve(value)
+              return
+            }
+          })
+        })
+
+        assert.strictEqual(message.type, "openSession")
+        assert.deepStrictEqual(message.payload, { sessionID: "target-session" })
+      } finally {
+        sse.req.destroy()
+      }
     } finally {
       bridgeServer.removeSession(session.sessionId)
     }

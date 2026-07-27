@@ -110,6 +110,7 @@ suite("Extension Test Suite", () => {
     const backend = BackendLauncher.prototype.terminate
     const bridge = bridgeServer.stop
     const register = vscode.window.registerWebviewViewProvider
+    const registerUriHandler = vscode.window.registerUriHandler
     const command = vscode.commands.registerCommand
 
     WebviewManager.prototype.dispose = function () {
@@ -127,6 +128,9 @@ suite("Extension Test Suite", () => {
     vscode.window.registerWebviewViewProvider = (() => ({
       dispose() {},
     })) as typeof vscode.window.registerWebviewViewProvider
+    vscode.window.registerUriHandler = (() => ({
+      dispose() {},
+    })) as typeof vscode.window.registerUriHandler
     vscode.commands.registerCommand = (() => ({
       dispose() {},
     })) as typeof vscode.commands.registerCommand
@@ -149,6 +153,7 @@ suite("Extension Test Suite", () => {
       BackendLauncher.prototype.terminate = backend
       bridgeServer.stop = bridge
       vscode.window.registerWebviewViewProvider = register
+      vscode.window.registerUriHandler = registerUriHandler
       vscode.commands.registerCommand = command
       deactivate()
     }
@@ -158,6 +163,7 @@ suite("Extension Test Suite", () => {
     const calls: string[] = []
     const activity = ActivityBarProvider.prototype.dispose
     const register = vscode.window.registerWebviewViewProvider
+    const registerUriHandler = vscode.window.registerUriHandler
     const command = vscode.commands.registerCommand
 
     ActivityBarProvider.prototype.dispose = function () {
@@ -168,6 +174,9 @@ suite("Extension Test Suite", () => {
         calls.push("provider")
       },
     })) as typeof vscode.window.registerWebviewViewProvider
+    vscode.window.registerUriHandler = (() => ({
+      dispose() {},
+    })) as typeof vscode.window.registerUriHandler
     vscode.commands.registerCommand = (() => ({
       dispose() {},
     })) as typeof vscode.commands.registerCommand
@@ -184,6 +193,42 @@ suite("Extension Test Suite", () => {
     } finally {
       ActivityBarProvider.prototype.dispose = activity
       vscode.window.registerWebviewViewProvider = register
+      vscode.window.registerUriHandler = registerUriHandler
+      vscode.commands.registerCommand = command
+      deactivate()
+    }
+  })
+
+  test("extension dispose should release registered URI handler disposable exactly once", async () => {
+    const register = vscode.window.registerWebviewViewProvider
+    const registerUriHandler = vscode.window.registerUriHandler
+    const command = vscode.commands.registerCommand
+    let uriHandlerDisposeCalls = 0
+
+    vscode.window.registerWebviewViewProvider = (() => ({
+      dispose() {},
+    })) as typeof vscode.window.registerWebviewViewProvider
+    vscode.window.registerUriHandler = (() => ({
+      dispose() {
+        uriHandlerDisposeCalls += 1
+      },
+    })) as typeof vscode.window.registerUriHandler
+    vscode.commands.registerCommand = (() => ({
+      dispose() {},
+    })) as typeof vscode.commands.registerCommand
+
+    try {
+      await activate(createContext())
+      const ext = getExtensionInstance()
+
+      assert.ok(ext)
+
+      ext.dispose()
+
+      assert.strictEqual(uriHandlerDisposeCalls, 1)
+    } finally {
+      vscode.window.registerWebviewViewProvider = register
+      vscode.window.registerUriHandler = registerUriHandler
       vscode.commands.registerCommand = command
       deactivate()
     }
@@ -196,6 +241,7 @@ suite("Extension Test Suite", () => {
     const backend = BackendLauncher.prototype.terminate
     const bridge = bridgeServer.stop
     const register = vscode.window.registerWebviewViewProvider
+    const registerUriHandler = vscode.window.registerUriHandler
     const command = vscode.commands.registerCommand
 
     WebviewManager.prototype.dispose = function () {
@@ -214,6 +260,9 @@ suite("Extension Test Suite", () => {
     vscode.window.registerWebviewViewProvider = (() => ({
       dispose() {},
     })) as typeof vscode.window.registerWebviewViewProvider
+    vscode.window.registerUriHandler = (() => ({
+      dispose() {},
+    })) as typeof vscode.window.registerUriHandler
     vscode.commands.registerCommand = (() => ({
       dispose() {},
     })) as typeof vscode.commands.registerCommand
@@ -236,6 +285,7 @@ suite("Extension Test Suite", () => {
       BackendLauncher.prototype.terminate = backend
       bridgeServer.stop = bridge
       vscode.window.registerWebviewViewProvider = register
+      vscode.window.registerUriHandler = registerUriHandler
       vscode.commands.registerCommand = command
       deactivate()
     }
@@ -243,6 +293,7 @@ suite("Extension Test Suite", () => {
 
   test("手动检查更新会访问当前项目的 GitHub latest release API", async () => {
     const register = vscode.window.registerWebviewViewProvider
+    const registerUriHandler = vscode.window.registerUriHandler
     const command = vscode.commands.registerCommand
     const originalFetch = globalThis.fetch
     const urls: string[] = []
@@ -250,6 +301,9 @@ suite("Extension Test Suite", () => {
     vscode.window.registerWebviewViewProvider = (() => ({
       dispose() {},
     })) as typeof vscode.window.registerWebviewViewProvider
+    vscode.window.registerUriHandler = (() => ({
+      dispose() {},
+    })) as typeof vscode.window.registerUriHandler
     vscode.commands.registerCommand = (() => ({
       dispose() {},
     })) as typeof vscode.commands.registerCommand
@@ -288,8 +342,120 @@ suite("Extension Test Suite", () => {
     } finally {
       globalThis.fetch = originalFetch
       vscode.window.registerWebviewViewProvider = register
+      vscode.window.registerUriHandler = registerUriHandler
       vscode.commands.registerCommand = command
       deactivate()
     }
+  })
+
+  test("system notification URI handler 聚焦 OpenCode 并路由 openSession", async () => {
+    const register = vscode.window.registerWebviewViewProvider
+    const registerUriHandler = vscode.window.registerUriHandler
+    const command = vscode.commands.registerCommand
+    const executeCommand = vscode.commands.executeCommand
+    const openSession = bridgeServer.openSession
+    const executed: string[] = []
+    const routed: Array<{ bridgeSessionID: string; sessionID: string }> = []
+    let handler: vscode.UriHandler | undefined
+
+    vscode.window.registerWebviewViewProvider = (() => ({
+      dispose() {},
+    })) as typeof vscode.window.registerWebviewViewProvider
+    vscode.window.registerUriHandler = ((uriHandler: vscode.UriHandler) => {
+      handler = uriHandler
+      return { dispose() {} }
+    }) as typeof vscode.window.registerUriHandler
+    vscode.commands.registerCommand = (() => ({
+      dispose() {},
+    })) as typeof vscode.commands.registerCommand
+    vscode.commands.executeCommand = (async (commandId: string) => {
+      executed.push(commandId)
+      return undefined
+    }) as typeof vscode.commands.executeCommand
+    bridgeServer.openSession = ((bridgeSessionID, sessionID) => {
+      routed.push({ bridgeSessionID, sessionID })
+      return true
+    }) as typeof bridgeServer.openSession
+
+    try {
+      await activate(createContext())
+
+      assert.ok(handler)
+
+      await handler.handleUri(
+        vscode.Uri.parse(
+          "vscode://caiqy.opencode-ui/open-session?bridgeSessionID=bridge-session-1&sessionID=target-session-2",
+        ),
+      )
+
+      assert.deepStrictEqual(executed, ["workbench.view.extension.opencode"])
+      assert.deepStrictEqual(routed, [
+        {
+          bridgeSessionID: "bridge-session-1",
+          sessionID: "target-session-2",
+        },
+      ])
+    } finally {
+      vscode.window.registerWebviewViewProvider = register
+      vscode.window.registerUriHandler = registerUriHandler
+      vscode.commands.registerCommand = command
+      vscode.commands.executeCommand = executeCommand
+      bridgeServer.openSession = openSession
+      deactivate()
+    }
+  })
+
+  test("system notification URI handler 在原 bridge 失效后路由当前 OpenCode view", async () => {
+    const register = vscode.window.registerWebviewViewProvider
+    const registerUriHandler = vscode.window.registerUriHandler
+    const command = vscode.commands.registerCommand
+    const executeCommand = vscode.commands.executeCommand
+    const server = bridgeServer
+    const openSession = server.openSession
+    let handler: vscode.UriHandler | undefined
+    let provider: vscode.WebviewViewProvider | undefined
+    const routed: string[] = []
+
+    vscode.window.registerWebviewViewProvider = ((_viewID, value) => {
+      provider = value
+      return { dispose() {} }
+    }) as typeof vscode.window.registerWebviewViewProvider
+    vscode.window.registerUriHandler = ((uriHandler: vscode.UriHandler) => {
+      handler = uriHandler
+      return { dispose() {} }
+    }) as typeof vscode.window.registerUriHandler
+    vscode.commands.registerCommand = (() => ({ dispose() {} })) as typeof vscode.commands.registerCommand
+    vscode.commands.executeCommand = (async () => undefined) as typeof vscode.commands.executeCommand
+    server.openSession = () => false
+
+    try {
+      await activate(createContext())
+      assert.ok(handler)
+      assert.ok(provider)
+      ;(provider as ActivityBarProvider & { openSession: (sessionID: string) => void }).openSession = (sessionID) => {
+        routed.push(sessionID)
+      }
+
+      await handler.handleUri(
+        vscode.Uri.parse(
+          "vscode://caiqy.opencode-ui/open-session?bridgeSessionID=disposed-bridge&sessionID=target-session-2",
+        ),
+      )
+
+      assert.deepStrictEqual(routed, ["target-session-2"])
+    } finally {
+      vscode.window.registerWebviewViewProvider = register
+      vscode.window.registerUriHandler = registerUriHandler
+      vscode.commands.registerCommand = command
+      vscode.commands.executeCommand = executeCommand
+      server.openSession = openSession
+      deactivate()
+    }
+  })
+
+  test("package activates for system notification URIs", () => {
+    const manifest = require("../../../../package.json") as { activationEvents?: string[] }
+
+    assert.ok(manifest.activationEvents?.includes("onUri"))
   })
 })
