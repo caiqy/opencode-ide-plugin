@@ -308,7 +308,12 @@ export const Terminal = (props: TerminalProps) => {
 
   const scheduleSize = (cols: number, rows: number) => {
     if (disposed) return
-    if (lastSize?.cols === cols && lastSize?.rows === rows) return
+    if (lastSize?.cols === cols && lastSize?.rows === rows) {
+      pendingSize = undefined
+      if (sizeTimer !== undefined) clearTimeout(sizeTimer)
+      sizeTimer = undefined
+      return
+    }
 
     pendingSize = { cols, rows }
 
@@ -333,8 +338,10 @@ export const Terminal = (props: TerminalProps) => {
 
   createEffect(() => {
     const colors = terminalColors()
+    const mode = theme.mode() === "dark" ? "dark" : "light"
     if (!term) return
     setOptionIfSupported(term, "theme", colors)
+    setOptionIfSupported(term, "colorScheme", mode)
   })
 
   createEffect(() => {
@@ -412,6 +419,7 @@ export const Terminal = (props: TerminalProps) => {
       }
       _ghostty = g
       term = t
+      setOptionIfSupported(t, "colorScheme", theme.mode() === "dark" ? "dark" : "light")
       output = terminalWriter((data, done) =>
         t.write(data, () => {
           done?.()
@@ -606,6 +614,7 @@ export const Terminal = (props: TerminalProps) => {
           tries = 0
           local.onConnect?.()
           scheduleSize(t.cols, t.rows)
+          if (t.getMode(2031)) t.write("\x1b[?996n")
         }
 
         const handleMessage = (event: MessageEvent) => {
