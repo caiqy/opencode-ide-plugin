@@ -1,0 +1,22 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 5
+name: webgui-ide-notifications
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: implicit
+approved_contract_hash: 4ca59b74ef160ff0e5bc63b9f958349bad5168326f08d109af2b53ea8b37c85c
+spec_changes:
+  - capability: ide-native-notifications
+    operation: create
+    source: specs/ide-native-notifications/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/f3efc0715e27522530888c292e129e03e05371eb47af57a095cf25b49f59432a.json
+verification_evidence: runtime/evidence/verifications/47a1a19b83142b14c15de6fbad4a6f4dae35f0654d6834aae416aa3e2fb33acf.json
+partial_allowance: null
+archived: true
+created_at: 2026-07-24
+run_id: 532fb60a-fe63-4509-8bc1-0cddfd5f7de9

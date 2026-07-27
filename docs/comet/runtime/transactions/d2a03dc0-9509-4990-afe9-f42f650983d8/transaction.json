@@ -1,0 +1,27 @@
+{
+  "schema": "comet.native.transaction.v2",
+  "id": "d2a03dc0-9509-4990-afe9-f42f650983d8",
+  "kind": "archive",
+  "status": "committed",
+  "change": "webgui-ide-notifications",
+  "createdAt": "2026-07-24T08:30:55.079Z",
+  "preflightHash": "6ae09910b2a14997af4712599c42752077d11223a3e669822c24d6b34b520bff",
+  "operations": [
+    {
+      "id": "spec-1-ide-native-notifications",
+      "type": "write",
+      "target": "specs/ide-native-notifications/spec.md",
+      "staged": "runtime/transactions/d2a03dc0-9509-4990-afe9-f42f650983d8/staged/specs/ide-native-notifications/spec.md",
+      "expectedTargetHash": null,
+      "stagedHash": "bb966d375584b64f8f693d147cc39992f484d715a3d3d9efdb8f66a964c801e5"
+    },
+    {
+      "id": "archive-change",
+      "type": "move",
+      "source": "changes/webgui-ide-notifications",
+      "target": "archive/2026-07-24-webgui-ide-notifications",
+      "expectedSourceHash": "9346fef53d8e6acc5e1d0ca99bd4957cf4f0742bda3aabfa0c2fc9308062e41d",
+      "expectedTargetHash": null
+    }
+  ]
+}

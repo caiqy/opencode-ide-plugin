@@ -1,0 +1,275 @@
+{
+  "schema": "comet.native.implementation-scope.v2",
+  "contractHash": "4ca59b74ef160ff0e5bc63b9f958349bad5168326f08d109af2b53ea8b37c85c",
+  "baselineProjectionRef": "runtime/evidence/snapshots/fec180591b520ad742f05ae1bc8b7b43d5cd8dcdceb9d72faf2bc0f9874ba26c.json",
+  "baselineProjectionHash": "fec180591b520ad742f05ae1bc8b7b43d5cd8dcdceb9d72faf2bc0f9874ba26c",
+  "currentProjectionRef": "runtime/evidence/snapshots/6be0cd5da38913d33112950891a0296e1cbc0589324d6b4ca3de8bf9dc2be0cb.json",
+  "currentProjectionHash": "6be0cd5da38913d33112950891a0296e1cbc0589324d6b4ca3de8bf9dc2be0cb",
+  "complete": true,
+  "declaredArtifacts": [
+    {
+      "path": "hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt",
+      "kind": "file"
+    },
+    {
+      "path": "hosts/jetbrains-plugin/src/main/resources/META-INF/plugin.xml",
+      "kind": "file"
+    },
+    {
+      "path": "hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt",
+      "kind": "file"
+    },
+    {
+      "path": "hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts",
+      "kind": "file"
+    },
+    {
+      "path": "hosts/vscode-plugin/src/ui/IdeBridgeServer.ts",
+      "kind": "file"
+    },
+    {
+      "path": "hosts/vscode-plugin/src/ui/WebviewController.ts",
+      "kind": "file"
+    },
+    {
+      "path": "packages/opencode/webgui/src/lib/ideNotifications.test.ts",
+      "kind": "file"
+    },
+    {
+      "path": "packages/opencode/webgui/src/lib/ideNotifications.ts",
+      "kind": "file"
+    },
+    {
+      "path": "packages/opencode/webgui/src/state/MessagesContext.questions.test.tsx",
+      "kind": "file"
+    },
+    {
+      "path": "packages/opencode/webgui/src/state/MessagesContext.reasoning.test.tsx",
+      "kind": "file"
+    },
+    {
+      "path": "packages/opencode/webgui/src/state/MessagesContext.task-result.test.tsx",
+      "kind": "file"
+    },
+    {
+      "path": "packages/opencode/webgui/src/state/MessagesContext.tsx",
+      "kind": "file"
+    }
+  ],
+  "changes": [
+    {
+      "path": "hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt",
+      "kind": "modified",
+      "before": {
+        "hash": "9033be8ce3877b47481218f4c54622c04f79a2a787030d52e31297b66379d0dd",
+        "size": 31997
+      },
+      "after": {
+        "hash": "4eba9e025e44e1370bf884d2487cd009a0fb7110edfb1cf63649fb988da2b1d9",
+        "size": 33131
+      },
+      "attributedTo": [
+        {
+          "path": "hosts/jetbrains-plugin/src/main/kotlin/paviko/opencode/ui/IdeBridge.kt",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "hosts/jetbrains-plugin/src/main/resources/META-INF/plugin.xml",
+      "kind": "modified",
+      "before": {
+        "hash": "d6894c78b46ebd409cadad3da67f3c1bcdaebac72bb69dca7ec381ebb24c384d",
+        "size": 2589
+      },
+      "after": {
+        "hash": "21eeacdaee5e620713e2c7f27ce1dabc88e241d5eff13cd052ca9658f819ca69",
+        "size": 2685
+      },
+      "attributedTo": [
+        {
+          "path": "hosts/jetbrains-plugin/src/main/resources/META-INF/plugin.xml",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt",
+      "kind": "modified",
+      "before": {
+        "hash": "0fc8bf87d21143215499791327126484acc1857fc26d8f761726beedb9cce800",
+        "size": 4178
+      },
+      "after": {
+        "hash": "51a45b6e47a2dcbdb43d833c133f54f85568e3243a40c5416b565dcb53f0a2ff",
+        "size": 5067
+      },
+      "attributedTo": [
+        {
+          "path": "hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "0894df0fb45c780cfa5ced70d60cce928b0b03914a4cd6219371cc7e80dc0c87",
+        "size": 26123
+      },
+      "after": {
+        "hash": "e6744ae9388591b348c91fff4774dfe41ebcb09c021f5c0f76cd65e14397dde9",
+        "size": 27469
+      },
+      "attributedTo": [
+        {
+          "path": "hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "hosts/vscode-plugin/src/ui/IdeBridgeServer.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "858d094599e4b99ada7b3504edd732e276a62bb71f31700ea4d29d52542dbc13",
+        "size": 16217
+      },
+      "after": {
+        "hash": "6d6dbdc841f782f4c5631f86817e3e5cd1430cffbb1e2dc8de1c382a201e0e09",
+        "size": 16901
+      },
+      "attributedTo": [
+        {
+          "path": "hosts/vscode-plugin/src/ui/IdeBridgeServer.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "hosts/vscode-plugin/src/ui/WebviewController.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "1595fb343e44fa069e16d34be7c4ce341850bbdc8e1ef051c3b1c0f98e0a7488",
+        "size": 19654
+      },
+      "after": {
+        "hash": "923f80fc74f8dadcfc0fbebbf11b8aa901626ae3658a48792bbefe373033a7ff",
+        "size": 19796
+      },
+      "attributedTo": [
+        {
+          "path": "hosts/vscode-plugin/src/ui/WebviewController.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/webgui/src/lib/ideNotifications.test.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "814685ac7e7dd84de578085c99295f52ef05d45eefa6804571bb06d72cc1c828",
+        "size": 2022
+      },
+      "attributedTo": [
+        {
+          "path": "packages/opencode/webgui/src/lib/ideNotifications.test.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/webgui/src/lib/ideNotifications.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "27e87028822e88defd6f3b41dddd2f598101da7ead63e405caca90e7d0f1b6f9",
+        "size": 975
+      },
+      "attributedTo": [
+        {
+          "path": "packages/opencode/webgui/src/lib/ideNotifications.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/webgui/src/state/MessagesContext.questions.test.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "762a487428915cfaba62f05e8dc045036aca188a52cd1d43774955d308c0981c",
+        "size": 12018
+      },
+      "after": {
+        "hash": "365fa4055561b457949150c0df4ca28e4edebb376afdf5eafaf50e6598494b91",
+        "size": 13785
+      },
+      "attributedTo": [
+        {
+          "path": "packages/opencode/webgui/src/state/MessagesContext.questions.test.tsx",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/webgui/src/state/MessagesContext.reasoning.test.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "aa6150484e3bed8943a390fa9a131318f42047e700718383c10f35a135bb1258",
+        "size": 4452
+      },
+      "after": {
+        "hash": "cca59588ef8f721fa0855090f86df0774282ff9c7bce816b4963d9ef6b2d2f5f",
+        "size": 4510
+      },
+      "attributedTo": [
+        {
+          "path": "packages/opencode/webgui/src/state/MessagesContext.reasoning.test.tsx",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/webgui/src/state/MessagesContext.task-result.test.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "7b15faf5c5de78f526b4267b519aab1c4df55df32103c8b613e0f7a774bd55cc",
+        "size": 6221
+      },
+      "after": {
+        "hash": "e5712ac0fde7146792020a52f66cc84f47459f8bd01b03158a28014557a3d7d9",
+        "size": 6279
+      },
+      "attributedTo": [
+        {
+          "path": "packages/opencode/webgui/src/state/MessagesContext.task-result.test.tsx",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/webgui/src/state/MessagesContext.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "b4ef942d48b194ba0251da539acc53f1cd85f017d3222921489c9f572a8c844d",
+        "size": 45618
+      },
+      "after": {
+        "hash": "3ad7569b072554a33123cd5ff9dad23962e8b1d9aaf55105d6e34baf3ad730cb",
+        "size": 47198
+      },
+      "attributedTo": [
+        {
+          "path": "packages/opencode/webgui/src/state/MessagesContext.tsx",
+          "kind": "file"
+        }
+      ]
+    }
+  ],
+  "unattributed": [],
+  "unresolvedScopes": [],
+  "noCodeReason": null,
+  "scopeHash": "f3efc0715e27522530888c292e129e03e05371eb47af57a095cf25b49f59432a"
+}

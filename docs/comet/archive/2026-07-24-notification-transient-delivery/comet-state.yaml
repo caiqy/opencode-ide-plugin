@@ -1,0 +1,22 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 5
+name: notification-transient-delivery
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: implicit
+approved_contract_hash: 1164cb192aac15cbe0a09554e2ebbd400d2f6089c369e63c8498ae7ced728785
+spec_changes:
+  - capability: ide-native-notifications
+    operation: replace
+    source: specs/ide-native-notifications/spec.md
+    base_hash: 58303224c7961574844449c1e397e6749d282ece79600be79b80890d380cc3e7
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/a8d2d1a293249500d409cbd2638e1c175660fb66b9ae1c44f6500881b8a379b2.json
+verification_evidence: runtime/evidence/verifications/0a3829eb5ee0617935eacad786f238ff470a1cd2908a6f7cfbb57e003db2271b.json
+partial_allowance: null
+archived: true
+created_at: 2026-07-24
+run_id: afb8c10a-13c0-4f5c-84ac-fb1874262126

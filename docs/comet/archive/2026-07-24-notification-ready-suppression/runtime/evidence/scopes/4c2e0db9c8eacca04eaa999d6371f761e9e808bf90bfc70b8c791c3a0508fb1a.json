@@ -1,0 +1,83 @@
+{
+  "schema": "comet.native.implementation-scope.v2",
+  "contractHash": "510cc46079075d6500053be537b4e0531f96157737b87c8537839a7a554c67a8",
+  "baselineProjectionRef": "runtime/evidence/snapshots/2dd6299db5778d21fc788861c05fdda1d2f82faf6515f5188d15d4dc5ee6c274.json",
+  "baselineProjectionHash": "2dd6299db5778d21fc788861c05fdda1d2f82faf6515f5188d15d4dc5ee6c274",
+  "currentProjectionRef": "runtime/evidence/snapshots/e37ff457f2d36acd5d0d31f718b5e86bb6a11b005b986b2102528d6bb1dfef8c.json",
+  "currentProjectionHash": "e37ff457f2d36acd5d0d31f718b5e86bb6a11b005b986b2102528d6bb1dfef8c",
+  "complete": true,
+  "declaredArtifacts": [
+    {
+      "path": "packages/opencode/webgui/src/lib/ideNotifications.test.ts",
+      "kind": "file"
+    },
+    {
+      "path": "packages/opencode/webgui/src/lib/ideNotifications.ts",
+      "kind": "file"
+    },
+    {
+      "path": "packages/opencode/webgui/src/state/MessagesContext.questions.test.tsx",
+      "kind": "file"
+    }
+  ],
+  "changes": [
+    {
+      "path": "packages/opencode/webgui/src/lib/ideNotifications.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d724d65ad580bcadb89a6826cc7d881f2cbe74525528ff5784e64e0b5415be83",
+        "size": 2089
+      },
+      "after": {
+        "hash": "475c70d320dbeb2bf722eeaac95b2913fb8bd90825b6e6e4f255f195e94531a5",
+        "size": 2447
+      },
+      "attributedTo": [
+        {
+          "path": "packages/opencode/webgui/src/lib/ideNotifications.test.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/webgui/src/lib/ideNotifications.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d5328dc7cabec64d3a2efaa60e2919071d71ca264e526da3fca298cb2d4e5012",
+        "size": 975
+      },
+      "after": {
+        "hash": "489ef52eb89462fd8309ca5397710bfdc0fddd1ae1de5e335e1b24721f960b7d",
+        "size": 1003
+      },
+      "attributedTo": [
+        {
+          "path": "packages/opencode/webgui/src/lib/ideNotifications.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/webgui/src/state/MessagesContext.questions.test.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "17b276f81797a75ff28f9c866de34dbad29c1bfc67050c2867b221c09597dda8",
+        "size": 15918
+      },
+      "after": {
+        "hash": "04fd33b2d9e97561106499bb12e6c4f6dc7b3dda7c8e744f35080b880c159121",
+        "size": 16662
+      },
+      "attributedTo": [
+        {
+          "path": "packages/opencode/webgui/src/state/MessagesContext.questions.test.tsx",
+          "kind": "file"
+        }
+      ]
+    }
+  ],
+  "unattributed": [],
+  "unresolvedScopes": [],
+  "noCodeReason": null,
+  "scopeHash": "4c2e0db9c8eacca04eaa999d6371f761e9e808bf90bfc70b8c791c3a0508fb1a"
+}

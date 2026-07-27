@@ -1,0 +1,78 @@
+{
+  "schema": "comet.native.verification-evidence.v1",
+  "change": "notification-review-fixes",
+  "sourceRevision": 3,
+  "result": "pass",
+  "freshness": "complete",
+  "contractHash": "a8bc8348a12d9f5c708751cae1b960794c8858e2b48f9a8bd0d63e79dba23f9b",
+  "acceptanceCriteriaHash": "414e0ec42e1e910b803e0cce73b73772b633555acddcd0d865a84300191837fd",
+  "implementationScopeRef": "runtime/evidence/scopes/c82b5eee91f5c4d8c89feb71703f307bc2b9bf2f2ec1ffa75c3c05942c3aa611.json",
+  "implementationScopeHash": "c82b5eee91f5c4d8c89feb71703f307bc2b9bf2f2ec1ffa75c3c05942c3aa611",
+  "reportRef": "verification.md",
+  "reportHash": "ec5f7c4f8cbe5802bfa55fc228893994c02fa6940b301728edf6a444a32bf184",
+  "acceptanceTrace": {
+    "schema": "comet.native.acceptance-trace.v1",
+    "nativeRootRef": "docs/comet",
+    "criteriaHash": "414e0ec42e1e910b803e0cce73b73772b633555acddcd0d865a84300191837fd",
+    "total": 5,
+    "evidenced": 5,
+    "skipped": 0,
+    "entries": [
+      {
+        "acceptanceId": "acceptance-48529bae48a651a3e5641393252f6d0969f866c01c31802b46b6ab3713749308",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "hosts/vscode-plugin/src/test/suite/ideBridgeServer.test.ts",
+          "hosts/vscode-plugin/src/ui/IdeBridgeServer.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-78e7641b2c011bf835174fa5aea51bdd583a57d9a340364a04bd0a2befc05107",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "packages/opencode/webgui/src/state/MessagesContext.questions.test.tsx",
+          "packages/opencode/webgui/src/state/MessagesContext.tsx"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-9aa5b1649a9355923900afd3799dc0cb826ce4950285465afc5a70715f4e134c",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "packages/opencode/webgui/src/state/MessagesContext.questions.test.tsx",
+          "packages/opencode/webgui/src/state/MessagesContext.tsx"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-d3f9409b9ed68700fba6d7c0572ef1927cf38fd61a82d7709f719a2762e9db02",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "hosts/jetbrains-plugin/src/unitTest/kotlin/paviko/opencode/ui/IdeBridgeRestartHostTest.kt"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-e870f8475871b9b6dbf170f8374196b489f1f6708f4d484b45fc97d1f2874601",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "packages/opencode/webgui/src/lib/ideNotifications.test.ts",
+          "packages/opencode/webgui/src/lib/ideNotifications.ts"
+        ],
+        "skippedReason": null
+      }
+    ],
+    "traceHash": "7d1d1501467f0b97c49d1111c3dcdeebd9c91a0b13ff20b3deac49d18da4a438"
+  },
+  "partialAllowanceRef": null,
+  "partialAllowanceHash": null,
+  "receiptRef": null,
+  "createdAt": "2026-07-24T09:14:18.711Z",
+  "envelopeHash": "c3371229c6bb01fbc0d4561f50c0e752374ea329d2fceee785cb95f05d694e84"
+}

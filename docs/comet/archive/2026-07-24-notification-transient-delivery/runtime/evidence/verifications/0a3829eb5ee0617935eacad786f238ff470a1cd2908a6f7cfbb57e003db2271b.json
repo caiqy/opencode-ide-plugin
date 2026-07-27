@@ -1,0 +1,80 @@
+{
+  "schema": "comet.native.verification-evidence.v1",
+  "change": "notification-transient-delivery",
+  "sourceRevision": 3,
+  "result": "pass",
+  "freshness": "complete",
+  "contractHash": "1164cb192aac15cbe0a09554e2ebbd400d2f6089c369e63c8498ae7ced728785",
+  "acceptanceCriteriaHash": "51835ce5386266ec41afdbb197e7a123b10c521d9dd1b32e82ca35c7d6fdc514",
+  "implementationScopeRef": "runtime/evidence/scopes/a8d2d1a293249500d409cbd2638e1c175660fb66b9ae1c44f6500881b8a379b2.json",
+  "implementationScopeHash": "a8d2d1a293249500d409cbd2638e1c175660fb66b9ae1c44f6500881b8a379b2",
+  "reportRef": "verification.md",
+  "reportHash": "24366c693836f5d1feb662af2e917d6defb054c01eb2ae8de4884eb4453970de",
+  "acceptanceTrace": {
+    "schema": "comet.native.acceptance-trace.v1",
+    "nativeRootRef": "docs/comet",
+    "criteriaHash": "51835ce5386266ec41afdbb197e7a123b10c521d9dd1b32e82ca35c7d6fdc514",
+    "total": 5,
+    "evidenced": 5,
+    "skipped": 0,
+    "entries": [
+      {
+        "acceptanceId": "acceptance-0c5320623c7072c8d24226a127cabaf580ffe203135b6e1a3af699ec39023758",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "packages/opencode/webgui/src/lib/ideBridge.test.ts",
+          "packages/opencode/webgui/src/lib/ideBridge.ts",
+          "packages/opencode/webgui/src/lib/ideNotifications.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-30fdcfbfe220b3d3e9d0d1d653de2b1cf5047bb0f2411af8e6e2567bae7f4133",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "packages/opencode/webgui/src/lib/ideBridge.test.ts",
+          "packages/opencode/webgui/src/lib/ideBridge.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-99c0b81a4f00672651337fb083ca1c7e99f6fa50301008ef28d135ed856fa8f4",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "packages/opencode/webgui/src/lib/ideBridge.test.ts",
+          "packages/opencode/webgui/src/lib/ideBridge.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-a644a7a049339d2d4f31e549a8aae405024b946b8ca070c89bc2201bb13cf1d7",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "packages/opencode/webgui/src/lib/ideBridge.test.ts",
+          "packages/opencode/webgui/src/lib/ideBridge.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-f39e6b07150c5aa9376b802655eceaadc4e21883b951abe104d2896288da31fc",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "packages/opencode/webgui/src/lib/ideBridge.ts",
+          "packages/opencode/webgui/src/lib/ideNotifications.test.ts"
+        ],
+        "skippedReason": null
+      }
+    ],
+    "traceHash": "92becf51ae56a323971edb678d97682cb920f5d4f34bd107e480c6224fab52f9"
+  },
+  "partialAllowanceRef": null,
+  "partialAllowanceHash": null,
+  "receiptRef": null,
+  "createdAt": "2026-07-24T10:31:49.269Z",
+  "envelopeHash": "0a3829eb5ee0617935eacad786f238ff470a1cd2908a6f7cfbb57e003db2271b"
+}

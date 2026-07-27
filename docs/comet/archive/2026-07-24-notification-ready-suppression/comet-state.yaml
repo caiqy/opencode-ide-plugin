@@ -1,0 +1,22 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 5
+name: notification-ready-suppression
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: implicit
+approved_contract_hash: 510cc46079075d6500053be537b4e0531f96157737b87c8537839a7a554c67a8
+spec_changes:
+  - capability: ide-native-notifications
+    operation: replace
+    source: specs/ide-native-notifications/spec.md
+    base_hash: 55d79b8d246e3a6a5f1e75ec5696cca0c328e7977a72febcc496eb81a92e4eb0
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/4c2e0db9c8eacca04eaa999d6371f761e9e808bf90bfc70b8c791c3a0508fb1a.json
+verification_evidence: runtime/evidence/verifications/c8bc2947ab138489be4e8c3427c36f26090606f9b5cc8ec83569ec17c1d53476.json
+partial_allowance: null
+archived: true
+created_at: 2026-07-24
+run_id: e3f265b5-3353-4b18-a547-f87ff48283bc
