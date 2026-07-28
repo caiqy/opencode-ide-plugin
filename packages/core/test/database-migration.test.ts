@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { $ } from "bun"
+import fs from "fs/promises"
 import { fileURLToPath } from "url"
+import { tmpdir as osTmpdir } from "os"
 import path from "path"
 import { SqliteClient } from "@effect/sql-sqlite-bun"
 import { EffectDrizzleSqlite } from "@opencode-ai/effect-drizzle-sqlite"
@@ -38,6 +40,21 @@ const run = <A, E>(effect: Effect.Effect<A, E, SqlClientService>) =>
 const makeDb = EffectDrizzleSqlite.makeWithDefaults()
 
 describe("DatabaseMigration", () => {
+  test("releases migration statements when the database scope closes", async () => {
+    const directory = await fs.mkdtemp(path.join(osTmpdir(), "opencode-migration-close-"))
+    const filename = path.join(directory, "embedded.sqlite")
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const db = (yield* Database.Service).db
+        expect(yield* db.get(sql`SELECT ${1} AS value`)).toEqual({ value: 1 })
+        expect(yield* db.get(sql`SELECT ${2} AS value`)).toEqual({ value: 2 })
+      }).pipe(Effect.provide(Database.layerFromPath(filename)), Effect.scoped),
+    )
+
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
   test("serializes concurrent embedded initialization for one database path", async () => {
     await using tmp = await tmpdir()
     const filename = path.join(tmp.path, "embedded.sqlite")

@@ -47,6 +47,17 @@ interface SqliteConnection extends Connection {
 const make = (options: Config) =>
   Effect.gen(function* () {
     const native = (yield* Sqlite.Native) as Database
+    // ponytail: scoped cache avoids Bun's leaky eviction and finalizes before the native dependency closes.
+    // Add an LRU only if query diversity becomes measurable.
+    const statements = new Map<string, ReturnType<Database["prepare"]>>()
+    yield* Effect.addFinalizer(() => Effect.sync(() => statements.forEach((statement) => statement.finalize())))
+    const prepare = (query: string) => {
+      const cached = statements.get(query)
+      if (cached) return cached
+      const statement = native.prepare(query)
+      statements.set(query, statement)
+      return statement
+    }
 
     const compiler = Statement.makeCompilerSqlite(options.transformQueryNames)
     const transformRows = options.transformResultNames
@@ -55,7 +66,7 @@ const make = (options: Config) =>
 
     const run = (query: string, params: ReadonlyArray<unknown> = []) =>
       Effect.withFiber<Array<Record<string, unknown>>, SqlError>((fiber) => {
-        const statement = native.query(query)
+        const statement = prepare(query)
         // @ts-ignore bun-types missing safeIntegers method, fixed in https://github.com/oven-sh/bun/pull/26627
         statement.safeIntegers(Context.get(fiber.context, Client.SafeIntegers))
         try {
@@ -71,7 +82,7 @@ const make = (options: Config) =>
 
     const runValues = (query: string, params: ReadonlyArray<unknown> = []) =>
       Effect.withFiber<Array<unknown[]>, SqlError>((fiber) => {
-        const statement = native.query(query)
+        const statement = prepare(query)
         // @ts-ignore bun-types missing safeIntegers method, fixed in https://github.com/oven-sh/bun/pull/26627
         statement.safeIntegers(Context.get(fiber.context, Client.SafeIntegers))
         try {
@@ -160,7 +171,7 @@ const nativeLayer = (config: Config) =>
         readwrite: config.readwrite ?? true,
         create: config.create ?? true,
       })
-      yield* Effect.addFinalizer(() => Effect.sync(() => native.close()))
+      yield* Effect.addFinalizer(() => Effect.sync(() => native.close(true)))
       if (config.disableWAL !== true) native.run("PRAGMA journal_mode = WAL;")
       return native
     }),
