@@ -31,7 +31,7 @@ describe("tui sync", () => {
       kv.set("session_directory_filter_enabled", false)
       await sync.session.refresh()
 
-      expect(session.at(-1)?.searchParams.get("scope")).toBeNull()
+      expect(session.at(-1)?.searchParams.get("scope")).toBe("project")
       expect(session.at(-1)?.searchParams.get("path")).toBeNull()
       expect(session.at(-1)?.searchParams.get("roots")).toBeNull()
     } finally {
