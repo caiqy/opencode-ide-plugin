@@ -52,8 +52,8 @@ The current-start import prerequisite was restored only in that detached worktre
 | core | `MoveSession > moves within a checkout without transferring existing changes` | 5 second timeout | no matching current failure | unresolved |
 | core | `MoveSession > moves nested session changes without cleaning unrelated files` | 5 second timeout | 5 second timeout with different setup error | unresolved |
 | core | `project.test.ts` unhandled signature | `ApplyChangesError: Destination is not a Git repository` | `CaptureChangesError` from `git diff --binary HEAD -- packages` | unresolved |
-| core | `RepositoryCache > replaces a stale cache directory before cloning` | pass | 5 second timeout | downstream-owned |
-| core | `RepositoryCache > serializes concurrent materialization for the same checkout` | pass | 5 second timeout | downstream-owned |
+| core | `RepositoryCache > replaces a stale cache directory before cloning` | initial pass; final rerun timed out at 5 seconds | 5 second timeout | upstream-reproduced |
+| core | `RepositoryCache > serializes concurrent materialization for the same checkout` | final rerun timed out at 5 seconds | 5 second timeout | upstream-reproduced |
 | core | `RepositoryCache > replaces an existing checkout whose origin does not match` | 5 second timeout; clone could not be opened | 5 second timeout; `git clone` child-process error | unresolved |
 | core | `RepositoryCache > keeps branch checkouts isolated from branchless refreshes` | 5 second timeout | 5 second timeout plus expected `cached`, received `cloned` | unresolved |
 | core | `RepositoryCache > does not mistake an enclosing repository for the cache checkout` | 5 second timeout; clone could not be opened | 5 second timeout; clone could not be opened after differing setup | unresolved |
@@ -75,7 +75,7 @@ The current-start import prerequisite was restored only in that detached worktre
 | TUI home abbreviation | `~/project` expected, `~\project` received | same signature | upstream-known | none |
 | TUI `scope=project` stale expectation | pass | expected null, received `project` | downstream-owned | Task 5 test-only correction. |
 | Core `which` single-result semantics | pass | expected `.CMD`, received `.cmd` | downstream-owned | Task 6 preserves `whichAll`. |
-| Core child-process signatures | per-signature results above | per-signature results above | mixed upstream-known/unresolved/downstream-owned | Task 10 is open only for `RepositoryCache > replaces a stale cache directory before cloning` and `RepositoryCache > serializes concurrent materialization for the same checkout`; all other unresolved Core gates remain closed pending same-filter A/B evidence. |
+| Core child-process signatures | per-signature results above | per-signature results above | upstream-known or upstream-reproduced | Task 10 closed without code changes after the retained upstream and current-start single-file reruns both timed out on the two original RepositoryCache candidates. |
 | Core Snapshot legacy revert | same named 5 second timeout | same named 5 second timeout | upstream-known | none |
 | sdk-next embedded cleanup | first named test passes; three distinct `SQLITE_CANTOPEN` signatures fail | first named test has `EBUSY`; remaining three have no result after termination | mixed downstream-owned/unresolved | Task 7 is open only for the first EBUSY signature. |
 | Provider historical model fixture | focused upstream command passes | `serves provider catalog models without applying config whitelist` fails because `claude-sonnet-4-20250514` is absent | downstream-owned | Task 4 fixture correction. |
@@ -86,3 +86,78 @@ The current-start import prerequisite was restored only in that detached worktre
 ## Retained Worktrees And Process State
 
 The stale prunable `silent-orchid` entry was removed with ordinary `git worktree prune`; worktree listing now contains only primary plus the retained detached upstream/current-start worktrees. Unresolved signatures remain, so neither A/B worktree was removed. Final process query found no matching Bun or Node test processes. No primary production, test, generated, Comet, plan, or design file was modified; the ignored current-start artifact was not committed.
+
+## Final Recovery Verification
+
+Final primary commit before this report update: `53c5e76d07346b8eb33fc4d399d7e0ce2ac875b8`.
+
+### Deterministic Focused Checks
+
+| Owner | Result |
+|---|---|
+| Client promise contract | exit 0, 7 pass |
+| TUI session sync | exit 0, 2 pass |
+| Core `which` | exit 0, 7 pass |
+| opencode HttpApi config | exit 0, 6 pass |
+| WebGUI visibility sync | exit 0, 14 pass |
+| HttpApi coverage | exit 0, pass=216/fail=0/skip=0/missing=0/extra=0 |
+| HttpApi auth | exit 0, pass=216/fail=0/skip=0/missing=0/extra=0 |
+| HttpApi effect | exit 0, pass=216/fail=0/skip=0/missing=0/extra=0; the unchanged command completed in one process with its original 30 second scenario timeout |
+| Session foreground state | exit 0, 2 pass |
+| Raw-chunk selection plus provider error classification | exit 0, 20 pass |
+| Session Runner state machine | exit 0, 25 pass |
+| Session prompt owner file | exit 0, 42 pass/14 skip |
+
+The first final effect invocation exceeded a 10 minute tool wait after completing earlier scenarios. The same unchanged command was then allowed a 30 minute outer wait and completed all 216 scenarios. No scenario timeout, retry, or production behavior changed.
+
+### Package Suites And Typechecks
+
+| Package | Default test result | Typecheck |
+|---|---|---|
+| client | exit 0, 16 pass | exit 0 |
+| tui | exit 1, 190 pass/1 skip/1 fail; only the upstream-known Windows home-separator signature | exit 0 |
+| core | exit 1, 1075 pass/7 skip/12 fail/8 errors; all 12 failures are the A/B-recorded Git, MoveSession, RepositoryCache, and Snapshot signatures | exit 0 |
+| opencode | exit 1, 3517 pass/58 skip/1 todo/9 fail/1 error | exit 0 |
+| sdk-next | exit 1, 2 pass/3 fail; the three failures are the retained upstream `SQLITE_CANTOPEN` signatures and the embedded router/handler owner passes without `EBUSY` | exit 0 |
+
+The nine opencode package failures occur only under the 56 minute aggregate suite. Their owners were isolated without changing timeouts: file HttpApi passed its Task 8 focused gate; SDK passed 18/18; persisted-directory and equivalent-Windows-directory session filters passed; project-copy passed 1/1; prompt passed 42 with 14 skips; `tool.glob` and `tool.skill` each passed 2/2. The remaining mutation-route timeout was traced to the `{ git: true }` fixture's `git commit --allow-empty` before the test body or any HTTP request; it varied across fresh current-start processes. These are aggregate Windows Git/ripgrep resource signatures, not evidence of a handler regression. The strict package-level green or upstream-known-only criterion therefore remains partially unmet even though every downstream owner check is green.
+
+### Conditional Tasks
+
+- Task 7 executed and committed deterministic Bun SQLite statement finalization plus the Protocol/Server MCP boundary correction.
+- Task 8 skipped because the current file-search owner already passed.
+- Task 9 skipped because isolated upstream/current-start effect scenarios completed every trace phase; previous full-command terminations were aggregate runtime, not blocked finalizers.
+- Task 10 skipped because both original RepositoryCache candidates reproduced in the retained upstream and current-start file runs.
+- Final package verification exposed stale downstream-only test contracts. With explicit approval, commit `53c5e76d07` prewarms the foreground test instance and removes one AI SDK contract plus three prompt integration tests whose behavior remains covered by provider-error and Runner owner tests. It changes no production behavior.
+
+### Boundary Audit
+
+- No matching Bun, Node, or Git test process remained after verification.
+- `git diff --check 253389db631ad45627e133c7318b5e65a06479a8..HEAD` and working-tree `git diff --check` passed.
+- Committed and working generated Client diffs are empty.
+- The working package workaround scanner found no additions. The committed scanner found only the intentional one-second `callAuthProbe` AbortController boundary in `httpapi-exercise/backend.ts`; it cancels an indefinitely streaming auth probe and waits for the canceled request before disposing the handler. It is not a retry or timeout increase.
+- Staged paths are empty. Working status contains only the initial user-owned dirty paths and the uncommitted plan/design documents.
+- The retained upstream and current-start worktrees were clean and removed without `--force`. Git deregistered the upstream worktree before Windows reported `Filename too long`; its remaining, already-deregistered directory was removed through the verified `\\?\` long-path target. Both paths were confirmed absent.
+
+### Final Changed Files
+
+```text
+docs/superpowers/reports/2026-07-27-upstream-test-baseline.md
+packages/client/test/contract-identity.test.ts
+packages/client/test/promise.test.ts
+packages/core/src/database/sqlite.bun.ts
+packages/core/src/util/which.ts
+packages/core/test/database-migration.test.ts
+packages/core/test/util/which.test.ts
+packages/opencode/test/server/httpapi-config.test.ts
+packages/opencode/test/server/httpapi-exercise/backend.ts
+packages/opencode/test/server/httpapi-exercise/index.ts
+packages/opencode/test/server/httpapi-session-foreground-state.test.ts
+packages/opencode/test/session/llm.include-raw-chunks.test.ts
+packages/opencode/test/session/prompt.test.ts
+packages/protocol/src/api.ts
+packages/server/src/api.ts
+packages/tui/test/cli/cmd/tui/notifications.test.ts
+packages/tui/test/cli/cmd/tui/sync.test.tsx
+packages/tui/test/cli/tui/use-event.test.tsx
+```
