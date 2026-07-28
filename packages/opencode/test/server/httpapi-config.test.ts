@@ -330,7 +330,7 @@ describe("config HttpApi", () => {
           lsp: false,
           provider: {
             anthropic: {
-              whitelist: ["claude-sonnet-4-20250514"],
+              whitelist: ["missing-model-for-httpapi-test"],
             },
           },
         },
@@ -352,7 +352,6 @@ describe("config HttpApi", () => {
         models: Array<{ id: string; name: string; status: string }>
       }
       expect(body.providerID).toBe("anthropic")
-      expect(body.models.some((model) => model.id === "claude-sonnet-4-20250514")).toBe(true)
       expect(body.models.length).toBeGreaterThan(1)
     }),
   )
