@@ -59,7 +59,7 @@ The current-start import prerequisite was restored only in that detached worktre
 | core | `RepositoryCache > does not mistake an enclosing repository for the cache checkout` | 5 second timeout; clone could not be opened | 5 second timeout; clone could not be opened after differing setup | unresolved |
 | core | `Snapshot > captures and restores Location-scoped changes` | 5 second timeout; capture returned undefined | 5 second timeout; `write-tree` child-process error | unresolved |
 | core | `Snapshot > isolates snapshot indexes by canonical Git worktree` | 5 second timeout; capture returned undefined | 5 second timeout; capture returned undefined after `write-tree` error | unresolved |
-| core | `Snapshot > checks out a legacy revert snapshot without removing unrelated files` | 5 second timeout | 5 second timeout | unresolved |
+| core | `Snapshot > checks out a legacy revert snapshot without removing unrelated files` | 5 second timeout | same named 5 second timeout | upstream-known |
 | core | `util.which > uses PATHEXT on windows` | pass | expected `.CMD`, received `.cmd` | downstream-owned |
 | sdk-next | `embedded client uses the real router and handlers` cleanup | pass | `EBUSY` removing the embedded directory, then outer termination | downstream-owned |
 | sdk-next | `Location-owned runner events reach the ready global client` | `SQLITE_CANTOPEN` | no result after outer termination | unresolved |
@@ -75,7 +75,8 @@ The current-start import prerequisite was restored only in that detached worktre
 | TUI home abbreviation | `~/project` expected, `~\project` received | same signature | upstream-known | none |
 | TUI `scope=project` stale expectation | pass | expected null, received `project` | downstream-owned | Task 5 test-only correction. |
 | Core `which` single-result semantics | pass | expected `.CMD`, received `.cmd` | downstream-owned | Task 6 preserves `whichAll`. |
-| Core child-process signatures | per-signature results above | per-signature results above | mixed unresolved/downstream-owned | Retain worktrees; isolate each unresolved signature before Task 10. |
+| Core child-process signatures | per-signature results above | per-signature results above | mixed upstream-known/unresolved/downstream-owned | Task 10 is open only for `RepositoryCache > replaces a stale cache directory before cloning` and `RepositoryCache > serializes concurrent materialization for the same checkout`; all other unresolved Core gates remain closed pending same-filter A/B evidence. |
+| Core Snapshot legacy revert | same named 5 second timeout | same named 5 second timeout | upstream-known | none |
 | sdk-next embedded cleanup | first named test passes; three distinct `SQLITE_CANTOPEN` signatures fail | first named test has `EBUSY`; remaining three have no result after termination | mixed downstream-owned/unresolved | Task 7 is open only for the first EBUSY signature. |
 | Provider historical model fixture | focused upstream command passes | `serves provider catalog models without applying config whitelist` fails because `claude-sonnet-4-20250514` is absent | downstream-owned | Task 4 fixture correction. |
 | File search readiness | focused upstream command passes | focused current command passes after prerequisite restore | conditional gate closed | none |
