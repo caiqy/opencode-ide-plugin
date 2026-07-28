@@ -10,6 +10,7 @@ function branchEvent(branch: string, workspace?: string): GlobalEvent {
     project: "proj_test",
     workspace,
     payload: {
+      id: `evt_vcs_${branch}`,
       type: "vcs.branch.updated",
       properties: { branch },
     },

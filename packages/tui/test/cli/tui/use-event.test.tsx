@@ -30,6 +30,7 @@ function event(payload: Event, input: { directory: string; project?: string; wor
 
 function vcs(branch: string): Event {
   return {
+    id: `evt_vcs_${branch}`,
     type: "vcs.branch.updated",
     properties: {
       branch,
@@ -39,6 +40,7 @@ function vcs(branch: string): Event {
 
 function update(version: string): Event {
   return {
+    id: `evt_update_${version}`,
     type: "installation.update-available",
     properties: {
       version,

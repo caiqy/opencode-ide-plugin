@@ -101,8 +101,8 @@ describe("internal notifications TUI plugin", () => {
   test("notifies for question and permission requests with blurred notifications and always-on sounds", async () => {
     const harness = await setup()
 
-    harness.emit({ type: "question.asked", properties: question("question-1") })
-    harness.emit({ type: "permission.asked", properties: permission("permission-1") })
+    harness.emit({ id: "event-1", type: "question.asked", properties: question("question-1") })
+    harness.emit({ id: "event-2", type: "permission.asked", properties: permission("permission-1") })
 
     expect(harness.notifications).toEqual([questionNotification, permissionNotification])
   })
@@ -110,21 +110,23 @@ describe("internal notifications TUI plugin", () => {
   test("dedupes pending questions and permissions until they are resolved", async () => {
     const harness = await setup()
 
-    harness.emit({ type: "question.asked", properties: question("question-1") })
-    harness.emit({ type: "question.asked", properties: question("question-1") })
+    harness.emit({ id: "event-1", type: "question.asked", properties: question("question-1") })
+    harness.emit({ id: "event-2", type: "question.asked", properties: question("question-1") })
     harness.emit({
+      id: "event-3",
       type: "question.replied",
       properties: { sessionID: "session", requestID: "question-1", answers: [] },
     })
-    harness.emit({ type: "question.asked", properties: question("question-1") })
+    harness.emit({ id: "event-4", type: "question.asked", properties: question("question-1") })
 
-    harness.emit({ type: "permission.asked", properties: permission("permission-1") })
-    harness.emit({ type: "permission.asked", properties: permission("permission-1") })
+    harness.emit({ id: "event-5", type: "permission.asked", properties: permission("permission-1") })
+    harness.emit({ id: "event-6", type: "permission.asked", properties: permission("permission-1") })
     harness.emit({
+      id: "event-7",
       type: "permission.replied",
       properties: { sessionID: "session", requestID: "permission-1", reply: "once" },
     })
-    harness.emit({ type: "permission.asked", properties: permission("permission-1") })
+    harness.emit({ id: "event-8", type: "permission.asked", properties: permission("permission-1") })
 
     expect(harness.notifications).toEqual([
       questionNotification,
@@ -138,14 +140,17 @@ describe("internal notifications TUI plugin", () => {
     const harness = await setup()
 
     harness.emit({
+      id: "event-1",
       type: "session.status",
       properties: { sessionID: "session", status: { type: "idle" } },
     })
     harness.emit({
+      id: "event-2",
       type: "session.status",
       properties: { sessionID: "session", status: { type: "busy" } },
     })
     harness.emit({
+      id: "event-3",
       type: "session.status",
       properties: { sessionID: "session", status: { type: "idle" } },
     })
@@ -163,12 +168,14 @@ describe("internal notifications TUI plugin", () => {
   test("uses sound-only notifications and subagent_done sound for subagent sessions", async () => {
     const harness = await setup()
 
-    harness.emit({ type: "question.asked", properties: question("question-1", "subagent") })
+    harness.emit({ id: "event-1", type: "question.asked", properties: question("question-1", "subagent") })
     harness.emit({
+      id: "event-2",
       type: "session.status",
       properties: { sessionID: "subagent", status: { type: "busy" } },
     })
     harness.emit({
+      id: "event-3",
       type: "session.status",
       properties: { sessionID: "subagent", status: { type: "idle" } },
     })
@@ -193,14 +200,17 @@ describe("internal notifications TUI plugin", () => {
     const harness = await setup()
 
     harness.emit({
+      id: "event-1",
       type: "session.status",
       properties: { sessionID: "session", status: { type: "busy" } },
     })
     harness.emit({
+      id: "event-2",
       type: "session.error",
       properties: { sessionID: "session", error: { name: "UnknownError", data: { message: "boom" } } },
     })
     harness.emit({
+      id: "event-3",
       type: "session.status",
       properties: { sessionID: "session", status: { type: "idle" } },
     })
@@ -219,18 +229,22 @@ describe("internal notifications TUI plugin", () => {
     const harness = await setup()
 
     harness.emit({
+      id: "event-1",
       type: "session.status",
       properties: { sessionID: "abort", status: { type: "busy" } },
     })
     harness.emit({
+      id: "event-2",
       type: "session.error",
       properties: { sessionID: "abort", error: { name: "MessageAbortedError", data: { message: "Aborted" } } },
     })
     harness.emit({
+      id: "event-3",
       type: "session.status",
       properties: { sessionID: "timeout", status: { type: "busy" } },
     })
     harness.emit({
+      id: "event-4",
       type: "session.error",
       properties: { sessionID: "timeout", error: { name: "UnknownError", data: { message: "SSE read timed out" } } },
     })
