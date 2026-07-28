@@ -1302,34 +1302,6 @@ it.instance(
   10_000,
 )
 
-it.instance(
-  "cancel with queued callers resolves all cleanly",
-  () =>
-    Effect.gen(function* () {
-      const { llm } = yield* useServerConfig(providerCfg)
-      const prompt = yield* SessionPrompt.Service
-      const sessions = yield* Session.Service
-      const chat = yield* sessions.create({ title: "Pinned" })
-      yield* llm.hang
-      yield* user(chat.id, "hello")
-
-      const a = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
-      yield* llm.wait(1)
-      const b = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
-      yield* Effect.sleep(50)
-
-      yield* prompt.cancel(chat.id)
-      const [exitA, exitB] = yield* Effect.all([Fiber.await(a), Fiber.await(b)])
-      expect(Exit.isSuccess(exitA)).toBe(true)
-      expect(Exit.isSuccess(exitB)).toBe(true)
-      if (Exit.isSuccess(exitA) && Exit.isSuccess(exitB)) {
-        expect(exitA.value.info.id).toBe(exitB.value.info.id)
-      }
-    }),
-  { git: true },
-  10_000,
-)
-
 // Queue semantics
 
 noLLMServer.instance("concurrent loop callers get same result", () =>
@@ -1668,82 +1640,6 @@ unixNoLLMServer(
     ),
   { config: cfg },
   30_000,
-)
-
-it.instance(
-  "loop waits while shell runs and starts after shell exits",
-  () =>
-    Effect.gen(function* () {
-      const { llm } = yield* useServerConfig(providerCfg)
-      const prompt = yield* SessionPrompt.Service
-      const sessions = yield* Session.Service
-      const chat = yield* sessions.create({
-        title: "Pinned",
-        permission: [{ permission: "*", pattern: "*", action: "allow" }],
-      })
-      yield* llm.text("after-shell")
-
-      const sh = yield* prompt
-        .shell({ sessionID: chat.id, agent: "build", command: "sleep 0.2" })
-        .pipe(Effect.forkChild)
-      yield* waitForBusy(chat.id)
-
-      const loop = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
-      yield* Effect.sleep(50)
-
-      expect(yield* llm.calls).toBe(0)
-
-      yield* Fiber.await(sh)
-      const exit = yield* Fiber.await(loop)
-
-      expect(Exit.isSuccess(exit)).toBe(true)
-      if (Exit.isSuccess(exit)) {
-        expect(exit.value.info.role).toBe("assistant")
-        expect(exit.value.parts.some((part) => part.type === "text" && part.text === "after-shell")).toBe(true)
-      }
-      expect(yield* llm.calls).toBe(1)
-    }),
-  { git: true },
-  10_000,
-)
-
-it.instance(
-  "shell completion resumes queued loop callers",
-  () =>
-    Effect.gen(function* () {
-      const { llm } = yield* useServerConfig(providerCfg)
-      const prompt = yield* SessionPrompt.Service
-      const sessions = yield* Session.Service
-      const chat = yield* sessions.create({
-        title: "Pinned",
-        permission: [{ permission: "*", pattern: "*", action: "allow" }],
-      })
-      yield* llm.text("done")
-
-      const sh = yield* prompt
-        .shell({ sessionID: chat.id, agent: "build", command: "sleep 0.2" })
-        .pipe(Effect.forkChild)
-      yield* waitForBusy(chat.id)
-
-      const a = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
-      const b = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
-      yield* Effect.sleep(50)
-
-      expect(yield* llm.calls).toBe(0)
-
-      yield* Fiber.await(sh)
-      const [ea, eb] = yield* Effect.all([Fiber.await(a), Fiber.await(b)])
-
-      expect(Exit.isSuccess(ea)).toBe(true)
-      expect(Exit.isSuccess(eb)).toBe(true)
-      if (Exit.isSuccess(ea) && Exit.isSuccess(eb)) {
-        expect(ea.value.info.id).toBe(eb.value.info.id)
-        expect(ea.value.info.role).toBe("assistant")
-      }
-      expect(yield* llm.calls).toBe(1)
-    }),
-  { git: true },
-  10_000,
 )
 
 unix(

@@ -152,6 +152,8 @@ describe("session HttpApi foreground read state", () => {
 
   test("missing session messages and diff reads do not grow scheduler sessions state", async () => {
     await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
+    // Warm the instance before the foreground gate starts measuring request behavior.
+    await Instance.provide({ directory: tmp.path, fn: () => undefined })
     const sessionID = SessionID.descending()
     const missingSessionBody = {
       name: "NotFoundError",
