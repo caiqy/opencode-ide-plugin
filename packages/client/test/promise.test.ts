@@ -18,12 +18,14 @@ test("exposes every standard HTTP API group", () => {
     "files",
     "commands",
     "skills",
+    "mcp",
     "events",
     "ptys",
     "questions",
     "references",
     "projectCopies",
   ])
+  expect(Object.keys(client.mcp)).toEqual(["setEnabled", "setToolEnabled"])
   expect(Object.keys(client.messages)).toEqual(["list"])
   expect(Object.keys(client.integrations)).toEqual([
     "list",
