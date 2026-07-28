@@ -150,3 +150,13 @@ export const makeDefaultApi = <
   readonly locationMiddleware: Context.Key<LocationId, LocationService>
   readonly sessionLocationMiddleware: Context.Key<SessionLocationId, SessionLocationService>
 }) => makeApiFromGroup(EventGroup, options.locationMiddleware, options.sessionLocationMiddleware)
+
+export const makeDefaultApiWithoutMcp = <
+  LocationId extends HttpApiMiddleware.AnyId,
+  LocationService,
+  SessionLocationId extends HttpApiMiddleware.AnyId,
+  SessionLocationService,
+>(options: {
+  readonly locationMiddleware: Context.Key<LocationId, LocationService>
+  readonly sessionLocationMiddleware: Context.Key<SessionLocationId, SessionLocationService>
+}) => makeApiWithoutMcpFromGroup(EventGroup, options.locationMiddleware, options.sessionLocationMiddleware)

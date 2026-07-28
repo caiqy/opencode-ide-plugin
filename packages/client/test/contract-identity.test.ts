@@ -30,18 +30,22 @@ test("Core and Server reuse the authoritative Schema and Protocol values", () =>
   expect(CoreSessionMessage.Message).toBe(SessionMessage.Message)
   expect(CorePrompt).toBe(Prompt)
   expect(Api.groups["server.session"].identifier).toBe("server.session")
-  expect(Object.keys(ClientApi.groups)).toEqual(Object.keys(Api.groups))
+  expect(ClientApi.groups["server.mcp"].identifier).toBe("server.mcp")
+  expect("server.mcp" in Api.groups).toBe(false)
+  expect(Object.keys(ClientApi.groups).filter((group) => group !== "server.mcp")).toEqual(Object.keys(Api.groups))
   expect(Session.ID.create()).toStartWith("ses_")
   expect(Project.ID.global).toBe("global")
   expect(Provider.ID.anthropic).toBe("anthropic")
   expect(Workspace.ID.create()).toStartWith("wrk_")
 })
 
-test("client and Server contracts generate identically", () => {
+test("client and Server contracts differ only by the client MCP group", () => {
   const server = compile(Api, { groupNames, endpointNames, omitEndpoints })
   const client = compile(ClientApi, { groupNames, endpointNames, omitEndpoints })
 
-  expect(emitPromise(client)).toEqual(emitPromise(server))
+  expect(emitPromise({ groups: client.groups.filter((group) => group.sourceIdentifier !== "server.mcp") })).toEqual(
+    emitPromise(server),
+  )
 })
 
 test("shared DTO schemas construct and decode plain objects", () => {
