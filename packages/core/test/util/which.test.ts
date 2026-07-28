@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
-import { which } from "@opencode-ai/core/util/which"
+import { which, whichAll } from "@opencode-ai/core/util/which"
 import { tmpdir } from "../fixture/tmpdir"
 
 async function cmd(dir: string, name: string, exec = true) {
@@ -62,6 +62,26 @@ describe("util.which", () => {
     await cmd(b, "dupe")
 
     same(which("dupe", env([a, b].join(path.delimiter))), first)
+  })
+
+  test("returns all PATH matches in order without Windows case duplicates", async () => {
+    await using tmp = await tmpdir()
+    const a = path.join(tmp.path, "a")
+    const b = path.join(tmp.path, "b")
+    const duplicate = process.platform === "win32" ? a.toUpperCase() : a
+    await fs.mkdir(a)
+    await fs.mkdir(b)
+    const first = await cmd(a, "all")
+    const second = await cmd(b, "all")
+
+    const result = whichAll("all", env([a, duplicate, b].join(path.delimiter)))
+    const expected = [first, second]
+    if (process.platform === "win32") {
+      expect(result.map((item) => item.toLowerCase())).toEqual(expected.map((item) => item.toLowerCase()))
+      return
+    }
+
+    expect(result).toEqual(expected)
   })
 
   test("returns null for non-executable file on unix", async () => {
