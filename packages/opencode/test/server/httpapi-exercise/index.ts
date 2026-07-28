@@ -1280,6 +1280,21 @@ const scenarios: Scenario[] = [
     .seeded((ctx) => ctx.session({ title: "Status session" }))
     .json(200, object),
   http.protected
+    .put("/session/visibility", "session.visibility")
+    .mutating()
+    .seeded((ctx) => ctx.session({ title: "Visible session" }))
+    .at((ctx) => ({
+      path: "/session/visibility",
+      headers: ctx.headers(),
+      body: { sessionIDs: [ctx.state.id, ctx.state.id] },
+    }))
+    .json(200, (body, ctx) => {
+      object(body)
+      array(body.sessionIDs)
+      check(body.sessionIDs.length === 1, "visible session IDs should be deduplicated")
+      check(body.sessionIDs[0] === ctx.state.id, "response should contain the visible session")
+    }),
+  http.protected
     .post("/session", "session.create")
     .mutating()
     .at((ctx) => ({ path: "/session", headers: ctx.headers(), body: { title: "Created session" } }))
