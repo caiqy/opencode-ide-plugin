@@ -1,6 +1,7 @@
 import { ConfigProvider, Effect, Layer } from "effect"
 import { HttpRouter } from "effect/unstable/http"
 import { parse } from "./assertions"
+import { exerciseGlobalRoot } from "./environment"
 import { runtime, type Runtime } from "./runtime"
 import type { ActiveScenario, BackendApp, CallResult, CaptureMode, SeededContext } from "./types"
 
@@ -20,23 +21,34 @@ export function call(scenario: ActiveScenario, ctx: SeededContext<unknown>, opti
 export function callAuthProbe(scenario: ActiveScenario, credentials: "missing" | "valid" = "missing") {
   return Effect.promise(async () => {
     const controller = new AbortController()
-    return Promise.race([
-      Promise.resolve(
-        app(await runtime(), { auth: { password: "secret" } }).request(
-          toAuthProbeRequest(scenario, credentials, controller.signal),
-        ),
-      ).then((response) => capture(response, scenario.capture)),
-      Bun.sleep(1_000).then(() => {
-        controller.abort("auth probe timed out")
-        return {
-          status: 0,
-          contentType: "",
-          text: "auth probe timed out",
-          body: undefined,
-          timedOut: true,
-        }
-      }),
-    ])
+    const request = Promise.resolve(
+      app(await runtime(), { auth: { password: "secret" } }).request(
+        toAuthProbeRequest(scenario, credentials, controller.signal),
+      ),
+    ).then((response) => capture(response, scenario.capture))
+    const timeout = Promise.withResolvers<void>()
+    const timer = setTimeout(() => timeout.resolve(), 1_000)
+    try {
+      const result = await Promise.race([
+        request,
+        timeout.promise.then(() => {
+          controller.abort("auth probe timed out")
+          return {
+            status: 0,
+            contentType: "",
+            text: "auth probe timed out",
+            body: undefined,
+            timedOut: true,
+          }
+        }),
+      ])
+      if (!result.timedOut) return result
+      // Wait for the canceled request before disposing the cached Web handler.
+      await request.catch(() => undefined)
+      return result
+    } finally {
+      clearTimeout(timer)
+    }
   })
 }
 
@@ -86,13 +98,18 @@ function toRequest(scenario: ActiveScenario, ctx: SeededContext<unknown>) {
   })
 }
 
-function toAuthProbeRequest(scenario: ActiveScenario, credentials: "missing" | "valid", signal: AbortSignal) {
+function toAuthProbeRequest(
+  scenario: ActiveScenario,
+  credentials: "missing" | "valid",
+  signal: AbortSignal,
+) {
   const spec = scenario.authProbe ?? {
     path: authProbePath(scenario.path),
     body: scenario.method === "GET" ? undefined : {},
   }
   const headers = {
     ...(spec.body === undefined ? {} : { "content-type": "application/json" }),
+    "x-opencode-directory": exerciseGlobalRoot,
     ...spec.headers,
     ...(credentials === "valid" ? { authorization: basic("opencode", "secret") } : {}),
   }
