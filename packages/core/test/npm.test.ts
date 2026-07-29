@@ -58,6 +58,29 @@ describe("Npm.add", () => {
 })
 
 describe("Npm.install", () => {
+  test("skips dependency resolution in dry-run mode", async () => {
+    await using tmp = await tmpdir()
+    let calls = 0
+    using server = Bun.serve({
+      port: 0,
+      fetch() {
+        calls++
+        return Response.json({ error: "not found" }, { status: 404 })
+      },
+    })
+
+    await writePackage(tmp.path, {
+      name: "fixture",
+      dependencies: { "@opencode-test/dry-run-missing": "1.0.0" },
+    })
+    await Bun.write(path.join(tmp.path, ".npmrc"), `dry-run=true\nregistry=${server.url.origin}/\n`)
+
+    await Npm.install(tmp.path)
+
+    expect(calls).toBe(0)
+    await expect(fs.stat(path.join(tmp.path, "node_modules"))).rejects.toThrow()
+  })
+
   test("respects omit from project .npmrc", async () => {
     await using tmp = await tmpdir()
 
