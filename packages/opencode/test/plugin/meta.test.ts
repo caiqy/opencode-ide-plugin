@@ -124,8 +124,9 @@ describe("plugin.meta", () => {
       ),
     )
 
-    expect(out.map((item) => item.code)).toEqual(Array.from({ length: n }, () => 0))
-    expect(out.map((item) => item.stderr.toString()).filter(Boolean)).toEqual([])
+    expect(out.map((item) => ({ code: item.code, stderr: item.stderr.toString() }))).toEqual(
+      Array.from({ length: n }, () => ({ code: 0, stderr: "" })),
+    )
 
     const all = await PluginMeta.list()
     const hit = Object.values(all).find((item) => item.spec === spec)
