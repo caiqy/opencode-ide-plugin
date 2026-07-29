@@ -1,6 +1,10 @@
 import { describe, expect } from "bun:test"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { Database } from "@opencode-ai/core/database/database"
+import { ProjectV2 } from "@opencode-ai/core/project"
+import { ProjectTable } from "@opencode-ai/core/project/sql"
+import { AbsolutePath } from "@opencode-ai/core/schema"
 import { SessionProjector } from "@opencode-ai/core/session/projector"
 import fs from "fs/promises"
 import path from "path"
@@ -12,16 +16,57 @@ import { SessionRevert } from "../../src/session/revert"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Snapshot } from "../../src/snapshot"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
-import { provideTmpdirInstance } from "../fixture/fixture"
+import { provideTmpdirInstance, testInstanceStoreLayer, tmpdirScoped } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
+import { InstanceStore } from "../../src/project/instance-store"
 
-const it = testEffect(
-  LayerNode.compile(
-    LayerNode.group([Session.node, SessionRevert.node, Snapshot.node, SessionProjector.node, CrossSpawnSpawner.node]),
-  ),
-)
+const root = LayerNode.group([
+  Session.node,
+  SessionRevert.node,
+  Snapshot.node,
+  SessionProjector.node,
+  CrossSpawnSpawner.node,
+  Database.node,
+])
+const it = testEffect(LayerNode.compile(root))
+
+function provideSnapshotInstance<A, E, R>(self: (directory: string) => Effect.Effect<A, E, R>) {
+  return Effect.gen(function* () {
+    const directory = yield* tmpdirScoped()
+    const id = ProjectV2.ID.make(path.basename(directory))
+    const database = yield* Database.Service
+    yield* database.db
+      .insert(ProjectTable)
+      .values({
+        id,
+        worktree: AbsolutePath.make(directory),
+        vcs: "git",
+        time_created: 0,
+        time_updated: 0,
+        sandboxes: [],
+      })
+      .run()
+      .pipe(Effect.orDie)
+    const store = yield* InstanceStore.Service
+    return yield* store.provide(
+      {
+        directory,
+        worktree: directory,
+        // ponytail: Snapshot needs Git placement, not a second repository.
+        project: {
+          id,
+          worktree: directory,
+          vcs: "git",
+          time: { created: 0, updated: 0 },
+          sandboxes: [],
+        },
+      },
+      self(directory),
+    )
+  }).pipe(Effect.provide(testInstanceStoreLayer))
+}
 
 const user = Effect.fn("test.user")(function* (sessionID: SessionID, agent = "default") {
   const session = yield* Session.Service
@@ -453,186 +498,183 @@ describe("revert + compact workflow", () => {
 
   it.live(
     "restore messages in sequential order",
-    provideTmpdirInstance(
-      (dir) =>
-        Effect.gen(function* () {
-          const session = yield* Session.Service
-          const revert = yield* SessionRevert.Service
-          const snapshot = yield* Snapshot.Service
+    provideSnapshotInstance((dir) =>
+      Effect.gen(function* () {
+        const session = yield* Session.Service
+        const revert = yield* SessionRevert.Service
+        const snapshot = yield* Snapshot.Service
 
-          yield* write(path.join(dir, "a.txt"), "a0")
-          yield* write(path.join(dir, "b.txt"), "b0")
-          yield* write(path.join(dir, "c.txt"), "c0")
+        yield* write(path.join(dir, "a.txt"), "a0")
+        yield* write(path.join(dir, "b.txt"), "b0")
+        yield* write(path.join(dir, "c.txt"), "c0")
 
-          const info = yield* session.create({})
-          const sid = info.id
+        const info = yield* session.create({})
+        const sid = info.id
+        const initial = yield* snapshot.track()
+        if (!initial) throw new Error("expected snapshot")
 
-          const turn = Effect.fn("test.turn")(function* (file: string, next: string) {
-            const u = yield* user(sid)
-            yield* text(sid, u.id, `${file}:${next}`)
-            const a = yield* assistant(sid, u.id, dir)
-            const before = yield* snapshot.track()
-            if (!before) throw new Error("expected snapshot")
-            yield* write(path.join(dir, file), next)
-            const after = yield* snapshot.track()
-            if (!after) throw new Error("expected snapshot")
-            const patch = yield* snapshot.patch(before)
-            yield* session.updatePart({
-              id: PartID.ascending(),
-              messageID: a.id,
-              sessionID: sid,
-              type: "step-start",
-              snapshot: before,
-            })
-            yield* session.updatePart({
-              id: PartID.ascending(),
-              messageID: a.id,
-              sessionID: sid,
-              type: "step-finish",
-              reason: "stop",
-              snapshot: after,
-              cost: 0,
-              tokens,
-            })
-            yield* session.updatePart({
-              id: PartID.ascending(),
-              messageID: a.id,
-              sessionID: sid,
-              type: "patch",
-              hash: patch.hash,
-              files: patch.files,
-            })
-            return u.id
-          })
-
-          const first = yield* turn("a.txt", "a1")
-          const second = yield* turn("b.txt", "b2")
-          const third = yield* turn("c.txt", "c3")
-
-          yield* revert.revert({
+        const turn = Effect.fn("test.turn")(function* (file: string, next: string, before: string) {
+          const u = yield* user(sid)
+          yield* text(sid, u.id, `${file}:${next}`)
+          const a = yield* assistant(sid, u.id, dir)
+          const target = path.join(dir, file)
+          yield* write(target, next)
+          const after = yield* snapshot.track()
+          if (!after) throw new Error("expected snapshot")
+          yield* session.updatePart({
+            id: PartID.ascending(),
+            messageID: a.id,
             sessionID: sid,
-            messageID: first,
+            type: "step-start",
+            snapshot: before,
           })
-          expect((yield* session.get(sid)).revert?.messageID).toBe(first)
-          expect(yield* read(path.join(dir, "a.txt"))).toBe("a0")
-          expect(yield* read(path.join(dir, "b.txt"))).toBe("b0")
-          expect(yield* read(path.join(dir, "c.txt"))).toBe("c0")
-
-          yield* revert.revert({
+          yield* session.updatePart({
+            id: PartID.ascending(),
+            messageID: a.id,
             sessionID: sid,
-            messageID: second,
+            type: "step-finish",
+            reason: "stop",
+            snapshot: after,
+            cost: 0,
+            tokens,
           })
-          expect((yield* session.get(sid)).revert?.messageID).toBe(second)
-          expect(yield* read(path.join(dir, "a.txt"))).toBe("a1")
-          expect(yield* read(path.join(dir, "b.txt"))).toBe("b0")
-          expect(yield* read(path.join(dir, "c.txt"))).toBe("c0")
-
-          yield* revert.revert({
+          yield* session.updatePart({
+            id: PartID.ascending(),
+            messageID: a.id,
             sessionID: sid,
-            messageID: third,
+            type: "patch",
+            // ponytail: the changed file is known; Snapshot.patch has dedicated coverage.
+            hash: before,
+            files: [target.replaceAll("\\", "/")],
           })
-          expect((yield* session.get(sid)).revert?.messageID).toBe(third)
-          expect(yield* read(path.join(dir, "a.txt"))).toBe("a1")
-          expect(yield* read(path.join(dir, "b.txt"))).toBe("b2")
-          expect(yield* read(path.join(dir, "c.txt"))).toBe("c0")
+          return { id: u.id, snapshot: after }
+        })
 
-          yield* revert.unrevert({
-            sessionID: sid,
-          })
-          expect((yield* session.get(sid)).revert).toBeUndefined()
-          expect(yield* read(path.join(dir, "a.txt"))).toBe("a1")
-          expect(yield* read(path.join(dir, "b.txt"))).toBe("b2")
-          expect(yield* read(path.join(dir, "c.txt"))).toBe("c3")
-        }),
-      { git: true },
+        const first = yield* turn("a.txt", "a1", initial)
+        const second = yield* turn("b.txt", "b2", first.snapshot)
+        const third = yield* turn("c.txt", "c3", second.snapshot)
+
+        yield* revert.revert({
+          sessionID: sid,
+          messageID: first.id,
+        })
+        expect((yield* session.get(sid)).revert?.messageID).toBe(first.id)
+        expect(yield* read(path.join(dir, "a.txt"))).toBe("a0")
+        expect(yield* read(path.join(dir, "b.txt"))).toBe("b0")
+        expect(yield* read(path.join(dir, "c.txt"))).toBe("c0")
+
+        yield* revert.revert({
+          sessionID: sid,
+          messageID: second.id,
+        })
+        expect((yield* session.get(sid)).revert?.messageID).toBe(second.id)
+        expect(yield* read(path.join(dir, "a.txt"))).toBe("a1")
+        expect(yield* read(path.join(dir, "b.txt"))).toBe("b0")
+        expect(yield* read(path.join(dir, "c.txt"))).toBe("c0")
+
+        yield* revert.revert({
+          sessionID: sid,
+          messageID: third.id,
+        })
+        expect((yield* session.get(sid)).revert?.messageID).toBe(third.id)
+        expect(yield* read(path.join(dir, "a.txt"))).toBe("a1")
+        expect(yield* read(path.join(dir, "b.txt"))).toBe("b2")
+        expect(yield* read(path.join(dir, "c.txt"))).toBe("c0")
+
+        yield* revert.unrevert({
+          sessionID: sid,
+        })
+        expect((yield* session.get(sid)).revert).toBeUndefined()
+        expect(yield* read(path.join(dir, "a.txt"))).toBe("a1")
+        expect(yield* read(path.join(dir, "b.txt"))).toBe("b2")
+        expect(yield* read(path.join(dir, "c.txt"))).toBe("c3")
+      }),
     ),
   )
 
   it.live(
     "restore same file in sequential order",
-    provideTmpdirInstance(
-      (dir) =>
-        Effect.gen(function* () {
-          const session = yield* Session.Service
-          const revert = yield* SessionRevert.Service
-          const snapshot = yield* Snapshot.Service
+    provideSnapshotInstance((dir) =>
+      Effect.gen(function* () {
+        const session = yield* Session.Service
+        const revert = yield* SessionRevert.Service
+        const snapshot = yield* Snapshot.Service
 
-          yield* write(path.join(dir, "a.txt"), "a0")
+        yield* write(path.join(dir, "a.txt"), "a0")
 
-          const info = yield* session.create({})
-          const sid = info.id
+        const info = yield* session.create({})
+        const sid = info.id
+        const initial = yield* snapshot.track()
+        if (!initial) throw new Error("expected snapshot")
 
-          const turn = Effect.fn("test.turnSame")(function* (next: string) {
-            const u = yield* user(sid)
-            yield* text(sid, u.id, `a.txt:${next}`)
-            const a = yield* assistant(sid, u.id, dir)
-            const before = yield* snapshot.track()
-            if (!before) throw new Error("expected snapshot")
-            yield* write(path.join(dir, "a.txt"), next)
-            const after = yield* snapshot.track()
-            if (!after) throw new Error("expected snapshot")
-            const patch = yield* snapshot.patch(before)
-            yield* session.updatePart({
-              id: PartID.ascending(),
-              messageID: a.id,
-              sessionID: sid,
-              type: "step-start",
-              snapshot: before,
-            })
-            yield* session.updatePart({
-              id: PartID.ascending(),
-              messageID: a.id,
-              sessionID: sid,
-              type: "step-finish",
-              reason: "stop",
-              snapshot: after,
-              cost: 0,
-              tokens,
-            })
-            yield* session.updatePart({
-              id: PartID.ascending(),
-              messageID: a.id,
-              sessionID: sid,
-              type: "patch",
-              hash: patch.hash,
-              files: patch.files,
-            })
-            return u.id
-          })
-
-          const first = yield* turn("a1")
-          const second = yield* turn("a2")
-          const third = yield* turn("a3")
-          expect(yield* read(path.join(dir, "a.txt"))).toBe("a3")
-
-          yield* revert.revert({
+        const turn = Effect.fn("test.turnSame")(function* (next: string, before: string) {
+          const u = yield* user(sid)
+          yield* text(sid, u.id, `a.txt:${next}`)
+          const a = yield* assistant(sid, u.id, dir)
+          const target = path.join(dir, "a.txt")
+          yield* write(target, next)
+          const after = yield* snapshot.track()
+          if (!after) throw new Error("expected snapshot")
+          yield* session.updatePart({
+            id: PartID.ascending(),
+            messageID: a.id,
             sessionID: sid,
-            messageID: first,
+            type: "step-start",
+            snapshot: before,
           })
-          expect((yield* session.get(sid)).revert?.messageID).toBe(first)
-          expect(yield* read(path.join(dir, "a.txt"))).toBe("a0")
-
-          yield* revert.revert({
+          yield* session.updatePart({
+            id: PartID.ascending(),
+            messageID: a.id,
             sessionID: sid,
-            messageID: second,
+            type: "step-finish",
+            reason: "stop",
+            snapshot: after,
+            cost: 0,
+            tokens,
           })
-          expect((yield* session.get(sid)).revert?.messageID).toBe(second)
-          expect(yield* read(path.join(dir, "a.txt"))).toBe("a1")
-
-          yield* revert.revert({
+          yield* session.updatePart({
+            id: PartID.ascending(),
+            messageID: a.id,
             sessionID: sid,
-            messageID: third,
+            type: "patch",
+            hash: before,
+            files: [target.replaceAll("\\", "/")],
           })
-          expect((yield* session.get(sid)).revert?.messageID).toBe(third)
-          expect(yield* read(path.join(dir, "a.txt"))).toBe("a2")
+          return { id: u.id, snapshot: after }
+        })
 
-          yield* revert.unrevert({
-            sessionID: sid,
-          })
-          expect((yield* session.get(sid)).revert).toBeUndefined()
-          expect(yield* read(path.join(dir, "a.txt"))).toBe("a3")
-        }),
-      { git: true },
+        const first = yield* turn("a1", initial)
+        const second = yield* turn("a2", first.snapshot)
+        const third = yield* turn("a3", second.snapshot)
+        expect(yield* read(path.join(dir, "a.txt"))).toBe("a3")
+
+        yield* revert.revert({
+          sessionID: sid,
+          messageID: first.id,
+        })
+        expect((yield* session.get(sid)).revert?.messageID).toBe(first.id)
+        expect(yield* read(path.join(dir, "a.txt"))).toBe("a0")
+
+        yield* revert.revert({
+          sessionID: sid,
+          messageID: second.id,
+        })
+        expect((yield* session.get(sid)).revert?.messageID).toBe(second.id)
+        expect(yield* read(path.join(dir, "a.txt"))).toBe("a1")
+
+        yield* revert.revert({
+          sessionID: sid,
+          messageID: third.id,
+        })
+        expect((yield* session.get(sid)).revert?.messageID).toBe(third.id)
+        expect(yield* read(path.join(dir, "a.txt"))).toBe("a2")
+
+        yield* revert.unrevert({
+          sessionID: sid,
+        })
+        expect((yield* session.get(sid)).revert).toBeUndefined()
+        expect(yield* read(path.join(dir, "a.txt"))).toBe("a3")
+      }),
     ),
   )
 })

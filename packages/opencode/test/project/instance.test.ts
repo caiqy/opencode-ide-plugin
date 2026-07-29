@@ -1,6 +1,7 @@
 import { describe, expect } from "bun:test"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
+import { ProjectV2 } from "@opencode-ai/core/project"
 import { Deferred, Effect, Fiber, Layer } from "effect"
 import { InstanceRef } from "../../src/effect/instance-ref"
 import { registerDisposer } from "../../src/effect/instance-registry"
@@ -168,12 +169,22 @@ describe("InstanceStore", () => {
 
   it.live("provideAll runs effect with each active InstanceRef", () =>
     Effect.gen(function* () {
-      const dir1 = yield* tmpdirScoped({ git: true })
-      const dir2 = yield* tmpdirScoped({ git: true })
+      const dir1 = yield* tmpdirScoped()
+      const dir2 = yield* tmpdirScoped()
       const store = yield* InstanceStore.Service
 
-      yield* store.load({ directory: dir1 })
-      yield* store.load({ directory: dir2 })
+      yield* Effect.forEach([dir1, dir2], (directory) =>
+        store.load({
+          directory,
+          worktree: directory,
+          project: {
+            id: ProjectV2.ID.make(directory),
+            worktree: directory,
+            time: { created: 0, updated: 0 },
+            sandboxes: [],
+          },
+        }),
+      )
 
       const directories = yield* store.provideAll(
         Effect.gen(function* () {

@@ -12,7 +12,7 @@
  * tools internally during multi-step processing before emitting events.
  */
 import { expect } from "bun:test"
-import { Effect, Layer } from "effect"
+import { Deferred, Effect, Layer } from "effect"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import fs from "fs/promises"
 import path from "path"
@@ -31,6 +31,7 @@ import { LSP } from "@/lsp/lsp"
 import { MCP } from "../../src/mcp"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { EventV2Bridge } from "@/event-v2-bridge"
 
 const mcp = Layer.succeed(
   MCP.Service,
@@ -86,6 +87,7 @@ const root = LayerNode.group([
   SessionProjector.node,
   SessionSummary.node,
   Database.node,
+  EventV2Bridge.node,
   CrossSpawnSpawner.node,
   LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] }),
 ])
@@ -132,11 +134,27 @@ it.live("tool execution produces non-empty session diff (snapshot race)", () =>
       const prompt = yield* SessionPrompt.Service
       const sessions = yield* Session.Service
       const summary = yield* SessionSummary.Service
+      const events = yield* EventV2Bridge.Service
 
       const session = yield* sessions.create({
         title: "snapshot race test",
         permission: [{ permission: "*", pattern: "*", action: "allow" }],
       })
+      const summarized = yield* Deferred.make<void>()
+      let final = false
+      // Wait for the summary forked after the final assistant step, not an earlier turn summary.
+      const off = yield* events.listen((event) => {
+        if (event.type !== MessageV2.Event.Updated.type) return Effect.void
+        const data = event.data as typeof MessageV2.Event.Updated.data.Type
+        if (data.sessionID !== session.id) return Effect.void
+        if (data.info.role === "assistant" && data.info.finish === "stop") {
+          final = true
+          return Effect.void
+        }
+        if (!final || data.info.role !== "user" || data.info.summary?.diffs === undefined) return Effect.void
+        return Deferred.succeed(summarized, undefined).pipe(Effect.asVoid)
+      })
+      yield* Effect.addFinalizer(() => off)
 
       // Use bash tool (always registered) to create a file
       const command = `echo 'snapshot race test content' > ${path.join(dir, "race-test.txt")}`
@@ -178,13 +196,8 @@ it.live("tool execution produces non-empty session diff (snapshot race)", () =>
       expect(tool?.state.status).toBe("completed")
       if (!user) throw new Error("Expected user message")
 
-      // Poll for the turn diff — summarize() is fire-and-forget.
-      let diff: Array<{ file?: string }> = []
-      for (let i = 0; i < 50; i++) {
-        diff = yield* summary.diff({ sessionID: session.id, messageID: user.info.id })
-        if (diff.length > 0) break
-        yield* Effect.sleep("100 millis")
-      }
+      yield* Deferred.await(summarized)
+      const diff = yield* summary.diff({ sessionID: session.id, messageID: user.info.id })
       expect(diff.length).toBeGreaterThan(0)
     }),
     { git: true, config: providerCfg },

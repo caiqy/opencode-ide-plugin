@@ -441,7 +441,7 @@ describe("session HttpApi", () => {
       const llm = yield* TestLLMServer
       yield* llm.text("ok", { usage: { input: 1, output: 1 } })
 
-      const config = testProviderConfig(llm.url)
+      const config = { ...testProviderConfig(llm.url), snapshot: false }
       const sessionDirectory = yield* tmpdirScoped({ git: true, config })
       const requestDirectory = yield* tmpdirScoped({ git: true, config })
       const session = yield* createSession({ title: "directory regression" }).pipe(
@@ -680,6 +680,9 @@ describe("session HttpApi", () => {
           "10 seconds",
         )
         expect(message).toMatchObject({ id: wakeID, type: "user" })
+
+        const interrupted = yield* request(`/api/session/${session.id}/interrupt`, { method: "POST", headers })
+        expect(interrupted.status).toBe(204)
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )

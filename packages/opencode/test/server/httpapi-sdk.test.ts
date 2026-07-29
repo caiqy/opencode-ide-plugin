@@ -237,7 +237,11 @@ function withProject<A, E, E2 = never>(
       config: { formatter: false, lsp: false, ...options.config },
     })
     yield* options.setup?.(directory) ?? Effect.void
-    return yield* run({ sdk: yield* client(serverPath, directory), directory })
+    const sdk = yield* Effect.acquireRelease(
+      client(serverPath, directory),
+      (sdk) => call(() => sdk.instance.dispose()).pipe(Effect.ignore),
+    )
+    return yield* run({ sdk, directory })
   })
 }
 

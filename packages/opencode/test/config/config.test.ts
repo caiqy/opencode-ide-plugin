@@ -10,8 +10,6 @@ import { ConfigManaged } from "@/config/managed"
 import { ConfigParse } from "../../src/config/parse"
 import { Npm } from "@opencode-ai/core/npm"
 
-import { InstanceRef } from "../../src/effect/instance-ref"
-import type { InstanceContext } from "../../src/project/instance-context"
 import { Auth } from "../../src/auth"
 import { Account } from "../../src/account/account"
 import { AccessToken, AccountID, OrgID } from "../../src/account/schema"
@@ -19,10 +17,10 @@ import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Env } from "../../src/env"
 import {
   provideTmpdirInstance,
+  requireInstance,
   TestInstance,
   tmpdir,
   tmpdirScoped,
-  withTestInstance,
   provideInstanceEffect,
   testInstanceStoreLayer,
 } from "../fixture/fixture"
@@ -112,13 +110,6 @@ const configIt = (options?: Parameters<typeof configLayer>[0]) => testEffect(con
 
 const schemaConfig = (config: object) => ({ $schema: "https://opencode.ai/config.json", ...config })
 
-const provideCurrentInstance = <A, E, R>(effect: Effect.Effect<A, E, R>, ctx: InstanceContext) =>
-  effect.pipe(Effect.provideService(InstanceRef, ctx))
-
-const load = (ctx: InstanceContext) =>
-  Effect.runPromise(
-    Config.Service.use((svc) => provideCurrentInstance(svc.get(), ctx)).pipe(Effect.scoped, Effect.provide(layer)),
-  )
 const clearEffect = (wait = false) =>
   Config.use
     .invalidate()
@@ -259,32 +250,29 @@ function withProcessEnvs<A, E, R>(entries: Record<string, string | undefined>, e
   )
 }
 
-async function check(map: (dir: string) => string) {
-  if (process.platform !== "win32") return
-  await using globalTmp = await tmpdir()
-  await using tmp = await tmpdir({ git: true, config: { snapshot: true } })
-  const prev = Global.Path.config
-  ;(Global.Path as { config: string }).config = globalTmp.path
-  await clear()
-  try {
-    await writeConfig(globalTmp.path, {
-      $schema: "https://opencode.ai/config.json",
-      snapshot: false,
-    })
-    await withTestInstance({
-      directory: map(tmp.path),
-      fn: async (ctx) => {
-        const cfg = await load(ctx)
-        expect(cfg.snapshot).toBe(true)
-        expect(ctx.directory).toBe(Filesystem.resolve(tmp.path))
-        expect(ctx.project.id).not.toBe(ProjectV2.ID.global)
-      },
-    })
-  } finally {
-    await InstanceRuntime.disposeAllInstances()
-    ;(Global.Path as { config: string }).config = prev
-    await clear()
-  }
+function check(map: (dir: string) => string) {
+  if (process.platform !== "win32") return Effect.void
+  return Effect.gen(function* () {
+    const global = yield* tmpdirScoped()
+    const directory = yield* tmpdirScoped({ git: true, config: { snapshot: true } })
+    yield* writeConfigEffect(global, { $schema: "https://opencode.ai/config.json", snapshot: false })
+    // Keep path normalization real without running the unrelated production bootstrap dependency install.
+    yield* withGlobalConfigDir(
+      global,
+      withInstanceDir(
+        map(directory),
+        Effect.gen(function* () {
+          const cfg = yield* Config.use.get()
+          yield* Config.use.waitForDependencies()
+          const ctx = yield* requireInstance
+          expect(cfg.snapshot).toBe(true)
+          expect(ctx.directory).toBe(Filesystem.resolve(directory))
+          expect(ctx.project.id).not.toBe(ProjectV2.ID.global)
+        }),
+      ),
+    )
+    expect(yield* FSUtil.use.existsSafe(path.join(global, "node_modules"))).toBe(false)
+  })
 }
 
 it.instance("loads config with defaults when no files exist", () =>
@@ -512,17 +500,17 @@ it.instance(
   { config: { lsp: true } },
 )
 
-test("loads project config from Git Bash and MSYS2 paths on Windows", async () => {
+it.live("loads project config from Git Bash and MSYS2 paths on Windows", () => {
   // Git Bash and MSYS2 both use /<drive>/... paths on Windows.
-  await check((dir) => {
+  return check((dir) => {
     const drive = dir[0].toLowerCase()
     const rest = dir.slice(2).replaceAll("\\", "/")
     return `/${drive}${rest}`
   })
 })
 
-test("loads project config from Cygwin paths on Windows", async () => {
-  await check((dir) => {
+it.live("loads project config from Cygwin paths on Windows", () => {
+  return check((dir) => {
     const drive = dir[0].toLowerCase()
     const rest = dir.slice(2).replaceAll("\\", "/")
     return `/cygdrive/${drive}${rest}`

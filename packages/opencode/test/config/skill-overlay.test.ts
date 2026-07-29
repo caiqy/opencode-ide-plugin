@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { Effect } from "effect"
 import { Config } from "../../src/config/config"
-import { AppRuntime } from "../../src/effect/app-runtime"
-import { Instance } from "../../src/project/instance"
-import { tmpdir } from "../fixture/fixture"
+import { TestInstance } from "../fixture/fixture"
+import { testEffect } from "../lib/effect"
+
+const it = testEffect(LayerNode.compile(Config.node))
 
 describe("config skill permission overlay", () => {
   test("set/get/clear skill permission overlay by directory", () => {
@@ -23,49 +26,38 @@ describe("config skill permission overlay", () => {
     expect(Config.getSkillPermissionOverlay(dir)).toEqual({})
   })
 
-  test("Config.get preserves shorthand skill permission as wildcard fallback when overlay is active", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      config: { permission: { skill: "deny" } },
-    })
+  it.instance(
+    "Config.get preserves shorthand skill permission as wildcard fallback when overlay is active",
+    () =>
+      Effect.gen(function* () {
+        const config = yield* Config.Service
+        const instance = yield* TestInstance
+        Config.setSkillPermissionOverlay(instance.directory, "allowed-skill", "allow")
+        yield* Effect.addFinalizer(() => Effect.sync(() => Config.clearSkillPermissionOverlay(instance.directory)))
 
-    await Instance.provide({
-      directory: tmp.path,
-      fn: async () => {
-        try {
-          Config.setSkillPermissionOverlay(tmp.path, "allowed-skill", "allow")
+        expect((yield* config.get()).permission?.skill).toEqual({
+          "*": "deny",
+          "allowed-skill": "allow",
+        })
+      }),
+    { git: true, config: { permission: { skill: "deny" } } },
+  )
 
-          const cfg = await AppRuntime.runPromise(Config.use.get())
+  it.instance(
+    "Config.get applies skill overlay after instance config is cached",
+    () =>
+      Effect.gen(function* () {
+        const config = yield* Config.Service
+        const instance = yield* TestInstance
+        expect((yield* config.get()).permission?.skill).toBeUndefined()
 
-          expect(cfg.permission?.skill).toEqual({
-            "*": "deny",
-            "allowed-skill": "allow",
-          })
-        } finally {
-          Config.clearSkillPermissionOverlay(tmp.path)
-        }
-      },
-    })
-  })
+        Config.setSkillPermissionOverlay(instance.directory, "cached-skill", "deny")
+        yield* Effect.addFinalizer(() => Effect.sync(() => Config.clearSkillPermissionOverlay(instance.directory)))
 
-  test("Config.get applies skill overlay after instance config is cached", async () => {
-    await using tmp = await tmpdir({ git: true })
-
-    await Instance.provide({
-      directory: tmp.path,
-      fn: async () => {
-        try {
-          expect((await AppRuntime.runPromise(Config.use.get())).permission?.skill).toBeUndefined()
-
-          Config.setSkillPermissionOverlay(tmp.path, "cached-skill", "deny")
-
-          expect((await AppRuntime.runPromise(Config.use.get())).permission?.skill).toEqual({
-            "cached-skill": "deny",
-          })
-        } finally {
-          Config.clearSkillPermissionOverlay(tmp.path)
-        }
-      },
-    })
-  })
+        expect((yield* config.get()).permission?.skill).toEqual({
+          "cached-skill": "deny",
+        })
+      }),
+    { git: true },
+  )
 })

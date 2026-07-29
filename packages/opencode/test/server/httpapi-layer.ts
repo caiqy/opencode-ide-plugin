@@ -1,11 +1,13 @@
 import { NodeHttpServer, NodeServices } from "@effect/platform-node"
+import { Npm } from "@opencode-ai/core/npm"
 import { Config, Layer } from "effect"
 import { HttpClient, HttpClientRequest, HttpRouter, HttpServer } from "effect/unstable/http"
 import { layerWebSocketConstructorGlobal } from "effect/unstable/socket/Socket"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
+import { NpmTest } from "../fake/npm"
 
 const servedRoutes: Layer.Layer<never, Config.ConfigError, HttpServer.HttpServer> = HttpRouter.serve(
-  HttpApiApp.routes,
+  HttpApiApp.createRoutes(undefined, [[Npm.node, NpmTest.noop]]),
   {
     disableListenLog: true,
     disableLogger: true,

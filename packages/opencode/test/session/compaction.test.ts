@@ -1244,7 +1244,7 @@ describe("session.compaction.process", () => {
         }
       }).pipe(withCompaction({ llm: stub.llmLayer }))
     },
-    { git: true },
+    { config: { snapshot: false } },
     { timeout: 10_000 },
   )
 
