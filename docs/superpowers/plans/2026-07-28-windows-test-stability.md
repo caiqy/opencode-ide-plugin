@@ -8,6 +8,12 @@
 
 **Tech Stack:** TypeScript, Bun `1.3.14`, Node.js `22.23.1`, Effect v4, Bun test, Git, ripgrep.
 
+## Completion Record
+
+Completed on 2026-07-29. The execution followed each evidence-gated decision rather than forcing the unused isolation branch. A checked step labeled `superseded` or `skipped` records a resolved conditional branch, not a command that was run. Authoritative commands and results are in `docs/superpowers/reports/2026-07-27-upstream-test-baseline.md`.
+
+Implementation commits: `4851d911b3`, `86354ad16d`, `5362fe5e81`, `5d42a9e0bb`, `53a062259b`, and `91d27ae340`. The default package script, timeouts, and concurrency remain unchanged.
+
 ## Global Constraints
 
 - Run package commands through `vfox exec bun@1.3.14 nodejs@22.23.1 --`.
@@ -51,7 +57,7 @@ vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test test/server/httpapi-file.test.ts
 
 Observed: exit 0, `89 pass / 14 skip / 0 fail`. This rules out a failure intrinsic to the seven-file owner set.
 
-- [ ] **Step 2: Complete one unchanged default-suite baseline**
+- [x] **Step 2: Complete one unchanged default-suite baseline**
 
 Run from `packages/opencode`:
 
@@ -61,7 +67,7 @@ vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test
 
 Expected for the pre-fix baseline: exit nonzero with the exact aggregate signatures preserved. Record every failed test name, the first causal stack frame, stderr from child processes, total duration, pass/skip/todo/fail/error counts, and Bun process working set/private bytes/handle count near the first failure.
 
-- [ ] **Step 3: Run the required native concurrency diagnostic once**
+- [x] **Step 3: Native concurrency diagnostic — superseded, not run**
 
 Run the same seven owners with Bun's minimum test concurrency:
 
@@ -71,7 +77,7 @@ vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test test/server/httpapi-file.test.ts
 
 Expected: exit 0. If both the default-concurrency and single-concurrency owner processes pass, do not use `--max-concurrency` as a fix; the remaining boundary is cumulative cross-file state.
 
-- [ ] **Step 4: Record the diagnostic evidence**
+- [x] **Step 4: Record the diagnostic evidence**
 
 Append a `Windows Test Stability` section to `docs/superpowers/reports/2026-07-27-upstream-test-baseline.md` containing:
 
@@ -98,7 +104,7 @@ Do not commit the report yet; include it with the final evidence commit after th
 - Consumes: `Ripgrep.Service.find(...)`, its existing `onEntry` callback, and the location layer's `Scope.Scope`.
 - Produces: one shared `Fiber<void>` whose completion is joined by `FileSystemSearch.Service.find(...)` before it reads `state.files` or `state.directories`.
 
-- [ ] **Step 1: Add a deterministic failing readiness test**
+- [x] **Step 1: Add a deterministic failing readiness test**
 
 In `packages/core/test/location-filesystem.test.ts`, add `Deferred`, `Fiber`, and `Scope` to the Effect import and import `Flag` plus `Ripgrep`:
 
@@ -167,7 +173,7 @@ it.live("waits for the initial search scan before finding files", () =>
 )
 ```
 
-- [ ] **Step 2: Run the readiness test and verify RED**
+- [x] **Step 2: Run the readiness test and verify RED**
 
 Run from `packages/core`:
 
@@ -177,7 +183,7 @@ vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test test/location-filesystem.test.ts
 
 Expected: exit 1 because `find` completes while the mocked initial scan is still blocked, so `Deferred.isDone(completed)` is `true` instead of `false`.
 
-- [ ] **Step 3: Join the existing scoped initial scan**
+- [x] **Step 3: Join the existing scoped initial scan**
 
 In `packages/core/src/filesystem/search.ts`, add `Fiber` to the Effect import:
 
@@ -229,7 +235,7 @@ find: (input) =>
 
 Do not change `fffLayer`, `Ripgrep.run`, scan limits, timeout behavior, or the eager prewarm policy in this task.
 
-- [ ] **Step 4: Run focused verification**
+- [x] **Step 4: Run focused verification**
 
 Run from `packages/core`:
 
@@ -249,7 +255,7 @@ vfox exec bun@1.3.14 nodejs@22.23.1 -- bun typecheck
 
 Expected: both commands exit 0 with unchanged test timeouts.
 
-- [ ] **Step 5: Commit only the readiness correction**
+- [x] **Step 5: Commit only the readiness correction**
 
 ```powershell
 git add packages/core/src/filesystem/search.ts packages/core/test/location-filesystem.test.ts
@@ -272,7 +278,7 @@ git commit -m "fix(core): await file search readiness"
 - Consumes: the post-Task-2 unchanged full-suite result and Bun's `--isolate` boundary.
 - Produces: either one confirmed native test-file isolation change, or an explicit stop with no speculative code change and exact evidence for a revised root-specific task.
 
-- [ ] **Step 1: Run the unchanged default suite once after Task 2**
+- [x] **Step 1: Run the unchanged default suite once after Task 2**
 
 Run from `packages/opencode`:
 
@@ -286,7 +292,7 @@ Decision:
 - Exit nonzero with only the original aggregate direct-ripgrep/Git signatures: continue to Step 2.
 - Any new signature: stop, revert no committed work, and return to root-cause investigation for that signature before changing another file.
 
-- [ ] **Step 2: Run one full test-file isolation diagnostic**
+- [x] **Step 2: Full test-file isolation diagnostic — superseded, not run**
 
 Run from `packages/opencode` without editing `package.json`:
 
@@ -299,7 +305,7 @@ Decision:
 - Exit 0 while Step 1 reproduces only the known aggregate signatures: Bun's shared test-file global/handle boundary is confirmed; continue to Step 3.
 - Exit nonzero with the same signatures: do not edit `package.json`, `fixture.ts`, or `cross-spawn-spawner.ts`. Record the first child-process `spawn -> streams -> close -> scope finalizer` phase that failed and replace this task with a focused RED plus its root-specific implementation before proceeding.
 
-- [ ] **Step 3: Make native test-file isolation part of the existing default script**
+- [x] **Step 3: Native test-file isolation script — skipped by the evidence gate**
 
 Change only the `test` script in `packages/opencode/package.json`:
 
@@ -309,7 +315,7 @@ Change only the `test` script in `packages/opencode/package.json`:
 
 This preserves the user-facing acceptance command and every timeout while asking Bun to release each file's globals and leaked handles at the boundary Bun owns.
 
-- [ ] **Step 4: Re-run the seven affected owners through the package environment**
+- [x] **Step 4: Isolated owner rerun — skipped with the isolation branch**
 
 Run from `packages/opencode`:
 
@@ -320,7 +326,7 @@ vfox exec bun@1.3.14 nodejs@22.23.1 -- bun typecheck
 
 Expected: both commands exit 0.
 
-- [ ] **Step 5: Commit only the confirmed aggregate-boundary correction**
+- [x] **Step 5: Isolation commit — not created because the branch was not selected**
 
 ```powershell
 git add packages/opencode/package.json
@@ -339,7 +345,7 @@ Do not create this commit if Step 2 did not exit 0.
 - Consumes: the final implementation and the unchanged external acceptance command.
 - Produces: two independent exit-0 suite runs, package typechecks, cleanup evidence, boundary audits, and final review evidence.
 
-- [ ] **Step 1: Run the first clean acceptance process**
+- [x] **Step 1: Run the first clean acceptance process**
 
 From `packages/opencode`:
 
@@ -349,11 +355,11 @@ vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test
 
 Expected: exit 0. A failure is not retried; return to the failing owner's root-cause task.
 
-- [ ] **Step 2: Verify process and temporary-resource cleanup**
+- [x] **Step 2: Verify process and temporary-resource cleanup**
 
 After the first process exits, confirm there is no descendant or test-owned Bun, Node.js, Git, or ripgrep process and no `opencode-test-*` or test-owned worktree directory. Record the result in the report.
 
-- [ ] **Step 3: Run the second independent acceptance process**
+- [x] **Step 3: Run the second independent acceptance process**
 
 Start a new process from `packages/opencode`:
 
@@ -363,7 +369,7 @@ vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test
 
 Expected: exit 0. This is the reliability gate, not a retry of Step 1.
 
-- [ ] **Step 4: Run final typechecks**
+- [x] **Step 4: Run final typechecks**
 
 From `packages/core`:
 
@@ -379,7 +385,7 @@ vfox exec bun@1.3.14 nodejs@22.23.1 -- bun typecheck
 
 Expected: both exit 0.
 
-- [ ] **Step 5: Run boundary audits**
+- [x] **Step 5: Run boundary audits**
 
 From the repository root:
 
@@ -393,11 +399,11 @@ Expected: whitespace check exits 0, generated diff is empty, staged paths contai
 
 Search the final diff for prohibited workarounds and confirm there are no added retry loops, fixed sleeps, skip markers, forced exits, cleanup retries, timeout increases, lower default concurrency, or Windows-only production branches.
 
-- [ ] **Step 6: Complete final review**
+- [x] **Step 6: Complete final review**
 
 Request a read-only review over the task's commit range. Require zero Critical and zero Important findings. Fix findings in new commits and repeat the owning focused checks plus both acceptance processes when runtime behavior changes.
 
-- [ ] **Step 7: Finalize and commit the evidence report**
+- [x] **Step 7: Finalize and commit the evidence report**
 
 Update `docs/superpowers/reports/2026-07-27-upstream-test-baseline.md` with exact command lines, commits, counts, durations, cleanup results, audit results, and review disposition.
 

@@ -161,3 +161,39 @@ packages/tui/test/cli/cmd/tui/notifications.test.ts
 packages/tui/test/cli/cmd/tui/sync.test.tsx
 packages/tui/test/cli/tui/use-event.test.tsx
 ```
+
+## Windows Test Stability Completion
+
+Evidence below was collected on 2026-07-29 from the existing dirty Windows amd64 worktree with vfox Bun `1.3.14` and Node.js `22.23.1`. It supersedes the earlier non-green `packages/opencode` aggregate result for this worktree.
+
+Implementation commits: `4851d911b3`, `86354ad16d`, `5362fe5e81`, `5d42a9e0bb`, `53a062259b`, and `91d27ae340`.
+
+### `plugin.meta` First Failure
+
+- Inherited first failure: `plugin.meta > serializes concurrent metadata updates across processes`; one of 12 child processes exited `1`. The default suite exited `1` with `3526 pass / 58 skip / 1 todo / 1 fail`.
+- The original test asserted the exit-code array before stderr, so that failed run exposed only the child code and discarded the already captured child error from the assertion output.
+- Direct reproduction from `packages/opencode`: `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test test/plugin/meta.test.ts --only-failures` exited `0`, with `3 pass / 0 fail` in `8.35s`.
+- The focused regression correction replaced the two ordered assertions with one structured `{ code, stderr }` assertion. It preserves all 12 workers, their concurrency, the `20_000ms` test timeout, and every success condition while ensuring any future nonzero child reports its stderr in the first failure.
+- Focused verification after that correction used the same direct command and exited `0`, with `3 pass / 0 fail` in `8.60s`.
+- The child exit itself did not reproduce in the direct owner, the diagnostic full suite, or either acceptance process. No child error existed to capture in those runs, so no production `Flock`, process, timeout, concurrency, or Windows-specific change was made without a focused RED. The assertion-order diagnosability defect is fixed; the inherited aggregate child exit remains non-reproduced rather than being misclassified as a product root cause.
+
+### Typechecks And Reliability Gate
+
+| Package / run | Exact command | Exit | Result |
+|---|---|---:|---|
+| core typecheck | `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun typecheck` from `packages/core` | 0 | `tsgo --noEmit` |
+| opencode typecheck | `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun typecheck` from `packages/opencode` | 0 | `tsgo --noEmit` |
+| diagnostic aggregate | `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test --bail=1` from `packages/opencode` | 0 | `3527 pass / 58 skip / 1 todo / 0 fail`, `1458.03s` |
+| acceptance 1 | `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run --cwd=packages/opencode test` from the repository root | 0 | `3527 pass / 58 skip / 1 todo / 0 fail`, `1467.03s` |
+| acceptance 2 | `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run --cwd=packages/opencode test` from the repository root | 0 | `3527 pass / 58 skip / 1 todo / 0 fail`, `1471.49s` |
+
+The two acceptance checks ran sequentially as independent processes and invoked the unchanged `packages/opencode` default `test` script without `--bail`. Earlier diagnostic runs used `--bail=1` only to stop at the first failure and are not counted as acceptance evidence. The process audit around those diagnostics and the final post-gate process query found `0` residual test-owned Bun, Node.js, Git, or ripgrep processes.
+
+### Final Audit
+
+- `git diff --check`: exit `0`.
+- `git diff --exit-code -- packages/client/src/generated packages/client/src/generated-effect`: exit `0`, empty generated diff.
+- The `plugin.meta` addition scan found no retry, sleep, skip, forced exit, timeout, lower concurrency, or Windows-only branch.
+- Final read-only review: Critical `0`, Important `0`, Minor `0`.
+- Staged paths remain empty. The pre-existing JetBrains plugin metadata and other user-owned dirty paths were not edited by this task.
+- Task commits contain only the intended Core and OpenCode code/test paths. The final evidence commit contains this report and the Windows stability plan.
