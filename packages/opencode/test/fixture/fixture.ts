@@ -1,5 +1,6 @@
 import { $ } from "bun"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
+import { spawn } from "node:child_process"
 import * as fs from "fs/promises"
 import os from "os"
 import path from "path"
@@ -12,6 +13,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import type { Config } from "@/config/config"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { InstanceRef } from "../../src/effect/instance-ref"
+import { disposeInstance } from "../../src/effect/instance-registry"
 import { InstanceBootstrap } from "../../src/project/bootstrap-service"
 import type { InstanceContext } from "../../src/project/instance-context"
 import { InstanceRuntime } from "../../src/project/instance-runtime"
@@ -72,7 +74,15 @@ function clean(dir: string) {
 
 async function stop(dir: string) {
   if (!(await exists(dir))) return
-  await $`git fsmonitor--daemon stop`.cwd(dir).quiet().nothrow()
+  await new Promise<void>((resolve) => {
+    const child = spawn("git", ["fsmonitor--daemon", "stop"], {
+      cwd: dir,
+      stdio: "ignore",
+      windowsHide: process.platform === "win32",
+    })
+    child.once("error", () => resolve())
+    child.once("close", () => resolve())
+  })
 }
 
 type TmpDirOptions<T> = {
@@ -108,8 +118,9 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
       try {
         await options?.dispose?.(realpath)
       } finally {
+        await disposeInstance(realpath)
         if (options?.git) await stop(realpath).catch(() => undefined)
-        await clean(realpath).catch(() => undefined)
+        await clean(realpath)
       }
     },
     path: realpath,
@@ -132,8 +143,9 @@ export function tmpdirScoped<E = never, R = never>(options?: {
 
     yield* Effect.addFinalizer(() =>
       Effect.promise(async () => {
+        await disposeInstance(dir)
         if (options?.git) await stop(dir).catch(() => undefined)
-        await clean(dir).catch(() => undefined)
+        await clean(dir)
       }),
     )
 

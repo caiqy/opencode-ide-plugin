@@ -1,6 +1,7 @@
 import { $ } from "bun"
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
+import { registerDisposer } from "../../src/effect/instance-registry"
 import { tmpdir } from "./fixture"
 
 describe("tmpdir", () => {
@@ -22,5 +23,25 @@ describe("tmpdir", () => {
       .then(() => true)
       .catch(() => false)
     expect(exists).toBe(false)
+  })
+
+  test("disposes instance state before removing directories", async () => {
+    const tmp = await tmpdir()
+    let existed = false
+    const off = registerDisposer(async (directory) => {
+      if (directory !== tmp.path) return
+      existed = await fs
+        .stat(directory)
+        .then(() => true)
+        .catch(() => false)
+    })
+
+    try {
+      await tmp[Symbol.asyncDispose]()
+    } finally {
+      off()
+    }
+
+    expect(existed).toBe(true)
   })
 })
