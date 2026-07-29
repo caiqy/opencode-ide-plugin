@@ -27,6 +27,7 @@ export const ripgrepLayer = Layer.effect(
     const location = yield* Location.Service
     const ripgrep = yield* Ripgrep.Service
     const scope = yield* Scope.Scope
+    const limit = location.vcs ? Number.MAX_SAFE_INTEGER : 100_000
     const state = {
       files: [] as string[],
       directories: [] as string[],
@@ -36,16 +37,23 @@ export const ripgrepLayer = Layer.effect(
       .find({
         cwd: location.directory,
         pattern: "*",
-        limit: location.vcs ? Number.MAX_SAFE_INTEGER : 100_000,
-        onEntry: (entry) =>
+        limit,
+      })
+      .pipe(
+        Effect.orDie,
+        Effect.tap((entries) =>
           Effect.sync(() => {
-            state.files.push(entry.path)
-            const parts = entry.path.split("/")
-            parts.slice(0, -1).forEach((_, index) => directories.add(parts.slice(0, index + 1).join("/") + path.sep))
+            state.files = entries.map((entry) => entry.path)
+            entries.forEach((entry) => {
+              const parts = entry.path.split("/")
+              parts.slice(0, -1).forEach((_, index) => directories.add(parts.slice(0, index + 1).join("/") + path.sep))
+            })
             state.directories = Array.from(directories)
           }),
-      })
-      .pipe(Effect.orDie, Effect.asVoid, Effect.forkIn(scope))
+        ),
+        Effect.asVoid,
+        Effect.forkIn(scope),
+      )
     return Service.of({
       glob: (input) =>
         Effect.gen(function* () {
@@ -237,4 +245,8 @@ const layer = Layer.unwrap(Effect.sync(() => (Flag.OPENCODE_DISABLE_FFF || !Fff.
 
 export const locationLayer = layer
 
-export const node = makeLocationNode({ service: Service, layer, deps: [FSUtil.node, Location.node, Ripgrep.node] })
+export const node = makeLocationNode({
+  service: Service,
+  layer,
+  deps: [FSUtil.node, Location.node, Ripgrep.node],
+})

@@ -5,6 +5,7 @@ import { ChildProcess } from "effect/unstable/process"
 import { Entry, Match } from "@opencode-ai/schema/filesystem"
 import { makeGlobalNode } from "./effect/app-node"
 import { AppProcess, collectStream, waitForAbort } from "./process"
+import { FSUtil } from "./fs-util"
 import { NonNegativeInt, PositiveInt, RelativePath } from "./schema"
 import { RipgrepBinary } from "./ripgrep/binary"
 
@@ -94,6 +95,65 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const process = yield* AppProcess.Service
     const binary = yield* RipgrepBinary.Service
+    const fs = yield* FSUtil.Service
+
+    const fallbackFiles = (input: GlobInput, explicitGlob: boolean, onEntry?: (entry: Entry) => Effect.Effect<void>) => {
+      const program = Effect.gen(function* () {
+        const includeHidden = input.hidden || (explicitGlob && !input.pattern.startsWith("!"))
+        const files = (yield* fs.glob("**/*", {
+          cwd: input.cwd,
+          dot: includeHidden,
+          include: "file",
+          signal: input.signal,
+          symlink: input.follow,
+        })).map((file) => file.replace(/^(?:\.[\\/])+/u, "").replaceAll("\\", "/"))
+        const exclude = input.pattern.startsWith("!")
+        const pattern = exclude ? input.pattern.slice(1) : input.pattern
+        const checked =
+          files.length === 0 || (explicitGlob && !exclude)
+            ? undefined
+            : yield* process
+                .run(
+                  ChildProcess.make("git", ["check-ignore", "--no-index", "-z", "--stdin"], {
+                    cwd: input.cwd,
+                    extendEnv: true,
+                    stdin: "ignore",
+                  }),
+                  { signal: input.signal, stdin: files.join("\0") + "\0" },
+                )
+                .pipe(
+                  Effect.catch((error) => (input.signal?.aborted ? Effect.fail(error) : Effect.succeed(undefined))),
+                )
+        // ponytail: if Git cannot classify ignores, actual files are still better than a failed scan.
+        const ignored =
+          checked && (checked.exitCode === 0 || checked.exitCode === 1)
+            ? new Set(
+                checked.stdout
+                  .toString("utf8")
+                  .split("\0")
+                  .map((file) => file.replace(/^(?:\.[\\/])+/u, "").replaceAll("\\", "/")),
+              )
+            : undefined
+        const entries = files
+          .filter((file) => {
+            if (!file || file === ".git" || file.startsWith(".git/") || file.includes("/.git/")) return false
+            if (ignored?.has(file)) return false
+            const segments = file.split("/")
+            const matches =
+              fs.globMatch(pattern, file) ||
+              (pattern.includes("/")
+                ? segments.slice(0, -1).some((_, index) => fs.globMatch(pattern, segments.slice(0, index + 1).join("/")))
+                : segments.some((part) => fs.globMatch(pattern, part)))
+            return exclude ? !matches : matches
+          })
+          .slice(0, input.limit)
+          .map((file) => Entry.make({ path: RelativePath.make(file), type: "file" }))
+        if (onEntry) yield* Effect.forEach(entries, onEntry, { discard: true })
+        return entries
+      })
+      const abortable = input.signal ? program.pipe(Effect.raceFirst(waitForAbort(input.signal))) : program
+      return abortable.pipe(Effect.mapError((cause) => failure("file scan fallback failed", cause)))
+    }
 
     const run = <A>(input: {
       readonly cwd: string
@@ -134,6 +194,9 @@ const layer = Layer.effect(
           const stderr = yield* Fiber.join(stderrFiber)
           if (input.pattern && code === 2 && isInvalidPattern(stderr)) {
             return yield* new InvalidPatternError({ pattern: input.pattern, message: stderr.trim() })
+          }
+          if (code === 2 && rows.length === 0) {
+            return yield* failure(stderr.trim() || "ripgrep returned no results after a partial failure")
           }
           if (code !== 0 && code !== 1 && code !== 2) {
             return yield* failure(stderr.trim() || `ripgrep failed with code ${code}`)
@@ -183,6 +246,13 @@ const layer = Layer.effect(
             ),
           ),
           Effect.catchTag("Ripgrep.InvalidPatternError", (cause) => Effect.fail(failure(cause.message, cause))),
+          Effect.catchTag("Ripgrep.Error", (error) =>
+            input.signal?.aborted
+              ? Effect.fail(error)
+              : Effect.logWarning("ripgrep file scan failed, falling back", { error }).pipe(
+                  Effect.andThen(fallbackFiles(input, true)),
+                ),
+          ),
         ),
       find: (input) =>
         run<Entry>({
@@ -214,6 +284,13 @@ const layer = Layer.effect(
         }).pipe(
           Effect.map((result) => result.items),
           Effect.catchTag("Ripgrep.InvalidPatternError", (cause) => Effect.fail(failure(cause.message, cause))),
+          Effect.catchTag("Ripgrep.Error", (error) =>
+            input.signal?.aborted
+              ? Effect.fail(error)
+              : Effect.logWarning("ripgrep file scan failed, falling back", { error }).pipe(
+                  Effect.andThen(fallbackFiles(input, input.pattern !== "*", input.onEntry)),
+                ),
+          ),
         ),
       grep: (input) =>
         run<RawMatchData>({
@@ -278,4 +355,8 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = makeGlobalNode({ service: Service, layer: layer, deps: [RipgrepBinary.node, AppProcess.node] })
+export const node = makeGlobalNode({
+  service: Service,
+  layer: layer,
+  deps: [RipgrepBinary.node, AppProcess.node, FSUtil.node],
+})
