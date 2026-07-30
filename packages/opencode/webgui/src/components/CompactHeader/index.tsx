@@ -238,7 +238,11 @@ const CompactHeader = forwardRef<
   const actions = useSessionActions({
     sessions,
     updateSessionTitle,
-    deleteSession,
+    deleteSession: async (sessionId) => {
+      const success = await deleteSession(sessionId)
+      if (success) tabStore.closeTab(sessionId)
+      return success
+    },
   })
 
   // Expose toggleSessionDropdown method via ref
@@ -429,7 +433,7 @@ const CompactHeader = forwardRef<
   }
 
   useEffect(() => {
-    if (!tabStore.loaded) return
+    if (!tabStore.loaded || actions.isDeleting) return
     if (tabStore.openTabs.length > 0) {
       if (!tabStore.activeTab) {
         const target = tabStore.openTabs[tabStore.openTabs.length - 1]
@@ -490,6 +494,7 @@ const CompactHeader = forwardRef<
     tabStore.openTab,
     tabStore.activateTab,
     restoring,
+    actions.isDeleting,
   ])
 
   useEffect(() => {

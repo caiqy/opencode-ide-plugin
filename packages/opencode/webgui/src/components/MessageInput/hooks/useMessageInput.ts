@@ -224,15 +224,6 @@ export function useMessageInput({
   const handleAbort = useCallback(async () => {
     if (!sessionID) return
     try {
-      const result = await Promise.allSettled(getQuestionsBySession(sessionID).map((item) => rejectQuestion(item.id)))
-
-      if (result.some((item) => item.status === "rejected")) {
-        console.warn("[MessageInput] Failed to reject question before abort")
-      }
-      if (result.some((item) => item.status === "fulfilled" && item.value === false)) {
-        console.warn("[MessageInput] Question reject returned false before abort")
-      }
-
       const response = await sdk.session.abort({ path: { id: sessionID } })
       if (response.error) {
         const message =
@@ -240,6 +231,11 @@ export function useMessageInput({
             ? String(response.error.message)
             : "终止会话失败"
         throw new Error(message)
+      }
+
+      const result = await Promise.allSettled(getQuestionsBySession(sessionID).map((item) => rejectQuestion(item.id)))
+      if (result.some((item) => item.status === "rejected" || (item.status === "fulfilled" && item.value === false))) {
+        console.warn("[MessageInput] Failed to reject question after abort")
       }
       setSessionIdle(sessionID, true)
       setTimeout(() => {

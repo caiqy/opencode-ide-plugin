@@ -371,7 +371,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   /**
    * Initialize state from repos + server config
-   * Priority: workspace:last_selection -> global:model.recent -> config.model -> providers first available
+   * Priority: workspace:last_selection -> global:model.recent -> config.model -> provider default -> providers first available
    */
   useEffect(() => {
     const initializeState = async () => {
@@ -384,6 +384,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
         ])
 
         const providers = providersRes.data?.providers ?? []
+        const defaults = providersRes.data?.default ?? {}
+        const providerDefault = providers
+          .map((provider) => ({ providerId: provider.id, modelId: defaults[provider.id] }))
+          .find((item) => hasModel(providers, item.providerId, item.modelId))
         const recent = modelPrefs.recent
         const configModel = (() => {
           if (!configRes.data?.model) return undefined
@@ -417,7 +421,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         }
 
         if ((!providerId || !modelId) && providers.length > 0) {
-          const fallbackModel = firstAvailableModel(providers)
+          const fallbackModel = providerDefault ?? firstAvailableModel(providers)
           providerId = fallbackModel?.providerId
           modelId = fallbackModel?.modelId
         }
@@ -435,6 +439,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
                 }
               : undefined) ||
             fallbackConfig ||
+            providerDefault ||
             firstAvailableModel(providers)
 
           providerId = fallbackModel?.providerId
@@ -965,12 +970,16 @@ export function SessionProvider({ children }: SessionProviderProps) {
         }
 
         console.log("[SessionContext] Session deleted:", sessionId)
+        if (pendingSwitchForegroundRef.current === sessionId) {
+          switchTokenRef.current++
+          replacePendingSwitchForeground(null)
+        }
         // Remove from local state
         setSessions((prev) => prev.filter((s) => s.id !== sessionId))
         setReasoning(sessionId, false)
 
         // If deleting current session, clear it
-        if (currentSession?.id === sessionId) {
+        if (currentSessionIDRef.current === sessionId) {
           setCurrentSession(null)
         }
 
@@ -982,7 +991,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         return false
       }
     },
-    [currentSession, sessions, setReasoning],
+    [replacePendingSwitchForeground, setCurrentSession, setReasoning],
   )
 
   /**

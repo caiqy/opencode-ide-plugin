@@ -30,7 +30,7 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [], status }: Fil
           ? status.message || "刷新失败，将在空闲后重试"
           : null
 
-  const { modified, deleted, totalAdditions, totalDeletions, netChange } = useMemo(() => {
+  const { added, modified, deleted, totalAdditions, totalDeletions, netChange } = useMemo(() => {
     const sortByBasename = (a: SnapshotFileDiff & { file: string }, b: SnapshotFileDiff & { file: string }) => {
       const aPath = normalizePath(a.file)
       const bPath = normalizePath(b.file)
@@ -41,7 +41,8 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [], status }: Fil
       return aPath.localeCompare(bPath)
     }
 
-    const modifiedEntries = mergedDiffs.filter((diff) => diff.status !== "deleted").sort(sortByBasename)
+    const addedEntries = mergedDiffs.filter((diff) => diff.status === "added").sort(sortByBasename)
+    const modifiedEntries = mergedDiffs.filter((diff) => diff.status === "modified").sort(sortByBasename)
     const deletedEntries = mergedDiffs.filter((diff) => diff.status === "deleted").sort(sortByBasename)
     const totals = mergedDiffs.reduce(
       (sum, diff) => {
@@ -52,6 +53,7 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [], status }: Fil
       { additions: 0, deletions: 0 },
     )
     return {
+      added: addedEntries,
       modified: modifiedEntries,
       deleted: deletedEntries,
       totalAdditions: totals.additions,
@@ -74,7 +76,7 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [], status }: Fil
             {mergedDiffs.length} file{mergedDiffs.length !== 1 ? "s" : ""}
           </span>
           <span>
-            {modified.length} modified • {deleted.length} deleted
+            {added.length} added • {modified.length} modified • {deleted.length} deleted
           </span>
           {totalAdditions > 0 && <span className="text-green-600 dark:text-green-400">+{totalAdditions}</span>}
           {totalDeletions > 0 && <span className="text-red-600 dark:text-red-400">-{totalDeletions}</span>}
@@ -83,6 +85,36 @@ export function FileChangesPanel({ diffs = [], fallbackFiles = [], status }: Fil
             {netChange}
           </span>
         </div>
+        {added.length > 0 && (
+          <div className="px-3 py-1.5 flex flex-wrap items-center gap-1.5">
+            {added.map((diff) => {
+              const file = diff.file
+              const displayPath = toDisplayPath(file, worktree) || normalizePath(file)
+              const baseName = displayPath.split("/").pop() || displayPath
+              return (
+                <span
+                  key={file}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openFile({ path: file, display: displayPath || file })}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return
+                    event.preventDefault()
+                    openFile({ path: file, display: displayPath || file })
+                  }}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded cursor-pointer hover:bg-green-200 dark:hover:bg-green-900/60"
+                  title={displayPath || file}
+                  data-tip={displayPath || file}
+                >
+                  {baseName}
+                  {diff.additions > 0 && (
+                    <span className="text-green-600 dark:text-green-400 text-[10px]">+{diff.additions}</span>
+                  )}
+                </span>
+              )
+            })}
+          </div>
+        )}
         {modified.length > 0 && (
           <div className="px-3 py-1.5 flex flex-wrap items-center gap-1.5">
             {modified.map((diff) => {

@@ -173,7 +173,7 @@ describe("SessionContext migration", () => {
             },
           },
         ],
-        default: { provider: "openai", model: "gpt-4.1" },
+        default: { openai: "gpt-4.1", anthropic: "claude-4-sonnet" },
       },
       error: null,
     })
@@ -472,6 +472,40 @@ describe("SessionContext migration", () => {
       expect(fallbackOnly.result.current.selectedModelId).toBe("gpt-4.1")
     })
     fallbackOnly.unmount()
+  })
+
+  it("无本地选择时使用服务端 provider default", async () => {
+    ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.config.providers as any).mockResolvedValue({
+      data: {
+        providers: [{ id: "openai", name: "OpenAI", models: { first: {}, preferred: {} } }],
+        default: { openai: "preferred" },
+      },
+      error: null,
+    })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe("openai")
+      expect(result.current.selectedModelId).toBe("preferred")
+    })
+  })
+
+  it("服务端 provider default 无效时回退到首个可用模型", async () => {
+    ;(sdk.config.get as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.config.providers as any).mockResolvedValue({
+      data: {
+        providers: [{ id: "openai", name: "OpenAI", models: { first: {} } }],
+        default: { openai: "missing" },
+      },
+      error: null,
+    })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe("openai")
+      expect(result.current.selectedModelId).toBe("first")
+    })
   })
 
   it("host 模型不可用时自动回退到可用模型", async () => {
@@ -977,6 +1011,36 @@ describe("SessionContext session paging", () => {
     expect(result.current.currentSession?.id).toBe("s-late")
     expect(warn).not.toHaveBeenCalledWith("[SessionContext] Session not found in local list, fetching...")
     warn.mockRestore()
+  })
+
+  it("删除会话后会丢弃该会话尚未完成的切换响应", async () => {
+    const current = deferred<{ data: ReturnType<typeof session>; error: null }>()
+    ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
+    ;(sdk.session.get as any).mockImplementationOnce(() => current.promise)
+    ;(sdk.session.delete as any).mockResolvedValue({ data: true, error: null })
+    ;(sdk.session.diff as any).mockResolvedValue({ data: [], error: null })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    let switching!: Promise<void>
+    act(() => {
+      switching = result.current.switchSession("s-late")
+    })
+    await waitFor(() => {
+      expect(sdk.session.get).toHaveBeenCalledWith({ path: { id: "s-late" } })
+    })
+
+    await act(async () => {
+      await expect(result.current.deleteSession("s-late")).resolves.toBe(true)
+      current.resolve({ data: session("s-late", 1), error: null })
+      await switching
+    })
+
+    expect(result.current.currentSession).toBeNull()
   })
 
   it("loadMoreSessions 会扩大 limit 并再次请求", async () => {

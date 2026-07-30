@@ -26,7 +26,6 @@ export function useSessionVisibilitySync() {
   const inFlight = useRef<string | undefined>(undefined)
   const retry = useRef<ReturnType<typeof setTimeout> | null>(null)
   const epoch = useRef(0)
-  const connected = useRef(false)
   const disposed = useRef(false)
   const latest = useRef({ key: "[]", sessionIDs: [] as string[] })
   const flush = useRef<() => void>(() => {})
@@ -97,10 +96,6 @@ export function useSessionVisibilitySync() {
 
   useEffect(() => {
     return eventEmitter.on("server.connected", () => {
-      if (!connected.current) {
-        connected.current = true
-        return
-      }
       epoch.current++
       synced.current = undefined
       blocked.current = undefined

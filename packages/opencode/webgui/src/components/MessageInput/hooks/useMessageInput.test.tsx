@@ -718,6 +718,7 @@ describe("useMessageInput", () => {
     expect(mocks.rejectQuestion).toHaveBeenNthCalledWith(3, "q3")
     expect(mocks.abort).toHaveBeenCalledWith({ path: { id: "s-1" } })
     expect(mocks.abort).toHaveBeenCalledTimes(1)
+    expect(mocks.abort.mock.invocationCallOrder[0]).toBeLessThan(mocks.rejectQuestion.mock.invocationCallOrder[0])
   })
 
   it("0 条 pending question 时直接 abort", async () => {
@@ -756,6 +757,7 @@ describe("useMessageInput", () => {
 
   it("abort error tuple keeps session busy", async () => {
     mocks.abort.mockResolvedValueOnce({ data: null, error: { message: "busy" } })
+    mocks.getQuestionsBySession.mockReturnValue([{ id: "q1" }, { id: "q2" }])
 
     const editor = {
       getEditorState: () => ({
@@ -782,6 +784,7 @@ describe("useMessageInput", () => {
       await result.current.handleAbort()
     })
 
+    expect(mocks.rejectQuestion).not.toHaveBeenCalled()
     expect(mocks.setSessionIdle).not.toHaveBeenCalledWith("s-3", true)
     expect(mocks.showToast).toHaveBeenCalledWith("busy", expect.objectContaining({ variant: "error" }))
   })

@@ -121,12 +121,11 @@ export function useSessionActivation() {
       let rows = merge(getRef.current(sessionID), loadedMessages)
       let restoredSelection = selectionFromMessages(rows, revertRef.current)
       let failed = false
-      const max = 10
       const seen = new Set<string>()
       let cursor = cursorRef.current(sessionID)
       if (cursor) seen.add(cursor)
 
-      for (let i = 0; !restoredSelection && cursor && i < max; i++) {
+      while (!restoredSelection && cursor) {
         const older = await scanRef.current(sessionID, cursor, controller.signal)
         if (token !== activationTokenRef.current) return
         if (!older) {
@@ -138,8 +137,7 @@ export function useSessionActivation() {
         restoredSelection = selectionFromMessages(rows, revertRef.current)
 
         const next = older.cursor
-        if (!next) break
-        if (seen.has(next)) break
+        if (!next || seen.has(next)) break
         seen.add(next)
         cursor = next
       }

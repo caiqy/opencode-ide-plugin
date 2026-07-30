@@ -284,6 +284,58 @@ describe("CompactHeader", () => {
     expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument()
   })
 
+  it("删除成功后立即关闭对应标签，删除失败时保留标签", async () => {
+    const deleteSession = vi.fn().mockResolvedValue(true)
+    const closeTab = vi.fn()
+    mocks.useSession.mockReturnValue({
+      currentSession: { id: "s1", title: "测试会话" },
+      setCurrentSession: vi.fn(),
+      sessions: [],
+      setSessions: vi.fn(),
+      switchSession: vi.fn(),
+      regenerateSessionTitle: vi.fn(),
+      updateSessionTitle: vi.fn(),
+      deleteSession,
+      isLoading: false,
+    })
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["s1", "s2", "s3"],
+      activeTab: "s1",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab,
+      removeTab: vi.fn(),
+      activateTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    const input = mocks.useSessionActions.mock.lastCall?.[0] as
+      | { deleteSession: (sessionId: string) => Promise<boolean> }
+      | undefined
+    if (!input) throw new Error("session actions input not captured")
+
+    await expect(input.deleteSession("s2")).resolves.toBe(true)
+    expect(deleteSession).toHaveBeenCalledWith("s2")
+    expect(closeTab).toHaveBeenCalledWith("s2")
+
+    deleteSession.mockResolvedValue(false)
+    await expect(input.deleteSession("s3")).resolves.toBe(false)
+    expect(closeTab).not.toHaveBeenCalledWith("s3")
+  })
+
   it("分享成功后 toast 文案为中文", async () => {
     const user = userEvent.setup()
     const { writeText } = mockClipboard()
@@ -624,6 +676,66 @@ describe("CompactHeader", () => {
       await Promise.resolve()
     })
     expect(openTab).not.toHaveBeenCalled()
+  })
+
+  it("批量删除期间不恢复待删除标签，结束后只恢复最终标签", async () => {
+    const switchSession = vi.fn().mockResolvedValue(undefined)
+    let isDeleting = true
+    const state = {
+      sessions: [
+        { id: "s2", title: "会话 2" },
+        { id: "s3", title: "会话 3" },
+      ],
+      openTabs: ["s2", "s3"],
+      activeTab: "s2",
+    }
+    mocks.useSession.mockImplementation(() => ({
+      currentSession: null,
+      setCurrentSession: vi.fn(),
+      sessions: state.sessions,
+      setSessions: vi.fn(),
+      switchSession,
+      regenerateSessionTitle: vi.fn(),
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading: false,
+    }))
+    mocks.useTabStore.mockImplementation(() => ({
+      openTabs: state.openTabs,
+      activeTab: state.activeTab,
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      activateTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    }))
+    mocks.useSessionActions.mockImplementation(() => ({ ...createBaseActionsMock(), isDeleting }))
+
+    const props = {
+      connectionState: "connected" as ConnectionState,
+      onNewSession: vi.fn(),
+      isCreatingSession: false,
+      onOpenCommandPalette: vi.fn(),
+    }
+    const view = render(<CompactHeader {...props} />)
+
+    expect(switchSession).not.toHaveBeenCalled()
+
+    state.sessions = [{ id: "s3", title: "会话 3" }]
+    state.openTabs = ["s3"]
+    state.activeTab = "s3"
+    isDeleting = false
+    view.rerender(<CompactHeader {...props} />)
+
+    await waitFor(() => {
+      expect(switchSession).toHaveBeenCalledWith("s3")
+    })
+    expect(switchSession).not.toHaveBeenCalledWith("s2")
   })
 
   it("does not reopen current session tab when already open", () => {

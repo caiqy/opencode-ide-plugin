@@ -309,7 +309,7 @@ describe("useSessionVisibilitySync", () => {
     await waitFor(() => expect(mocks.syncVisible).toHaveBeenCalledTimes(2))
   })
 
-  it("reconnects an unchanged key with a fresh retry budget after the initial connection", async () => {
+  it("第一次 server.connected 会给未变 key 新的重试预算", async () => {
     vi.useFakeTimers()
     mocks.syncVisible.mockResolvedValue(fail("temporary failure"))
 
@@ -320,7 +320,6 @@ describe("useSessionVisibilitySync", () => {
     expect(mocks.syncVisible).toHaveBeenCalledTimes(3)
 
     await act(async () => {
-      events.emit()
       events.emit()
       await Promise.resolve()
     })
@@ -336,7 +335,6 @@ describe("useSessionVisibilitySync", () => {
     renderHook(() => useSessionVisibilitySync())
     await waitFor(() => expect(mocks.syncVisible).toHaveBeenCalledTimes(1))
     await act(async () => {
-      events.emit()
       events.emit()
     })
 

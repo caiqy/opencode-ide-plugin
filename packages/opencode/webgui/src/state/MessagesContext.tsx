@@ -182,7 +182,9 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const olderLoadRef = useRef<Record<string, Promise<Message[] | null> | undefined>>({})
   const messagesRef = useRef<Message[]>([])
   const pendingEpoch = useRef(0)
-  const pendingWindow = useRef<{ epoch: number; version: number; touched: Record<string, number> } | undefined>(undefined)
+  const pendingWindow = useRef<
+    { epoch: number; version: number; touched: Record<string, number>; deletedSessions: Set<string> } | undefined
+  >(undefined)
   const session = useSession()
   const setReasoning = session.setReasoning
   const setSessionIdle = session.setSessionIdle
@@ -1057,7 +1059,13 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     for (const [requestID, targetSessionID] of notifiedQuestionsRef.current) {
       if (targetSessionID === sessionID) notifiedQuestionsRef.current.delete(requestID)
     }
+    pendingWindow.current?.deletedSessions.add(sessionID)
     setPermissions((prev) => prev.filter((permission) => permission.sessionID !== sessionID))
+    setQuestions((prev) => {
+      const next = new Map(prev)
+      next.delete(sessionID)
+      return next
+    })
   }, [])
 
   const getPermissionForCall = useCallback(
@@ -1237,15 +1245,17 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         if (pendingWindow.current !== window) return
         const permissions = permissionResult.data
         if (!permissionResult.error && permissions) {
-          setPermissions((prev) => mergePendingSnapshot(prev, permissions, window.touched, "permission", 0))
+          const visiblePermissions = permissions.filter((item) => !window.deletedSessions.has(item.sessionID))
+          setPermissions((prev) => mergePendingSnapshot(prev, visiblePermissions, window.touched, "permission", 0))
         }
         const questions = questionResult.data
         if (!questionResult.error && questions) {
+          const visibleQuestions = questions.filter((item) => !window.deletedSessions.has(item.sessionID))
           setQuestions((prev) => {
             const grouped = new Map<string, QuestionRequest[]>()
             for (const item of mergePendingSnapshot(
               [...prev.values()].flat(),
-              questions,
+              visibleQuestions,
               window.touched,
               "question",
               0,
@@ -1264,7 +1274,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
 
   const handleServerConnected = useCallback(() => {
     const epoch = ++pendingEpoch.current
-    pendingWindow.current = { epoch, version: 0, touched: {} }
+    pendingWindow.current = { epoch, version: 0, touched: {}, deletedSessions: new Set() }
     void hydratePending(epoch)
     const sessionID = session.currentSession?.id
     if (sessionID) void loadLatest(sessionID, undefined, true)

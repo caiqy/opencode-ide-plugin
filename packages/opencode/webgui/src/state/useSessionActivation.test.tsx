@@ -604,58 +604,56 @@ describe("useSessionActivation", () => {
     })
   })
 
-  it("后台扫描有最大页数上限，避免激活阶段无限请求", async () => {
-    const max = 10
-    ;(sdk.session.messages as any).mockImplementation(({ query }: { query: { before?: string; limit: number } }) => {
-      if (!query.before) {
+  it("第十一页存在 selection 时会持续扫描并恢复", async () => {
+    ;(sdk.session.messages as any).mockImplementation(
+      ({ query }: { query: { before?: string; limit: number } }) => {
+        if (!query.before) {
+          return Promise.resolve({
+            error: null,
+            data: [
+              {
+                info: { id: "a0", sessionID: "s1", role: "assistant", time: { created: 100 } },
+                parts: [],
+              },
+            ],
+            response: { headers: new Headers({ "X-Next-Cursor": "c1" }) },
+          })
+        }
+
+        const n = Number(query.before.slice(1))
+        if (n === 11) {
+          return Promise.resolve({
+            error: null,
+            data: [
+              {
+                info: {
+                  id: "u-old",
+                  sessionID: "s1",
+                  role: "user",
+                  time: { created: 1 },
+                  agent: "plan",
+                  model: { providerID: "openai", modelID: "gpt-4.1" },
+                  variant: "low",
+                },
+                parts: [],
+              },
+            ],
+            response: { headers: new Headers() },
+          })
+        }
+
         return Promise.resolve({
           error: null,
           data: [
             {
-              info: {
-                id: "a0",
-                sessionID: "s1",
-                role: "assistant",
-                time: { created: 100 },
-              },
+              info: { id: `a${n}`, sessionID: "s1", role: "assistant", time: { created: 100 - n } },
               parts: [],
             },
           ],
-          response: {
-            headers: new Headers({ "X-Next-Cursor": "c1" }),
-          },
+          response: { headers: new Headers({ "X-Next-Cursor": `c${n + 1}` }) },
         })
-      }
-
-      const n = Number(String(query.before).slice(1))
-      if (n >= 30) {
-        return Promise.resolve({
-          error: null,
-          data: [],
-          response: {
-            headers: new Headers(),
-          },
-        })
-      }
-
-      return Promise.resolve({
-        error: null,
-        data: [
-          {
-            info: {
-              id: `o${n}`,
-              sessionID: "s1",
-              role: "assistant",
-              time: { created: 100 + n },
-            },
-            parts: [],
-          },
-        ],
-        response: {
-          headers: new Headers({ "X-Next-Cursor": `c${n + 1}` }),
-        },
-      })
-    })
+      },
+    )
 
     render(
       <Providers>
@@ -673,9 +671,52 @@ describe("useSessionActivation", () => {
       await activate!("s1")
     })
 
-    // latest 1 次 + older 扫描最多 max 页
-    expect(sdk.session.messages).toHaveBeenCalledTimes(1 + max)
-    expect(messagesApi!.getSessionPagination("s1").olderLoading).toBe(false)
+    expect(sdk.session.messages).toHaveBeenCalledTimes(12)
+    expect(sessionApi!.selectedAgent).toBe("plan")
+    expect(sessionApi!.selectedModelId).toBe("gpt-4.1")
+  })
+
+  it("重复 cursor 时结束扫描并释放 foreground session", async () => {
+    ;(sdk.session.messages as any)
+      .mockResolvedValueOnce({
+        error: null,
+        data: [
+          {
+            info: { id: "a0", sessionID: "s1", role: "assistant", time: { created: 2 } },
+            parts: [],
+          },
+        ],
+        response: { headers: new Headers({ "X-Next-Cursor": "c1" }) },
+      })
+      .mockResolvedValueOnce({
+        error: null,
+        data: [
+          {
+            info: { id: "a1", sessionID: "s1", role: "assistant", time: { created: 1 } },
+            parts: [],
+          },
+        ],
+        response: { headers: new Headers({ "X-Next-Cursor": "c1" }) },
+      })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(activate).toBeTruthy()
+    })
+
+    await act(async () => {
+      await activate!("s1")
+    })
+
+    expect(sdk.session.messages).toHaveBeenCalledTimes(2)
+    expect(sessionApi!.foregroundSessions.has("s1")).toBe(false)
   })
 
   it("向前翻页恢复 selection 失败时保留当前选择并给出提示", async () => {

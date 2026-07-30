@@ -419,6 +419,32 @@ describe("MessagesContext questions", () => {
     })
   })
 
+  it("水合期间删除会话不会恢复该会话的 pending 状态", async () => {
+    const questions = deferred<{ data: QuestionRequest[]; error: null }>()
+    const permissions = deferred<{ data: PermissionRequest[]; error: null }>()
+    vi.mocked(sdk.question.list)
+      .mockImplementationOnce(() => questions.promise)
+      .mockResolvedValue({ data: [], error: null })
+    vi.mocked(sdk.permissions.list)
+      .mockImplementationOnce(() => permissions.promise)
+      .mockResolvedValue({ data: [], error: null })
+    const emitter = new EventEmitter()
+    mount(emitter)
+
+    await act(async () => emitter.emit({ type: "server.connected", properties: {} }))
+    await act(async () => {
+      emitter.emit(ask("local", "s1"))
+      emitter.emit({ type: "session.deleted", properties: { info: { id: "s1" } } } as unknown as ServerEvent)
+      questions.resolve({ data: [ask("stale", "s1").properties as QuestionRequest], error: null })
+      permissions.resolve({ data: [permission("stale-permission", "s1")], error: null })
+    })
+
+    await waitFor(() => {
+      expect(api?.getQuestionsBySession("s1")).toEqual([])
+      expect(api?.permissions.filter((item) => item.sessionID === "s1")).toEqual([])
+    })
+  })
+
   it("水合期间收到 SSE 时丢弃旧快照并重拉", async () => {
     const first = deferred<{ data: QuestionRequest[]; error: null }>()
     vi.mocked(sdk.question.list).mockImplementationOnce(() => first.promise)

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import { FileChangesPanel } from "./FileChangesPanel"
 
 const mocks = vi.hoisted(() => ({
@@ -32,6 +32,13 @@ describe("FileChangesPanel", () => {
         deletions: 0,
       },
       {
+        file: "src/new.ts",
+        patch: "@@ -0,0 +1 @@\n+new",
+        status: "added",
+        additions: 1,
+        deletions: 0,
+      },
+      {
         file: "src/deleted.ts",
         patch: "@@ -1 +0,0 @@\n-old",
         status: "deleted",
@@ -52,8 +59,28 @@ describe("FileChangesPanel", () => {
       />,
     )
 
+    const summary = screen.getByText("3 files").parentElement!
     expect(screen.getByText("差异仍在后台刷新，当前显示的是上一版结果")).toBeInTheDocument()
-    expect(screen.getByText("1 modified • 1 deleted")).toBeInTheDocument()
+    expect(screen.getByText("3 files")).toBeInTheDocument()
+    expect(within(summary).getByText("+2")).toBeInTheDocument()
+    expect(within(summary).getByText("-1")).toBeInTheDocument()
+    expect(within(summary).getByText("net +1")).toBeInTheDocument()
+    expect(screen.getByText("1 added • 1 modified • 1 deleted")).toBeInTheDocument()
+    expect(screen.getByTitle("src/new.ts")).toHaveClass("text-green-700")
+  })
+
+  it("opens an added file with mouse and keyboard", () => {
+    render(<FileChangesPanel diffs={[]} />)
+    const added = screen.getByTitle("src/new.ts")
+
+    fireEvent.click(added)
+    fireEvent.keyDown(added, { key: "Enter" })
+    fireEvent.keyDown(added, { key: " " })
+
+    expect(mocks.openFile).toHaveBeenCalledTimes(3)
+    expect(mocks.openFile).toHaveBeenNthCalledWith(1, { path: "src/new.ts", display: "src/new.ts" })
+    expect(mocks.openFile).toHaveBeenNthCalledWith(2, { path: "src/new.ts", display: "src/new.ts" })
+    expect(mocks.openFile).toHaveBeenNthCalledWith(3, { path: "src/new.ts", display: "src/new.ts" })
   })
 
   it("shows latest hint when diff is current", () => {
