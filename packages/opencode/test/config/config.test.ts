@@ -354,7 +354,8 @@ it.instance("updates config and preserves empty shell sentinel", () =>
 
     yield* Config.Service.use((svc) => svc.update(ConfigParse.schema(ConfigV1.Info, { shell: "" }, "test:config")))
 
-    const writtenConfig = yield* FSUtil.use.readJson(path.join(test.directory, "config.json"))
+    expect(yield* FSUtil.use.existsSafe(path.join(test.directory, "opencode.json"))).toBe(true)
+    const writtenConfig = yield* FSUtil.use.readJson(path.join(test.directory, "opencode.json"))
     expect(writtenConfig).toMatchObject({ shell: "" })
   }),
 )
@@ -400,6 +401,233 @@ it.effect("reloads the current instance after global config changes", () =>
           expect((yield* Config.use.get()).username).toBe("after")
         }),
       ),
+    )
+  }),
+)
+
+for (const operation of ["update", "replace"] as const) {
+  it.effect(`${operation}s global config without materializing resolved values`, () =>
+    withProcessEnvs(
+      { CONFIG_WRITEBACK_API_KEY: "resolved-api-key" },
+      Effect.gen(function* () {
+        const dir = yield* tmpdirScoped()
+        const file = path.join(dir, "opencode.jsonc")
+        yield* FSUtil.use.writeWithDirs(path.join(dir, "username.txt"), "resolved-username")
+        yield* FSUtil.use.writeWithDirs(
+          file,
+          JSON.stringify(
+            schemaConfig({
+              model: "before/model",
+              username: "{file:username.txt}",
+              provider: { openai: { options: { apiKey: "{env:CONFIG_WRITEBACK_API_KEY}" } } },
+              plugin: ["./plugin.ts"],
+            }),
+            null,
+            2,
+          ),
+        )
+
+        yield* withGlobalConfigDir(
+          dir,
+          Effect.gen(function* () {
+            const resolved = yield* Config.use.getGlobal()
+            const provider = {
+              ...resolved.provider,
+              openai: {
+                ...resolved.provider?.openai,
+                options: { ...resolved.provider?.openai?.options, timeout: 2000 },
+              },
+            }
+            const plugin = [...(resolved.plugin ?? []), "extra-plugin"]
+            const input =
+              operation === "update"
+                ? {
+                    model: "after/model",
+                    username: resolved.username,
+                    provider,
+                    plugin,
+                  }
+                : { ...resolved, model: "after/model", provider, plugin }
+
+            yield* (operation === "update" ? Config.use.updateGlobal(input) : Config.use.replaceGlobal(input))
+
+            const written = yield* FSUtil.use.readFileString(file)
+            expect(written).toContain("{env:CONFIG_WRITEBACK_API_KEY}")
+            expect(written).toContain("{file:username.txt}")
+            expect(written).toContain("./plugin.ts")
+            expect(written).toContain("extra-plugin")
+            expect(written).not.toContain("resolved-api-key")
+            expect(written).not.toContain("resolved-username")
+
+            const reloaded = yield* Config.use.getGlobal()
+            expect(reloaded.model).toBe("after/model")
+            expect(reloaded.username).toBe("resolved-username")
+            expect(reloaded.provider?.openai?.options?.apiKey).toBe("resolved-api-key")
+            expect(reloaded.provider?.openai?.options?.timeout).toBe(2000)
+          }),
+        )
+      }),
+    ),
+  )
+}
+
+it.effect("preserves raw plugin sources across array insertion reordering and deletion", () =>
+  withProcessEnvs(
+    {
+      CONFIG_WRITEBACK_PLUGIN_A: "./same.ts",
+      CONFIG_WRITEBACK_PLUGIN_B: "./same.ts",
+    },
+    withGlobalConfig(
+      {
+        name: "opencode.jsonc",
+        config: {
+          plugin: [
+            "./first.ts",
+            "{env:CONFIG_WRITEBACK_PLUGIN_A}",
+            "{env:CONFIG_WRITEBACK_PLUGIN_B}",
+            "./removed.ts",
+          ],
+        },
+      },
+      ({ dir }) =>
+        Effect.gen(function* () {
+          const plugin = (yield* Config.use.getGlobal()).plugin ?? []
+          expect(plugin).toHaveLength(4)
+
+          yield* Config.use.updateGlobal({ plugin: ["new-plugin", plugin[2], plugin[0], plugin[1]] })
+
+          const file = path.join(dir, "opencode.jsonc")
+          const written = ConfigParse.schema(
+            ConfigV1.Info,
+            ConfigParse.jsonc(yield* FSUtil.use.readFileString(file), file),
+            file,
+          )
+          expect(written.plugin).toEqual([
+            "new-plugin",
+            "{env:CONFIG_WRITEBACK_PLUGIN_A}",
+            "./first.ts",
+            "{env:CONFIG_WRITEBACK_PLUGIN_B}",
+          ])
+        }),
+    ),
+  ),
+)
+
+it.effect("updates global config from a fresh disk snapshot after the cache is warm", () =>
+  withGlobalConfig({ config: { model: "before/model" }, name: "opencode.jsonc" }, ({ dir }) =>
+    Effect.gen(function* () {
+      expect((yield* Config.use.getGlobal()).model).toBe("before/model")
+      yield* writeConfigEffect(dir, schemaConfig({ model: "external/model", username: "external" }), "opencode.jsonc")
+
+      yield* Config.use.updateGlobal({ snapshot: false })
+
+      const reloaded = yield* Config.use.getGlobal()
+      expect(reloaded.model).toBe("external/model")
+      expect(reloaded.username).toBe("external")
+      expect(reloaded.snapshot).toBe(false)
+    }),
+  ),
+)
+
+it.effect("invalidates global cache when obsolete cleanup fails after the target write", () =>
+  withGlobalConfig({ config: { model: "before/model" }, name: "opencode.jsonc" }, ({ dir }) =>
+    Effect.gen(function* () {
+      expect((yield* Config.use.getGlobal()).model).toBe("before/model")
+      const obsolete = path.join(dir, "config.json")
+      yield* FSUtil.use.writeWithDirs(path.join(obsolete, "entry"), "blocks non-recursive removal")
+
+      const exit = yield* Config.use.updateGlobal({ model: "after/model" }).pipe(Effect.exit)
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      expect(yield* FSUtil.use.readFileString(path.join(dir, "opencode.jsonc"))).toContain("after/model")
+      yield* FSUtil.use.remove(obsolete, { force: true, recursive: true })
+      expect((yield* Config.use.getGlobal()).model).toBe("after/model")
+    }),
+  ),
+)
+
+it.live("serializes concurrent global updates", () =>
+  withGlobalConfig({ config: { snapshot: true }, name: "opencode.jsonc" }, () =>
+    Effect.gen(function* () {
+      yield* Config.use.getGlobal()
+      yield* Effect.all(
+        [Config.use.updateGlobal({ model: "updated/model" }), Config.use.updateGlobal({ username: "updated-user" })],
+        { concurrency: "unbounded" },
+      )
+
+      const reloaded = yield* Config.use.getGlobal()
+      expect(reloaded.model).toBe("updated/model")
+      expect(reloaded.username).toBe("updated-user")
+      expect(reloaded.snapshot).toBe(true)
+    }),
+  ),
+)
+
+it.effect("preserves nested JSONC comments when updating an unrelated global field", () =>
+  Effect.gen(function* () {
+    const dir = yield* tmpdirScoped()
+    const file = path.join(dir, "opencode.jsonc")
+    yield* FSUtil.use.writeWithDirs(
+      file,
+      `{
+        "$schema": "https://opencode.ai/config.json",
+        "model": "before/model",
+        "provider": {
+          // Keep provider options documented.
+          "openai": { "options": { "timeout": 1000 } }
+        },
+        "permission": {
+          // Keep permission intent documented.
+          "edit": "ask"
+        }
+      }`,
+    )
+
+    yield* withGlobalConfigDir(
+      dir,
+      Effect.gen(function* () {
+        yield* Config.use.updateGlobal({ model: "after/model" })
+
+        const written = yield* FSUtil.use.readFileString(file)
+        expect(written).toContain("// Keep provider options documented.")
+        expect(written).toContain("// Keep permission intent documented.")
+      }),
+    )
+  }),
+)
+
+it.effect("consolidates global files when updating replaced fields", () =>
+  Effect.gen(function* () {
+    const dir = yield* tmpdirScoped()
+    yield* writeConfigEffect(dir, schemaConfig({ provider: { stale: { options: { apiKey: "stale" } } } }), "config.json")
+    yield* writeConfigEffect(dir, schemaConfig({ username: "kept" }), "opencode.json")
+    yield* writeConfigEffect(dir, schemaConfig({ model: "old/model" }), "opencode.jsonc")
+
+    yield* withGlobalConfigDir(
+      dir,
+      Effect.gen(function* () {
+        const result = yield* Config.use.updateGlobal({
+          provider: { openai: { options: { timeout: 2000 } } },
+        })
+
+        expect(result.info.provider?.stale).toBeUndefined()
+        expect(result.info.username).toBe("kept")
+        expect(yield* FSUtil.use.existsSafe(path.join(dir, "config.json"))).toBe(false)
+        expect(yield* FSUtil.use.existsSafe(path.join(dir, "opencode.json"))).toBe(false)
+        expect(yield* FSUtil.use.existsSafe(path.join(dir, "opencode.jsonc"))).toBe(true)
+
+        const file = path.join(dir, "opencode.jsonc")
+        const written = ConfigParse.schema(
+          ConfigV1.Info,
+          ConfigParse.jsonc(yield* FSUtil.use.readFileString(file), file),
+          file,
+        )
+        expect(written.provider?.stale).toBeUndefined()
+        expect(written.provider?.openai?.options?.timeout).toBe(2000)
+        expect(written.username).toBe("kept")
+        expect(written.model).toBe("old/model")
+        expect((yield* Config.use.getGlobal()).provider?.stale).toBeUndefined()
+      }),
     )
   }),
 )
@@ -479,6 +707,108 @@ for (const name of ["opencode.json", "opencode.jsonc"]) {
           expect(written.username).toBe("after")
         }),
     ),
+  )
+}
+
+it.effect("consolidates global files when replacing config", () =>
+  Effect.gen(function* () {
+    const dir = yield* tmpdirScoped()
+    yield* writeConfigEffect(dir, schemaConfig({ username: "stale" }), "config.json")
+    yield* writeConfigEffect(dir, schemaConfig({ model: "old/model" }), "opencode.json")
+
+    yield* withGlobalConfigDir(
+      dir,
+      Effect.gen(function* () {
+        const result = yield* Config.use.replaceGlobal({ snapshot: false })
+
+        expect(result.info.username).toBeUndefined()
+        expect(yield* FSUtil.use.existsSafe(path.join(dir, "config.json"))).toBe(false)
+        expect(yield* FSUtil.use.existsSafe(path.join(dir, "opencode.json"))).toBe(true)
+        expect((yield* Config.use.getGlobal()).username).toBeUndefined()
+      }),
+    )
+  }),
+)
+
+it.effect("reports changed when consolidation only deletes redundant files", () =>
+  Effect.gen(function* () {
+    const dir = yield* tmpdirScoped()
+    const config = schemaConfig({ snapshot: false })
+    const file = path.join(dir, "opencode.json")
+    const content = JSON.stringify(config, null, 2)
+    yield* FSUtil.use.writeWithDirs(file, content)
+    yield* writeConfigEffect(dir, schemaConfig({}), "config.json")
+
+    yield* withGlobalConfigDir(
+      dir,
+      Effect.gen(function* () {
+        const result = yield* Config.use.replaceGlobal(config)
+
+        expect(result.changed).toBe(true)
+        expect(yield* FSUtil.use.existsSafe(path.join(dir, "config.json"))).toBe(false)
+        expect(yield* FSUtil.use.readFileString(file)).toBe(content)
+      }),
+    )
+  }),
+)
+
+it.effect("keeps source files when the global target cannot be written", () =>
+  Effect.gen(function* () {
+    const dir = yield* tmpdirScoped()
+    yield* FSUtil.use.ensureDir(path.join(dir, "opencode.jsonc"))
+    yield* writeConfigEffect(dir, schemaConfig({ username: "source" }), "config.json")
+
+    yield* withGlobalConfigDir(
+      dir,
+      Effect.gen(function* () {
+        const exit = yield* Config.use.updateGlobal({ snapshot: false }).pipe(Effect.exit)
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        expect(yield* FSUtil.use.existsSafe(path.join(dir, "config.json"))).toBe(true)
+      }),
+    )
+  }),
+)
+
+for (const operation of ["update", "replace"] as const) {
+  it.effect(`${operation}s global JSONC containing legacy TUI keys`, () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const file = path.join(dir, "opencode.jsonc")
+      yield* writeConfigEffect(
+        dir,
+        {
+          ...schemaConfig({ username: "before" }),
+          theme: "legacy",
+          keybinds: { leader: "ctrl+x" },
+          tui: { scroll_speed: 4 },
+        },
+        "opencode.jsonc",
+      )
+
+      yield* withGlobalConfigDir(
+        dir,
+        Effect.gen(function* () {
+          yield* (operation === "update"
+            ? Config.use.updateGlobal({ model: "new/model" })
+            : Config.use.replaceGlobal({ snapshot: false }))
+
+          const parsed = ConfigParse.jsonc(yield* FSUtil.use.readFileString(file), file)
+          expect(parsed).not.toHaveProperty("theme")
+          expect(parsed).not.toHaveProperty("keybinds")
+          expect(parsed).not.toHaveProperty("tui")
+
+          const written = ConfigParse.schema(ConfigV1.Info, parsed, file)
+          if (operation === "update") {
+            expect(written.username).toBe("before")
+            expect(written.model).toBe("new/model")
+            return
+          }
+          expect(written.snapshot).toBe(false)
+          expect(written.username).toBeUndefined()
+        }),
+      )
+    }),
   )
 }
 
@@ -975,15 +1305,261 @@ Nested command template`,
   }),
 )
 
-it.instance("updates config and writes to file", () =>
+it.instance("updates the loaded project config and reloads it", () =>
   Effect.gen(function* () {
     const test = yield* TestInstance
-    yield* Config.Service.use((svc) =>
-      svc.update(ConfigParse.schema(ConfigV1.Info, { model: "updated/model" }, "test:config")),
+    yield* writeConfigEffect(test.directory, schemaConfig({ username: "before" }))
+    expect((yield* Config.use.get()).username).toBe("before")
+
+    yield* Config.use.update({ model: "updated/model" })
+
+    expect(yield* FSUtil.use.existsSafe(path.join(test.directory, "config.json"))).toBe(false)
+    expect(yield* FSUtil.use.readJson(path.join(test.directory, "opencode.json"))).toMatchObject({
+      username: "before",
+      model: "updated/model",
+    })
+    expect((yield* Config.use.get()).model).toBe("updated/model")
+  }),
+)
+
+it.instance("updates project JSONC without materializing resolved values", () =>
+  withProcessEnvs(
+    { CONFIG_WRITEBACK_USERNAME: "resolved-project-user" },
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const file = path.join(test.directory, "opencode.jsonc")
+      yield* FSUtil.use.writeWithDirs(path.join(test.directory, "api-key.txt"), "resolved-project-key")
+      yield* FSUtil.use.writeWithDirs(
+        file,
+        `{
+          "$schema": "https://opencode.ai/config.json",
+          "model": "before/model",
+          "username": "{env:CONFIG_WRITEBACK_USERNAME}",
+          "provider": {
+            // Keep this provider comment.
+            "openai": { "options": { "apiKey": "{file:api-key.txt}" } }
+          },
+          "plugin": ["./plugin.ts"]
+        }`,
+      )
+      expect((yield* Config.use.get()).model).toBe("before/model")
+
+      yield* Config.use.update({ model: "after/model" })
+
+      expect(yield* FSUtil.use.existsSafe(path.join(test.directory, "opencode.json"))).toBe(false)
+      const written = yield* FSUtil.use.readFileString(file)
+      expect(written).toContain("after/model")
+      expect(written).toContain("{env:CONFIG_WRITEBACK_USERNAME}")
+      expect(written).toContain("{file:api-key.txt}")
+      expect(written).toContain("./plugin.ts")
+      expect(written).toContain("// Keep this provider comment.")
+      expect(written).not.toContain("resolved-project-user")
+      expect(written).not.toContain("resolved-project-key")
+
+      const reloaded = yield* Config.use.get()
+      expect(reloaded.model).toBe("after/model")
+      expect(reloaded.username).toBe("resolved-project-user")
+      expect(reloaded.provider?.openai?.options?.apiKey).toBe("resolved-project-key")
+    }),
+  ),
+)
+
+it.instance("does not copy inherited project secrets into the JSONC target", () =>
+  withProcessEnv(
+    "CONFIG_WRITEBACK_INHERITED_USER",
+    "resolved-inherited-user",
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const target = path.join(test.directory, "opencode.jsonc")
+      yield* FSUtil.use.writeWithDirs(path.join(test.directory, "inherited-key.txt"), "resolved-inherited-key")
+      yield* writeConfigEffect(
+        test.directory,
+        schemaConfig({
+          username: "{env:CONFIG_WRITEBACK_INHERITED_USER}",
+          provider: { openai: { options: { apiKey: "{file:inherited-key.txt}" } } },
+        }),
+      )
+      yield* FSUtil.use.writeWithDirs(target, JSON.stringify(schemaConfig({ model: "before/model" }), null, 2))
+
+      const config = yield* Config.use.get()
+      yield* Config.use.update({ ...config, model: "after/model" })
+
+      const written = ConfigParse.schema(
+        ConfigV1.Info,
+        ConfigParse.jsonc(yield* FSUtil.use.readFileString(target), target),
+        target,
+      )
+      expect(written.model).toBe("after/model")
+      expect(written.username).toBeUndefined()
+      expect(written.provider).toBeUndefined()
+      const content = yield* FSUtil.use.readFileString(target)
+      expect(content).not.toContain("resolved-inherited-user")
+      expect(content).not.toContain("resolved-inherited-key")
+      expect(content).not.toContain("CONFIG_WRITEBACK_INHERITED_USER")
+      expect(content).not.toContain("inherited-key.txt")
+
+      const reloaded = yield* Config.use.get()
+      expect(reloaded.model).toBe("after/model")
+      expect(reloaded.username).toBe("resolved-inherited-user")
+      expect(reloaded.provider?.openai?.options?.apiKey).toBe("resolved-inherited-key")
+    }),
+  ),
+)
+
+it.effect("does not copy inherited global secrets into project config", () =>
+  withProcessEnv(
+    "CONFIG_WRITEBACK_GLOBAL_USER",
+    "resolved-global-user",
+    Effect.gen(function* () {
+      const global = yield* tmpdirScoped()
+      const project = yield* tmpdirScoped()
+      const target = path.join(project, "opencode.jsonc")
+      yield* writeConfigEffect(global, schemaConfig({ username: "{env:CONFIG_WRITEBACK_GLOBAL_USER}" }))
+      yield* FSUtil.use.writeWithDirs(target, JSON.stringify(schemaConfig({ model: "before/model" }), null, 2))
+
+      yield* withGlobalConfigDir(
+        global,
+        withInstanceDir(
+          project,
+          Effect.gen(function* () {
+            const config = yield* Config.use.get()
+            yield* Config.use.update({ ...config, model: "after/model" })
+
+            const written = ConfigParse.schema(
+              ConfigV1.Info,
+              ConfigParse.jsonc(yield* FSUtil.use.readFileString(target), target),
+              target,
+            )
+            expect(written.model).toBe("after/model")
+            expect(written.username).toBeUndefined()
+            expect(yield* FSUtil.use.readFileString(target)).not.toContain("resolved-global-user")
+            expect((yield* Config.use.get()).username).toBe("resolved-global-user")
+          }),
+        ),
+      )
+    }),
+  ),
+)
+
+it.effect("keeps project instruction array provenance when editing a complete payload", () =>
+  Effect.gen(function* () {
+    const global = yield* tmpdirScoped()
+    const project = yield* tmpdirScoped()
+    const target = path.join(project, "opencode.jsonc")
+    yield* writeConfigEffect(global, schemaConfig({ instructions: ["global-rule.md"] }))
+    yield* FSUtil.use.writeWithDirs(path.join(project, "inherited-instruction.txt"), "inherited-rule.md")
+    yield* FSUtil.use.writeWithDirs(path.join(project, "target-instruction.txt"), "target-rule.md")
+    yield* writeConfigEffect(
+      project,
+      schemaConfig({ instructions: ["{file:inherited-instruction.txt}", "shared-rule.md"] }),
+    )
+    yield* FSUtil.use.writeWithDirs(
+      target,
+      JSON.stringify(schemaConfig({ instructions: ["{file:target-instruction.txt}"] }), null, 2),
     )
 
-    const writtenConfig = yield* FSUtil.use.readJson(path.join(test.directory, "config.json"))
-    expect(writtenConfig).toMatchObject({ model: "updated/model" })
+    yield* withGlobalConfigDir(
+      global,
+      withInstanceDir(
+        project,
+        Effect.gen(function* () {
+          const config = yield* Config.use.get()
+          expect(config.instructions).toEqual([
+            "global-rule.md",
+            "inherited-rule.md",
+            "shared-rule.md",
+            "target-rule.md",
+          ])
+
+          yield* Config.use.update({
+            ...config,
+            instructions: ["target-rule.md", "new-rule.md", "inherited-rule.md"],
+          })
+
+          const written = ConfigParse.schema(
+            ConfigV1.Info,
+            ConfigParse.jsonc(yield* FSUtil.use.readFileString(target), target),
+            target,
+          )
+          expect(written.instructions).toEqual(["{file:target-instruction.txt}", "new-rule.md"])
+          const content = yield* FSUtil.use.readFileString(target)
+          expect(content).not.toContain("target-rule.md")
+          expect(content).not.toContain("inherited-rule.md")
+          expect(content).not.toContain("undefined")
+
+          expect((yield* Config.use.get()).instructions).toEqual([
+            "global-rule.md",
+            "inherited-rule.md",
+            "shared-rule.md",
+            "target-rule.md",
+            "new-rule.md",
+          ])
+        }),
+      ),
+    )
+  }),
+)
+
+it.effect("keeps project plugin array provenance when editing a complete payload", () =>
+  Effect.gen(function* () {
+    const global = yield* tmpdirScoped()
+    const project = yield* tmpdirScoped()
+    const target = path.join(project, "opencode.jsonc")
+    yield* writeConfigEffect(global, schemaConfig({ plugin: ["global-plugin"] }))
+    yield* FSUtil.use.writeWithDirs(path.join(project, "target-plugin.txt"), "./target.ts")
+    yield* writeConfigEffect(project, schemaConfig({ plugin: ["./inherited.ts"] }))
+    yield* FSUtil.use.writeWithDirs(
+      target,
+      JSON.stringify(schemaConfig({ plugin: ["{file:target-plugin.txt}"] }), null, 2),
+    )
+
+    yield* withGlobalConfigDir(
+      global,
+      withInstanceDir(
+        project,
+        Effect.gen(function* () {
+          const config = yield* Config.use.get()
+          const plugin = config.plugin ?? []
+          const inherited = plugin.find((item) => ConfigPlugin.pluginSpecifier(item).includes("inherited.ts"))
+          const owned = plugin.find((item) => ConfigPlugin.pluginSpecifier(item).includes("target.ts"))
+          if (!inherited || !owned) return yield* Effect.die(new Error("expected inherited and target plugins"))
+
+          yield* Config.use.update({ ...config, plugin: [owned, "new-plugin", inherited] })
+
+          const written = ConfigParse.schema(
+            ConfigV1.Info,
+            ConfigParse.jsonc(yield* FSUtil.use.readFileString(target), target),
+            target,
+          )
+          expect(written.plugin).toEqual(["{file:target-plugin.txt}", "new-plugin"])
+          const content = yield* FSUtil.use.readFileString(target)
+          expect(content).not.toContain("file://")
+          expect(content).not.toContain("inherited.ts")
+          expect(content).not.toContain("undefined")
+
+          expect((yield* Config.use.get()).plugin?.map(ConfigPlugin.pluginSpecifier)).toEqual([
+            "global-plugin",
+            ConfigPlugin.pluginSpecifier(inherited),
+            ConfigPlugin.pluginSpecifier(owned),
+            "new-plugin",
+          ])
+        }),
+      ),
+    )
+  }),
+)
+
+it.instance("serializes concurrent project updates", () =>
+  Effect.gen(function* () {
+    yield* Config.use.get()
+    yield* Effect.all(
+      [Config.use.update({ model: "updated/model" }), Config.use.update({ username: "updated-user" })],
+      { concurrency: "unbounded" },
+    )
+
+    const config = yield* Config.use.get()
+    expect(config.model).toBe("updated/model")
+    expect(config.username).toBe("updated-user")
   }),
 )
 

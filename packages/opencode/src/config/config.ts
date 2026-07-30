@@ -35,6 +35,7 @@ import { ConfigPlugin } from "./plugin"
 import { ConfigVariable } from "./variable"
 import { Npm } from "@opencode-ai/core/npm"
 import { withTransientReadRetry } from "@/util/effect-http-client"
+import { isDeepStrictEqual } from "node:util"
 
 // Custom merge function that concatenates array fields instead of replacing them
 // Keep remeda's deep conditional merge type out of hot config-loading paths; TS profiling showed it dominates here.
@@ -154,10 +155,12 @@ export function clearSkillPermissionOverlay(dir: string) {
   skillPermissionOverlay.delete(dir)
 }
 
+function globalConfigFiles() {
+  return ["opencode.jsonc", "opencode.json", "config.json"].map((file) => path.join(Global.Path.config, file))
+}
+
 export function globalConfigFile() {
-  const candidates = ["opencode.jsonc", "opencode.json", "config.json"].map((file) =>
-    path.join(Global.Path.config, file),
-  )
+  const candidates = globalConfigFiles()
   for (const file of candidates) {
     if (existsSync(file)) return file
   }
@@ -170,6 +173,104 @@ function patchJsonc(input: string, patch: unknown, path: string[] = []): string 
   }
 
   return Object.entries(patch).reduce((result, [key, value]) => patchJsonc(result, value, [...path, key]), input)
+}
+
+function syncJsonc(input: string, current: unknown, next: unknown, path: string[] = []): string {
+  if (isDeepStrictEqual(current, next)) return input
+  if (!isRecord(current) || !isRecord(next)) return replaceJsonc(input, next, path)
+
+  return Array.from(new Set([...Object.keys(current), ...Object.keys(next)])).reduce((result, key) => {
+    if (!(key in next)) return replaceJsonc(result, undefined, [...path, key])
+    if (!(key in current)) return replaceJsonc(result, next[key], [...path, key])
+    return syncJsonc(result, current[key], next[key], [...path, key])
+  }, input)
+}
+
+function reconcileResolved(input: unknown, resolved: unknown, raw: unknown): unknown {
+  if (isDeepStrictEqual(input, resolved)) return raw
+  if (Array.isArray(input)) {
+    const resolvedItems = Array.isArray(resolved) ? resolved : []
+    const rawItems = Array.isArray(raw) ? raw : []
+    const used = new Set<number>()
+    // Reserve exact source matches first so inserts, moves, and duplicates cannot shift raw secrets by index.
+    const matches = input.map((value) => {
+      const index = resolvedItems.findIndex((candidate, index) => !used.has(index) && isDeepStrictEqual(value, candidate))
+      if (index === -1) return undefined
+      used.add(index)
+      return index
+    })
+    return input.map((value, index) => {
+      const match = matches[index]
+      if (match !== undefined) return rawItems[match]
+      if (index >= resolvedItems.length || used.has(index)) return value
+      used.add(index)
+      return reconcileResolved(value, resolvedItems[index], rawItems[index])
+    })
+  }
+  if (!isRecord(input)) return input
+
+  const resolvedRecord = isRecord(resolved) ? resolved : {}
+  const rawRecord = isRecord(raw) ? raw : {}
+  return Object.fromEntries(
+    Object.entries(input).map(([key, value]) => [key, reconcileResolved(value, resolvedRecord[key], rawRecord[key])]),
+  )
+}
+
+function reconcileProject(input: unknown, resolved: unknown, targetResolved: unknown, targetRaw: unknown): unknown {
+  if (isDeepStrictEqual(input, resolved)) return targetRaw
+  if (Array.isArray(input)) {
+    const resolvedItems = Array.isArray(resolved) ? resolved : []
+    const targetItems = Array.isArray(targetResolved) ? targetResolved : []
+    const rawItems = Array.isArray(targetRaw) ? targetRaw : []
+    // Only targetItems and rawItems share indices; resolvedItems is used solely to identify inherited values.
+    const usedTarget = new Set<number>()
+    const targetMatches = input.map((value) => {
+      const index = targetItems.findIndex((candidate, index) => !usedTarget.has(index) && isDeepStrictEqual(value, candidate))
+      if (index === -1) return undefined
+      usedTarget.add(index)
+      return index
+    })
+    const targetInResolved = new Set<number>()
+    for (const value of targetItems) {
+      const index = resolvedItems.findIndex(
+        (candidate, index) => !targetInResolved.has(index) && isDeepStrictEqual(value, candidate),
+      )
+      if (index !== -1) targetInResolved.add(index)
+    }
+    const inherited = resolvedItems.filter((_, index) => !targetInResolved.has(index))
+    const usedInherited = new Set<number>()
+    const inheritedMatches = input.map((value, index) => {
+      if (targetMatches[index] !== undefined) return undefined
+      const match = inherited.findIndex(
+        (candidate, index) => !usedInherited.has(index) && isDeepStrictEqual(value, candidate),
+      )
+      if (match === -1) return undefined
+      usedInherited.add(match)
+      return match
+    })
+
+    return input.flatMap((value, index) => {
+      const targetMatch = targetMatches[index]
+      if (targetMatch !== undefined) return rawItems[targetMatch] === undefined ? [] : [rawItems[targetMatch]]
+      if (inheritedMatches[index] !== undefined) return []
+      const targetIndex = targetItems.findIndex((_, index) => !usedTarget.has(index))
+      if (targetIndex === -1) return [value]
+      usedTarget.add(targetIndex)
+      const next = reconcileResolved(value, targetItems[targetIndex], rawItems[targetIndex])
+      return next === undefined ? [] : [next]
+    })
+  }
+  if (!isRecord(input)) return input
+
+  const resolvedRecord = isRecord(resolved) ? resolved : {}
+  const targetResolvedRecord = isRecord(targetResolved) ? targetResolved : {}
+  const rawRecord = isRecord(targetRaw) ? targetRaw : {}
+  return Object.fromEntries(
+    Object.entries(input).map(([key, value]) => [
+      key,
+      reconcileProject(value, resolvedRecord[key], targetResolvedRecord[key], rawRecord[key]),
+    ]),
+  )
 }
 
 function replaceJsonc(input: string, value: unknown, path: string[]): string {
@@ -226,6 +327,7 @@ const layer = Layer.effect(
     const env = yield* Env.Service
     const npmSvc = yield* Npm.Service
     const http = yield* HttpClient.HttpClient
+    const flock = yield* EffectFlock.Service
 
     const readConfigFile = (filepath: string) => fs.readFileStringSafe(filepath).pipe(Effect.orDie)
 
@@ -288,6 +390,29 @@ const layer = Layer.effect(
       return yield* loadConfig(text, { path: filepath }, env)
     })
 
+    const loadRawFile = Effect.fnUntraced(function* (filepath: string) {
+      if (!(yield* fs.isFile(filepath))) return {} as Info
+      const text = yield* readConfigFile(filepath)
+      if (!text) return {} as Info
+      return ConfigParse.schema(ConfigV1.Info, normalizeLoadedConfig(ConfigParse.jsonc(text, filepath)), filepath)
+    })
+
+    const loadRawGlobal = Effect.fnUntraced(function* () {
+      let result: Info = {}
+      for (const file of globalConfigFiles().toReversed()) {
+        result = mergeConfig(result, yield* loadRawFile(file))
+      }
+      return result
+    })
+
+    const loadResolvedGlobal = Effect.fnUntraced(function* () {
+      let result: Info = {}
+      for (const file of globalConfigFiles().toReversed()) {
+        if (yield* fs.isFile(file)) result = mergeConfig(result, yield* loadFile(file))
+      }
+      return result
+    })
+
     const loadGlobal = Effect.fnUntraced(function* (env?: Record<string, string>) {
       let result: Info = {}
       // Seed the default global config with the schema for editor completion, but avoid writing when the user
@@ -335,6 +460,34 @@ const layer = Layer.effect(
 
     const getGlobal = Effect.fn("Config.getGlobal")(function* () {
       return yield* cachedGlobal
+    })
+
+    const writeGlobal = Effect.fnUntraced(function* (operation: "update" | "replace", config: Info) {
+      return yield* Effect.gen(function* () {
+        const raw = yield* loadRawGlobal()
+        const resolved = yield* loadResolvedGlobal()
+        const patch = reconcileResolved(writableGlobal(config), writableGlobal(resolved), writableGlobal(raw)) as Info
+        const file = globalConfigFile()
+        const before = (yield* readConfigFile(file)) ?? "{}"
+        const parsed = ConfigParse.jsonc(before, file)
+        const next = ConfigParse.schema(
+          ConfigV1.Info,
+          writableGlobal(operation === "update" ? mergeGlobalPatch(raw, patch) : patch),
+          file,
+        )
+        const serialized = syncJsonc(before, parsed, next)
+        const obsolete = globalConfigFiles().filter((candidate) => candidate !== file && existsSync(candidate))
+        const changed = serialized !== before || obsolete.length > 0
+
+        if (serialized !== before) yield* fs.writeFileString(file, serialized).pipe(Effect.orDie)
+        // Complete the target write before deleting sources so a write failure cannot lose their config.
+        yield* Effect.forEach(obsolete, (candidate) => fs.remove(candidate, { force: true }).pipe(Effect.orDie))
+        return { info: next, changed }
+      }).pipe(
+        Effect.ensuring(invalidate()),
+        flock.withLock(`config-write:${Global.Path.config}`),
+        Effect.orDie,
+      )
     })
 
     const ensureGitignore = Effect.fn("Config.ensureGitignore")(function* (dir: string) {
@@ -671,11 +824,18 @@ const layer = Layer.effect(
 
     const update = Effect.fn("Config.update")(function* (config: Info) {
       const dir = yield* InstanceState.directory
-      const file = path.join(dir, "config.json")
-      const existing = yield* loadFile(file)
-      yield* fs
-        .writeFileString(file, JSON.stringify(mergeDeep(writable(existing), writable(config)), null, 2))
-        .pipe(Effect.orDie)
+      yield* Effect.gen(function* () {
+        const jsonc = path.join(dir, "opencode.jsonc")
+        const json = path.join(dir, "opencode.json")
+        const file = existsSync(jsonc) ? jsonc : json
+        const raw = yield* loadRawFile(file)
+        const targetResolved = yield* loadFile(file)
+        const resolved = yield* get()
+        const patch = reconcileProject(writable(config), writable(resolved), writable(targetResolved), writable(raw))
+        const before = (yield* readConfigFile(file)) ?? "{}"
+        yield* fs.writeFileString(file, patchJsonc(before, patch)).pipe(Effect.orDie)
+        yield* reload()
+      }).pipe(flock.withLock(`config-write:${dir}`), Effect.orDie)
     })
 
     const invalidate = Effect.fn("Config.invalidate")(function* () {
@@ -696,47 +856,11 @@ const layer = Layer.effect(
     })
 
     const updateGlobal = Effect.fn("Config.updateGlobal")(function* (config: Info) {
-      const file = globalConfigFile()
-      const before = (yield* readConfigFile(file)) ?? "{}"
-      const patch = writableGlobal(config)
-
-      let next: Info
-      let changed: boolean
-      if (!file.endsWith(".jsonc")) {
-        const existing = ConfigParse.schema(ConfigV1.Info, ConfigParse.jsonc(before, file), file)
-        const merged = mergeGlobalPatch(existing, patch)
-        const serialized = JSON.stringify(merged, null, 2)
-        changed = serialized !== before
-        if (changed) yield* fs.writeFileString(file, serialized).pipe(Effect.orDie)
-        next = merged
-      } else {
-        const updated = Object.entries(patch).reduce(
-          (result, [key, value]) =>
-            key === "agent" || key === "provider"
-              ? replaceJsonc(result, value, [key])
-              : patchJsonc(result, value, [key]),
-          before,
-        )
-        next = ConfigParse.schema(ConfigV1.Info, ConfigParse.jsonc(updated, file), file)
-        changed = updated !== before
-        if (changed) yield* fs.writeFileString(file, updated).pipe(Effect.orDie)
-      }
-
-      if (changed) yield* invalidate()
-      return { info: next, changed }
+      return yield* writeGlobal("update", config)
     })
 
     const replaceGlobal = Effect.fn("Config.replaceGlobal")(function* (config: Info) {
-      const file = globalConfigFile()
-      const before = (yield* readConfigFile(file)) ?? "{}"
-      const next = ConfigParse.schema(ConfigV1.Info, writableGlobal(config), file)
-      const serialized = JSON.stringify(next, null, 2)
-      const changed = serialized !== before
-      if (changed) {
-        yield* fs.writeFileString(file, serialized).pipe(Effect.orDie)
-        yield* invalidate()
-      }
-      return { info: next, changed }
+      return yield* writeGlobal("replace", config)
     })
 
     return Service.of({
@@ -758,7 +882,7 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [FSUtil.node, Auth.node, Account.node, Env.node, Npm.node, httpClient],
+  deps: [FSUtil.node, Auth.node, Account.node, Env.node, Npm.node, httpClient, EffectFlock.node],
 })
 
 export * as Config from "./config"
