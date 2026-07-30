@@ -2,7 +2,7 @@
   "name": "opencode-ui",
   "displayName": "OpenCode UI (unofficial)",
   "description": "OpenCode UI (unofficial) brings local OpenCode AI workflows into IDEs with chat, context management, and bundled backend binaries.",
-  "version": "26.7.2701",
+  "version": "26.7.3002",
   "publisher": "caiqy",
   "author": {
     "name": "Caiqy"

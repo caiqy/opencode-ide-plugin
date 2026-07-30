@@ -20,7 +20,7 @@ echo "Plugin directory: $PLUGIN_DIR"
 echo "Root directory: $ROOT_DIR"
 
 PNPM_AVAILABLE=false
-if command -v pnpm >/dev/null 2>&1; then
+if command -v pnpm >/dev/null 2>&1 && pnpm --version >/dev/null 2>&1; then
   PNPM_AVAILABLE=true
 fi
 
