@@ -105,7 +105,7 @@ bun run build
 
 - [x] **步骤 6：验证 DOM Selection 锚点**
 
-在步骤 1 的用例中，从列表普通文本到行内代码创建真实 `Range` 并加入 `window.getSelection()`。相同属性重新渲染后，断言选中文本不变，且 `range.startContainer.isConnected` 与 `range.endContainer.isConnected` 均为 `true`。
+在步骤 1 的用例中，从列表普通文本到行内代码创建真实 `Range` 并加入 `window.getSelection()`。相同属性重新渲染后，断言选中文本、`anchorNode`、`focusNode` 与 Range 端点都保持原值且仍连接文档。补充正文变化时未变片段节点复用，以及 `inline`、`tone`、项目目录变化时缓存正确失效的用例。
 
 再次运行：
 
@@ -113,4 +113,4 @@ bun run build
 bun run test:run -- src/components/MarkdownRenderer.test.tsx
 ```
 
-预期：进程自行退出 0；23 个用例全部通过，Selection 文本和两个锚点保持稳定。
+预期：进程自行退出 0；27 个用例全部通过，Selection 文本和四个锚点引用保持稳定。

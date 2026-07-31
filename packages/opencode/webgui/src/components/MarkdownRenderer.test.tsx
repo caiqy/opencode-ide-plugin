@@ -29,6 +29,7 @@ describe("MarkdownRenderer", () => {
   beforeEach(() => {
     project.directory = null
     project.worktree = null
+    window.getSelection()?.removeAllRanges()
   })
 
   it("为渲染容器提供长路径自动换行样式", () => {
@@ -64,6 +65,10 @@ describe("MarkdownRenderer", () => {
     const selected = selection.toString()
 
     expect(selected).toContain("opencode/dev")
+    expect(selection.anchorNode).toBe(start)
+    expect(selection.anchorOffset).toBe(0)
+    expect(selection.focusNode).toBe(end)
+    expect(selection.focusOffset).toBe(end!.textContent?.length ?? 0)
 
     view.rerender(
       <ThemeProvider>
@@ -71,13 +76,86 @@ describe("MarkdownRenderer", () => {
       </ThemeProvider>,
     )
 
+    const activeRange = selection.getRangeAt(0)
+    expect(activeRange.startContainer).toBe(start)
+    expect(activeRange.startOffset).toBe(0)
+    expect(activeRange.endContainer).toBe(end)
+    expect(activeRange.endOffset).toBe(end!.textContent?.length ?? 0)
     expect(screen.getByText("opencode/dev")).toBe(code)
     expect(code.closest("li")).toBe(item)
     expect(code.isConnected).toBe(true)
     expect(range.startContainer.isConnected).toBe(true)
     expect(range.endContainer.isConnected).toBe(true)
     expect(selection.toString()).toBe(selected)
+    expect(selection.anchorNode).toBe(start)
+    expect(selection.anchorOffset).toBe(0)
+    expect(selection.focusNode).toBe(end)
+    expect(selection.focusOffset).toBe(end!.textContent?.length ?? 0)
     selection.removeAllRanges()
+  })
+
+  it("正文变化时更新变更文本并保留未变行内代码节点", () => {
+    const view = renderWithTheme(<MarkdownRenderer>{"1. 保持 `stable`。\n2. 旧内容。"}</MarkdownRenderer>)
+    const code = screen.getByText("stable")
+
+    view.rerender(
+      <ThemeProvider>
+        <MarkdownRenderer>{"1. 保持 `stable`。\n2. 新内容。"}</MarkdownRenderer>
+      </ThemeProvider>,
+    )
+
+    expect(screen.getByText("stable")).toBe(code)
+    expect(screen.getByText("新内容。")).toBeInTheDocument()
+    expect(screen.queryByText("旧内容。")).toBeNull()
+  })
+
+  it("inline 变化时使用 inline Markdown 结构", () => {
+    const view = renderWithTheme(<MarkdownRenderer>文本</MarkdownRenderer>)
+
+    view.rerender(
+      <ThemeProvider>
+        <MarkdownRenderer inline>文本</MarkdownRenderer>
+      </ThemeProvider>,
+    )
+
+    const root = view.container.querySelector(".markdown-content")
+    expect(root?.tagName).toBe("SPAN")
+    expect(root?.firstElementChild?.tagName).toBe("SPAN")
+  })
+
+  it("项目目录变化时使用新目录解析 generated image", () => {
+    project.directory = "D:\\project-a"
+    const view = renderWithTheme(<MarkdownRenderer>{"![生成图](.opencode/generated-images/demo.png)"}</MarkdownRenderer>)
+
+    expect(screen.getByRole("img", { name: "生成图" }).getAttribute("src")).toBe(
+      getGeneratedImageUrl(".opencode/generated-images/demo.png", project.directory),
+    )
+
+    project.directory = "D:\\project-b"
+    view.rerender(
+      <ThemeProvider>
+        <MarkdownRenderer>{"![生成图](.opencode/generated-images/demo.png)"}</MarkdownRenderer>
+      </ThemeProvider>,
+    )
+
+    expect(screen.getByRole("img", { name: "生成图" }).getAttribute("src")).toBe(
+      getGeneratedImageUrl(".opencode/generated-images/demo.png", project.directory),
+    )
+  })
+
+  it("tone 变化时更新 Markdown 样式", () => {
+    const view = renderWithTheme(<MarkdownRenderer>主题文本</MarkdownRenderer>)
+
+    view.rerender(
+      <ThemeProvider>
+        <MarkdownRenderer tone="muted">主题文本</MarkdownRenderer>
+      </ThemeProvider>,
+    )
+
+    const paragraph = screen.getByText("主题文本")
+    expect(paragraph).toHaveClass("text-gray-600")
+    expect(paragraph).toHaveClass("dark:text-gray-400")
+    expect(paragraph).not.toHaveClass("text-gray-900")
   })
 
   it("内联 code 路径支持断行", () => {

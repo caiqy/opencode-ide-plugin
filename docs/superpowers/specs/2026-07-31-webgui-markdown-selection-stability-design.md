@@ -31,7 +31,9 @@ React 将新的函数引用视为新的组件类型，因此卸载并重建 Mark
 3. 使用相同属性重新渲染。
 4. 断言节点仍是原节点且仍连接在文档中。
 
-该测试在当前实现下应因节点被替换而失败，在缓存组件映射后通过。用例还会从普通列表文本到行内代码创建真实 DOM Selection Range，并断言相同属性重渲染后选中文本不变、两个端点仍连接文档。随后从 `packages/opencode/webgui` 运行 `bun run test:run -- src/components/MarkdownRenderer.test.tsx` 与 `bun run build`。
+该测试在当前实现下应因节点被替换而失败，在缓存组件映射后通过。用例还会从普通列表文本到行内代码创建真实 DOM Selection Range，并断言相同属性重渲染后选中文本不变，`anchorNode`、`focusNode` 与 Range 两个端点保持原节点且仍连接文档。
+
+补充回归用例验证正文变化时未变的行内代码节点仍被复用，且 `inline`、`tone`、项目目录变化会正确重建组件映射并更新结构、样式或 generated image 地址。随后从 `packages/opencode/webgui` 运行 `bun run test:run -- src/components/MarkdownRenderer.test.tsx` 与 `bun run build`。
 
 ## 边界
 
