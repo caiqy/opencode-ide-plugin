@@ -1,0 +1,72 @@
+{
+  "schema": "comet.native.verification-evidence.v1",
+  "change": "merge-upstream-tags",
+  "sourceRevision": 4,
+  "result": "fail",
+  "freshness": "partial",
+  "contractHash": "e68e36ae53cf8c3d5c5c493aa1b4b190263cb604e845f34268976897fdd44b2e",
+  "acceptanceCriteriaHash": "7eafa54786da7d9d57dff0cfc667c253ed409b5f4676272c00269e3f834ac598",
+  "implementationScopeRef": "runtime/evidence/scopes/8f8fcf96430c5870a49db4d8cf4d65a5cf56ccfc283975614c79fa46595f706f.json",
+  "implementationScopeHash": "8f8fcf96430c5870a49db4d8cf4d65a5cf56ccfc283975614c79fa46595f706f",
+  "reportRef": "verification.md",
+  "reportHash": "18e833eee195b199a1bf3dd2aa909650392243cc201ff526612de071f561b0cf",
+  "acceptanceTrace": {
+    "schema": "comet.native.acceptance-trace.v1",
+    "nativeRootRef": "docs/comet",
+    "criteriaHash": "7eafa54786da7d9d57dff0cfc667c253ed409b5f4676272c00269e3f834ac598",
+    "total": 5,
+    "evidenced": 3,
+    "skipped": 2,
+    "entries": [
+      {
+        "acceptanceId": "acceptance-019c4801a5b126a39ef50e0660a95b50cb04bcf12732dbc8c124e8993d817dbc",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "packages/opencode/script/build.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-0353686dbf2fefa6cb30a05e645bf25abcc1c63f6faa66bfee7acdbba16995f4",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [],
+        "skippedReason": "Git 边界检查已通过，但本轮先提交类型检查失败，最终报告再封存完整结果。"
+      },
+      {
+        "acceptanceId": "acceptance-496494f7fa0f717cddf5c154e00a1d846f29a722f143cf224f74d9f1693319bd",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [],
+        "skippedReason": "父链检查已通过，但本轮先提交类型检查失败，最终报告再封存完整结果。"
+      },
+      {
+        "acceptanceId": "acceptance-83a4d61965dc2d62a099eced4923c813c46a00de7ff06451f3752c60e344c827",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "packages/server/package.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-84edecc2f40a90af677e0b70f1e263a3001c3204f6a8300103727b0ecb12fc59",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "hosts/jetbrains-plugin/build.gradle.kts",
+          "hosts/vscode-plugin/package.json",
+          "packages/opencode/webgui/package.json"
+        ],
+        "skippedReason": null
+      }
+    ],
+    "traceHash": "2f473873dc6ad2dc1bff4001f3bcee89d1b79eda3d2b2402a9e28fc77fd36f9a"
+  },
+  "partialAllowanceRef": "runtime/evidence/allowances/9ba0006d7678cbe3d33d76d132fe152e76be343f21c657657c1f32527ab3977e.json",
+  "partialAllowanceHash": "9ba0006d7678cbe3d33d76d132fe152e76be343f21c657657c1f32527ab3977e",
+  "receiptRef": null,
+  "createdAt": "2026-07-27T04:17:43.107Z",
+  "envelopeHash": "f5430734c34d1aca731bbb28ca5a5c217eec8663a1a6226073b795855ae82b10"
+}

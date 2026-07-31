@@ -1,0 +1,2316 @@
+{
+  "schema": "comet.native.implementation-scope.v2",
+  "contractHash": "e68e36ae53cf8c3d5c5c493aa1b4b190263cb604e845f34268976897fdd44b2e",
+  "baselineProjectionRef": "runtime/evidence/snapshots/725975513dd216b1f49ead5f4d8a88c35b363f8d30d8cd1be9c046ac94efe205.json",
+  "baselineProjectionHash": "725975513dd216b1f49ead5f4d8a88c35b363f8d30d8cd1be9c046ac94efe205",
+  "currentProjectionRef": "runtime/evidence/snapshots/d257af8b3a7549696d059b6380a1d464c2ad10c0f8059704b44ad9973ba75bd6.json",
+  "currentProjectionHash": "d257af8b3a7549696d059b6380a1d464c2ad10c0f8059704b44ad9973ba75bd6",
+  "complete": false,
+  "declaredArtifacts": [
+    {
+      "path": ".github",
+      "kind": "directory"
+    },
+    {
+      "path": ".opencode",
+      "kind": "directory"
+    },
+    {
+      "path": "artifacts",
+      "kind": "directory"
+    },
+    {
+      "path": "bun.lock",
+      "kind": "file"
+    },
+    {
+      "path": "infra",
+      "kind": "directory"
+    },
+    {
+      "path": "nix",
+      "kind": "directory"
+    },
+    {
+      "path": "package.json",
+      "kind": "file"
+    },
+    {
+      "path": "packages",
+      "kind": "directory"
+    },
+    {
+      "path": "patches",
+      "kind": "directory"
+    },
+    {
+      "path": "sdks",
+      "kind": "directory"
+    }
+  ],
+  "changes": [
+    {
+      "path": ".github/TEAM_MEMBERS",
+      "kind": "modified",
+      "before": {
+        "hash": "75dc976f3af4f62fecc01201feb1f36d2556a5338c99f7899a56d604f66a6afa",
+        "size": 182
+      },
+      "after": {
+        "hash": "91557dbdaba02d3d578fc15ee7fe243805e4b3ab3f2f0d7d9a2f8569f9377c02",
+        "size": 223
+      },
+      "attributedTo": [
+        {
+          "path": ".github",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": ".opencode/command/translate.md",
+      "kind": "modified",
+      "before": {
+        "hash": "05909699722ec6f96b8da5d346dd4ab9eef99d0a0d4e6fb6209424e068283f3b",
+        "size": 818
+      },
+      "after": {
+        "hash": "b3b59b445bf38734b716f4a2f3bdcc9a29a5055c837248099f1406ae6a61ed58",
+        "size": 814
+      },
+      "attributedTo": [
+        {
+          "path": ".opencode",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": ".opencode/tool/github-triage.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "efab92382c29581470d7568fe3e54755e44d0a79e8783ab9c54844a5a59ff030",
+        "size": 2014
+      },
+      "after": {
+        "hash": "51754c420d55c0759f7e0139667921d8044a706ec0d27feed07a3c814993738a",
+        "size": 2001
+      },
+      "attributedTo": [
+        {
+          "path": ".opencode",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "AGENTS.md",
+      "kind": "modified",
+      "before": {
+        "hash": "f16acf87320d16bd99e1b60b9948cccd1af54f85f3bf858aa116e2c02c91315e",
+        "size": 9099
+      },
+      "after": {
+        "hash": "0732419046218badd7a19eae59bbc6de143508548af9f69ea02c7012540b7605",
+        "size": 10571
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "CLAUDE.md",
+      "kind": "modified",
+      "before": {
+        "hash": "830a6d7dedb0a9f1cb6665cfa805e4924710efcffb04a6c0743f13d794d388a4",
+        "size": 181
+      },
+      "after": {
+        "hash": "fa5bccd3f2ec0dab497e9ef42c53580eae679bc6caa0d709c964a0dc6a92ab64",
+        "size": 1628
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "artifacts/glm52-rise-video/sst-env.d.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "969c8a9762cdfe863f1a6a802e9f55b021486806909311013ec0357950790fbe",
+        "size": 245
+      },
+      "attributedTo": [
+        {
+          "path": "artifacts",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "bun.lock",
+      "kind": "modified",
+      "before": {
+        "hash": "5b444548b6f565312abf62c87701070445e9a8c1f0155be21f100656995a51b1",
+        "size": 1244931
+      },
+      "after": {
+        "hash": "ae2686335fb45672f787b26a241a7d11583e6386915d40d38f68d6cb9dcd8292",
+        "size": 1180879
+      },
+      "attributedTo": [
+        {
+          "path": "bun.lock",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "infra/lake.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "6e1ba254fecd37f6a4b1ac829e67b918dcb2ed4687d5364b272d48e72b5a5c79",
+        "size": 10409
+      },
+      "after": {
+        "hash": "a9bdb9779b3e0a88e5d61ede00a7f057a12b29687ae397ea4fdf4d499c5c8091",
+        "size": 10650
+      },
+      "attributedTo": [
+        {
+          "path": "infra",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "infra/stage.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "fad12b59aafa29d33e1aac0e544cc2f3c5269f2cffc43ff7976fe97db5e022fc",
+        "size": 687
+      },
+      "after": {
+        "hash": "cfaf746e831623624f625c53bcb02250d7bbbb4da8587b7e26a82b2274c5c225",
+        "size": 1157
+      },
+      "attributedTo": [
+        {
+          "path": "infra",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "infra/stats.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "32fa6b8698afa2eaa4921d17fd0155f222b0aaa1f631e5e50c332bb7b3a43455",
+        "size": 7883
+      },
+      "after": {
+        "hash": "07c8193fd9f8e3e75286cd85037250c925e588ca6a96c6ac6779572481cfb2da",
+        "size": 8033
+      },
+      "attributedTo": [
+        {
+          "path": "infra",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "nix/desktop.nix",
+      "kind": "modified",
+      "before": {
+        "hash": "a8fead9a5c6045638b7db0feeb56cb78f790ac72d86fab8a18604872a871d650",
+        "size": 2959
+      },
+      "after": {
+        "hash": "f00aac447868f6ac1790cef3dcf366bb6780631e5c68d0643953c25ffbe284e6",
+        "size": 4426
+      },
+      "attributedTo": [
+        {
+          "path": "nix",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "nix/hashes.json",
+      "kind": "modified",
+      "before": {
+        "hash": "b184d1530a687aed2dfbac18a7bc1692e53efa23fa82a7b95b1fe143fb029813",
+        "size": 338
+      },
+      "after": {
+        "hash": "f748a537b6aee823db3413255284c272635d2d5dfbd960ac2d009d6b02095821",
+        "size": 338
+      },
+      "attributedTo": [
+        {
+          "path": "nix",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "f006a6a365300a003597d520ee8ea2a9e21f346fcda633375d42c49f31e78a4a",
+        "size": 5952
+      },
+      "after": {
+        "hash": "f9f0dbcdaf7f59ead43ecbe5ff91d23995e2ca86e8bf935a568521cf0ee1c9e8",
+        "size": 5969
+      },
+      "attributedTo": [
+        {
+          "path": "package.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "packages/cli/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "2a66aa7287519964ed03c2655429b6b4e326a48e65c16787cdc621c969c24c03",
+        "size": 952
+      },
+      "after": {
+        "hash": "5e022f3b0dbf2f3dfb62144736d35773d7f884db0aada901580f715a95c1f05c",
+        "size": 951
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/cli/script/build.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "482d69b645f8f6a38f655ad6ebbf657add866bd49ae965427ed10340818429b9",
+        "size": 4249
+      },
+      "after": {
+        "hash": "e4e2db5239ed25bf036e2e07eb0294e9c21c217ad4c57d17dfae0ef600ef74d5",
+        "size": 3724
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/codemode/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "810902761a5a9eb2052eac440c305bab2817df9670d3baeea61595b7bdaced07",
+        "size": 653
+      },
+      "after": {
+        "hash": "8bfec0dca7a30034d1ed594866de3618e40412ec7d443ba47de9e72cfe96b023",
+        "size": 652
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/codemode/sst-env.d.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "969c8a9762cdfe863f1a6a802e9f55b021486806909311013ec0357950790fbe",
+        "size": 245
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/core/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "fc5ce2d8ac07d767b1fca82719eeae4a03e28469dce549c1b1b3fffe08a9a089",
+        "size": 4395
+      },
+      "after": {
+        "hash": "4ccf0e11d8acfab71fd6474ab86df63e37c7be51df676dcb8eca29f56fdefbef",
+        "size": 4395
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/core/src/filesystem/search.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "97b25e9268d69cfda6d73e2c09eff1b44dd06f11725bbe40aab3adffcc9bd06d",
+        "size": 9397
+      },
+      "after": {
+        "hash": "d48b989e44eb63487660c71cbb0baa8a19cf0b2cb5aea61a6c9971b525f660aa",
+        "size": 9473
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/core/src/filesystem/watcher.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "f7934f8d8bdd150ff211674cbdfb8724b78699f0289258b7be5ea6ee05980fda",
+        "size": 5474
+      },
+      "after": {
+        "hash": "6fba360212c622b0076179981682da836857517460b08efbc3d3b25d9f5aa5c5",
+        "size": 5492
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/core/src/fs-util.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "afaf464863133908cf6b899cd69660ec32f3f52b250196b6125ff0688bf56308",
+        "size": 10595
+      },
+      "after": {
+        "hash": "c42ffe28e6adbc7d4839bffda19ba5a8863c5b39bd7d6e6ce9b2ab8352414d2d",
+        "size": 10964
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/core/src/models-dev.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "1bacc6bf22c630882389e92dd222abf66a5e7c6f02254756c9a05f4e84b48a03",
+        "size": 8838
+      },
+      "after": {
+        "hash": "205d5b920b311dbfe0c9f6898f082eaee19f6e75e057ab604ba62a7730b838b2",
+        "size": 9294
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/core/src/pty/pty.node.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "8283afac7b2dddf9f8c92f082c011940160e816706bbeea80ed650e8f64f282d",
+        "size": 601
+      },
+      "after": {
+        "hash": "fd3ae44e31424fde79a1ce29ca28f0cf2dc05fbbc13d1036b822e3f74e2dd6e2",
+        "size": 687
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/core/src/v1/config/config.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "8484a7e90bc1abe0924f641429536ecb7ea68b3c5e27c75e3fb17cb3f8bbdf38",
+        "size": 10015
+      },
+      "after": {
+        "hash": "4519d2905b6b9a13d3a79582d48efcd4c5d28e3a8696ec7c7d6f30fdeb38a537",
+        "size": 10203
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/core/test/filesystem/watcher.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4cda8eb2b9b921e4eb8be4ce0366f6037c8aa6f5a808dbd6c9a391e627a47a1d",
+        "size": 10351
+      },
+      "after": {
+        "hash": "674cb8db8522d8c677fceec8f69a89de326a14fa410ba42ca21f7146b26cf3b2",
+        "size": 10342
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/core/test/provider-mistral.test.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "f2fc10e781762b226a6b4c6850f876658b2b928fe96f2ec18099972b9d953f84",
+        "size": 9183
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/core/test/provider-xai-responses.test.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "d9738fec5488aea23db9ecf340a856d8dc347bafd456ad0d0795328837815813",
+        "size": 1008
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/effect-drizzle-sqlite/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "1194ea6ad5f59996ce808603a8a75126594fa2c5ac15f6c1a287fd5a13223be4",
+        "size": 821
+      },
+      "after": {
+        "hash": "861a86c0c7d7d5acd117ccb75f808733913f5a51d18ae57ca4708b12c0979ba7",
+        "size": 820
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/effect-sqlite-node/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "4b0220822f637990627264848fe1cedd193dc150cd121bba7fcb19c28e0102d4",
+        "size": 497
+      },
+      "after": {
+        "hash": "a3fc76ae87ff4470e252e3da11e128a42ddcc3ebc8cc347578ead7da3d15fe77",
+        "size": 496
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/enterprise/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "574ba9bc00719065e9584d02c1fa549fac0a96ec1ecff5702e12db97c0155419",
+        "size": 1324
+      },
+      "after": {
+        "hash": "c1f3bb2f4ee73e9790a20f9ac69bc6f3c6db5ae920e12dc75cee3269c76f947a",
+        "size": 1323
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/function/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "35b6876a93a647785b90fa049ed04fa9f4febb034181f97fa51cdeed119d541a",
+        "size": 503
+      },
+      "after": {
+        "hash": "14a40eb25d42552b41e6bd083f4c40be9b1861c420ad6136391ee2264caf017c",
+        "size": 502
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/http-recorder/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "c30352198791b34ba9bd4bb251bd4b5f668e3c65fef7667e98e4244359b1b1e2",
+        "size": 1576
+      },
+      "after": {
+        "hash": "47044e5159ddcaca11a9fd14c5bbe34755534650616c6d63af2f500e0f1d011b",
+        "size": 1575
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/llm/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "c65339c10d78bfddb11e68864ec526bb00eadca9f6b47d00d2996438456e2e48",
+        "size": 2229
+      },
+      "after": {
+        "hash": "9e27f2a53950b929430f987c1e4ce6c6bf9ea07d2e5ab1a52efa9362c6d55f9e",
+        "size": 2228
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/llm/src/provider-error.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "144e131f69ba4bd166eafa40ebff3df37ee35d6e3e25316629bc6e955231eb59",
+        "size": 1398
+      },
+      "after": {
+        "hash": "c0bd1942622050c42ef2f5d00715174055aa7acdfa7bbb9e7ef9829572591c1e",
+        "size": 1978
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/llm/test/provider-error.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "ba83e3c558ced22369e49eaa38b58d2611eca6eb551acc3c060e1fbcd5ffd32d",
+        "size": 330
+      },
+      "after": {
+        "hash": "73dcab9084c0f52af2fbf88044388eb49f6979a8074e0d6c6748bd74b34e3e77",
+        "size": 1339
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "8c2cdf592c12e62767d42d746438ea5a8c669ae3eebe82adb18e121303eee673",
+        "size": 5485
+      },
+      "after": {
+        "hash": "1d7dbd7795702a733c9a6db3f416c04c737428443e0ae5136c5c36da5c75e854",
+        "size": 5646
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/script/build.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "12ea930002ddf130ed9d6275c6dd3db400d4af1a120473759f3984b7cf57dc93",
+        "size": 7032
+      },
+      "after": {
+        "hash": "28b56fe47b0872254a8cf8e8a741c88b1a19b5e2d2cd3a319e6a96a07eb41a3f",
+        "size": 6892
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/src/account/account.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "f27283fa484f4b77ccc131c863d3504c5a608ab3fb6ccf98afc48826dcae04fe",
+        "size": 15752
+      },
+      "after": {
+        "hash": "66cbdfc9315fa461ab83cd3ec020c19c21262211e54bc44ad19ded831c8924e5",
+        "size": 16237
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/import.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "864c104467c23e3cc1dd37baf111f0361cdf5a195990d068a621515455043255",
+        "size": 7472
+      },
+      "after": {
+        "hash": "54dfccb01e534385013f42909589045c9e253027b26056b98c632a01b74fde8b",
+        "size": 7847
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/run/footer.command.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "d3a2869d8de4745446ed1baa02fa0653529c06643bba1f33ce04c52a5f9c49e5",
+        "size": 28605
+      },
+      "after": {
+        "hash": "a6924a31342fa48f72ef2eb1d4c2f292aa78de28daff97c7a16a29b0ab5d815a",
+        "size": 28752
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/tui.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "812c5840c708ce3da643bf8ec9f58b5bf1780f87c7f4f7dad655a4204ff286aa",
+        "size": 9646
+      },
+      "after": {
+        "hash": "02012b11bab2b69a86ee4f85a997cca41073dfb0b245fffffa5e354cf5efe2a8",
+        "size": 9813
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/src/plugin/github-copilot/models.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "76c7a2b49105d6c8864c2fd2c41958ebfb6ad959fab29a80c8c6c1b9c55a34c6",
+        "size": 8500
+      },
+      "after": {
+        "hash": "72e392f1223019df3c34f7612a23954d4b3405f355b3f6b2a03cd6f97a873b1a",
+        "size": 8525
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/src/plugin/openai/codex.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "2ca4e5b26b4c0a8b1820d2c246e60bbfae1f0a0a953c862830452583c5f545f1",
+        "size": 20349
+      },
+      "after": {
+        "hash": "0ec1eff057f1eb56c31d93cd95226b0c557cf86cec0a7d502b8d09e415d1212d",
+        "size": 20747
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/src/provider/provider.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "6c5d08a766f076f03d24db63f6bbc1d8c85ff8fad0c94ceba02d8648106ce8ea",
+        "size": 79994
+      },
+      "after": {
+        "hash": "3b06af1eea90d41bedf5290ecaa6cc1089f066d39ca970cf985b51ded8569443",
+        "size": 81043
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/src/provider/transform.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "eec014389b5bc288400abef33de770333f953b2a61f51c4433de35e29f3351b9",
+        "size": 58345
+      },
+      "after": {
+        "hash": "ecd3e42d647ae5490ea990bfb2594caba78d0e8e91a901e098c30c75169e5671",
+        "size": 68977
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/src/session/prompt/meta.txt",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "8a5fe045d4ecc9bc9cef41a9ab442ae2c1f8a23231357b9e0a559715b45994d0",
+        "size": 9216
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/src/session/system.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "85a12160709b45b65d0cea3c14a8a0148e1364ebb839123eee4488e43f92b10e",
+        "size": 6162
+      },
+      "after": {
+        "hash": "9da7535efb70e627e86a0f929655dbf01d9c7152b6d2b174cf9fccb9a897c9b5",
+        "size": 6272
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/src/tool/grep.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "e8b39d1deb7b85ebceb071bf6e75f820a9afad9edab65f2ca8d4cbbc91e0ca61",
+        "size": 4071
+      },
+      "after": {
+        "hash": "fe0ba225985b5dd1f77e16ef692cdf9f38c6e6c331ecf8fb1650d6b0b5fe1ca9",
+        "size": 4187
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/src/tool/task.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "5aff5be8f13016c97f174d2f69a105c6fa591e64fcfac2d41daf080317552f78",
+        "size": 13411
+      },
+      "after": {
+        "hash": "415384e9531d688b46aeceb33a2a01f14887640208b20ea463ef7b355167bf84",
+        "size": 13848
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/account/service.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "dc12fbab8ab4da0abdfff6a6dd7a4c94a3dfafdf0b0deee71b7172ab9e3e40c9",
+        "size": 14488
+      },
+      "after": {
+        "hash": "c597fd9f443517d74768ca185831c018aee2eecd830d83b36e7f8ca908a59dd0",
+        "size": 15977
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/cli/import.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "ca0cc5912ea8bbf20513514863e72abd3b0754697882c6935a0fba2cb0d57038",
+        "size": 2221
+      },
+      "after": {
+        "hash": "1cd00f5a71616bd6425edd7b344a2760df3d847096d6e7e84b44278e98ef0055",
+        "size": 3309
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/cli/run/footer.view.test.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "04560051150dfd338b5c738accc5cf413e7c837347c7ab54f99e1d7cc55fe1e5",
+        "size": 41840
+      },
+      "after": {
+        "hash": "1ef7ab94fa1e68bbc7d3ae9ecfb0d6d15cc06f97317b579b935660dabf0f854f",
+        "size": 42895
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/cli/tui/thread.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "15e168ed0a4dfdb058c31d7d3b4055bd0c9c46b5087356881207f96d5f0da9be",
+        "size": 3483
+      },
+      "after": {
+        "hash": "9cbc8e671b00bd76c062e920b88b66f4b253bfff54d09d210a0ca4baf3e62653",
+        "size": 3779
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/plugin/codex.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "2241e0807933654e53861e0d4ebb084aba102c43272406ebfbc73b474366f743",
+        "size": 8974
+      },
+      "after": {
+        "hash": "8c9c225315be4ea28413c247e8e1c3d894fb6a1f19fb5794bb660b801ab40e9a",
+        "size": 10796
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/plugin/github-copilot-models.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "68e6d34325d89412ef1708cd1b9e83155dc468c913e0176836eb6d75d5c74693",
+        "size": 11232
+      },
+      "after": {
+        "hash": "3e1617a6c71a0e43cc6166374d33688b6247f5086465472c68bc51e713a8174f",
+        "size": 12751
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/provider/header-timeout.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "e4981b582be04339271be26982749e57cb3e183388704331050503a9ff732cd5",
+        "size": 8513
+      },
+      "after": {
+        "hash": "a40c082ccc01b0c90d2f23836a73d2887ce428edab5579cffc80dd1493894810",
+        "size": 8514
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/provider/provider.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "81cb5cb61a5ba50f12b47c09a3b2951271e4d4fb7da540f9adc739cae838be30",
+        "size": 64348
+      },
+      "after": {
+        "hash": "eca784dcb7fff7ec1f9dc0fc7fcd0b50bff8e2ff4cd8dcf3b05104fdbe3a02c6",
+        "size": 68884
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/provider/transform.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "1f4e32eb2d2af6f23eadeb8432dcb01fc42e050d676c0bec3aa821a4c1d5109a",
+        "size": 159400
+      },
+      "after": {
+        "hash": "12862b69d5d3943cd6f26b2762533eafced482b75deee09bcd9d46e443d55597",
+        "size": 187518
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/session/llm.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "6487c6a1ba2d7276c47c679bcb7f8adda03113a503eda4a7e67ce5788f2f50f2",
+        "size": 72965
+      },
+      "after": {
+        "hash": "0bc89771a328a1d2c6f2f2dff3fa1f76238e907f37a72f476828b7c249b9e2f1",
+        "size": 76848
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/session/system.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "39e67a4eb9e830fbbe0323c32e2b441592c1a9bd90c9b33119f064b9531d76ce",
+        "size": 4403
+      },
+      "after": {
+        "hash": "5bd1e277d2f2c29ccd5405db653d1084a878d22d50a83549795b34046a878c78",
+        "size": 4690
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/tool/fixtures/models-api.json",
+      "kind": "modified",
+      "before": {
+        "hash": "189229a34d836d3bc87b120404617687e3804af5ee6e099b419104998f3fc273",
+        "size": 3109573
+      },
+      "after": {
+        "hash": "a4061a091dc16a1a2b1ac76214ac9efd8af23c639be8ea41ce565124ddd56ee1",
+        "size": 5124214
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/tool/grep.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "131f3e78534edd8d2d8bb0825421376227d3713991417018ae277ddec9412bfd",
+        "size": 7747
+      },
+      "after": {
+        "hash": "d16178ba6dbefbf3ee02d455f0b4ba1ad56f09bd56fb4708b5b787b6341e19da",
+        "size": 7888
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/opencode/test/tool/task.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "57480b6e8f111606fa76b1d0f78b02d232d5c83f8616eff43738fcf94da3b15c",
+        "size": 30187
+      },
+      "after": {
+        "hash": "b6f70c38865fce0b97c203e9c12ccb1fa6f9a2574ca27cc5e7202afa913a7359",
+        "size": 32857
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/plugin/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "2c33bf37fc161a2ff38290964e9859e33144da560c53deaaac92bf1a2b3ca337",
+        "size": 1374
+      },
+      "after": {
+        "hash": "1e32387b4d6c0668d6d5c5b716b6242ef4a06b3ff3bfa774a33e205f32647458",
+        "size": 1373
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/sdk/js/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "3db0c8f8230ae309d027f497d87f7866dbb0fac2c777e78f9b7179eaaef5d0b4",
+        "size": 969
+      },
+      "after": {
+        "hash": "0db806af687b7a493c535e53250d495c4b1a38763e633daccc97619e090c2365",
+        "size": 968
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/sdk/js/src/v2/gen/types.gen.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "790c7fceab195d493bae6af15072a237331f367cbc2d06eed792f6c5f2249e9c",
+        "size": 273670
+      },
+      "after": {
+        "hash": "e8e0a8ace3b0a680ad0616d7b7f1bc0feeedfbba5702ba14dde752b6a9b81d14",
+        "size": 273697
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/sdk/openapi.json",
+      "kind": "modified",
+      "before": {
+        "hash": "f1cd44cfe013461fe41af1d2389eb668dcd07a0b8463d85dec2210b56fd85e87",
+        "size": 1116829
+      },
+      "after": {
+        "hash": "71e2cbfdafd3e4af098892520a0cf238b9616da78c3558244f869434965bfc4b",
+        "size": 1116932
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/server/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "4fa7830fc9d12ae6fc0544e92f137b6a090dc2a28cd83649d45bc184344e3cc9",
+        "size": 600
+      },
+      "after": {
+        "hash": "51f638dd7d37b67388eda704e909e8bc051dae8b5806dd3b94a0ebb6c5b4e285",
+        "size": 599
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "10cba49918f0092ef33e64091fd3e1514f5c40c5b4c685179f2e1b4659d41203",
+        "size": 2243
+      },
+      "after": {
+        "hash": "28e9862231adc58a79ddd5d0610db05c37023ea8680210eac434bf926d4e88a8",
+        "size": 2638
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/components/basic-tool.css",
+      "kind": "modified",
+      "before": {
+        "hash": "46a797963280a3530e701ed9c6d95b4a4cac3fb1e311feefb773d6081661aa6e",
+        "size": 8136
+      },
+      "after": {
+        "hash": "ee013490dab0ad5a391a00042491e414e384a23d8f0d38a119a36bb2560d342a",
+        "size": 8538
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/components/basic-tool.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "5fe80304b9c5ae2cc732b784d5d13648c0334cfb4851245038f57273b2708a66",
+        "size": 11219
+      },
+      "after": {
+        "hash": "e2073d3cb5fb043cdcf598c69ff1293e237972b411a925e6c9cd7ed507b896a9",
+        "size": 11319
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/components/message-file.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "749ae466feb7fba0a9bafeee7fbc2bb4c459f61130a4adfc731c8b92a17754ca",
+        "size": 1494
+      },
+      "after": {
+        "hash": "2fad601ef72834929854010caab8af375fe76ffb5b13ea2d9d788dc305360573",
+        "size": 2065
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/components/message-file.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "b27f7f38dfd1c3561cbb5c8a6805a22fb198c82fe1a8bc2f17175c5834f9c169",
+        "size": 418
+      },
+      "after": {
+        "hash": "338b940d3285e7b0c81f09d548a124659f74ef79f552ff89933fad2f131f8e99",
+        "size": 1356
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/components/message-part.css",
+      "kind": "modified",
+      "before": {
+        "hash": "c01ebe9543f084fbf6b57aada51117fd5e46d3c91c135aaf980b8c47835b2975",
+        "size": 33553
+      },
+      "after": {
+        "hash": "745af59809941a91d10e828800998f80d3d77608b3af4ededf15ae4c5e34b64f",
+        "size": 35357
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/components/message-part.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "c3cf87cb14d5e6b3e544d2678c0840eef97d1b1a94489441df0d3ccc5d8397e8",
+        "size": 88614
+      },
+      "after": {
+        "hash": "91cba5238032ff06656b7df5a8d7a89582f91617a42172b5ef70c76d8d68273b",
+        "size": 91202
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/components/session-diff.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "7a6e40e926beb80d6e3212c9c2d6253994cc366eabc8292875f87101609e46a4",
+        "size": 5036
+      },
+      "after": {
+        "hash": "13593d2499ba39c4d8ca10262222f8d93f6a7c1ce48bdcd7fbc002a603675e0f",
+        "size": 5116
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/components/session-review.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "7650ce66c55e185e563bddb2f4fb064b83576bb069843493753a8f5a4f70d646",
+        "size": 28475
+      },
+      "after": {
+        "hash": "25b68d4d7ddebcb22c7deb8eaef0cf4fdd0e947ad328ec5f665b9e8980794cde",
+        "size": 28570
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/components/session-turn.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "32eebf679609826a7ca03b09541a112cc1c57e8f20e0d3d699092b3386405d47",
+        "size": 20159
+      },
+      "after": {
+        "hash": "03d2ba0144cb785c6a0509486c6b51e205fcc4925ede9a54579834354f716a73",
+        "size": 20241
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/components/timeline-playground.stories.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "803b9687f910bc367eb1e9823f2066b7731b8b751c429a6a933471f44a2a2c8e",
+        "size": 67515
+      },
+      "after": {
+        "hash": "d9f3f090854cb9abc3a72e233a2ffbda8506b214cef4743db3332f0c926b5cb9",
+        "size": 69297
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/components/tool-error-card.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "8d213bd40ddba189f6244d86106d5d3f4991aab3bcb8b41431ec6559c4130164",
+        "size": 5751
+      },
+      "after": {
+        "hash": "b5bf81f28098d996de7fb5f6062170e02dcab3def5318d4ccbd997ab59a4eaea",
+        "size": 5813
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/context/data.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "ee792955c8837b43bc4b0ae70bab617d4c7e032160d375f9f947ab7f6fcf391d",
+        "size": 1560
+      },
+      "after": {
+        "hash": "01fa0980131d94617181d352539d197b572f223257f15d07038869269b5b2d98",
+        "size": 1642
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/pierre/index.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "74116a4ba2733fff893a1d5645fe98b235dcd04c6accf99e2bf1385a8ecf1759",
+        "size": 6502
+      },
+      "after": {
+        "hash": "4bc2f185ae2d43afb9157b4a321df1fee44ec5772d598d07455d412c74f62c6c",
+        "size": 6580
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/attachment-card-v2.css",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "9c329fb2d9a9ee773d8a8c0334133c421ac10eef73bdabaf45d441d09cc2f90a",
+        "size": 1582
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/attachment-card-v2.tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "2275edd2cff0347211d924204bc2f689d5a34c802a1857874903a818256c1776",
+        "size": 1049
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/comment-card-v2.tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "04352b8228a585c37e1ac60b7f018675e25d4f07f30076f202eaedcf34190309",
+        "size": 2042
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/line-comment-annotations-v2.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "d97d3aa8abc95ec33d251854fe6bed2493a1afe7d733b2313629b022968a55bb",
+        "size": 6861
+      },
+      "after": {
+        "hash": "ec60b8a6a3f6968d172678dc03408538d41db255550f9c6a78f4d9f9e4551f35",
+        "size": 7188
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/prompt-input/attachments.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "a24bbf62121caaf0302e131299a7d8002dc93fd87fa089813c962e1e6620edbe",
+        "size": 8350
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/prompt-input/index.tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "4cfd91082d3b8cd8236fc7a58ba357c03ace6cfaa9d9be2ac949a352615267d3",
+        "size": 27641
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/prompt-input/interaction.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "4e36190ec23745f91da317ed429e3617fd5e1ed23b91c60e7ea4b44e7c0dad07",
+        "size": 17655
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/prompt-input/machine.test.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "8ef79e577b3d9159a8a3b6dcfa5c2ac84499f1f02b027eaa0baf01ce09aea638",
+        "size": 5930
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/prompt-input/machine.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "34e330a403edfdf903fac8546fa761fa3a6780acd662b4c1004a581187a7cb4a",
+        "size": 10681
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/prompt-input/prompt-input.stories.tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "22092f331995282ff1ad15ee9e7e923c9afd071f2bb389a243b6792a90809e95",
+        "size": 6529
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/prompt-input/store.test.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "a5f597f0f9cf3b68196d8fa69f32b43d0fe0bb5df1264ad997482e00b131295a",
+        "size": 4087
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/prompt-input/store.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "a3f3a22a42382d5254466dce08c2ab1194169d8688ae557537144e968a432e43",
+        "size": 5550
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/prompt-input/types.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "6f1b6b465e6a21cb141061a6250908437b4f5dacc7f06a76794092a55acf12b3",
+        "size": 2287
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/session-file-panel-v2.tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "1688f896a5ce229897d7ffa6e7ff02cdc1657562267c6d8ca7b1b793ba3f7407",
+        "size": 1438
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/session-review-file-preview-v2.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "647f866f71ac52b7efadae44867392fc6d6d0521500149903cfcb4d26b0c4208",
+        "size": 10654
+      },
+      "after": {
+        "hash": "1e765d98e5bd807fb50aca371852ca084c87ec4dd7dcc2e15fa8cd3d84639e83",
+        "size": 10807
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/session-review-v2.css",
+      "kind": "modified",
+      "before": {
+        "hash": "9ca379cd871030d8f9b3f6a133b3b1296b2bf379ad3a3c6a47dbce60f8efd1c3",
+        "size": 11778
+      },
+      "after": {
+        "hash": "eaedc1e76f94bcf78e794e0c65f1ad83dd41c8057dc023c7704af353f3a3fb09",
+        "size": 12254
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/session-ui/src/v2/components/session-review-v2.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "c08756e002eec6c7b2afcf5d6b8b5c0c38400be0d45ea840989f2111f587155f",
+        "size": 13469
+      },
+      "after": {
+        "hash": "2f42bcb49d9b0929662a7099ecaea99bd33030da9085051e4e9f5e2416f9add1",
+        "size": 12731
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/slack/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "9a663c4ded4c91b388ae935c0422fc78bff5a2c69e76f07b7415ef4accf8185e",
+        "size": 433
+      },
+      "after": {
+        "hash": "b9aff6084b35d89f8dc049e1072258d0a7d9ca4b27dc15fd6eb30b7184026c63",
+        "size": 432
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "4dcf78dfed61b9bd2becd0e8455c4b28876df5a7a99279072482d2fcbceeb8a9",
+        "size": 1281
+      },
+      "after": {
+        "hash": "fab5e07ab5eaabaebabb4eff710adfb64cf12987665e22a990044814283889ce",
+        "size": 1314
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/app.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "8260ba9c5b8cbe9007a918472855bfdca157cdec6ba1ae4cb1fbb732a87a6ec1",
+        "size": 1072
+      },
+      "after": {
+        "hash": "b072cbf645a2f62e0499861dfb5fba53e8c49a9368fe8137f75d582e99783e9b",
+        "size": 973
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/component/model-compare-detail.tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "ecaed50445fa07d815a3976bf34bffb7714d121d367f9f58859ebcfeb075bff7",
+        "size": 42340
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/lib/comparison-pages.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "151a63cb4f325689d579d8654b113f102b8b1b9f2b086a13e0528077ab6a78af",
+        "size": 9158
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/[lab]/[model].tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "7b59f2da61baf0f08c7966de03fb6873a07782aaafe4b6663e18414a9c1e5433",
+        "size": 61779
+      },
+      "after": {
+        "hash": "64339447dc3080d453764679e2699753e0efcca69b38e2c3ab5cf44ad2219cb4",
+        "size": 63057
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/[lab]/index.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "65568a02e83c6beab8549521508800b757e4f09c7ca4446b7b9082ac47fc90dd",
+        "size": 36904
+      },
+      "after": {
+        "hash": "ecaf0c7669c27dbe66ef40733cff77609ca7fa1ae2b983540af48a86147b075c",
+        "size": 37783
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/breadcrumb-select.tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "02654254a7ef87ce5b92c8302e1483c61dc7ae8a3641333ab533c072504dfc0e",
+        "size": 2450
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/compare-cards.tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "1d673f77109bb1c0d0bf7b7bc7e8fa93731f2157619ac6b64ca0d5347704d2e6",
+        "size": 6040
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/compare-radar.tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "7c60885e53d12922e1e43442180af0371901a75334932734466da2753de1691d",
+        "size": 14170
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/compare-selector.tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "aacd706402c4bf981b5a320865784d3ecaa23184714a4f5ebcacd6327d21d384",
+        "size": 3086
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/compare/[firstFamily]/[secondFamily].tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "df274521a84c5f94dd57f1b88f549f135f733c25f5639d90aeae34c70b03c3e9",
+        "size": 1780
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/compare/[firstLab]/[firstModel]/[secondLab]/[secondModel].tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "c88f7d8b45238ec5358d7facc97ad27ea7930a563e24ed3b9992c44328c8527b",
+        "size": 73
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/compare/index.tsx",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "fbaff2b2bb9b8d6dfb7da5f50201a8d58a71467a5ce3e8baf1b9f8d42b999598",
+        "size": 23319
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/index.css",
+      "kind": "modified",
+      "before": {
+        "hash": "9a4860e726365aa33a5f2b920ab10b177b04cfa3e9b5ae8a66e7ebbed39682c7",
+        "size": 173960
+      },
+      "after": {
+        "hash": "46eb927bb3b6425cccc83c358709ef8f1eb85a3f35d1b21596df343fcf580812",
+        "size": 225568
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/index.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "8c0850552f39f15c399110a367504cc7964661547663f0b9c27fb704aaac9b99",
+        "size": 73720
+      },
+      "after": {
+        "hash": "7cfaaa08469cdcab7607046eabf5228644496e6cb5b751764ed79ff7977521bf",
+        "size": 75082
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/model-catalog.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4c294360e7df5b5f4b5ccbd173ee827b00c81da6167daab3e173a3145372c083",
+        "size": 11734
+      },
+      "after": {
+        "hash": "e2873279fc33bc99c4f202f5caa73a5a962c77c5501be34ff6cbfc83f02baacc",
+        "size": 11812
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/sitemap.xml.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "dba27158412ff4f08695bc2a02a58469af009098c93abf3d4dcbc7a2831ddd41",
+        "size": 3665
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/app/src/routes/stats-shell.tsx",
+      "kind": "modified",
+      "before": {
+        "hash": "51a6cb9bc2e6bd0eeaac6be34362726be8a09ddefd04c8d1b5fd0ea40a9bd53b",
+        "size": 21957
+      },
+      "after": {
+        "hash": "b4251623208dcb10409a7b405b60370b765d87743dc620aca656634812046852",
+        "size": 22160
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/core/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "880876c6b1aa94c866aef1e5ed45734be5db1f452e635fca62e7a7c8e9bb7b80",
+        "size": 1481
+      },
+      "after": {
+        "hash": "7b6b4f44e5370be1feee73854bbcb95a66b1cae1f59922bfb65dbe6d99d03258",
+        "size": 1480
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/core/src/athena.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "98fe1f1b5168c5a128368308a527c0595b2990b68b4a1404a5df8ec90c6a6bd8",
+        "size": 5253
+      },
+      "after": {
+        "hash": "0d45f4de5a055e1fa2848455977a5540354ec0386de97424c0e750d64e6d85f8",
+        "size": 5515
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/core/src/domain/home.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d63854a3908f30001fb444921d4386ccf3848926c7eaf74af46c4fffea92826d",
+        "size": 37901
+      },
+      "after": {
+        "hash": "fd7ebf8ef307f7fdcfe7d41617abc911aa23e579a9279b4971b1c576ffac7d9f",
+        "size": 40048
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/core/src/domain/inference.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "bd2e9d5d2753f4ec31614f7e73054a9acf27f7e2211eb2a28383d19d5eacc3c1",
+        "size": 10837
+      },
+      "after": {
+        "hash": "94a7a452190a7acae49ff08450e429f9ffdc12c9ee36e28898348cafdd2372e4",
+        "size": 11074
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/core/src/domain/model.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d03a78a327b7c2b338ca9d78a54e995c57f2b9dd539a7b54246601089b5bcf0d",
+        "size": 9619
+      },
+      "after": {
+        "hash": "df447dc59d4d13b4e41654ea0cbb5e19ec5a4946230326a9a3219a78e4e664df",
+        "size": 10060
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/core/src/stat-sync.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "793d697ff981b30bfb6fa64acb45768be4a4253c39acef76813e357fb66b7b12",
+        "size": 4305
+      },
+      "after": {
+        "hash": "84b6859ef91588e660fb056945ba62cee40d2b03424ae7f0b89383d7f8039e72",
+        "size": 4834
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/server/package.json",
+      "kind": "modified",
+      "before": {
+        "hash": "1b9320772fd7fcfde3fc3ca00a2b1a2683ad4c392d4dbd9fcc36e01c6013db4e",
+        "size": 821
+      },
+      "after": {
+        "hash": "d0dcf8903aa9f29ba262b48ac37fef70ac30fe1c4befda579e2e0b2f27ad6e2c",
+        "size": 820
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/stats/server/src/stat-sync.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "9d8765d31c4181d9629b1c0fa4d92285e8c61e1a3e7e52564ab5f15842ed69cd",
+        "size": 894
+      },
+      "after": {
+        "hash": "e26f81685277e861d4d67261097e3fa88d0dd21370f85b85c5facd743fac380d",
+        "size": 2216
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/storybook/.storybook/main.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "482027bafe7641b5b49d23f8a86848151d729e549e7be275ceb8b97ec2ca5f88",
+        "size": 3360
+      },
+      "after": {
+        "hash": "8991eef998556ea014db34a0fa8bb11bd697267e48cbb699619c11d278afc515",
+        "size": 3586
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "packages/storybook/.storybook/mocks/app/context/command.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "6be1dfdd941aa7e82b4df3e3bbed1114c80ff6953fd1de714c8347e383126b01",
+        "size": 598
+      },
+      "after": {
+        "hash": "37bc44c82d191a8ecb2bb4ae5c264f08f6bfc81a38c962f4a4fc8de9b4968262",
+        "size": 683
+      },
+      "attributedTo": [
+        {
+          "path": "packages",
+          "kind": "directory"
+        }
+      ]
+    }
+  ],
+  "unattributed": [
+    {
+      "path": "AGENTS.md",
+      "kind": "modified",
+      "before": {
+        "hash": "f16acf87320d16bd99e1b60b9948cccd1af54f85f3bf858aa116e2c02c91315e",
+        "size": 9099
+      },
+      "after": {
+        "hash": "0732419046218badd7a19eae59bbc6de143508548af9f69ea02c7012540b7605",
+        "size": 10571
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "CLAUDE.md",
+      "kind": "modified",
+      "before": {
+        "hash": "830a6d7dedb0a9f1cb6665cfa805e4924710efcffb04a6c0743f13d794d388a4",
+        "size": 181
+      },
+      "after": {
+        "hash": "fa5bccd3f2ec0dab497e9ef42c53580eae679bc6caa0d709c964a0dc6a92ab64",
+        "size": 1628
+      },
+      "attributedTo": []
+    }
+  ],
+  "unresolvedScopes": [
+    {
+      "id": "scope:d96bca1a4f123b0b435c4d818db051971f50aae56e4471ae1e32586c61aca446",
+      "kind": "scope-detail-overflow",
+      "source": "implementation-scope",
+      "path": null,
+      "reason": "Implementation scope summarized 16 additional change details and 0 unresolved details (0 unattributed); overflow hash b434edf0da15542b4a5e306e2f0a9bd8e53c1c948504f3d95c0ebfeb470306bd"
+    },
+    {
+      "id": "scope:5ff1c00a3182650a03e4d8848dec005c76df67b886ba4b18d82efe34ff0ab276",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "AGENTS.md",
+      "reason": "Changed path is not covered by a declared artifact: AGENTS.md"
+    },
+    {
+      "id": "scope:62fd1ce1d6965cb467b5a6246b3c1f5e787495e3edbd1666e9f833594b19dde1",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "CLAUDE.md",
+      "reason": "Changed path is not covered by a declared artifact: CLAUDE.md"
+    }
+  ],
+  "noCodeReason": null,
+  "scopeHash": "822a73488392c260c2302eee51be637ba042a5780dc711e0a9421cd119083b63"
+}

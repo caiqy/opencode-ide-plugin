@@ -1,0 +1,15 @@
+{
+  "schema": "comet.native.progress-checkpoint.v1",
+  "id": "8d11bedf-9e91-4848-88f5-0b2b5b24f7f2",
+  "change": "merge-upstream-tags",
+  "phase": "build",
+  "previousRevision": 7,
+  "stateRevision": 8,
+  "summary": "v1.18.6 正式 merge tree 已解决冲突并完成项目验证；MERGE_HEAD 精确匹配 tag，未创建提交",
+  "nextAction": "等待用户授权创建第 12 个 merge commit；随后重新封印 scope、绑定新 acceptance IDs 并进入 Verify",
+  "inputHash": "acd96f65a65d2f2fe5259e0744683c157b7172c165e8e91776faceb348dedd68",
+  "manifestHash": "4be8191ccc3eace8e3f3e9cb7e6a17a1f557c051b8e1747725bf808528872806",
+  "manifestRef": "runtime/checkpoints/manifests/4be8191ccc3eace8e3f3e9cb7e6a17a1f557c051b8e1747725bf808528872806.json",
+  "artifactCount": 4,
+  "createdAt": "2026-07-27T06:49:24.651Z"
+}

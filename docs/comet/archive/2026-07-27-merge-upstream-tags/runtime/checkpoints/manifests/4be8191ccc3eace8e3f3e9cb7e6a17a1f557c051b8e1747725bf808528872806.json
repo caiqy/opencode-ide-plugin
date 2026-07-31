@@ -1,0 +1,27 @@
+{
+  "schema": "comet.native.checkpoint-manifest.v1",
+  "change": "merge-upstream-tags",
+  "artifacts": [
+    {
+      "path": "bun.lock",
+      "hash": "c4ba5cecbd95eaa36ee96b54ed4f74d4bb5c4fb95aed85032ab20899386046c9",
+      "size": 1180891
+    },
+    {
+      "path": "packages/core/src/repository-cache.ts",
+      "hash": "f75a22f1b6f4871ecda95616eae2d8c0eee039e8f4ba87db8f223b3aef22d1d8",
+      "size": 9937
+    },
+    {
+      "path": "packages/opencode/package.json",
+      "hash": "1bdd71a712413d726bb1bd44d6062a5c63773d692d533b4b33d7f7c5ef699fbb",
+      "size": 5645
+    },
+    {
+      "path": "packages/opencode/test/session/llm.anthropic-replay.test.ts",
+      "hash": "a5b50a79e3652d26f636a4e6b45d4104298a4ecfeaaeee4da8ea7dcb5dedaf65",
+      "size": 7665
+    }
+  ],
+  "totalBytes": 1204138
+}
