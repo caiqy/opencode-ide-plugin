@@ -346,7 +346,23 @@ describe("MessagesContext questions", () => {
     expect(mocks.bridgeSend).not.toHaveBeenCalled()
   })
 
-  it("完成查询返回前开始新一轮时不发送迟到通知", async () => {
+  it.each([
+    [
+      "开始新一轮",
+      { type: "session.status", properties: { sessionID: "s1", status: { type: "busy" } } } as ServerEvent,
+    ],
+    [
+      "会话报错",
+      {
+        type: "session.error",
+        properties: { sessionID: "s1", error: { name: "UnknownError", message: "boom" } },
+      } as ServerEvent,
+    ],
+    [
+      "删除会话",
+      { type: "session.deleted", properties: { info: { id: "s1" } } } as unknown as ServerEvent,
+    ],
+  ])("完成查询返回前%s时不发送迟到通知", async (_name, invalidation) => {
     const emitter = new EventEmitter()
     const request = deferred<{ data: { id: string }; error: null }>()
     mocks.bridgeInstalled.mockReturnValue(true)
@@ -366,10 +382,7 @@ describe("MessagesContext questions", () => {
     await waitFor(() => expect(sdk.session.get).toHaveBeenCalled())
 
     await act(async () => {
-      emitter.emit({
-        type: "session.status",
-        properties: { sessionID: "s1", status: { type: "busy" } },
-      } as ServerEvent)
+      emitter.emit(invalidation)
       request.resolve({ data: { id: "s1" }, error: null })
     })
 
