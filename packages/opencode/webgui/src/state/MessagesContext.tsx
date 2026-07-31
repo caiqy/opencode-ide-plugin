@@ -186,10 +186,13 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     { epoch: number; version: number; touched: Record<string, number>; deletedSessions: Set<string> } | undefined
   >(undefined)
   const session = useSession()
+  const currentSessionIDRef = useRef(session.currentSession?.id ?? null)
+  currentSessionIDRef.current = session.currentSession?.id ?? null
   const setReasoning = session.setReasoning
   const setSessionIdle = session.setSessionIdle
   const reasoningPartsBySessionRef = useRef<Map<string, Set<string>>>(new Map())
   const notificationStatusRef = useRef<Record<string, string>>({})
+  const notificationGenerationRef = useRef<Record<string, number>>({})
   const notificationErroredRef = useRef(new Set<string>())
   const notifiedPermissionsRef = useRef(new Map<string, string>())
   const notifiedQuestionsRef = useRef(new Map<string, string>())
@@ -1028,30 +1031,44 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     const sessionID = event.properties.sessionID
     const status = event.properties.status.type
     const previous = notificationStatusRef.current[sessionID]
+    const generation =
+      previous === status
+        ? (notificationGenerationRef.current[sessionID] ?? 0)
+        : (notificationGenerationRef.current[sessionID] ?? 0) + 1
     notificationStatusRef.current[sessionID] = status
+    notificationGenerationRef.current[sessionID] = generation
     if (status === "busy" || status === "retry") notificationErroredRef.current.delete(sessionID)
     if (notificationErroredRef.current.has(sessionID)) return
     if (!shouldNotifySessionIdle(previous, status)) return
 
-    const assistant = messagesRef.current
-      .filter((message) => message.info.sessionID === sessionID && message.info.role === "assistant")
-      .at(-1)
-    sendIdeNotification(
-      "finished",
-      sessionID,
-      session.currentSession?.id ?? null,
-      assistant?.parts
-        .filter((part): part is Extract<WebguiPart, { type: "text" }> => part.type === "text")
-        .map((part) => part.text)
-        .join(""),
-    )
-  }, [session.currentSession?.id])
+    void sdk.session
+      .get({ path: { id: sessionID } })
+      .then((result) => {
+        if (notificationGenerationRef.current[sessionID] !== generation) return
+        if (notificationErroredRef.current.has(sessionID)) return
+        if (!result.data || result.data.parentID) return
+        const assistant = messagesRef.current
+          .filter((message) => message.info.sessionID === sessionID && message.info.role === "assistant")
+          .at(-1)
+        sendIdeNotification(
+          "finished",
+          sessionID,
+          currentSessionIDRef.current,
+          assistant?.parts
+            .filter((part): part is Extract<WebguiPart, { type: "text" }> => part.type === "text")
+            .map((part) => part.text)
+            .join(""),
+        )
+      })
+      .catch(() => {})
+  }, [])
 
   const handleSessionDeletedNotification = useCallback((event: ServerEvent) => {
     if (event.type !== "session.deleted") return
     const sessionID = event.properties.info?.id
     if (!sessionID) return
     delete notificationStatusRef.current[sessionID]
+    delete notificationGenerationRef.current[sessionID]
     notificationErroredRef.current.delete(sessionID)
     for (const [requestID, targetSessionID] of notifiedPermissionsRef.current) {
       if (targetSessionID === sessionID) notifiedPermissionsRef.current.delete(requestID)

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../lib/api/sdkClient", () => ({
   sdk: {
     session: {
+      get: vi.fn(),
       messages: vi.fn(),
     },
     permissions: {
@@ -122,6 +123,9 @@ function deferred<T>() {
 
 describe("MessagesContext questions", () => {
   beforeEach(() => {
+    ;(sdk.session.get as unknown as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValue({ data: { id: "s1" }, error: null })
     vi.mocked(sdk.permissions.list).mockReset()
     vi.mocked(sdk.question.list).mockReset()
     ;(sdk.permissions.respond as unknown as ReturnType<typeof vi.fn>).mockReset()
@@ -317,6 +321,59 @@ describe("MessagesContext questions", () => {
       type: "showSystemNotification",
       payload: { sessionID: "s1", title: "Agent finished", body: "Finished working." },
     })
+  })
+
+  it("已存在的 subagent 从 busy 进入 idle 时不通知", async () => {
+    const emitter = new EventEmitter()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    ;(sdk.session.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: { id: "child", parentID: "s1" },
+      error: null,
+    })
+    mount(emitter)
+
+    await act(async () => {
+      emitter.emit({
+        type: "session.status",
+        properties: { sessionID: "child", status: { type: "busy" } },
+      } as ServerEvent)
+      emitter.emit({
+        type: "session.status",
+        properties: { sessionID: "child", status: { type: "idle" } },
+      } as ServerEvent)
+    })
+
+    expect(mocks.bridgeSend).not.toHaveBeenCalled()
+  })
+
+  it("完成查询返回前开始新一轮时不发送迟到通知", async () => {
+    const emitter = new EventEmitter()
+    const request = deferred<{ data: { id: string }; error: null }>()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    ;(sdk.session.get as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(request.promise)
+    mount(emitter)
+
+    await act(async () => {
+      emitter.emit({
+        type: "session.status",
+        properties: { sessionID: "s1", status: { type: "busy" } },
+      } as ServerEvent)
+      emitter.emit({
+        type: "session.status",
+        properties: { sessionID: "s1", status: { type: "idle" } },
+      } as ServerEvent)
+    })
+    await waitFor(() => expect(sdk.session.get).toHaveBeenCalled())
+
+    await act(async () => {
+      emitter.emit({
+        type: "session.status",
+        properties: { sessionID: "s1", status: { type: "busy" } },
+      } as ServerEvent)
+      request.resolve({ data: { id: "s1" }, error: null })
+    })
+
+    expect(mocks.bridgeSend).not.toHaveBeenCalled()
   })
 
   it("错误轮次的清理 idle 不通知且下一轮正常完成只通知一次", async () => {
