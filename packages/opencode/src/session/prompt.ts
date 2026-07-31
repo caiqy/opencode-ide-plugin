@@ -217,19 +217,23 @@ const layer = Layer.effect(
       if (!input.force && input.session.parentID) return
       if (!input.force && !Session.isDefaultTitle(input.session.title)) return
 
-      const real = (m: SessionV1.WithParts) =>
-        m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic)
-      const idx = input.history.findIndex(real)
-      if (idx === -1) return
-      if (input.history.filter(real).length !== 1) return
+      const realUserIndexes = input.history.flatMap((message, index) => {
+        if (message.info.role !== "user") return []
+        if (message.parts.every((part) => "synthetic" in part && part.synthetic)) return []
+        return [index]
+      })
+      if (realUserIndexes.length === 0) return
+      if (!input.force && realUserIndexes.length !== 1) return
 
-      const context = input.history.slice(0, idx + 1)
-      const firstUser = context[idx]
-      if (!firstUser || firstUser.info.role !== "user") return
-      const firstInfo = firstUser.info
+      const focusIndex = input.force ? realUserIndexes[realUserIndexes.length - 1] : realUserIndexes[0]
+      if (focusIndex === undefined) return
+      const context = input.force ? input.history : input.history.slice(0, focusIndex + 1)
+      const focusUser = input.history[focusIndex]
+      if (!focusUser || focusUser.info.role !== "user") return
+      const focusInfo = focusUser.info
 
-      const subtasks = firstUser.parts.filter((p): p is SessionV1.SubtaskPart => p.type === "subtask")
-      const onlySubtasks = subtasks.length > 0 && firstUser.parts.every((p) => p.type === "subtask")
+      const subtasks = focusUser.parts.filter((part): part is SessionV1.SubtaskPart => part.type === "subtask")
+      const onlySubtasks = subtasks.length > 0 && focusUser.parts.every((part) => part.type === "subtask")
 
       const ag = yield* agents.get("title")
       if (!ag) return
@@ -237,13 +241,23 @@ const layer = Layer.effect(
         ? yield* provider.getModel(ag.model.providerID, ag.model.modelID)
         : ((yield* provider.getSmallModel(input.providerID)) ??
           (yield* provider.getModel(input.providerID, input.modelID)))
-      const msgs = onlySubtasks
-        ? [{ role: "user" as const, content: subtasks.map((p) => p.prompt).join("\n") }]
-        : yield* MessageV2.toModelMessagesEffect(context, mdl)
+      const msgs =
+        onlySubtasks && !input.force
+          ? [{ role: "user" as const, content: subtasks.map((part) => part.prompt).join("\n") }]
+          : yield* MessageV2.toModelMessagesEffect(context, mdl).pipe(
+              Effect.map((messages) =>
+                onlySubtasks
+                  ? [
+                      ...messages,
+                      { role: "user" as const, content: subtasks.map((part) => part.prompt).join("\n") },
+                    ]
+                  : messages,
+              ),
+            )
       const text = yield* llm
         .stream({
           agent: ag,
-          user: firstInfo,
+          user: focusInfo,
           system: [],
           small: true,
           tools: {},

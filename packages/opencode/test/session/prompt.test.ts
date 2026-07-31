@@ -371,7 +371,7 @@ const succeedVoid = (deferred: Deferred.Deferred<void>) => {
   Effect.runSync(Deferred.succeed(deferred, void 0).pipe(Effect.ignore))
 }
 
-const user = Effect.fn("test.user")(function* (sessionID: SessionID, text: string) {
+const user = Effect.fn("test.user")(function* (sessionID: SessionID, text: string, options?: { system?: string }) {
   const session = yield* Session.Service
   const msg = yield* session.updateMessage({
     id: MessageID.ascending(),
@@ -380,6 +380,7 @@ const user = Effect.fn("test.user")(function* (sessionID: SessionID, text: strin
     agent: "build",
     model: ref,
     time: { created: Date.now() },
+    system: options?.system,
   })
   yield* session.updatePart({
     id: PartID.ascending(),
@@ -444,6 +445,52 @@ const boot = Effect.fn("test.boot")(function* (input?: { title?: string }) {
   const chat = yield* sessions.create(input ?? { title: "Pinned" })
   return { prompt, run, sessions, chat }
 })
+
+it.instance("regenerateTitle uses complete history after multiple user turns", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const { prompt, sessions, chat } = yield* boot({ title: "Old title" })
+    yield* seed(chat.id)
+    yield* user(chat.id, "latest correction", { system: "LATEST_FOCUS" })
+
+    const updated = yield* prompt.regenerateTitle(chat.id)
+
+    expect(updated.title).toBe("E2E Title")
+    expect((yield* sessions.get(chat.id)).title).toBe("E2E Title")
+    const titleInput = (yield* llm.inputs).find((input) =>
+      JSON.stringify(input).includes("Generate a title for this conversation"),
+    )
+    expect(JSON.stringify(titleInput)).toContain("hello")
+    expect(JSON.stringify(titleInput)).toContain("hi there")
+    expect(JSON.stringify(titleInput)).toContain("latest correction")
+    expect(JSON.stringify(titleInput)).toContain("LATEST_FOCUS")
+  }),
+)
+
+it.instance("regenerateTitle preserves the latest subtask-only prompt", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const { prompt, sessions, chat } = yield* boot({ title: "Old title" })
+    yield* user(chat.id, "first request")
+    const focus = yield* sessions.updateMessage({
+      id: MessageID.ascending(),
+      role: "user",
+      sessionID: chat.id,
+      agent: "build",
+      model: ref,
+      time: { created: Date.now() },
+    })
+    yield* addSubtask(chat.id, focus.id)
+
+    const updated = yield* prompt.regenerateTitle(chat.id)
+
+    expect(updated.title).toBe("E2E Title")
+    const titleInput = (yield* llm.inputs).find((input) =>
+      JSON.stringify(input).includes("Generate a title for this conversation"),
+    )
+    expect(JSON.stringify(titleInput)).toContain("look into the cache key path")
+  }),
+)
 
 // Loop semantics
 
