@@ -1,0 +1,28 @@
+{
+  "schema": "comet.native.verification-receipt.v3",
+  "kind": "manual-evidence",
+  "role": "acceptance-evidence",
+  "status": "passed",
+  "bindings": {
+    "change": "pin-sessions",
+    "sourceRevision": 7,
+    "contractHash": "62e2714e72706d41dc488fe1c504dfebb619af3c384df55976116f5d7607bfb4",
+    "scopeHash": "bd809edcfd776310b8efe03f225af6460d2f1e28e26088ff2ec942060639fc7e",
+    "snapshotHash": "2bd8d1edda4e657e70e5082dba33a0dee3cd65ab6f00d670221f60bd895a4105",
+    "artifactHash": "8dd4dc95b73ad5ef05bcabe7740118674d0f52faef5266a4adf54d33718b03ac"
+  },
+  "acceptanceIds": [
+    "acceptance-4ad970106fcaf74a6c75b374a13a52bee2fd6767c1622545feaa6d9a7cda7e8f"
+  ],
+  "actor": "native-runtime:manual-evidence",
+  "issuedAt": "2026-07-31T04:36:25.572Z",
+  "evidence": {
+    "steps": [
+      "检查同时命中钉住与未钉住会话的搜索结果"
+    ],
+    "observations": [
+      "候选列表在进入 useSessionDropdown 前已按钉住状态和 time.updated 排序，标题过滤保留该顺序，结果满足钉住命中项优先。"
+    ]
+  },
+  "receiptHash": "dda5a4079e9c54b3f9c22936b00090dd62ac213610f404b68bd096081768dec9"
+}

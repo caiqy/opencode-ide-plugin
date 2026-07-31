@@ -1,0 +1,28 @@
+{
+  "schema": "comet.native.verification-receipt.v3",
+  "kind": "manual-evidence",
+  "role": "acceptance-evidence",
+  "status": "passed",
+  "bindings": {
+    "change": "pin-sessions",
+    "sourceRevision": 7,
+    "contractHash": "62e2714e72706d41dc488fe1c504dfebb619af3c384df55976116f5d7607bfb4",
+    "scopeHash": "bd809edcfd776310b8efe03f225af6460d2f1e28e26088ff2ec942060639fc7e",
+    "snapshotHash": "2bd8d1edda4e657e70e5082dba33a0dee3cd65ab6f00d670221f60bd895a4105",
+    "artifactHash": "8dd4dc95b73ad5ef05bcabe7740118674d0f52faef5266a4adf54d33718b03ac"
+  },
+  "acceptanceIds": [
+    "acceptance-39b206d7643674ecf6c3c46cf004ed1ecff36af6f8bd850c6c848f32e2580b07"
+  ],
+  "actor": "native-runtime:manual-evidence",
+  "issuedAt": "2026-07-31T04:36:24.262Z",
+  "evidence": {
+    "steps": [
+      "检查标题搜索是否改变钉住优先级"
+    ],
+    "observations": [
+      "标题搜索只缩小 SessionContext 已排序的候选集合，不执行二次排序；Array.filter 保序，钉住优先级保持不变。"
+    ]
+  },
+  "receiptHash": "ff521750832ea7e1c8ad15d11f4c407331af5e648bfe62462422457279437be1"
+}

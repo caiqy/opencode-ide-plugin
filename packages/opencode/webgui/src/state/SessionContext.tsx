@@ -1,4 +1,15 @@
-import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react"
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react"
 import { sdk } from "../lib/api/sdkClient"
 import type { Session, Provider } from "@opencode-ai/sdk/client"
 import type { SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
@@ -6,7 +17,7 @@ import { eventEmitter, type ServerEvent } from "../lib/api/events"
 import { cleanupDeletedSessionDraft } from "./repo/draftRepo"
 import { addRecentModel, loadModelPrefs } from "./repo/modelPrefsRepo"
 import { loadSelection, patchSelection, saveSelection } from "./repo/selectionRepo"
-import { SESSION_LIST_LIMIT, SESSION_LIST_PAGE_SIZE } from "./sessionPaging"
+import { compareSessionList, SESSION_LIST_LIMIT, SESSION_LIST_PAGE_SIZE } from "./sessionPaging"
 
 /**
  * Session context state
@@ -30,7 +41,7 @@ interface SessionContextState {
 
   // All sessions
   sessions: Session[]
-  setSessions: (sessions: Session[]) => void
+  setSessions: Dispatch<SetStateAction<Session[]>>
   hasMore: boolean
 
   // Loading and error states
@@ -177,6 +188,25 @@ function isSubagentSession(session: Session): boolean {
   return /\(@[^)]* subagent\)$/.test(title)
 }
 
+// Keep session events received after the request started; absence from current state represents a deletion.
+function mergeSessionListResponse(
+  listed: Session[],
+  current: Session[],
+  requestVersion: number,
+  eventVersions: Record<string, number>,
+) {
+  const currentByID = new Map(current.map((session) => [session.id, session]))
+  const listedIDs = new Set(listed.map((session) => session.id))
+  return [
+    ...listed.flatMap((session) => {
+      if ((eventVersions[session.id] ?? 0) <= requestVersion) return [session]
+      const latest = currentByID.get(session.id)
+      return latest ? [latest] : []
+    }),
+    ...current.filter((session) => (eventVersions[session.id] ?? 0) > requestVersion && !listedIDs.has(session.id)),
+  ].sort(compareSessionList)
+}
+
 /**
  * Session provider component
  *
@@ -203,6 +233,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const pendingSwitchForegroundRef = useRef<string | null>(null)
   const switchTokenRef = useRef(0)
   const sessionListTokenRef = useRef(0)
+  const sessionEventVersionRef = useRef(0)
+  const sessionEventVersionsRef = useRef<Record<string, number>>({})
   const reconnectEpochRef = useRef(0)
   const statusVersionRef = useRef<Record<string, number>>({})
   const currentSessionEpochRef = useRef(0)
@@ -684,6 +716,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
    */
   const listSessions = useCallback(async (limit: number, more = false) => {
     const token = ++sessionListTokenRef.current
+    const eventVersion = sessionEventVersionRef.current
     sessionWantRef.current = Math.max(sessionWantRef.current, limit)
     if (more) setIsLoadingMore(true)
     else setIsLoading(true)
@@ -697,7 +730,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     console.log("[SessionContext] Loading sessions...", { limit })
 
     try {
-      const response = await sdk.session.list({ limit, roots: true })
+      const response = await sdk.session.list({ limit, roots: true, pinnedFirst: true })
       const stale = token !== sessionListTokenRef.current || limit < sessionWantRef.current
 
       if (response?.error) {
@@ -727,7 +760,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
         sessionWantRef.current = limit
         setHasMore(response.data.length >= limit)
         console.log("[SessionContext] Sessions loaded:", response.data.length)
-        setSessions(response.data.filter((s) => !isSubagentSession(s)))
+        const listed = response.data.filter((session) => !isSubagentSession(session))
+        setSessions((current) =>
+          mergeSessionListResponse(listed, current, eventVersion, sessionEventVersionsRef.current),
+        )
         stop()
         return
       }
@@ -747,7 +783,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   }, [])
 
   const loadSessions = useCallback(() => {
-    return listSessions(sessionLimitRef.current)
+    return listSessions(Math.max(sessionLimitRef.current, sessionWantRef.current))
   }, [listSessions])
 
   const loadMoreSessions = useCallback(() => {
@@ -1244,6 +1280,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   // Listen for session events from SSE
   useEffect(() => {
+    const markSessionChanged = (sessionID: string) => {
+      sessionEventVersionsRef.current[sessionID] = ++sessionEventVersionRef.current
+    }
+
     const handleServerConnected = async () => {
       const reconnectEpoch = ++reconnectEpochRef.current
       const sessionID = currentSessionIDRef.current
@@ -1257,10 +1297,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
       if (reconnectEpoch !== reconnectEpochRef.current) return
 
-      if (
-        statusResult.status === "fulfilled" &&
-        statusResult.value.data
-      ) {
+      if (statusResult.status === "fulfilled" && statusResult.value.data) {
         const entries = Object.entries(statusResult.value.data)
         const snapshot = new Map(entries)
         const unchanged = (id: string) => statusVersions[id] === statusVersionRef.current[id]
@@ -1310,13 +1347,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
     const handleSessionCreated = (event: any) => {
       if (event.type === "session.created" && event.properties?.info) {
         if (isSubagentSession(event.properties.info)) return
+        markSessionChanged(event.properties.info.id)
         console.log("[SessionContext] Session created event:", event.properties.info.id)
         setSessions((prev) => {
           // Check if already exists
           if (prev.some((s) => s.id === event.properties.info.id)) {
             return prev
           }
-          return [event.properties.info, ...prev]
+          return [...prev, event.properties.info].sort(compareSessionList)
         })
       }
     }
@@ -1324,6 +1362,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     const handleSessionUpdated = (event: any) => {
       if (event.type === "session.updated" && event.properties?.info) {
         const updatedSession = event.properties.info
+        markSessionChanged(updatedSession.id)
         console.log("[SessionContext] Session updated event:", updatedSession.id, {
           title: updatedSession.title,
           updated: new Date(updatedSession.time.updated).toISOString(),
@@ -1340,10 +1379,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
           if (exists && exists.title !== updatedSession.title) {
             console.log("[SessionContext] 🎉 Session title CHANGED:", exists.title, "→", updatedSession.title)
           }
-          const next = prev.filter((s) => s.id !== updatedSession.id)
-          const idx = next.findIndex((s) => s.time.updated < updatedSession.time.updated)
-          if (idx < 0) return [...next, updatedSession]
-          return [...next.slice(0, idx), updatedSession, ...next.slice(idx)]
+          return [...prev.filter((s) => s.id !== updatedSession.id), updatedSession].sort(compareSessionList)
         })
 
         if (currentSession?.id === updatedSession.id) {
@@ -1355,6 +1391,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     const handleSessionDeleted = (event: any) => {
       if (event.type === "session.deleted" && event.properties?.info) {
         const deletedId = event.properties.info.id
+        markSessionChanged(deletedId)
         console.log("[SessionContext] Session deleted event:", deletedId)
         void queueDeletedSessionDraftCleanup(deletedId).catch((err) => {
           console.error("[SessionContext] Failed to clear deleted session draft:", err)

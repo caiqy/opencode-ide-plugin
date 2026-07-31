@@ -14,6 +14,7 @@ interface SessionListProps {
   selectedSessionRef: React.RefObject<HTMLDivElement | null>
   sessionListRef: React.RefObject<HTMLDivElement | null>
   sharingSessionId: string | null
+  pinningSessionId: string | null
   onSessionSelect: (sessionId: string) => void
   onEditStart: (sessionId: string, currentTitle: string, e: React.MouseEvent) => void
   onEditSave: (sessionId: string) => void
@@ -23,6 +24,7 @@ interface SessionListProps {
   onCheckboxChange: (sessionId: string, checked: boolean) => void
   onKeyDown: (e: React.KeyboardEvent) => void
   onToggleShare: (sessionId: string, e: React.MouseEvent) => void
+  onTogglePin: (sessionId: string, e: React.MouseEvent) => void
 }
 
 export function SessionList({
@@ -38,6 +40,7 @@ export function SessionList({
   selectedSessionRef,
   sessionListRef,
   sharingSessionId,
+  pinningSessionId,
   onSessionSelect,
   onEditStart,
   onEditSave,
@@ -47,6 +50,7 @@ export function SessionList({
   onCheckboxChange,
   onKeyDown,
   onToggleShare,
+  onTogglePin,
 }: SessionListProps) {
   if (filteredSessions.length === 0) {
     return (
@@ -77,6 +81,7 @@ export function SessionList({
             editInputRef={editInputRef}
             selectedSessionRef={selectedSessionRef}
             isSharing={sharingSessionId === session.id}
+            isPinning={pinningSessionId !== null}
             onSelect={() => onSessionSelect(session.id)}
             onEditStart={(e) => onEditStart(session.id, displayTitle, e)}
             onEditSave={() => onEditSave(session.id)}
@@ -86,6 +91,7 @@ export function SessionList({
             onCheckboxChange={(checked) => onCheckboxChange(session.id, checked)}
             onKeyDown={onKeyDown}
             onToggleShare={(e) => onToggleShare(session.id, e)}
+            onTogglePin={(e) => onTogglePin(session.id, e)}
           />
         )
       })}

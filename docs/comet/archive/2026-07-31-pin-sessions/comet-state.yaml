@@ -1,0 +1,23 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 9
+verification_protocol: legacy-v1
+name: pin-sessions
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: 62e2714e72706d41dc488fe1c504dfebb619af3c384df55976116f5d7607bfb4
+spec_changes:
+  - capability: session-pinning
+    operation: create
+    source: specs/session-pinning/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/bd809edcfd776310b8efe03f225af6460d2f1e28e26088ff2ec942060639fc7e.json
+verification_evidence: runtime/evidence/verifications/9dd6f99efbcfa82f9d9e417bdcde14621d950d58d35890dc0917cb7f972638e3.json
+partial_allowance: null
+archived: true
+created_at: 2026-07-31
+run_id: 19c90f9c-8d3a-4c4b-b923-1011a0e04d5b

@@ -1,18 +1,11 @@
+import type { Session } from "@opencode-ai/sdk/client"
 import { isDefaultTitle } from "../../state/SessionContext"
+import { isSessionPinned } from "../../state/sessionPaging"
 import { formatTimestamp } from "./utils"
 import { ideBridge } from "../../lib/ideBridge"
 
 interface SessionItemProps {
-  session: {
-    id: string
-    title: string | null
-    share?: {
-      url: string
-    }
-    time: {
-      created: number
-    }
-  }
+  session: Session
   isActive: boolean
   isEditing: boolean
   isSelectMode: boolean
@@ -23,6 +16,7 @@ interface SessionItemProps {
   editInputRef: React.RefObject<HTMLInputElement | null>
   selectedSessionRef: React.RefObject<HTMLDivElement | null>
   isSharing: boolean
+  isPinning: boolean
   onSelect: () => void
   onEditStart: (e: React.MouseEvent) => void
   onEditSave: () => void
@@ -32,6 +26,26 @@ interface SessionItemProps {
   onCheckboxChange: (checked: boolean) => void
   onKeyDown: (e: React.KeyboardEvent) => void
   onToggleShare: (e: React.MouseEvent) => void
+  onTogglePin: (e: React.MouseEvent) => void
+}
+
+function PinIcon({ filled = false }: { filled?: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="w-3 h-3"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="m16 3 5 5-4 1-4 4-1 5-6-6 5-1 4-4 1-4ZM9 15l-6 6"
+      />
+    </svg>
+  )
 }
 
 export function SessionItem({
@@ -46,6 +60,7 @@ export function SessionItem({
   editInputRef,
   selectedSessionRef,
   isSharing,
+  isPinning,
   onSelect,
   onEditStart,
   onEditSave,
@@ -55,10 +70,12 @@ export function SessionItem({
   onCheckboxChange,
   onKeyDown,
   onToggleShare,
+  onTogglePin,
 }: SessionItemProps) {
   const displayTitle = session.title || "新建会话"
   const hasDefaultTitle = isDefaultTitle(displayTitle)
   const isShared = !!session.share?.url
+  const isPinned = isSessionPinned(session)
 
   const handleLinkClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -129,6 +146,11 @@ export function SessionItem({
                 />
               </svg>
             )}
+            {isPinned && (
+              <span className="text-blue-600 dark:text-blue-400 flex-shrink-0" title="已钉住" aria-label="已钉住">
+                <PinIcon filled />
+              </span>
+            )}
             <span
               className={`truncate ${
                 hasDefaultTitle
@@ -154,6 +176,16 @@ export function SessionItem({
 
               {/* Action buttons (visible on hover or when active) */}
               <div className={`${isActive ? "flex" : "hidden group-hover:flex"} items-center gap-1`}>
+                <button
+                  onClick={onTogglePin}
+                  disabled={isPinning}
+                  className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-50"
+                  title={isPinned ? "取消钉住" : "钉住会话"}
+                  data-tip={isPinned ? "取消钉住" : "钉住会话"}
+                  aria-label={isPinned ? "取消钉住" : "钉住会话"}
+                >
+                  <PinIcon filled={isPinned} />
+                </button>
                 {/* Link button (only shown if shared) */}
                 {isShared && (
                   <button

@@ -1,0 +1,66 @@
+{
+  "schema": "comet.native.verification-receipt.v3",
+  "kind": "automated-check",
+  "role": "acceptance-evidence",
+  "status": "failed",
+  "bindings": {
+    "change": "pin-sessions",
+    "sourceRevision": 7,
+    "contractHash": "62e2714e72706d41dc488fe1c504dfebb619af3c384df55976116f5d7607bfb4",
+    "scopeHash": "bd809edcfd776310b8efe03f225af6460d2f1e28e26088ff2ec942060639fc7e",
+    "snapshotHash": "2bd8d1edda4e657e70e5082dba33a0dee3cd65ab6f00d670221f60bd895a4105",
+    "artifactHash": "8dd4dc95b73ad5ef05bcabe7740118674d0f52faef5266a4adf54d33718b03ac"
+  },
+  "acceptanceIds": [
+    "acceptance-0d2e70393cfd7a366e3ce2460363ad2197219fc54e10497a41e2f48aef616756",
+    "acceptance-115db290511b0291ccbead594a8891d9c31560cc074da822531371571400cb93",
+    "acceptance-1ba5d72322cbae1cf724a3bacaf810b0e0f82f6fa7526ba687ed5b25b534e4cf",
+    "acceptance-21c1ddbbffb75cd1158647a95ced4df79c4f51f9fd40a308504af1d83c2f7186",
+    "acceptance-32b6e75474ac5950a8a919d5617c6e1d9148776bc4b7712dd34be77d1c9025db",
+    "acceptance-40b5a57361d0d7dbbfa097ed70f6b1751b8f163aa6863e2d5a069c73b41bf2ee",
+    "acceptance-4e81ee3df03adc5e546dd2ebd428099b4db54ff5a4991293ad25a844cb4a834f",
+    "acceptance-5cafb4bb7183c9f925ade982f20375efcdf7bc98e0a6803a13df3bc6beef50a4",
+    "acceptance-6614c136b4263894dd04916823aea4904c1c94ce9d02a791995bf191b418eb03",
+    "acceptance-b652e4047d2d43be7063ae84bcfd7b0ab41a7229d5053735e22899b794d35a53",
+    "acceptance-d72ce1e66a6d69b3bfd3bf2107014baba3452d115d57e4770ad8ae810c35fde7",
+    "acceptance-dbff29f9cf425b2a363045c5a5d90ce554fc10b9862a936b3ac6983e02e73c5c",
+    "acceptance-e4e2ad9e249953e4005b83b2cd1546b1798d73a754d24101f5aa00ce1fc518f7",
+    "acceptance-e9cf579119a60eb25a0fc2d70ba389daf4cc0e6e9d8da661ba1e8bc293c6c7c9",
+    "acceptance-ec9660204d0a76f5e0a57a840d0da5f2e3ead706dbd9ba1f06d9a7afb6fd0cb3"
+  ],
+  "actor": "native-runtime:command:pwsh",
+  "issuedAt": "2026-07-31T04:35:20.339Z",
+  "evidence": {
+    "executable": "pwsh",
+    "args": [
+      "-NoProfile",
+      "-Command",
+      "$output = & bun --cwd packages/opencode/webgui run test:run -- --silent src/state/SessionContext.test.tsx src/components/CompactHeader/SessionDropdown.test.tsx src/components/CompactHeader/SessionItem.test.tsx src/components/CompactHeader/SessionList.test.tsx src/components/CompactHeader/index.integration.test.tsx src/components/CompactHeader/index.test.tsx 2>&1; if ($LASTEXITCODE -ne 0) { $output; exit $LASTEXITCODE }; 104",
+      "webgui",
+      "tests",
+      "passed"
+    ],
+    "cwd": ".",
+    "exitCode": 1,
+    "signal": null,
+    "timedOut": false,
+    "timeoutMs": 120000,
+    "startedAt": "2026-07-31T04:35:19.579Z",
+    "endedAt": "2026-07-31T04:35:20.339Z",
+    "worktree": {
+      "provider": "git",
+      "root": ".",
+      "beforeCommit": "29ae34c00ff61f8562ec956ea9a1a837b0384015",
+      "afterCommit": "29ae34c00ff61f8562ec956ea9a1a837b0384015"
+    },
+    "afterFence": {
+      "snapshotHash": "2bd8d1edda4e657e70e5082dba33a0dee3cd65ab6f00d670221f60bd895a4105",
+      "scopeHash": "bd809edcfd776310b8efe03f225af6460d2f1e28e26088ff2ec942060639fc7e",
+      "matched": true
+    },
+    "outputHash": "eab037b31f09f13959cd64b2294e0b61169280d2c07e81345b04284f4c377aae",
+    "outputSummary": "\u001b[31;1mParserError: \u001b[0m\r\n\u001b[31;1m\u001b[36;1mLine |\u001b[0m\r\n\u001b[31;1m\u001b[36;1m\u001b[36;1m   1 | \u001b[0m �� STEXITCODE -ne 0) { $output; exit $LASTEXITCODE }; 104 \u001b[36;1mwebgui\u001b[0m tests p ��\u001b[0m\r\n\u001b[31;1m\u001b[36;1m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[0m\u001b[36;1m     | \u001b[31;1m                                                          ~~~~~~\u001b[0m\r\n\u001b[31;1m\u001b[36;1m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[31;1m\u001b[31;1m\u001b[36;1m     | \u001b[31;1mUnexpected token 'webgui' in expression or statement.\u001b[0m",
+    "outputTruncated": false
+  },
+  "receiptHash": "e018d4c39f63de1b4b42fe2ba409915bd7be4d6b0e454fabe6d755a3a11352f7"
+}

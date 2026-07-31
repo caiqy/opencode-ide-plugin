@@ -76,6 +76,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
         start: ctx.query.start,
         search: ctx.query.search,
         limit: ctx.query.limit,
+        pinnedFirst: ctx.query.pinnedFirst,
       })
     })
 
@@ -213,6 +214,11 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       }
       if (ctx.payload.metadata !== undefined) {
         yield* session.setMetadata({ sessionID: ctx.params.sessionID, metadata: ctx.payload.metadata })
+      }
+      if (ctx.payload.pinned !== undefined) {
+        yield* SessionError.mapStorageNotFound(
+          session.setPinned({ sessionID: ctx.params.sessionID, pinned: ctx.payload.pinned }),
+        )
       }
       if (ctx.payload.permission !== undefined) {
         yield* session.setPermission({

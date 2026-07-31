@@ -987,7 +987,7 @@ describe("SessionContext session paging", () => {
     renderHook(() => useSession(), { wrapper })
 
     await waitFor(() => {
-      expect(sdk.session.list).toHaveBeenCalledWith({ roots: true, limit: SESSION_LIST_LIMIT })
+      expect(sdk.session.list).toHaveBeenCalledWith({ roots: true, pinnedFirst: true, limit: SESSION_LIST_LIMIT })
     })
   })
 
@@ -1065,9 +1065,14 @@ describe("SessionContext session paging", () => {
       await result.current.loadMoreSessions()
     })
 
-    expect(sdk.session.list).toHaveBeenNthCalledWith(1, { roots: true, limit: SESSION_LIST_LIMIT })
+    expect(sdk.session.list).toHaveBeenNthCalledWith(1, {
+      roots: true,
+      pinnedFirst: true,
+      limit: SESSION_LIST_LIMIT,
+    })
     expect(sdk.session.list).toHaveBeenNthCalledWith(2, {
       roots: true,
+      pinnedFirst: true,
       limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE,
     })
 
@@ -1144,6 +1149,74 @@ describe("SessionContext session paging", () => {
 
     await waitFor(() => {
       expect(result.current.sessions.map((item) => item.id)).toEqual(["s-1", "s-2"])
+    })
+  })
+
+  it("session 事件会保持钉住会话优先", async () => {
+    vi.mocked(sdk.session.list).mockResolvedValueOnce({
+      data: [session("s-2", 200), session("s-1", 100)],
+      error: null,
+    })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.sessions.map((item) => item.id)).toEqual(["s-2", "s-1"])
+    })
+
+    act(() => {
+      events.emit("session.updated", {
+        type: "session.updated",
+        properties: {
+          info: { ...session("s-1", 100), metadata: { "opencode.session.pinned": true } },
+        },
+      })
+    })
+    expect(result.current.sessions.map((item) => item.id)).toEqual(["s-1", "s-2"])
+
+    act(() => {
+      events.emit("session.created", {
+        type: "session.created",
+        properties: { info: session("s-3", 300) },
+      })
+    })
+    expect(result.current.sessions.map((item) => item.id)).toEqual(["s-1", "s-3", "s-2"])
+  })
+
+  it("列表响应不会覆盖请求期间收到的 session 更新和删除事件", async () => {
+    const gate = deferred<any>()
+    vi.mocked(sdk.session.list).mockImplementationOnce(() => gate.promise)
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(true)
+    })
+
+    act(() => {
+      events.emit("session.updated", {
+        type: "session.updated",
+        properties: {
+          info: {
+            ...session("s-1", 100),
+            title: "live title",
+            metadata: { "opencode.session.pinned": true },
+          },
+        },
+      })
+      events.emit("session.deleted", sessionDeletedEvent("s-2"))
+    })
+
+    await act(async () => {
+      gate.resolve({ data: [session("s-2", 200), session("s-1", 100)], error: null })
+      await gate.promise
+    })
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(1)
+      expect(result.current.sessions[0]).toMatchObject({
+        id: "s-1",
+        title: "live title",
+        metadata: { "opencode.session.pinned": true },
+      })
     })
   })
 
@@ -1238,6 +1311,7 @@ describe("SessionContext session paging", () => {
       expect(result.current.isLoadingMore).toBe(true)
       expect(sdk.session.list).toHaveBeenNthCalledWith(2, {
         roots: true,
+        pinnedFirst: true,
         limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE,
       })
     })
@@ -1272,8 +1346,55 @@ describe("SessionContext session paging", () => {
 
     expect(sdk.session.list).toHaveBeenNthCalledWith(3, {
       roots: true,
+      pinnedFirst: true,
       limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE * 2,
     })
+  })
+
+  it("刷新会复用 pending loadMore 的目标窗口", async () => {
+    const more = deferred<any>()
+    const refresh = deferred<any>()
+    ;(sdk.session.list as any)
+      .mockResolvedValueOnce({
+        data: Array.from({ length: SESSION_LIST_LIMIT }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+      .mockImplementationOnce(() => more.promise)
+      .mockImplementationOnce(() => refresh.promise)
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT)
+    })
+
+    let loadMore!: Promise<void>
+    let reload!: Promise<void>
+    await act(async () => {
+      loadMore = result.current.loadMoreSessions()
+      reload = result.current.loadSessions()
+    })
+
+    expect(sdk.session.list).toHaveBeenNthCalledWith(3, {
+      roots: true,
+      pinnedFirst: true,
+      limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE,
+    })
+
+    await act(async () => {
+      refresh.resolve({
+        data: Array.from({ length: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE }, (_, i) => session(`s-${i}`, i)),
+        error: null,
+      })
+      await reload
+      more.resolve({
+        data: Array.from({ length: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE }, (_, i) => session(`old-${i}`, i)),
+        error: null,
+      })
+      await loadMore
+    })
+
+    expect(result.current.sessions).toHaveLength(SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE)
+    expect(result.current.sessions[0]?.id).toBe("s-59")
   })
 
   it("返回条数小于 limit 时 hasMore 为 false", async () => {
@@ -1346,10 +1467,12 @@ describe("SessionContext session paging", () => {
 
     expect(sdk.session.list).toHaveBeenNthCalledWith(2, {
       roots: true,
+      pinnedFirst: true,
       limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE,
     })
     expect(sdk.session.list).toHaveBeenNthCalledWith(3, {
       roots: true,
+      pinnedFirst: true,
       limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE,
     })
 
@@ -1384,6 +1507,7 @@ describe("SessionContext session paging", () => {
       expect(sdk.session.list).toHaveBeenCalledTimes(2)
       expect(sdk.session.list).toHaveBeenNthCalledWith(2, {
         roots: true,
+        pinnedFirst: true,
         limit: SESSION_LIST_LIMIT + SESSION_LIST_PAGE_SIZE,
       })
 

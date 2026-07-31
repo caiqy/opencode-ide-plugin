@@ -1,0 +1,50 @@
+{
+  "schema": "comet.native.verification-receipt.v3",
+  "kind": "static-inspection",
+  "role": "required-check",
+  "status": "passed",
+  "bindings": {
+    "change": "pin-sessions",
+    "sourceRevision": 5,
+    "contractHash": "62e2714e72706d41dc488fe1c504dfebb619af3c384df55976116f5d7607bfb4",
+    "scopeHash": "8395bb9608f66ce0202990db0f0a83f45e2cc87c85fa122a0a8f49b7b47c86d8",
+    "snapshotHash": "6d01ec4a3ad0888fbc46cd0f3a38e6bb496524c5cc12c39cef0cb494db152ac5",
+    "artifactHash": "8dd4dc95b73ad5ef05bcabe7740118674d0f52faef5266a4adf54d33718b03ac"
+  },
+  "acceptanceIds": [],
+  "actor": "native-runtime:scoped-text-safety",
+  "issuedAt": "2026-07-31T04:24:55.355Z",
+  "evidence": {
+    "subjects": [
+      "packages/opencode/src/server/routes/instance/httpapi/groups/session.ts",
+      "packages/opencode/src/server/routes/instance/httpapi/handlers/session.ts",
+      "packages/opencode/src/server/routes/instance/httpapi/public.ts",
+      "packages/opencode/src/session/session.ts",
+      "packages/opencode/test/server/httpapi-sdk.test.ts",
+      "packages/opencode/test/server/session-list.test.ts",
+      "packages/opencode/webgui/src/components/CompactHeader/SessionDropdown.test.tsx",
+      "packages/opencode/webgui/src/components/CompactHeader/SessionDropdown.tsx",
+      "packages/opencode/webgui/src/components/CompactHeader/SessionItem.test.tsx",
+      "packages/opencode/webgui/src/components/CompactHeader/SessionItem.tsx",
+      "packages/opencode/webgui/src/components/CompactHeader/SessionList.test.tsx",
+      "packages/opencode/webgui/src/components/CompactHeader/SessionList.tsx",
+      "packages/opencode/webgui/src/components/CompactHeader/index.integration.test.tsx",
+      "packages/opencode/webgui/src/components/CompactHeader/index.test.tsx",
+      "packages/opencode/webgui/src/components/CompactHeader/index.tsx",
+      "packages/opencode/webgui/src/lib/api/sdkClient.ts",
+      "packages/opencode/webgui/src/state/SessionContext.test.tsx",
+      "packages/opencode/webgui/src/state/SessionContext.tsx",
+      "packages/sdk/js/src/v2/client.ts",
+      "packages/sdk/js/src/v2/gen/client/types.gen.ts",
+      "packages/sdk/js/src/v2/gen/sdk.gen.ts",
+      "packages/sdk/js/src/v2/gen/types.gen.ts",
+      "packages/sdk/js/src/v2/visibility.contract.ts",
+      "packages/sdk/openapi.json"
+    ],
+    "rule": "scoped-text-safety",
+    "resultSummary": "The built-in scoped inspection passed without skipped or blocking input.",
+    "checkReceiptRef": "runtime/evidence/check-receipts/eddd8cd2836804d8654a8159985dd91d86d9dc37f31e69a7df98c6cd16c0b64f.json",
+    "checkReceiptHash": "eddd8cd2836804d8654a8159985dd91d86d9dc37f31e69a7df98c6cd16c0b64f"
+  },
+  "receiptHash": "afa6294ff7883798586d6f3c863c002674d771bdc4d826f52ac60a402016acc5"
+}

@@ -189,6 +189,28 @@ describe("EventV2", () => {
     }),
   )
 
+  it.effect("runs a durable precondition before projection", () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2.Service
+      const { db } = yield* Database.Service
+      const projected = new Array<string>()
+      const conflict = new Error("conflict")
+      yield* events.project(SyncMessage, (event) =>
+        Effect.sync(() => {
+          projected.push(event.data.text)
+        }),
+      )
+
+      const defect = yield* events
+        .publish(SyncMessage, { id: "one", text: "blocked" }, { precondition: Effect.die(conflict) })
+        .pipe(Effect.catchDefect(Effect.succeed))
+
+      expect(defect).toBe(conflict)
+      expect(projected).toEqual([])
+      expect(yield* EventV2.latestSequence(db, "one")).toBe(-1)
+    }),
+  )
+
   it.effect("rolls back the durable event and projector when the local commit fails", () =>
     Effect.gen(function* () {
       const events = yield* EventV2.Service

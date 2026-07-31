@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { ConnectionState } from "../../lib/api/events"
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   useToast: vi.fn(),
   sdkShare: vi.fn(),
   sdkUnshare: vi.fn(),
+  sdkSetPinned: vi.fn(),
   sessionDropdown: vi.fn(),
 }))
 
@@ -88,6 +89,7 @@ vi.mock("../../state/UpdateContext", () => ({
 }))
 
 vi.mock("../../lib/api/sdkClient", () => ({
+  setSessionPinned: (...args: unknown[]) => mocks.sdkSetPinned(...args),
   sdk: {
     session: {
       share: (...args: unknown[]) => mocks.sdkShare(...args),
@@ -154,6 +156,7 @@ describe("CompactHeader integration with real TabBar", () => {
   beforeEach(() => {
     mocks.sdkShare.mockResolvedValue({ data: null })
     mocks.sdkUnshare.mockResolvedValue({ data: null })
+    mocks.sdkSetPinned.mockResolvedValue({ data: null })
     mocks.sessionDropdown.mockReset()
     mocks.useTheme.mockReturnValue({ theme: "light", toggleTheme: vi.fn() })
     mocks.useSessionDropdown.mockReturnValue(baseDropdown())
@@ -203,6 +206,86 @@ describe("CompactHeader integration with real TabBar", () => {
       isLoadingMore: false,
       onLoadMore: loadMoreSessions,
     })
+  })
+
+  it("钉住成功后只更新仍存在会话的钉住状态，失败时保留状态并提示", async () => {
+    const setSessions = vi.fn()
+    const loadSessions = vi.fn().mockResolvedValue(undefined)
+    const showToast = vi.fn()
+    const sessions = [
+      { id: "recent", title: "recent", time: { created: 2, updated: 200 } },
+      { id: "old", title: "old", time: { created: 1, updated: 100 } },
+    ]
+    mocks.sdkSetPinned.mockResolvedValueOnce({
+      data: { ...sessions[1], metadata: { "opencode.session.pinned": true } },
+      error: null,
+    })
+    mocks.useToast.mockReturnValue({ showToast })
+    mocks.useSession.mockReturnValue({
+      currentSession: sessions[0],
+      setCurrentSession: vi.fn(),
+      sessions,
+      setSessions,
+      switchSession: vi.fn(),
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      hasMore: false,
+      isLoadingMore: false,
+      loadSessions,
+      loadMoreSessions: vi.fn(),
+      isLoading: false,
+      isSessionIdle: vi.fn(() => true),
+      isSessionReasoning: vi.fn(() => false),
+    })
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["recent"],
+      activeTab: "recent",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab: vi.fn(),
+      activateTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    })
+
+    render(<CompactHeader {...props()} />)
+    const dropdown = () =>
+      mocks.sessionDropdown.mock.calls.at(-1)![0] as {
+        onTogglePin: (id: string, event: { stopPropagation: () => void }) => Promise<void>
+      }
+    await act(async () => {
+      await dropdown().onTogglePin("old", { stopPropagation: vi.fn() })
+    })
+
+    expect(mocks.sdkSetPinned).toHaveBeenCalledWith({ path: { id: "old" }, body: { pinned: true } })
+    const update = setSessions.mock.calls[0][0] as (value: typeof sessions) => typeof sessions
+    const updated = update([
+      sessions[0],
+      {
+        ...sessions[1],
+        title: "renamed",
+        metadata: { keep: true, "opencode.session.pinned": true },
+      },
+    ] as typeof sessions)
+    expect(updated.map((item) => item.id)).toEqual(["old", "recent"])
+    expect(updated[0]).toMatchObject({
+      title: "renamed",
+      metadata: { keep: true, "opencode.session.pinned": true },
+    })
+    expect(update([sessions[0]])).toEqual([sessions[0]])
+    expect(loadSessions).toHaveBeenCalledOnce()
+    expect(showToast).not.toHaveBeenCalled()
+
+    mocks.sdkSetPinned.mockResolvedValueOnce({ data: null, error: { message: "failed" } })
+    await act(async () => {
+      await dropdown().onTogglePin("old", { stopPropagation: vi.fn() })
+    })
+    expect(setSessions).toHaveBeenCalledOnce()
+    expect(showToast).toHaveBeenCalledWith("钉住会话失败", { variant: "error" })
   })
 
   it("activates a tab and switches session when user clicks another tab", async () => {

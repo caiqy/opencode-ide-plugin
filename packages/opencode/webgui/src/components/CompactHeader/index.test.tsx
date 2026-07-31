@@ -52,6 +52,7 @@ const mocks = vi.hoisted(() => ({
   useToast: vi.fn(),
   sdkShare: vi.fn(),
   sdkUnshare: vi.fn(),
+  sdkSetPinned: vi.fn(),
   sdkPathGet: vi.fn(),
   ideBridgeRequest: vi.fn(),
   ideBridgeRestartMode: "window" as "window" | "ide" | null,
@@ -137,6 +138,7 @@ vi.mock("./TabBar", () => ({
 }))
 
 vi.mock("../../lib/api/sdkClient", () => ({
+  setSessionPinned: (...args: unknown[]) => mocks.sdkSetPinned(...args),
   sdk: {
     path: {
       get: (...args: unknown[]) => mocks.sdkPathGet(...args),
@@ -218,6 +220,7 @@ describe("CompactHeader", () => {
     mocks.tabBarProps = null
     mocks.sdkShare.mockResolvedValue({ data: null })
     mocks.sdkUnshare.mockResolvedValue({ data: null })
+    mocks.sdkSetPinned.mockResolvedValue({ data: null })
     mocks.sdkPathGet.mockResolvedValue({ data: { configFile: "/real/opencode.json" }, error: null })
     mocks.ideBridgeRequest.mockResolvedValue({ ok: true })
     mocks.ideBridgeRestartMode = "window"

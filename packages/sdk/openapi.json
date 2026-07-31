@@ -5837,6 +5837,22 @@
               "type": "number"
             },
             "required": false
+          },
+          {
+            "name": "pinnedFirst",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "string",
+                  "enum": ["true", "false"]
+                }
+              ]
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -6364,6 +6380,9 @@
                   },
                   "metadata": {
                     "type": "object"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "permission": {
                     "$ref": "#/components/schemas/PermissionRuleset"

@@ -14,6 +14,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { SessionV2 } from "@opencode-ai/core/session"
 import * as SessionExecutionLocal from "@opencode-ai/core/session/execution/local"
 import { locationServiceMapLayer } from "@opencode-ai/core/location-services"
+import { isDeepStrictEqual } from "node:util"
 
 import { NotFoundError } from "@/storage/storage"
 import { eq } from "drizzle-orm"
@@ -221,6 +222,7 @@ const Model = Schema.Struct({
 })
 
 export const Metadata = Schema.Record(Schema.String, Schema.Any)
+export const PinnedMetadataKey = "opencode.session.pinned"
 
 export const Info = Schema.Struct({
   id: SessionID,
@@ -244,6 +246,17 @@ export const Info = Schema.Struct({
   revert: optional(Revert),
 }).annotate({ identifier: "Session" })
 export type Info = Types.DeepMutable<Schema.Schema.Type<typeof Info>>
+
+export function isPinned(info: Pick<Info, "metadata">) {
+  return info.metadata?.[PinnedMetadataKey] === true
+}
+
+function withoutPinnedMetadata(metadata: Info["metadata"]) {
+  if (!metadata) return
+  const result = { ...metadata }
+  delete result[PinnedMetadataKey]
+  return Object.keys(result).length > 0 ? result : undefined
+}
 
 export const ProjectInfo = Schema.Struct({
   id: ProjectV2.ID,
@@ -287,6 +300,10 @@ export const SetMetadataInput = Schema.Struct({
   sessionID: SessionID,
   metadata: Metadata,
 })
+export const SetPinnedInput = Schema.Struct({
+  sessionID: SessionID,
+  pinned: Schema.Boolean,
+})
 export const SetPermissionInput = Schema.Struct({
   sessionID: SessionID,
   permission: PermissionV1.Ruleset,
@@ -309,6 +326,7 @@ export type ListInput = {
   start?: number
   search?: string
   limit?: number
+  pinnedFirst?: boolean
 }
 
 export type GlobalListInput = {
@@ -444,6 +462,7 @@ export interface Interface {
   readonly setTitle: (input: { sessionID: SessionID; title: string }) => Effect.Effect<void>
   readonly setArchived: (input: { sessionID: SessionID; time?: number }) => Effect.Effect<void>
   readonly setMetadata: (input: typeof SetMetadataInput.Type) => Effect.Effect<void>
+  readonly setPinned: (input: typeof SetPinnedInput.Type) => Effect.Effect<void, NotFound>
   readonly setAgentModel: (input: {
     sessionID: SessionID
     agent: string
@@ -498,6 +517,8 @@ export type Patch = Omit<Partial<Info>, "time" | "share" | "summary" | "revert" 
   revert?: Info["revert"] | null
   permission?: Info["permission"] | null
 }
+type PatchUpdate = Patch | ((current: Info) => Patch)
+class PatchConflictError extends Error {}
 
 const layer: Layer.Layer<
   Service,
@@ -713,7 +734,7 @@ const layer: Layer.Layer<
         path: sessionPath(ctx.worktree, ctx.directory),
         workspaceID: original.workspaceID,
         title,
-        metadata: structuredClone(original.metadata),
+        metadata: withoutPinnedMetadata(original.metadata),
       })
       const msgs = yield* messages({ sessionID: input.sessionID })
       const idMap = new Map<string, MessageID>()
@@ -747,9 +768,10 @@ const layer: Layer.Layer<
       return session
     })
 
-    const patch = (sessionID: SessionID, info: Patch) =>
+    const patch = (sessionID: SessionID, update: PatchUpdate): Effect.Effect<void, NotFound> =>
       Effect.gen(function* () {
         const current = yield* get(sessionID)
+        const info = typeof update === "function" ? update(current) : update
         const next = {
           ...current,
           ...info,
@@ -759,11 +781,30 @@ const layer: Layer.Layer<
           revert: info.revert === null ? undefined : (info.revert ?? current.revert),
           permission: info.permission === null ? undefined : (info.permission ?? current.permission),
         } as Info
-        yield* events.publish(SessionV1.Event.Updated, { sessionID, info: next })
-      })
+        yield* events.publish(
+          SessionV1.Event.Updated,
+          { sessionID, info: next },
+          {
+            precondition: get(sessionID).pipe(
+              Effect.catch(() => Effect.die(new PatchConflictError())),
+              Effect.flatMap((latest) =>
+                isDeepStrictEqual(latest, current) ? Effect.void : Effect.die(new PatchConflictError()),
+              ),
+            ),
+          },
+        )
+      }).pipe(
+        Effect.catchDefect(
+          Effect.fnUntraced(function* (defect) {
+            if (!(defect instanceof PatchConflictError)) return yield* Effect.die(defect)
+            yield* Effect.yieldNow
+            return yield* patch(sessionID, update)
+          }),
+        ),
+      )
 
     const touch = Effect.fn("Session.touch")(function* (sessionID: SessionID) {
-      yield* patch(sessionID, { time: { updated: Date.now() } }).pipe(Effect.orDie)
+      yield* patch(sessionID, () => ({ time: { updated: Date.now() } })).pipe(Effect.orDie)
     })
 
     const setTitle = Effect.fn("Session.setTitle")(function* (input: { sessionID: SessionID; title: string }) {
@@ -775,7 +816,17 @@ const layer: Layer.Layer<
     })
 
     const setMetadata = Effect.fn("Session.setMetadata")(function* (input: typeof SetMetadataInput.Type) {
-      yield* patch(input.sessionID, { metadata: input.metadata, time: { updated: Date.now() } }).pipe(Effect.orDie)
+      yield* patch(input.sessionID, () => ({ metadata: input.metadata, time: { updated: Date.now() } })).pipe(
+        Effect.orDie,
+      )
+    })
+
+    const setPinned = Effect.fn("Session.setPinned")(function* (input: typeof SetPinnedInput.Type) {
+      yield* patch(input.sessionID, (current) => ({
+        metadata: input.pinned
+          ? { ...withoutPinnedMetadata(current.metadata), [PinnedMetadataKey]: true }
+          : withoutPinnedMetadata(current.metadata),
+      }))
     })
 
     const setAgentModel = Effect.fn("Session.setAgentModel")(function* (input: {
@@ -929,6 +980,7 @@ const layer: Layer.Layer<
       setTitle,
       setArchived,
       setMetadata,
+      setPinned,
       setAgentModel,
       setPermission,
       setRevert,
@@ -1014,7 +1066,17 @@ function listByProject(
     .select()
     .from(SessionTable)
     .where(and(...conditions))
-    .orderBy(desc(SessionTable.time_updated))
+    .orderBy(
+      ...(input.pinnedFirst
+        ? [
+            desc(
+              sql<number>`case when json_type(${SessionTable.metadata}, ${`$."${PinnedMetadataKey}"`}) = 'true' then 1 else 0 end`,
+            ),
+            desc(SessionTable.time_updated),
+            desc(SessionTable.id),
+          ]
+        : [desc(SessionTable.time_updated)]),
+    )
     .limit(limit)
     .all()
     .pipe(

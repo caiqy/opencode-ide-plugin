@@ -35,6 +35,7 @@ export const ListQuery = Schema.Struct({
   start: Schema.optional(Schema.NumberFromString),
   search: Schema.optional(Schema.String),
   limit: Schema.optional(Schema.NumberFromString),
+  pinnedFirst: Schema.optional(QueryBoolean),
 })
 export const DiffQuery = Schema.Struct({
   ...WorkspaceRoutingQueryFields,
@@ -50,6 +51,7 @@ export const VisibilityPayload = Schema.Struct({ sessionIDs: Schema.Array(Sessio
 export const UpdatePayload = Schema.Struct({
   title: Schema.optional(Schema.String),
   metadata: Schema.optional(Session.Metadata),
+  pinned: Schema.optional(Schema.Boolean),
   permission: Schema.optional(PermissionV1.Ruleset),
   time: Schema.optional(
     Schema.Struct({

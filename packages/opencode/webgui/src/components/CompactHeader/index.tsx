@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useCallba
 import type { ConnectionState } from "../../lib/api/events"
 import { useTheme } from "../../state/ThemeContext"
 import { useSession } from "../../state/SessionContext"
+import { compareSessionList, isSessionPinned, withSessionPinned } from "../../state/sessionPaging"
 import { ConfirmModal } from "../ConfirmModal"
 import { SettingsPanel } from "../SettingsPanel"
 import { useSessionDropdown } from "./hooks/useSessionDropdown"
@@ -12,7 +13,7 @@ import { ActionButtons } from "./ActionButtons"
 import { SessionDropdown } from "./SessionDropdown"
 import { TabBar } from "./TabBar"
 import { HEADER_RIGHT_GAP } from "./utils"
-import { sdk } from "../../lib/api/sdkClient"
+import { sdk, setSessionPinned } from "../../lib/api/sdkClient"
 import { useToast } from "../../state/ToastContext"
 import { useTabStore } from "../../state/tabStore"
 import { ideBridge } from "../../lib/ideBridge"
@@ -45,6 +46,7 @@ const CompactHeader = forwardRef<
     hasMore,
     isLoading,
     isLoadingMore,
+    loadSessions,
     loadMoreSessions,
   } = useSession()
   const tabStore = useTabStore()
@@ -54,6 +56,7 @@ const CompactHeader = forwardRef<
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   const [sharingSessionId, setSharingSessionId] = useState<string | null>(null)
+  const [pinningSessionId, setPinningSessionId] = useState<string | null>(null)
   const [restoring, setRestoring] = useState(false)
   const [restartMode, setRestartMode] = useState<"window" | "ide" | null>(ideBridge.restartMode)
   const [restartConfirmOpen, setRestartConfirmOpen] = useState(false)
@@ -202,6 +205,32 @@ const CompactHeader = forwardRef<
       setSharingSessionId(null)
     },
     [sessions, currentSession, setCurrentSession, setSessions, toast],
+  )
+
+  const handleTogglePinSession = useCallback(
+    async (sessionId: string, e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (pinningSessionId) return
+      const session = sessions.find((item) => item.id === sessionId)
+      if (!session) return
+
+      const pinned = !isSessionPinned(session)
+      setPinningSessionId(sessionId)
+      const res = await setSessionPinned({ path: { id: sessionId }, body: { pinned } })
+      setPinningSessionId(null)
+      if (!res.data) {
+        toast.showToast(pinned ? "钉住会话失败" : "取消钉住失败", { variant: "error" })
+        return
+      }
+
+      setSessions((current) =>
+        current
+          .map((item) => (item.id === sessionId && item === session ? withSessionPinned(item, pinned) : item))
+          .sort(compareSessionList),
+      )
+      void loadSessions()
+    },
+    [loadSessions, pinningSessionId, sessions, setSessions, toast],
   )
 
   // Session dropdown management
@@ -605,6 +634,7 @@ const CompactHeader = forwardRef<
             selectedSessionRef={dropdown.selectedSessionRef}
             sessionListRef={dropdown.sessionListRef}
             sharingSessionId={sharingSessionId}
+            pinningSessionId={pinningSessionId}
             onSearchChange={dropdown.setSearchQuery}
             onSearchKeyDown={dropdown.handleSearchKeyDown}
             onToggleSelectMode={dropdown.toggleSelectMode}
@@ -619,6 +649,7 @@ const CompactHeader = forwardRef<
             onKeyDown={(e) => dropdown.handleKeyDown(e, handleSessionSelect)}
             onLoadMore={loadMoreSessions}
             onToggleShare={handleToggleShareSession}
+            onTogglePin={handleTogglePinSession}
           />
         </div>
       </header>

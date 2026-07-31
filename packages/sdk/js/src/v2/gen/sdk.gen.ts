@@ -3623,6 +3623,7 @@ export class Session2 extends HeyApiClient {
       start?: number
       search?: string
       limit?: number
+      pinnedFirst?: boolean | "true" | "false"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3639,6 +3640,7 @@ export class Session2 extends HeyApiClient {
             { in: "query", key: "start" },
             { in: "query", key: "search" },
             { in: "query", key: "limit" },
+            { in: "query", key: "pinnedFirst" },
           ],
         },
       ],
@@ -3835,6 +3837,7 @@ export class Session2 extends HeyApiClient {
       metadata?: {
         [key: string]: unknown
       }
+      pinned?: boolean
       permission?: PermissionRuleset
       time?: {
         archived?: number
@@ -3852,6 +3855,7 @@ export class Session2 extends HeyApiClient {
             { in: "query", key: "workspace" },
             { in: "body", key: "title" },
             { in: "body", key: "metadata" },
+            { in: "body", key: "pinned" },
             { in: "body", key: "permission" },
             { in: "body", key: "time" },
           ],

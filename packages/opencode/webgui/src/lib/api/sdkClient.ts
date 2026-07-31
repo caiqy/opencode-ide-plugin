@@ -87,6 +87,7 @@ type SessionListOptions = {
   limit?: number
   directory?: string
   roots?: boolean
+  pinnedFirst?: boolean
 }
 
 async function pendingList<T>(url: string, fallback: string): Promise<ApiResult<T[]>> {
@@ -220,6 +221,7 @@ async function sessionList(options: SessionListOptions = {}): Promise<ApiResult<
     if (options.directory) query.set("directory", options.directory)
     if (typeof options.limit === "number") query.set("limit", String(options.limit))
     if (typeof options.roots === "boolean") query.set("roots", String(options.roots))
+    if (typeof options.pinnedFirst === "boolean") query.set("pinnedFirst", String(options.pinnedFirst))
     const suffix = query.size > 0 ? `?${query.toString()}` : ""
     const response = await fetch(`/session${suffix}`, {
       method: "GET",
@@ -239,6 +241,27 @@ async function sessionList(options: SessionListOptions = {}): Promise<ApiResult<
     return {
       error: { message: error instanceof Error ? error.message : "Unknown error" },
       data: null,
+    }
+  }
+}
+
+export async function setSessionPinned(options: {
+  path: { id: string }
+  body: { pinned: boolean }
+}): Promise<ApiResult<Session>> {
+  try {
+    const response = await fetch(`/session/${encodeURIComponent(options.path.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options.body),
+    })
+    if (!response.ok)
+      return { data: null, error: { message: "Failed to update pinned session", status: response.status } }
+    return { data: (await response.json()) as Session, error: null }
+  } catch (error) {
+    return {
+      data: null,
+      error: { message: error instanceof Error ? error.message : "Failed to update pinned session" },
     }
   }
 }

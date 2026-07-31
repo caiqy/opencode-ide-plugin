@@ -9655,6 +9655,7 @@ export type SessionListData = {
     start?: number
     search?: string
     limit?: number
+    pinnedFirst?: boolean | "true" | "false"
   }
   url: "/session"
 }
@@ -9852,6 +9853,7 @@ export type SessionUpdateData = {
     metadata?: {
       [key: string]: unknown
     }
+    pinned?: boolean
     permission?: PermissionRuleset
     time?: {
       archived?: number

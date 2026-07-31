@@ -19,6 +19,7 @@ describe("CompactHeader/SessionList", () => {
         selectedSessionRef={{ current: null }}
         sessionListRef={{ current: null }}
         sharingSessionId={null}
+        pinningSessionId={null}
         onSessionSelect={vi.fn()}
         onEditStart={vi.fn()}
         onEditSave={vi.fn()}
@@ -28,6 +29,7 @@ describe("CompactHeader/SessionList", () => {
         onCheckboxChange={vi.fn()}
         onKeyDown={vi.fn()}
         onToggleShare={vi.fn()}
+        onTogglePin={vi.fn()}
       />,
     )
 
@@ -49,6 +51,7 @@ describe("CompactHeader/SessionList", () => {
         selectedSessionRef={{ current: null }}
         sessionListRef={{ current: null }}
         sharingSessionId={null}
+        pinningSessionId={null}
         onSessionSelect={vi.fn()}
         onEditStart={vi.fn()}
         onEditSave={vi.fn()}
@@ -58,6 +61,7 @@ describe("CompactHeader/SessionList", () => {
         onCheckboxChange={vi.fn()}
         onKeyDown={vi.fn()}
         onToggleShare={vi.fn()}
+        onTogglePin={vi.fn()}
       />,
     )
 
@@ -79,6 +83,7 @@ describe("CompactHeader/SessionList", () => {
         selectedSessionRef={{ current: null }}
         sessionListRef={{ current: null }}
         sharingSessionId={null}
+        pinningSessionId={null}
         onSessionSelect={vi.fn()}
         onEditStart={vi.fn()}
         onEditSave={vi.fn()}
@@ -88,9 +93,47 @@ describe("CompactHeader/SessionList", () => {
         onCheckboxChange={vi.fn()}
         onKeyDown={vi.fn()}
         onToggleShare={vi.fn()}
+        onTogglePin={vi.fn()}
       />,
     )
 
     expect(screen.getByText("新建会话")).toBeInTheDocument()
+  })
+
+  it("钉住请求进行时禁用所有钉住按钮", () => {
+    const sessions = [
+      { id: "s1", title: "A", time: { created: 2, updated: 2 } },
+      { id: "s2", title: "B", time: { created: 1, updated: 1 } },
+    ] as any
+    render(
+      <SessionList
+        sessions={sessions}
+        currentSessionId="s1"
+        filteredSessions={sessions}
+        isSelectMode={false}
+        selectedSessions={new Set()}
+        selectedSessionIndex={0}
+        editingSessionId={null}
+        editingTitle={""}
+        editInputRef={{ current: null }}
+        selectedSessionRef={{ current: null }}
+        sessionListRef={{ current: null }}
+        sharingSessionId={null}
+        pinningSessionId="s1"
+        onSessionSelect={vi.fn()}
+        onEditStart={vi.fn()}
+        onEditSave={vi.fn()}
+        onEditCancel={vi.fn()}
+        onEditChange={vi.fn()}
+        onDeleteStart={vi.fn()}
+        onCheckboxChange={vi.fn()}
+        onKeyDown={vi.fn()}
+        onToggleShare={vi.fn()}
+        onTogglePin={vi.fn()}
+      />,
+    )
+
+    expect(screen.getAllByRole("button", { name: "钉住会话" })).toHaveLength(2)
+    screen.getAllByRole("button", { name: "钉住会话" }).forEach((button) => expect(button).toBeDisabled())
   })
 })

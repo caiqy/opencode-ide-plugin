@@ -19,6 +19,7 @@ interface SessionDropdownProps {
   selectedSessionRef: React.RefObject<HTMLDivElement | null>
   sessionListRef: React.RefObject<HTMLDivElement | null>
   sharingSessionId: string | null
+  pinningSessionId: string | null
   onSearchChange: (value: string) => void
   onSearchKeyDown: (e: React.KeyboardEvent) => void
   onToggleSelectMode: () => void
@@ -33,6 +34,7 @@ interface SessionDropdownProps {
   onKeyDown: (e: React.KeyboardEvent) => void
   onLoadMore: () => void
   onToggleShare: (sessionId: string, e: React.MouseEvent) => void
+  onTogglePin: (sessionId: string, e: React.MouseEvent) => void
 }
 
 export function SessionDropdown({
@@ -53,6 +55,7 @@ export function SessionDropdown({
   selectedSessionRef,
   sessionListRef,
   sharingSessionId,
+  pinningSessionId,
   onSearchChange,
   onSearchKeyDown,
   onToggleSelectMode,
@@ -67,6 +70,7 @@ export function SessionDropdown({
   onKeyDown,
   onLoadMore,
   onToggleShare,
+  onTogglePin,
 }: SessionDropdownProps) {
   if (!isDropdownOpen) return null
 
@@ -130,6 +134,7 @@ export function SessionDropdown({
         selectedSessionRef={selectedSessionRef}
         sessionListRef={sessionListRef}
         sharingSessionId={sharingSessionId}
+        pinningSessionId={pinningSessionId}
         onSessionSelect={handleSelect}
         onEditStart={onEditStart}
         onEditSave={onEditSave}
@@ -139,6 +144,7 @@ export function SessionDropdown({
         onCheckboxChange={onCheckboxChange}
         onKeyDown={onKeyDown}
         onToggleShare={onToggleShare}
+        onTogglePin={onTogglePin}
       />
 
       {hasMore && (

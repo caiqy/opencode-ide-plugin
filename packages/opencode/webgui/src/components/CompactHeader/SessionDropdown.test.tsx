@@ -23,6 +23,7 @@ describe("CompactHeader/SessionDropdown", () => {
         selectedSessionRef={{ current: null }}
         sessionListRef={{ current: null }}
         sharingSessionId={null}
+        pinningSessionId={null}
         hasMore={false}
         isLoadingMore={false}
         onSearchChange={vi.fn()}
@@ -39,6 +40,7 @@ describe("CompactHeader/SessionDropdown", () => {
         onKeyDown={vi.fn()}
         onLoadMore={vi.fn()}
         onToggleShare={vi.fn()}
+        onTogglePin={vi.fn()}
       />,
     )
 
@@ -64,6 +66,7 @@ describe("CompactHeader/SessionDropdown", () => {
         selectedSessionRef={{ current: null }}
         sessionListRef={{ current: null }}
         sharingSessionId={null}
+        pinningSessionId={null}
         hasMore={false}
         isLoadingMore={false}
         onSearchChange={vi.fn()}
@@ -80,6 +83,7 @@ describe("CompactHeader/SessionDropdown", () => {
         onKeyDown={vi.fn()}
         onLoadMore={vi.fn()}
         onToggleShare={vi.fn()}
+        onTogglePin={vi.fn()}
       />,
     )
 
@@ -107,6 +111,7 @@ describe("CompactHeader/SessionDropdown", () => {
         selectedSessionRef={{ current: null }}
         sessionListRef={{ current: null }}
         sharingSessionId={null}
+        pinningSessionId={null}
         hasMore={true}
         isLoadingMore={false}
         onSearchChange={vi.fn()}
@@ -123,6 +128,7 @@ describe("CompactHeader/SessionDropdown", () => {
         onKeyDown={vi.fn()}
         onLoadMore={onLoadMore}
         onToggleShare={vi.fn()}
+        onTogglePin={vi.fn()}
       />,
     )
 
@@ -149,6 +155,7 @@ describe("CompactHeader/SessionDropdown", () => {
         selectedSessionRef={{ current: null }}
         sessionListRef={{ current: null }}
         sharingSessionId={null}
+        pinningSessionId={null}
         hasMore={true}
         isLoadingMore={true}
         onSearchChange={vi.fn()}
@@ -165,6 +172,7 @@ describe("CompactHeader/SessionDropdown", () => {
         onKeyDown={vi.fn()}
         onLoadMore={vi.fn()}
         onToggleShare={vi.fn()}
+        onTogglePin={vi.fn()}
       />,
     )
 
