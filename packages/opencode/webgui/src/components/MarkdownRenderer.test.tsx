@@ -40,6 +40,46 @@ describe("MarkdownRenderer", () => {
     expect(root).toHaveClass("[overflow-wrap:anywhere]")
   })
 
+  it("相同复杂 Markdown 重渲染时保留正文 DOM 节点", () => {
+    const markdown = [
+      "1. 合并到 `opencode/dev`，保持本地。",
+      "2. 检查 `packages/opencode/webgui/src/components/MarkdownRenderer.tsx`。",
+    ].join("\n")
+    const view = renderWithTheme(<MarkdownRenderer>{markdown}</MarkdownRenderer>)
+    const code = screen.getByText("opencode/dev")
+    const item = code.closest("li")
+    const start = item?.firstChild
+    const end = code.firstChild
+
+    expect(item).toBeTruthy()
+    expect(start).toBeTruthy()
+    expect(end).toBeTruthy()
+
+    const range = document.createRange()
+    range.setStart(start!, 0)
+    range.setEnd(end!, end!.textContent?.length ?? 0)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+    const selected = selection.toString()
+
+    expect(selected).toContain("opencode/dev")
+
+    view.rerender(
+      <ThemeProvider>
+        <MarkdownRenderer>{markdown}</MarkdownRenderer>
+      </ThemeProvider>,
+    )
+
+    expect(screen.getByText("opencode/dev")).toBe(code)
+    expect(code.closest("li")).toBe(item)
+    expect(code.isConnected).toBe(true)
+    expect(range.startContainer.isConnected).toBe(true)
+    expect(range.endContainer.isConnected).toBe(true)
+    expect(selection.toString()).toBe(selected)
+    selection.removeAllRanges()
+  })
+
   it("内联 code 路径支持断行", () => {
     renderWithTheme(
       <MarkdownRenderer>{"路径：`C:\\Users\\alice\\very\\long\\project\\src\\feature\\index.ts`"}</MarkdownRenderer>,

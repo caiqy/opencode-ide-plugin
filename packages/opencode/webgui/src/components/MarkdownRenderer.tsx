@@ -1,4 +1,4 @@
-import React from "react"
+import React, { useMemo } from "react"
 import type { ComponentPropsWithoutRef } from "react"
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -313,9 +313,13 @@ export function MarkdownRenderer({ children, inline, tone = "default" }: Markdow
   const project = useProjectOptional()
   const directory = project?.directory ?? project?.worktree ?? null
   const styles = tone === "muted" ? mutedStyles : defaultStyles
-  const components = inline
-    ? createInlineComponents(styles, tone, directory)
-    : createMarkdownComponents(styles, tone, directory)
+  const components = useMemo(
+    () =>
+      inline
+        ? createInlineComponents(styles, tone, directory)
+        : createMarkdownComponents(styles, tone, directory),
+    [directory, inline, styles, tone],
+  )
   const urlTransform = createUrlTransform()
   if (inline) {
     return (
