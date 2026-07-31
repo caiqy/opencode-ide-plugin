@@ -97,9 +97,10 @@ describe("FileSystem", () => {
           const service = yield* FileSystem.Service
           const scope = yield* Scope.Scope
           yield* Deferred.await(started)
-          const found = yield* service
-            .find({ query: "ready", type: "file", limit: 10 })
-            .pipe(Effect.tap(() => Deferred.succeed(completed, undefined)), Effect.forkIn(scope))
+          const found = yield* service.find({ query: "ready", type: "file", limit: 10 }).pipe(
+            Effect.tap(() => Deferred.succeed(completed, undefined)),
+            Effect.forkIn(scope),
+          )
 
           yield* Effect.yieldNow
           expect(yield* Deferred.isDone(completed)).toBe(false)
