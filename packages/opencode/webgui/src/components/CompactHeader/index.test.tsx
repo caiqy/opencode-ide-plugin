@@ -1498,6 +1498,31 @@ describe("CompactHeader", () => {
     await waitFor(() => expect(mocks.ideBridgeRequest).toHaveBeenCalledWith("restartHost"))
   })
 
+  it("scoped storage 写入失败时不重启并显示错误 toast", async () => {
+    const user = userEvent.setup()
+    const showToast = vi.fn()
+    mocks.useToast.mockReturnValue({ showToast })
+    mocks.flushScopedStateWrites.mockRejectedValue(new Error("flush failed"))
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByTitle("更多选项"))
+    await user.click(screen.getByText("重启插件"))
+    await user.click(screen.getByRole("button", { name: "重启" }))
+
+    await waitFor(() => {
+      expect(mocks.ideBridgeRequest).not.toHaveBeenCalledWith("restartHost")
+      expect(showToast).toHaveBeenCalledWith("重启失败，请稍后重试", { variant: "error" })
+      expect(screen.queryByText("确认重启插件")).not.toBeInTheDocument()
+    })
+  })
+
   it("JetBrains 模式下显示重启 IDE 文案", async () => {
     const user = userEvent.setup()
     mocks.ideBridgeRestartMode = "ide"
