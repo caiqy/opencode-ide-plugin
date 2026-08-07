@@ -19,6 +19,7 @@ import { useTabStore } from "../../state/tabStore"
 import { ideBridge } from "../../lib/ideBridge"
 import { switchSessionWithTabRollback } from "../../state/switchSession"
 import { useUpdate } from "../../state/UpdateContext"
+import { flushScopedStateWrites } from "../../state/scopedStorage"
 
 interface CompactHeaderProps {
   connectionState: ConnectionState
@@ -127,6 +128,7 @@ const CompactHeader = forwardRef<
   const handleRestartConfirm = useCallback(async () => {
     setRestarting(true)
     try {
+      await flushScopedStateWrites()
       const res = await ideBridge.request("restartHost")
       if (res.ok !== true) {
         toast.showToast("重启失败，请稍后重试", { variant: "error" })

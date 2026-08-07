@@ -54,6 +54,7 @@ const mocks = vi.hoisted(() => ({
   sdkUnshare: vi.fn(),
   sdkSetPinned: vi.fn(),
   sdkPathGet: vi.fn(),
+  flushScopedStateWrites: vi.fn(),
   ideBridgeRequest: vi.fn(),
   ideBridgeRestartMode: "window" as "window" | "ide" | null,
   ideBridgeInstalled: true,
@@ -95,6 +96,10 @@ vi.mock("../../state/ToastContext", () => ({
 
 vi.mock("../../state/UpdateContext", () => ({
   useUpdate: (...args: unknown[]) => mocks.useUpdate(...args),
+}))
+
+vi.mock("../../state/scopedStorage", () => ({
+  flushScopedStateWrites: (...args: unknown[]) => mocks.flushScopedStateWrites(...args),
 }))
 
 vi.mock("../SettingsPanel", () => ({
@@ -222,6 +227,9 @@ describe("CompactHeader", () => {
     mocks.sdkUnshare.mockResolvedValue({ data: null })
     mocks.sdkSetPinned.mockResolvedValue({ data: null })
     mocks.sdkPathGet.mockResolvedValue({ data: { configFile: "/real/opencode.json" }, error: null })
+    mocks.flushScopedStateWrites.mockClear()
+    mocks.flushScopedStateWrites.mockResolvedValue(undefined)
+    mocks.ideBridgeRequest.mockClear()
     mocks.ideBridgeRequest.mockResolvedValue({ ok: true })
     mocks.ideBridgeRestartMode = "window"
 
@@ -1458,6 +1466,36 @@ describe("CompactHeader", () => {
     await waitFor(() => {
       expect(mocks.ideBridgeRequest).toHaveBeenCalledWith("restartHost")
     })
+  })
+
+  it("重启前等待 scoped storage 写入完成", async () => {
+    const user = userEvent.setup()
+    let release = () => {}
+    mocks.ideBridgeRestartMode = "window"
+    mocks.flushScopedStateWrites.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        }),
+    )
+    mocks.ideBridgeRequest.mockResolvedValue({ ok: true })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByTitle("更多选项"))
+    await user.click(screen.getByText("重启插件"))
+    await user.click(screen.getByRole("button", { name: "重启" }))
+
+    expect(mocks.flushScopedStateWrites).toHaveBeenCalledOnce()
+    expect(mocks.ideBridgeRequest).not.toHaveBeenCalledWith("restartHost")
+    release()
+    await waitFor(() => expect(mocks.ideBridgeRequest).toHaveBeenCalledWith("restartHost"))
   })
 
   it("JetBrains 模式下显示重启 IDE 文案", async () => {
