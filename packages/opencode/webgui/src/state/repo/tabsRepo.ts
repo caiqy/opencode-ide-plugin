@@ -36,37 +36,3 @@ export async function loadTabs(): Promise<Tabs> {
 export async function saveTabs(value: Tabs) {
   return scopedStateSetJSON("workspace", key, parse(value))
 }
-
-export async function saveOpenTabs(open_tabs: string[]): Promise<Tabs> {
-  const value = await loadTabs()
-  const next = parse({
-    open_tabs,
-    active_tab: open_tabs.includes(value.active_tab) ? value.active_tab : "",
-  })
-  await saveTabs(next)
-  return next
-}
-
-export async function activateTab(session_id: string): Promise<Tabs> {
-  const value = await loadTabs()
-  const open_tabs = value.open_tabs.includes(session_id) ? value.open_tabs : [...value.open_tabs, session_id]
-  const next = {
-    open_tabs,
-    active_tab: session_id,
-  }
-  await saveTabs(next)
-  return next
-}
-
-export async function removeTab(session_id: string): Promise<Tabs> {
-  const value = await loadTabs()
-  if (!value.open_tabs.includes(session_id)) return value
-  const open_tabs = value.open_tabs.filter((id) => id !== session_id)
-  const active_tab = value.active_tab === session_id ? open_tabs[open_tabs.length - 1] || "" : value.active_tab
-  const next = {
-    open_tabs,
-    active_tab,
-  }
-  await saveTabs(next)
-  return next
-}

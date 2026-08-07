@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react"
 import { openWithPolicy } from "./tabPolicy"
-import { activateTab as activateTabRepo, loadTabs, saveTabs } from "./repo/tabsRepo"
+import { loadTabs, saveTabs } from "./repo/tabsRepo"
 
 const delay = 500
 
@@ -109,7 +109,7 @@ function useTabStoreInternal() {
     ref.current = next
     setState(next)
     if (!ready.current) return
-    void activateTabRepo(sessionId).catch(() => {})
+    persist(next)
   }, [])
 
   const openTab = useCallback(
