@@ -106,6 +106,8 @@ export async function scopedStateGet(scope: StorageScope, keys: string[]) {
   }
 
   const revisionsAtRead = new Map(keys.map((key) => [key, revisions[scope].get(key)]))
+  // Keep write authority when an in-flight write settles before this host read returns.
+  const localAtRead = new Set(keys.filter((key) => dirtyKeys.has(key) || writes[scope].has(key)))
   const host = await ideBridge.storageGet(scope, keys)
   if (!host) {
     return Object.fromEntries(keys.map((key) => [key, mem.get(key)]))
@@ -113,7 +115,10 @@ export async function scopedStateGet(scope: StorageScope, keys: string[]) {
 
   keys.forEach((key) => {
     const local =
-      dirtyKeys.has(key) || writes[scope].has(key) || revisions[scope].get(key) !== revisionsAtRead.get(key)
+      localAtRead.has(key) ||
+      dirtyKeys.has(key) ||
+      writes[scope].has(key) ||
+      revisions[scope].get(key) !== revisionsAtRead.get(key)
     if (!local && typeof host[key] === "string") {
       mem.set(key, host[key]!)
     }
@@ -122,7 +127,10 @@ export async function scopedStateGet(scope: StorageScope, keys: string[]) {
   return Object.fromEntries(
     keys.map((key) => {
       const local =
-        dirtyKeys.has(key) || writes[scope].has(key) || revisions[scope].get(key) !== revisionsAtRead.get(key)
+        localAtRead.has(key) ||
+        dirtyKeys.has(key) ||
+        writes[scope].has(key) ||
+        revisions[scope].get(key) !== revisionsAtRead.get(key)
       return [key, local ? (mem.get(key) ?? host[key]) : (host[key] ?? mem.get(key))]
     }),
   )

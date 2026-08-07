@@ -26,7 +26,7 @@ WebGUI 将打开标签保存到 workspace scoped storage。当前标签操作会
 
 `scopedStorage` 为每个 `scope + key` 维护独立写入链和最小 revision。`scopedStateSet` 同步更新内存 cache 并递增该 key revision，然后把宿主写入追加到对应链；前一写入无论成功或失败，后一写入都继续执行。不同 key 互不阻塞。
 
-待写入期间，该 key 视为本地权威。`scopedStateGet` 在发起宿主读取前记录各 key revision；响应时 revision 已变化的 key 仍视为本地权威，即使新写入已经成功并清除了 pending/dirty。此时不得用旧响应覆盖 cache，调用者也必须得到 cache。只有最新排队写入成功后才能清除本地 dirty/pending 状态；失败时保留 cache 并沿用现有告警行为。
+待写入期间，该 key 视为本地权威。`scopedStateGet` 在发起宿主读取前记录各 key revision 和 read-start local-authority snapshot（dirty 或 pending write）；响应时该快照、当前 dirty/pending 或 revision 已变化的 key 仍视为本地权威，即使新写入已经成功并清除了 pending/dirty。此时不得用旧响应覆盖 cache，调用者也必须得到 cache。只有最新排队写入成功后才能清除本地 dirty/pending 状态；失败时保留 cache 并沿用现有告警行为。
 
 导出 flush 操作，等待当前所有 scoped storage 写入链稳定。队列排空后任一 scope 仍有 dirty key 时，flush 必须失败。flush 不发起新写入，也不吞掉调用开始之后追加到既有链的写入。
 

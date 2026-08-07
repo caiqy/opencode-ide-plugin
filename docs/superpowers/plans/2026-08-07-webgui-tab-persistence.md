@@ -469,7 +469,7 @@ Expected: `git diff --check` 无输出；`git status --short` 仅显示本任务
 
 ### 最终审查补充
 
-- [ ] 在 scoped storage 测试中覆盖读取期间成功本地写入后旧宿主响应不得覆盖或返回旧值，并清空测试 revision state。
+- [ ] 在 scoped storage 测试中覆盖 read-start local-authority snapshot，即读取开始时已 pending 的写入成功并清除状态后旧宿主响应仍不得覆盖或返回旧值。
 - [ ] 删除 `tabStore` 的 500ms 重排 debounce、timer 与卸载 flush；测试重排后立即保存完整快照。
 - [ ] `RestartRequiredModal` 与 `CompactHeader` 两个且仅两个生产 `restartHost` 入口均在请求前 await flush；flush 拒绝时提示且不请求重启。
 - [ ] 在 `ideBridge` timeout map 加入 `storageSet: 5000`，用 fake timers 验证捕获后返回 `false`。
