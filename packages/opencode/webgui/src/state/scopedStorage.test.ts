@@ -10,11 +10,20 @@ vi.mock("../lib/ideBridge", () => ({
 
 import { ideBridge } from "../lib/ideBridge"
 import {
+  flushScopedStateWrites,
   resetScopedStateForTest,
   scopedStateGetJSON,
   scopedStateSetJSON,
   setScopedStateWriteErrorReporter,
 } from "./scopedStorage"
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
 
 describe("scopedStorage", () => {
   beforeEach(() => {
@@ -190,5 +199,74 @@ describe("scopedStorage", () => {
     } finally {
       setItem.mockRestore()
     }
+  })
+
+  it("同 key 写入串行执行且待写期间读取内存最新值", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+    const first = deferred<boolean>()
+    vi.mocked(ideBridge.storageSet).mockImplementationOnce(() => first.promise).mockResolvedValueOnce(true)
+    vi.mocked(ideBridge.storageGet).mockResolvedValue({
+      "opencode:webgui:workspace:tabs:v1": JSON.stringify({ open_tabs: ["old"], active_tab: "old" }),
+    })
+
+    const one = scopedStateSetJSON("workspace", "opencode:webgui:workspace:tabs:v1", {
+      open_tabs: ["s1"],
+      active_tab: "s1",
+    })
+    const two = scopedStateSetJSON("workspace", "opencode:webgui:workspace:tabs:v1", {
+      open_tabs: ["s1", "s2"],
+      active_tab: "s2",
+    })
+
+    await vi.waitFor(() => expect(ideBridge.storageSet).toHaveBeenCalledTimes(1))
+    await expect(
+      scopedStateGetJSON("workspace", "opencode:webgui:workspace:tabs:v1", {
+        open_tabs: [],
+        active_tab: "",
+      }),
+    ).resolves.toEqual({ open_tabs: ["s1", "s2"], active_tab: "s2" })
+
+    first.resolve(true)
+    await Promise.all([one, two])
+    expect(vi.mocked(ideBridge.storageSet).mock.calls.map((call) => call[2])).toEqual([
+      JSON.stringify({ open_tabs: ["s1"], active_tab: "s1" }),
+      JSON.stringify({ open_tabs: ["s1", "s2"], active_tab: "s2" }),
+    ])
+  })
+
+  it("同 key 写失败后继续执行后续写入", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+    vi.mocked(ideBridge.storageSet).mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+
+    const first = scopedStateSetJSON("workspace", "key", "old")
+    const second = scopedStateSetJSON("workspace", "key", "new")
+
+    await expect(first).resolves.toEqual({ ok: false, error: "host_write_failed" })
+    await expect(second).resolves.toEqual({ ok: true })
+    expect(ideBridge.storageSet).toHaveBeenNthCalledWith(1, "workspace", "key", JSON.stringify("old"))
+    expect(ideBridge.storageSet).toHaveBeenNthCalledWith(2, "workspace", "key", JSON.stringify("new"))
+  })
+
+  it("flush 等待当前及期间追加的 scoped storage 写入", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+    const first = deferred<boolean>()
+    const second = deferred<boolean>()
+    vi.mocked(ideBridge.storageSet).mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise)
+
+    const one = scopedStateSetJSON("workspace", "key", "one")
+    let flushed = false
+    const flush = flushScopedStateWrites().then(() => {
+      flushed = true
+    })
+    const two = scopedStateSetJSON("workspace", "key", "two")
+
+    await vi.waitFor(() => expect(ideBridge.storageSet).toHaveBeenCalledTimes(1))
+    expect(flushed).toBe(false)
+    first.resolve(true)
+    await vi.waitFor(() => expect(ideBridge.storageSet).toHaveBeenCalledTimes(2))
+    expect(flushed).toBe(false)
+    second.resolve(true)
+    await Promise.all([one, two, flush])
+    expect(flushed).toBe(true)
   })
 })

@@ -23,6 +23,11 @@ const dirty = {
   workspace: new Set<string>(),
   mem: new Set<string>(),
 }
+const writes = {
+  global: new Map<string, Promise<ScopedStateWriteResult>>(),
+  workspace: new Map<string, Promise<ScopedStateWriteResult>>(),
+  mem: new Map<string, Promise<ScopedStateWriteResult>>(),
+}
 const seen = new Map<string, number>()
 const delay = 5000
 
@@ -73,6 +78,9 @@ export function resetScopedStateForTest() {
   dirty.global.clear()
   dirty.workspace.clear()
   dirty.mem.clear()
+  writes.global.clear()
+  writes.workspace.clear()
+  writes.mem.clear()
   seen.clear()
   report = null
 }
@@ -82,10 +90,10 @@ export async function scopedStateGet(scope: StorageScope, keys: string[]) {
   const dirtyKeys = dirty[scope]
   if (!ideBridge.isInstalled()) {
     return Object.fromEntries(
-      keys.map((key) => [
-        key,
-        dirtyKeys.has(key) ? (mem.get(key) ?? browserGet(scope, key)) : (browserGet(scope, key) ?? mem.get(key)),
-      ]),
+      keys.map((key) => {
+        const local = dirtyKeys.has(key) || writes[scope].has(key)
+        return [key, local ? (mem.get(key) ?? browserGet(scope, key)) : (browserGet(scope, key) ?? mem.get(key))]
+      }),
     )
   }
 
@@ -95,20 +103,36 @@ export async function scopedStateGet(scope: StorageScope, keys: string[]) {
   }
 
   keys.forEach((key) => {
-    if (!dirtyKeys.has(key) && typeof host[key] === "string") {
+    const local = dirtyKeys.has(key) || writes[scope].has(key)
+    if (!local && typeof host[key] === "string") {
       mem.set(key, host[key]!)
     }
   })
 
   return Object.fromEntries(
-    keys.map((key) => [key, dirtyKeys.has(key) ? (mem.get(key) ?? host[key]) : (host[key] ?? mem.get(key))]),
+    keys.map((key) => {
+      const local = dirtyKeys.has(key) || writes[scope].has(key)
+      return [key, local ? (mem.get(key) ?? host[key]) : (host[key] ?? mem.get(key))]
+    }),
   )
 }
 
-export async function scopedStateSet(scope: StorageScope, key: string, value: string): Promise<ScopedStateWriteResult> {
+export function scopedStateSet(scope: StorageScope, key: string, value: string): Promise<ScopedStateWriteResult> {
+  cache[scope].set(key, value)
+  const queued = Promise.resolve(writes[scope].get(key))
+    .catch(() => undefined)
+    .then(() => writeScopedState(scope, key, value))
+    .then((result) => {
+      if (writes[scope].get(key) === queued) writes[scope].delete(key)
+      return result
+    })
+  writes[scope].set(key, queued)
+  return queued
+}
+
+async function writeScopedState(scope: StorageScope, key: string, value: string): Promise<ScopedStateWriteResult> {
   const mem = cache[scope]
   const dirtyKeys = dirty[scope]
-  mem.set(key, value)
   if (!ideBridge.isInstalled()) {
     const ok = browserSet(scope, key, value)
     if (ok) {
@@ -124,7 +148,7 @@ export async function scopedStateSet(scope: StorageScope, key: string, value: st
     }
   }
 
-  const ok = await ideBridge.storageSet(scope, key, value)
+  const ok = await Promise.resolve(ideBridge.storageSet(scope, key, value)).catch(() => false)
   if (ok) {
     dirtyKeys.delete(key)
     return { ok: true }
@@ -135,6 +159,14 @@ export async function scopedStateSet(scope: StorageScope, key: string, value: st
   return {
     ok: false,
     error: "host_write_failed",
+  }
+}
+
+export async function flushScopedStateWrites(): Promise<void> {
+  while (true) {
+    const pending = [...writes.global.values(), ...writes.workspace.values(), ...writes.mem.values()]
+    if (pending.length === 0) return
+    await Promise.all(pending)
   }
 }
 
