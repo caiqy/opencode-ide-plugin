@@ -39,6 +39,7 @@ class IdeBridge {
     getUpdateInfo: 5000,
     checkForUpdates: 15000,
     restartHost: 5000,
+    storageSet: 5000,
   }
   private reconnectScheduled = false
   private connectErrorLogged = false

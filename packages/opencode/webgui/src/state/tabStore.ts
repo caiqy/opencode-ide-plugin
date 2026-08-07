@@ -11,8 +11,6 @@ import {
 import { openWithPolicy } from "./tabPolicy"
 import { loadTabs, saveTabs } from "./repo/tabsRepo"
 
-const delay = 500
-
 type TabState = {
   openTabs: string[]
   activeTab: string
@@ -37,7 +35,6 @@ function useTabStoreInternal() {
   const [loaded, setLoaded] = useState(false)
   const ref = useRef(state)
   const ready = useRef(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function validated(tabs: string[], active: string): TabState {
     const validActive = tabs.includes(active) ? active : tabs[tabs.length - 1] || ""
@@ -49,19 +46,6 @@ function useTabStoreInternal() {
     setState(next)
     if (!ready.current) return
     persist(next)
-  }, [])
-
-  const saveDebounced = useCallback((next: TabState) => {
-    ref.current = next
-    setState(next)
-    if (!ready.current) return
-    if (timer.current) {
-      clearTimeout(timer.current)
-    }
-    timer.current = setTimeout(() => {
-      persist(ref.current)
-      timer.current = null
-    }, delay)
   }, [])
 
   useEffect(() => {
@@ -85,18 +69,6 @@ function useTabStoreInternal() {
 
     return () => {
       live = false
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (timer.current) {
-        if (ready.current) {
-          persist(ref.current)
-        }
-        clearTimeout(timer.current)
-        timer.current = null
-      }
     }
   }, [])
 
@@ -171,12 +143,12 @@ function useTabStoreInternal() {
       openTabs.splice(from, 1)
       openTabs.splice(to, 0, moved)
 
-      saveDebounced({
+      save({
         openTabs,
         activeTab: ref.current.activeTab,
       })
     },
-    [saveDebounced],
+    [save],
   )
 
   const replaceTab = useCallback(

@@ -359,54 +359,13 @@ describe("useTabStore", () => {
     expect(result.current.activeTab).toBe("s2")
   })
 
-  it("reorderTabs updates order and persists with 500ms debounce", async () => {
+  it("reorderTabs immediately persists the complete snapshot", async () => {
     const { result } = renderHook(() => useTabStore(), { wrapper })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)
     })
 
-    vi.useFakeTimers()
-
-    act(() => {
-      result.current.openTab("s1")
-      result.current.openTab("s2")
-      result.current.openTab("s3")
-    })
-
-    mocks.saveTabs.mockClear()
-
-    act(() => {
-      result.current.reorderTabs(2, 0)
-      result.current.reorderTabs(0, 1)
-    })
-
-    expect(result.current.openTabs).toEqual(["s1", "s3", "s2"])
-    expect(mocks.saveTabs).toHaveBeenCalledTimes(0)
-
-    act(() => {
-      vi.advanceTimersByTime(499)
-    })
-
-    expect(mocks.saveTabs).toHaveBeenCalledTimes(0)
-
-    act(() => {
-      vi.advanceTimersByTime(1)
-    })
-
-    expect(mocks.saveTabs).toHaveBeenCalledTimes(1)
-    expect(mocks.saveTabs).toHaveBeenCalledWith({ open_tabs: ["s1", "s3", "s2"], active_tab: "s3" })
-  })
-
-  it("flushes pending reorder persistence on unmount", async () => {
-    const { result, unmount } = renderHook(() => useTabStore(), { wrapper })
-
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
-    })
-
-    vi.useFakeTimers()
-
     act(() => {
       result.current.openTab("s1")
       result.current.openTab("s2")
@@ -418,10 +377,6 @@ describe("useTabStore", () => {
     act(() => {
       result.current.reorderTabs(2, 0)
     })
-
-    expect(mocks.saveTabs).toHaveBeenCalledTimes(0)
-
-    unmount()
 
     expect(mocks.saveTabs).toHaveBeenCalledTimes(1)
     expect(mocks.saveTabs).toHaveBeenCalledWith({ open_tabs: ["s3", "s1", "s2"], active_tab: "s3" })

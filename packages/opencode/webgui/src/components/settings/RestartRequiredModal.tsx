@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { ideBridge } from "../../lib/ideBridge"
+import { flushScopedStateWrites } from "../../state/scopedStorage"
 import { Button, Modal } from "../common"
 
 interface RestartRequiredModalProps {
@@ -15,6 +16,7 @@ export function RestartRequiredModal({ isOpen, onClose }: RestartRequiredModalPr
     setRestarting(true)
     setError(null)
     try {
+      await flushScopedStateWrites()
       const response = await ideBridge.request("restartHost")
       if (response.ok !== true) setError("请手动重启插件或执行 Reload Window")
     } catch {

@@ -28,6 +28,11 @@ const writes = {
   workspace: new Map<string, Promise<ScopedStateWriteResult>>(),
   mem: new Map<string, Promise<ScopedStateWriteResult>>(),
 }
+const revisions = {
+  global: new Map<string, number>(),
+  workspace: new Map<string, number>(),
+  mem: new Map<string, number>(),
+}
 const seen = new Map<string, number>()
 const delay = 5000
 
@@ -81,6 +86,9 @@ export function resetScopedStateForTest() {
   writes.global.clear()
   writes.workspace.clear()
   writes.mem.clear()
+  revisions.global.clear()
+  revisions.workspace.clear()
+  revisions.mem.clear()
   seen.clear()
   report = null
 }
@@ -97,13 +105,15 @@ export async function scopedStateGet(scope: StorageScope, keys: string[]) {
     )
   }
 
+  const revisionsAtRead = new Map(keys.map((key) => [key, revisions[scope].get(key)]))
   const host = await ideBridge.storageGet(scope, keys)
   if (!host) {
     return Object.fromEntries(keys.map((key) => [key, mem.get(key)]))
   }
 
   keys.forEach((key) => {
-    const local = dirtyKeys.has(key) || writes[scope].has(key)
+    const local =
+      dirtyKeys.has(key) || writes[scope].has(key) || revisions[scope].get(key) !== revisionsAtRead.get(key)
     if (!local && typeof host[key] === "string") {
       mem.set(key, host[key]!)
     }
@@ -111,7 +121,8 @@ export async function scopedStateGet(scope: StorageScope, keys: string[]) {
 
   return Object.fromEntries(
     keys.map((key) => {
-      const local = dirtyKeys.has(key) || writes[scope].has(key)
+      const local =
+        dirtyKeys.has(key) || writes[scope].has(key) || revisions[scope].get(key) !== revisionsAtRead.get(key)
       return [key, local ? (mem.get(key) ?? host[key]) : (host[key] ?? mem.get(key))]
     }),
   )
@@ -119,6 +130,7 @@ export async function scopedStateGet(scope: StorageScope, keys: string[]) {
 
 export function scopedStateSet(scope: StorageScope, key: string, value: string): Promise<ScopedStateWriteResult> {
   cache[scope].set(key, value)
+  revisions[scope].set(key, (revisions[scope].get(key) ?? 0) + 1)
   const queued = Promise.resolve(writes[scope].get(key))
     .catch(() => undefined)
     .then(() => writeScopedState(scope, key, value))

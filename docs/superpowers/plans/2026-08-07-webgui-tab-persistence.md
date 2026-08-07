@@ -14,7 +14,10 @@
 - 不改变最多六个标签、会话创建、删除和历史列表策略。
 - 关闭未对话的 `New session` 只移除打开标签，不删除服务端 session，也不清理草稿复用指针。
 - 同 key 写入失败不得阻断后续写入；不同 key 不得互相阻塞。
-- 队列稳定后任一 dirty key 仍存在时，flush 必须失败，主动重启不得发送 `restartHost`，并沿用现有失败 toast。
+- 队列稳定后任一 dirty key 仍存在时，flush 必须失败，所有主动重启入口不得发送 `restartHost`，并沿用各自现有失败提示。
+- `scopedStateGet` 发起宿主读取前记录 per-key revision；读取期间的本地写入即使成功并清除 pending/dirty，也不得被该旧响应覆盖或返回。
+- 标签重排在唯一 pointerup 回调中直接保存完整快照，不使用 debounce 或卸载 flush timer。
+- `storageSet` 使用既有 timeout map 的五秒限制，超时后返回 `false`。
 - 使用 vfox 管理的 Bun；测试和构建从 `packages/opencode/webgui` 运行，禁止从仓库根目录运行测试。
 - 每个通过复核的任务创建 conventional commit；仅暂存本计划列出的文件。
 
@@ -30,6 +33,10 @@
 - `packages/opencode/webgui/src/state/repo/tabsRepo.test.ts`：验证 repository 的完整快照边界。
 - `packages/opencode/webgui/src/components/CompactHeader/index.tsx`：重启前 flush scoped storage。
 - `packages/opencode/webgui/src/components/CompactHeader/index.test.tsx`：验证 flush 完成前或失败时不发送 `restartHost`。
+- `packages/opencode/webgui/src/components/settings/RestartRequiredModal.tsx`：设置变更后的重启前 flush scoped storage。
+- `packages/opencode/webgui/src/components/settings/RestartRequiredModal.test.tsx`：验证 pending 或拒绝的 flush 不发送 `restartHost`。
+- `packages/opencode/webgui/src/lib/ideBridge.ts`：为 `storageSet` 应用五秒请求超时。
+- `packages/opencode/webgui/src/lib/ideBridge.test.ts`：验证 `storageSet` 超时返回 `false`。
 
 ### Task 1：为 scoped storage 建立顺序和 flush 保证
 
@@ -459,3 +466,10 @@ git status --short
 ```
 
 Expected: `git diff --check` 无输出；`git status --short` 仅显示本任务预期的工作树变更。另以 `git diff --name-status <base>..HEAD` 单独检查已提交实现范围，避免与工作树检查混淆。
+
+### 最终审查补充
+
+- [ ] 在 scoped storage 测试中覆盖读取期间成功本地写入后旧宿主响应不得覆盖或返回旧值，并清空测试 revision state。
+- [ ] 删除 `tabStore` 的 500ms 重排 debounce、timer 与卸载 flush；测试重排后立即保存完整快照。
+- [ ] `RestartRequiredModal` 与 `CompactHeader` 两个且仅两个生产 `restartHost` 入口均在请求前 await flush；flush 拒绝时提示且不请求重启。
+- [ ] 在 `ideBridge` timeout map 加入 `storageSet: 5000`，用 fake timers 验证捕获后返回 `false`。

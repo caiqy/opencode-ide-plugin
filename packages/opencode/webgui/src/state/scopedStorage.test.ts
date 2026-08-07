@@ -179,6 +179,23 @@ describe("scopedStorage", () => {
     )
   })
 
+  it("在途宿主读取期间成功写入后不返回或覆盖为旧值", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+    const host = deferred<Record<string, string | undefined>>()
+    vi.mocked(ideBridge.storageGet).mockReturnValue(host.promise)
+    vi.mocked(ideBridge.storageSet).mockResolvedValue(true)
+
+    const reading = scopedStateGetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", null)
+    await vi.waitFor(() => expect(ideBridge.storageGet).toHaveBeenCalledTimes(1))
+    await expect(scopedStateSetJSON("workspace", "opencode:webgui:workspace:draft_session:v1", "new")).resolves.toEqual({
+      ok: true,
+    })
+
+    host.resolve({ "opencode:webgui:workspace:draft_session:v1": JSON.stringify("old") })
+
+    await expect(reading).resolves.toBe("new")
+  })
+
   it("host 写失败留下 dirty key 时 flush 拒绝，后续成功写入后恢复", async () => {
     vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
     vi.mocked(ideBridge.storageSet).mockResolvedValueOnce(false).mockResolvedValueOnce(true)
