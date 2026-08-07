@@ -26,7 +26,7 @@ WebGUI 将打开标签保存到 workspace scoped storage。当前标签操作会
 
 待写入期间，该 key 视为本地权威。`scopedStateGet` 可以请求宿主值，但不得用宿主旧值覆盖 cache，也必须向调用者返回 cache。只有最新排队写入成功后才能清除本地 dirty/pending 状态；失败时保留 cache 并沿用现有告警行为。
 
-导出 flush 操作，等待当前所有 scoped storage 写入链稳定。flush 不发起新写入，也不吞掉调用开始之后追加到既有链的写入。
+导出 flush 操作，等待当前所有 scoped storage 写入链稳定。队列排空后任一 scope 仍有 dirty key 时，flush 必须失败。flush 不发起新写入，也不吞掉调用开始之后追加到既有链的写入。
 
 ### 标签状态
 
@@ -36,7 +36,7 @@ repository 保留数据解析与完整快照读写职责；不再由 React store
 
 ### 重启
 
-WebGUI 菜单触发插件或 IDE 重启时，先 flush scoped storage，再发送 `restartHost`。flush 失败不阻止重启，因为写入函数已负责保留 dirty 状态和提示；正常重启路径则保证已确认的标签写入先于重启请求到达宿主。
+WebGUI 菜单触发插件或 IDE 重启时，先 flush scoped storage，再发送 `restartHost`。队列排空后仍有 dirty key 导致 flush 失败时，不发送 `restartHost`，并沿用现有失败 toast；正常重启路径则保证已确认的标签写入先于重启请求到达宿主。
 
 外部 IDE 强制重载无法等待页面异步工作，不在本次保证范围内。
 
@@ -44,13 +44,13 @@ WebGUI 菜单触发插件或 IDE 重启时，先 flush scoped storage，再发�
 
 - 单次宿主写入失败不会阻断同 key 后续写入。
 - 失败值继续保留在 cache，并按现有节流规则提示“设置未保存”。
-- flush 只等待队列稳定；具体失败继续由 `scopedStateSet` 的结果和现有报告器表达。
+- flush 等待队列稳定；队列排空后任一 dirty key 仍存在时抛出明确错误。具体单次写入失败继续由 `scopedStateSet` 的结果和现有报告器表达。
 
 ## 测试
 
 - `scopedStorage`：延迟第一个写入，证明同 key 第二个写入不会越过它；验证待写期间读取本地新值；验证失败后后续写入仍执行且最终新值可读。
 - `tabStore`：激活已有标签保存完整快照且不再调用 read-modify-write；模拟激活相邻标签后关闭当前空白标签，最终写入不含已关闭标签。
-- `CompactHeader`：主动重启先等待 flush，再调用 `restartHost`；flush 完成前不得重启。
+- `CompactHeader`：主动重启先等待 flush，再调用 `restartHost`；flush 完成前或因 dirty key 失败时不得重启，并显示现有失败 toast。
 - 运行 WebGUI focused tests 和 package typecheck。
 
 ## 验收标准
@@ -59,3 +59,5 @@ WebGUI 菜单触发插件或 IDE 重启时，先 flush scoped storage，再发�
 2. 有其他打开标签时，关闭未对话的 `New session`，重启后该标签不再出现。
 3. 显式点击 New session 仍可复用保留的服务端空会话。
 4. 写入失败不会卡死该 key 的后续持久化。
+5. 队列排空后仍有 dirty key 时 flush 失败；该 key 后续成功写入后 flush 恢复成功。
+6. scoped storage 未保存状态存在时，主动重启不发送 `restartHost` 并显示现有失败 toast。

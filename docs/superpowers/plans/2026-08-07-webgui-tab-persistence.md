@@ -4,7 +4,7 @@
 
 **目标：** 保证 WebGUI 标签快照按操作顺序持久化，关闭的空白标签不会被旧写入复活，连续重启保持完整标签集合。
 
-**架构：** `scopedStorage` 在 `scope + key` 粒度提供串行写、read-your-writes 和 flush；`tabStore` 是标签完整快照的唯一组装者，不再通过 repository 做 read-modify-write；WebGUI 主动重启前等待 scoped storage 队列清空。
+**架构：** `scopedStorage` 在 `scope + key` 粒度提供串行写、read-your-writes 和 flush；`tabStore` 是标签完整快照的唯一组装者，不再通过 repository 做 read-modify-write；WebGUI 主动重启前等待 scoped storage 队列稳定，若仍有 dirty key 则取消重启。
 
 **技术栈：** TypeScript、React 19、Vitest 4、Testing Library、IDE Bridge scoped storage。
 
@@ -14,6 +14,7 @@
 - 不改变最多六个标签、会话创建、删除和历史列表策略。
 - 关闭未对话的 `New session` 只移除打开标签，不删除服务端 session，也不清理草稿复用指针。
 - 同 key 写入失败不得阻断后续写入；不同 key 不得互相阻塞。
+- 队列稳定后任一 dirty key 仍存在时，flush 必须失败，主动重启不得发送 `restartHost`，并沿用现有失败 toast。
 - 使用 vfox 管理的 Bun；测试和构建从 `packages/opencode/webgui` 运行，禁止从仓库根目录运行测试。
 - 每个通过复核的任务创建 conventional commit；仅暂存本计划列出的文件。
 
@@ -21,14 +22,14 @@
 
 ## 文件职责
 
-- `packages/opencode/webgui/src/state/scopedStorage.ts`：提供 scoped storage cache、按 key 写入顺序、read-your-writes 和全局 flush。
-- `packages/opencode/webgui/src/state/scopedStorage.test.ts`：验证乱序防护、失败后继续和 flush。
+- `packages/opencode/webgui/src/state/scopedStorage.ts`：提供 scoped storage cache、按 key 写入顺序、read-your-writes，以及在未保存状态存在时失败的全局 flush。
+- `packages/opencode/webgui/src/state/scopedStorage.test.ts`：验证乱序防护、失败后继续和 dirty key 阻止 flush。
 - `packages/opencode/webgui/src/state/tabStore.ts`：在内存中组装并保存完整标签快照。
 - `packages/opencode/webgui/src/state/tabStore.test.ts`：验证激活、关闭和连续恢复使用完整快照。
 - `packages/opencode/webgui/src/state/repo/tabsRepo.ts`：只负责标签快照解析、加载和保存。
 - `packages/opencode/webgui/src/state/repo/tabsRepo.test.ts`：验证 repository 的完整快照边界。
 - `packages/opencode/webgui/src/components/CompactHeader/index.tsx`：重启前 flush scoped storage。
-- `packages/opencode/webgui/src/components/CompactHeader/index.test.tsx`：验证 flush 完成前不发送 `restartHost`。
+- `packages/opencode/webgui/src/components/CompactHeader/index.test.tsx`：验证 flush 完成前或失败时不发送 `restartHost`。
 
 ### Task 1：为 scoped storage 建立顺序和 flush 保证
 
@@ -37,7 +38,7 @@
 - Test: `packages/opencode/webgui/src/state/scopedStorage.test.ts`
 
 **Interfaces:**
-- Produces: `flushScopedStateWrites(): Promise<void>`
+- Produces: `flushScopedStateWrites(): Promise<void>`，队列稳定后仍有 dirty key 时拒绝。
 - Preserves: `scopedStateSet(scope, key, value): Promise<ScopedStateWriteResult>`
 - Preserves: `scopedStateGet(scope, keys): Promise<Record<string, string | undefined>>`
 
@@ -126,6 +127,19 @@ it("flush 等待当前及期间追加的 scoped storage 写入", async () => {
   await Promise.all([one, two, flush])
   expect(flushed).toBe(true)
 })
+
+it("dirty key 会使 flush 失败，后续成功写入后恢复", async () => {
+  vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+  vi.mocked(ideBridge.storageSet).mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+
+  await expect(scopedStateSetJSON("workspace", "key", "old")).resolves.toEqual({
+    ok: false,
+    error: "host_write_failed",
+  })
+  await expect(flushScopedStateWrites()).rejects.toThrow("Scoped storage has unsaved state")
+  await expect(scopedStateSetJSON("workspace", "key", "new")).resolves.toEqual({ ok: true })
+  await expect(flushScopedStateWrites()).resolves.toBeUndefined()
+})
 ```
 
 - [ ] **Step 2：运行测试并确认旧实现失败**
@@ -204,7 +218,12 @@ async function writeScopedState(scope: StorageScope, key: string, value: string)
 export async function flushScopedStateWrites(): Promise<void> {
   while (true) {
     const pending = [...writes.global.values(), ...writes.workspace.values(), ...writes.mem.values()]
-    if (pending.length === 0) return
+    if (pending.length === 0) {
+      if (dirty.global.size || dirty.workspace.size || dirty.mem.size) {
+        throw new Error("Scoped storage has unsaved state")
+      }
+      return
+    }
     await Promise.all(pending)
   }
 }
@@ -316,7 +335,7 @@ Expected: PASS，完整快照顺序断言通过，repository 不再包含 read-m
 - Test: `packages/opencode/webgui/src/components/CompactHeader/index.test.tsx`
 
 **Interfaces:**
-- Consumes: `flushScopedStateWrites(): Promise<void>`
+- Consumes: `flushScopedStateWrites(): Promise<void>`，未保存的 dirty key 存在时拒绝。
 - Preserves: `ideBridge.request("restartHost")`
 
 - [ ] **Step 1：加入重启顺序失败测试**
@@ -393,7 +412,7 @@ await flushScopedStateWrites()
 bun run test:run src/components/CompactHeader/index.test.tsx
 ```
 
-Expected: PASS，现有重启成功和失败场景均保持通过。
+Expected: PASS，现有重启成功和失败场景均保持通过；flush 因 dirty key 拒绝时不发送 `restartHost` 并显示现有失败 toast。
 
 ### Task 4：整体验证
 
@@ -409,10 +428,10 @@ Expected: PASS，现有重启成功和失败场景均保持通过。
 Working directory: `packages/opencode/webgui`
 
 ```bash
-bun run test:run src/state/scopedStorage.test.ts src/state/tabStore.test.ts src/state/repo/tabsRepo.test.ts src/components/CompactHeader/index.test.tsx
+bun run test:run src/state/scopedStorage.test.ts src/components/CompactHeader/index.test.tsx
 ```
 
-Expected: PASS，0 failed。
+Expected: PASS，0 failed；scoped storage 的真实 dirty-key 拒绝契约与 CompactHeader 的 flush-reject 禁止重启契约同时通过。
 
 - [ ] **Step 2：运行 WebGUI 完整测试**
 
@@ -436,6 +455,7 @@ Working directory: repository root
 
 ```bash
 git diff --check
+git status --short
 ```
 
-Expected: `git diff --check` 无输出；只有本计划列出的文件发生预期变化，不包含生成文件和 Comet 文件。
+Expected: `git diff --check` 无输出；`git status --short` 仅显示本任务预期的工作树变更。另以 `git diff --name-status <base>..HEAD` 单独检查已提交实现范围，避免与工作树检查混淆。

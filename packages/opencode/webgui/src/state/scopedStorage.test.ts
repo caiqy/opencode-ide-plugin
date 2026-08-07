@@ -179,6 +179,22 @@ describe("scopedStorage", () => {
     )
   })
 
+  it("host 写失败留下 dirty key 时 flush 拒绝，后续成功写入后恢复", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+    vi.mocked(ideBridge.storageSet).mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+
+    await expect(scopedStateSetJSON("workspace", "opencode:webgui:workspace:tabs:v1", { open_tabs: [] })).resolves.toEqual({
+      ok: false,
+      error: "host_write_failed",
+    })
+    await expect(flushScopedStateWrites()).rejects.toThrow("Scoped storage has unsaved state")
+
+    await expect(scopedStateSetJSON("workspace", "opencode:webgui:workspace:tabs:v1", { open_tabs: ["s1"] })).resolves.toEqual({
+      ok: true,
+    })
+    await expect(flushScopedStateWrites()).resolves.toBeUndefined()
+  })
+
   it("ideBridge installed 时 storageSet 成功路径走 host storage 且不写 localStorage", async () => {
     vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
     vi.mocked(ideBridge.storageSet).mockResolvedValue(true)

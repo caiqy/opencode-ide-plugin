@@ -164,7 +164,12 @@ async function writeScopedState(scope: StorageScope, key: string, value: string)
 export async function flushScopedStateWrites(): Promise<void> {
   while (true) {
     const pending = [...writes.global.values(), ...writes.workspace.values(), ...writes.mem.values()]
-    if (pending.length === 0) return
+    if (pending.length === 0) {
+      if (dirty.global.size || dirty.workspace.size || dirty.mem.size) {
+        throw new Error("Scoped storage has unsaved state")
+      }
+      return
+    }
     await Promise.all(pending)
   }
 }
