@@ -26,7 +26,10 @@ describe("tabsRepo", () => {
   it("saveTabs 保存规范化的完整快照", async () => {
     vi.mocked(scopedStateSetJSON).mockResolvedValue({ ok: true })
 
-    await saveTabs({ open_tabs: ["s1", "s2"], active_tab: "missing" })
+    await saveTabs({
+      open_tabs: ["s1", 1, "s2"],
+      active_tab: "missing",
+    } as unknown as Parameters<typeof saveTabs>[0])
 
     expect(scopedStateSetJSON).toHaveBeenCalledWith("workspace", "opencode:webgui:workspace:tabs:v1", {
       open_tabs: ["s1", "s2"],
