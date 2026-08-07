@@ -131,7 +131,6 @@ export function scopedStateSet(scope: StorageScope, key: string, value: string):
 }
 
 async function writeScopedState(scope: StorageScope, key: string, value: string): Promise<ScopedStateWriteResult> {
-  const mem = cache[scope]
   const dirtyKeys = dirty[scope]
   if (!ideBridge.isInstalled()) {
     const ok = browserSet(scope, key, value)

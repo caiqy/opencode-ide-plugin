@@ -201,6 +201,20 @@ describe("scopedStorage", () => {
     }
   })
 
+  it("不同 key 写入不会互相阻塞", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+    const first = deferred<boolean>()
+    vi.mocked(ideBridge.storageSet).mockImplementationOnce(() => first.promise).mockResolvedValueOnce(true)
+
+    const one = scopedStateSetJSON("workspace", "key-a", "one")
+    const two = scopedStateSetJSON("workspace", "key-b", "two")
+
+    await vi.waitFor(() => expect(ideBridge.storageSet).toHaveBeenCalledTimes(2))
+    await expect(two).resolves.toEqual({ ok: true })
+    first.resolve(true)
+    await expect(one).resolves.toEqual({ ok: true })
+  })
+
   it("同 key 写入串行执行且待写期间读取内存最新值", async () => {
     vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
     const first = deferred<boolean>()
