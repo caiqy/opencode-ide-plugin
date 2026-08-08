@@ -211,8 +211,9 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch, interrup
     if (!questionInput.length) return null
     if (part.state.status === "completed") return "completed" as const
     if (questionDismissed) return "ignored" as const
+    if (wasInterrupted) return "interrupted" as const
     return null
-  }, [part.tool, part.state.status, questionDismissed, questionInput.length])
+  }, [part.tool, part.state.status, questionDismissed, questionInput.length, wasInterrupted])
   const answeredQuestionCount = useMemo(() => {
     return questionAnswers.filter((answer) => Array.isArray(answer) && answer.length > 0).length
   }, [questionAnswers])
@@ -221,6 +222,8 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch, interrup
     if (!questionMode) return null
     if (questionMode === "ignored")
       return `${getToolLabel("question")}：已忽略 ${answeredQuestionCount}/${questionInput.length}`
+    if (questionMode === "interrupted")
+      return `${getToolLabel("question")}：已中断 ${answeredQuestionCount}/${questionInput.length}`
     return `${getToolLabel("question")}：已完成 ${answeredQuestionCount}/${questionInput.length}`
   }, [questionMode, answeredQuestionCount, questionInput.length])
 

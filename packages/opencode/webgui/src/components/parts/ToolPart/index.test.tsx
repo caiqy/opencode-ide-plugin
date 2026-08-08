@@ -780,6 +780,42 @@ describe("ToolPart", () => {
     expect(container.firstElementChild).not.toHaveClass("border-red-300")
   })
 
+  it("question 中断后保留中断状态并展示完整只读内容", () => {
+    mocks.isOpen.mockReturnValue(false)
+    const part = {
+      id: "p-question-interrupted",
+      type: "tool",
+      callID: "c-question-interrupted",
+      tool: "question",
+      state: {
+        status: "pending",
+        input: {
+          questions: [
+            {
+              header: "范围",
+              question: "这次要处理哪些文件？",
+              options: [
+                { label: "只处理相关文件", description: "保留其他未提交改动" },
+                { label: "处理全部文件", description: "包含无关改动" },
+              ],
+            },
+          ],
+        },
+        metadata: { answers: [["只处理相关文件"]] },
+      },
+    } as any
+
+    const { container } = render(<ToolPart part={part} sessionID="s1" messageID="m1" interrupted />)
+
+    expect(screen.getByText("提问：已中断 1/1")).toBeInTheDocument()
+    expect(screen.getByText("这次要处理哪些文件？")).toBeInTheDocument()
+    expect(screen.getByText("保留其他未提交改动")).toBeInTheDocument()
+    expect(screen.getByText("只处理相关文件")).toHaveClass("text-blue-700")
+    expect(screen.getByText("已中断 · 当前为只读")).toBeInTheDocument()
+    expect(container.firstElementChild).toHaveClass("border-red-300")
+    expect(screen.queryByRole("button", { name: /提问：已中断 1\/1/i })).not.toBeInTheDocument()
+  })
+
   it("question 在已完成状态下不提供二次折叠，且即使 isOpen=false 也展示完整内容", () => {
     mocks.isOpen.mockReturnValue(false)
 

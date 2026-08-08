@@ -6,7 +6,7 @@ import { MarkdownRenderer } from "../../MarkdownRenderer"
 interface QuestionToolProps {
   questions: QuestionInfo[]
   answers: string[][]
-  mode: "completed" | "ignored"
+  mode: "completed" | "ignored" | "interrupted"
 }
 
 export function QuestionTool({ questions, answers, mode }: QuestionToolProps) {
@@ -27,8 +27,8 @@ export function QuestionTool({ questions, answers, mode }: QuestionToolProps) {
   if (!currentQuestion) return null
 
   const isIgnored = mode === "ignored"
-  const title = isIgnored ? "已忽略" : "已完成"
-  const note = isIgnored ? "已忽略 · 当前为只读" : "已完成 · 当前为只读"
+  const title = mode === "completed" ? "已完成" : isIgnored ? "已忽略" : "已中断"
+  const note = `${title} · 当前为只读`
   const frameClass = isIgnored
     ? "border-blue-300 dark:border-blue-700 bg-gray-50 dark:bg-gray-900 opacity-80"
     : "border-blue-300 dark:border-blue-700 bg-gray-50 dark:bg-gray-900"
