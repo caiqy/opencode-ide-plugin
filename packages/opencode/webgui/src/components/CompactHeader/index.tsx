@@ -538,12 +538,31 @@ const CompactHeader = forwardRef<
 
   useEffect(() => {
     if (!tabStore.loaded || !sessionsEverLoaded.current || isLoading || hasMore) return
+    // This list is filtered and paged, so absence only identifies candidates for an authoritative lookup.
     const ids = new Set(sessions.map((s) => s.id))
     if (currentSession?.id) {
       ids.add(currentSession.id)
     }
-    tabStore.pruneTabs(ids)
-  }, [currentSession?.id, hasMore, sessions, tabStore.loaded, tabStore.openTabs, tabStore.pruneTabs, isLoading])
+    const missing = tabStore.openTabs.filter((id) => !ids.has(id))
+    if (missing.length === 0) return
+
+    let cancelled = false
+    void Promise.all(
+      missing.map((id) =>
+        sdk.session.get({ path: { id } }).then(
+          (response) => ({ id, remove: !response.data && isNotFoundError(response.error) }),
+          (error: unknown) => ({ id, remove: isNotFoundError(error) }),
+        ),
+      ),
+    ).then((results) => {
+      if (cancelled) return
+      results.filter((result) => result.remove).forEach((result) => tabStore.removeTab(result.id))
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentSession?.id, hasMore, sessions, tabStore.loaded, tabStore.openTabs, tabStore.removeTab, isLoading])
 
   return (
     <>
@@ -709,3 +728,15 @@ const CompactHeader = forwardRef<
 CompactHeader.displayName = "CompactHeader"
 
 export { CompactHeader }
+
+function isNotFoundError(error: unknown) {
+  if (!error || typeof error !== "object") return false
+  const value = error as { name?: unknown; status?: unknown; statusCode?: unknown }
+  return (
+    value.name === "NotFoundError" ||
+    value.status === 404 ||
+    value.status === "404" ||
+    value.statusCode === 404 ||
+    value.statusCode === "404"
+  )
+}

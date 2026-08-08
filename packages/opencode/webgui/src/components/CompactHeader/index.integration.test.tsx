@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   useToast: vi.fn(),
   sdkShare: vi.fn(),
   sdkUnshare: vi.fn(),
+  sdkSessionGet: vi.fn(),
   sdkSetPinned: vi.fn(),
   sessionDropdown: vi.fn(),
 }))
@@ -92,6 +93,7 @@ vi.mock("../../lib/api/sdkClient", () => ({
   setSessionPinned: (...args: unknown[]) => mocks.sdkSetPinned(...args),
   sdk: {
     session: {
+      get: (...args: unknown[]) => mocks.sdkSessionGet(...args),
       share: (...args: unknown[]) => mocks.sdkShare(...args),
       unshare: (...args: unknown[]) => mocks.sdkUnshare(...args),
     },
@@ -156,6 +158,8 @@ describe("CompactHeader integration with real TabBar", () => {
   beforeEach(() => {
     mocks.sdkShare.mockResolvedValue({ data: null })
     mocks.sdkUnshare.mockResolvedValue({ data: null })
+    mocks.sdkSessionGet.mockReset()
+    mocks.sdkSessionGet.mockResolvedValue({ data: null, error: { status: 404 } })
     mocks.sdkSetPinned.mockResolvedValue({ data: null })
     mocks.sessionDropdown.mockReset()
     mocks.useTheme.mockReturnValue({ theme: "light", toggleTheme: vi.fn() })
@@ -407,8 +411,8 @@ describe("CompactHeader integration with real TabBar", () => {
       openTabs: ["s1", "s2"],
       activeTab: "s1",
     }
-    const pruneTabs = vi.fn((validIds: Set<string>) => {
-      const openTabs = state.openTabs.filter((id) => validIds.has(id))
+    const removeTab = vi.fn((id: string) => {
+      const openTabs = state.openTabs.filter((tab) => tab !== id)
       state.openTabs = openTabs
       state.activeTab = openTabs.includes(state.activeTab) ? state.activeTab : openTabs[openTabs.length - 1] || ""
     })
@@ -432,13 +436,13 @@ describe("CompactHeader integration with real TabBar", () => {
       loaded: true,
       openTab: vi.fn(),
       closeTab: vi.fn(),
-      removeTab: vi.fn(),
+      removeTab,
       activateTab: vi.fn(),
       reorderTabs: vi.fn(),
       replaceTab: vi.fn(),
       closeOtherTabs: vi.fn(),
       closeTabsToRight: vi.fn(),
-      pruneTabs,
+      pruneTabs: vi.fn(),
     }))
 
     const view = render(<CompactHeader {...props()} onNewSession={onNewSession} />)
@@ -454,7 +458,7 @@ describe("CompactHeader integration with real TabBar", () => {
     view.rerender(<CompactHeader {...props()} onNewSession={onNewSession} />)
 
     await waitFor(() => {
-      expect(pruneTabs).toHaveBeenCalledWith(new Set(["s2"]))
+      expect(removeTab).toHaveBeenCalledWith("s1")
     })
 
     view.rerender(<CompactHeader {...props()} onNewSession={onNewSession} />)

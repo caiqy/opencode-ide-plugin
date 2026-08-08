@@ -52,6 +52,7 @@ const mocks = vi.hoisted(() => ({
   useToast: vi.fn(),
   sdkShare: vi.fn(),
   sdkUnshare: vi.fn(),
+  sdkSessionGet: vi.fn(),
   sdkSetPinned: vi.fn(),
   sdkPathGet: vi.fn(),
   flushScopedStateWrites: vi.fn(),
@@ -149,6 +150,7 @@ vi.mock("../../lib/api/sdkClient", () => ({
       get: (...args: unknown[]) => mocks.sdkPathGet(...args),
     },
     session: {
+      get: (...args: unknown[]) => mocks.sdkSessionGet(...args),
       share: (...args: unknown[]) => mocks.sdkShare(...args),
       unshare: (...args: unknown[]) => mocks.sdkUnshare(...args),
     },
@@ -225,6 +227,8 @@ describe("CompactHeader", () => {
     mocks.tabBarProps = null
     mocks.sdkShare.mockResolvedValue({ data: null })
     mocks.sdkUnshare.mockResolvedValue({ data: null })
+    mocks.sdkSessionGet.mockReset()
+    mocks.sdkSessionGet.mockResolvedValue({ data: null, error: { status: 404 } })
     mocks.sdkSetPinned.mockResolvedValue({ data: null })
     mocks.sdkPathGet.mockResolvedValue({ data: { configFile: "/real/opencode.json" }, error: null })
     mocks.flushScopedStateWrites.mockClear()
@@ -486,8 +490,8 @@ describe("CompactHeader", () => {
     })
   })
 
-  it("removes open tabs when backing session is deleted", () => {
-    const pruneTabs = vi.fn()
+  it("removes open tabs when backing session is deleted", async () => {
+    const removeTab = vi.fn()
     const sessions = [{ id: "s1", title: "测试会话" }]
     let isLoading = true
     mocks.useSession.mockImplementation(() => ({
@@ -506,13 +510,13 @@ describe("CompactHeader", () => {
       loaded: true,
       openTab: vi.fn(),
       closeTab: vi.fn(),
-      removeTab: vi.fn(),
+      removeTab,
       activateTab: vi.fn(),
       reorderTabs: vi.fn(),
       replaceTab: vi.fn(),
       closeOtherTabs: vi.fn(),
       closeTabsToRight: vi.fn(),
-      pruneTabs,
+      pruneTabs: vi.fn(),
     })
 
     const props = {
@@ -524,29 +528,30 @@ describe("CompactHeader", () => {
 
     // First render with isLoading=true so sessionsEverLoaded becomes true
     const view = render(<CompactHeader {...props} />)
-    expect(pruneTabs).not.toHaveBeenCalled()
+    expect(removeTab).not.toHaveBeenCalled()
 
-    // Simulate loading complete — cleanup should now run and remove s2
+    // Simulate loading complete — cleanup should now run and remove missing sessions
     isLoading = false
     view.rerender(<CompactHeader {...props} />)
 
-    expect(pruneTabs).toHaveBeenCalledWith(new Set(["s1"]))
+    await waitFor(() => {
+      expect(removeTab).toHaveBeenCalledWith("s2")
+      expect(removeTab).toHaveBeenCalledWith("virtual-1")
+    })
 
-    pruneTabs.mockClear()
+    removeTab.mockClear()
     sessions.push({ id: "s2", title: "会话 2" })
     view.rerender(<CompactHeader {...props} />)
 
     // sessions reference is unchanged (mutation), so useEffect deps don't trigger
-    expect(pruneTabs).not.toHaveBeenCalled()
+    expect(removeTab).not.toHaveBeenCalled()
   })
 
-  it("cleans orphan tabs when openTabs changes even if sessions reference is unchanged", () => {
-    const pruneTabs = vi.fn()
+  it("cleans orphan tabs when openTabs changes even if sessions reference is unchanged", async () => {
+    const removeTab = vi.fn()
     const sessions = [{ id: "s1", title: "测试会话" }]
     let isLoading = true
-    const state = {
-      openTabs: ["s1"],
-    }
+    const state = { openTabs: ["s1"] }
 
     mocks.useSession.mockImplementation(() => ({
       currentSession: { id: "s1", title: "测试会话" },
@@ -558,20 +563,19 @@ describe("CompactHeader", () => {
       deleteSession: vi.fn(),
       isLoading,
     }))
-
     mocks.useTabStore.mockImplementation(() => ({
       openTabs: state.openTabs,
       activeTab: "s1",
       loaded: true,
       openTab: vi.fn(),
       closeTab: vi.fn(),
-      removeTab: vi.fn(),
+      removeTab,
       activateTab: vi.fn(),
       reorderTabs: vi.fn(),
       replaceTab: vi.fn(),
       closeOtherTabs: vi.fn(),
       closeTabsToRight: vi.fn(),
-      pruneTabs,
+      pruneTabs: vi.fn(),
     }))
 
     const props = {
@@ -580,23 +584,20 @@ describe("CompactHeader", () => {
       isCreatingSession: false,
       onOpenCommandPalette: vi.fn(),
     }
-
     const view = render(<CompactHeader {...props} />)
-    expect(pruneTabs).not.toHaveBeenCalled()
+    expect(removeTab).not.toHaveBeenCalled()
 
     isLoading = false
     view.rerender(<CompactHeader {...props} />)
-    expect(pruneTabs).toHaveBeenCalledWith(new Set(["s1"]))
+    expect(removeTab).not.toHaveBeenCalled()
 
-    pruneTabs.mockClear()
     state.openTabs = ["s1", "s2"]
     view.rerender(<CompactHeader {...props} />)
-
-    expect(pruneTabs).toHaveBeenCalledWith(new Set(["s1"]))
+    await waitFor(() => expect(removeTab).toHaveBeenCalledWith("s2"))
   })
 
-  it("pruneTabs 会保留 currentSession，避免会话列表延迟时清空当前标签", () => {
-    const pruneTabs = vi.fn()
+  it("缺失会话清理会保留 currentSession", async () => {
+    const removeTab = vi.fn()
     let isLoading = true
 
     mocks.useSession.mockImplementation(() => ({
@@ -609,20 +610,19 @@ describe("CompactHeader", () => {
       deleteSession: vi.fn(),
       isLoading,
     }))
-
     mocks.useTabStore.mockReturnValue({
       openTabs: ["s-current", "s1", "orphan"],
       activeTab: "s-current",
       loaded: true,
       openTab: vi.fn(),
       closeTab: vi.fn(),
-      removeTab: vi.fn(),
+      removeTab,
       activateTab: vi.fn(),
       reorderTabs: vi.fn(),
       replaceTab: vi.fn(),
       closeOtherTabs: vi.fn(),
       closeTabsToRight: vi.fn(),
-      pruneTabs,
+      pruneTabs: vi.fn(),
     })
 
     const props = {
@@ -631,14 +631,121 @@ describe("CompactHeader", () => {
       isCreatingSession: false,
       onOpenCommandPalette: vi.fn(),
     }
-
     const view = render(<CompactHeader {...props} />)
-    expect(pruneTabs).not.toHaveBeenCalled()
-
     isLoading = false
     view.rerender(<CompactHeader {...props} />)
 
-    expect(pruneTabs).toHaveBeenCalledWith(new Set(["s1", "s-current"]))
+    await waitFor(() => expect(removeTab).toHaveBeenCalledWith("orphan"))
+    expect(mocks.sdkSessionGet).toHaveBeenCalledOnce()
+    expect(mocks.sdkSessionGet).toHaveBeenCalledWith({ path: { id: "orphan" } })
+  })
+
+  it("后台 New session 存在时保留列表外有效或暂时无法确认的普通标签", async () => {
+    const removeTab = vi.fn()
+    let isLoading = true
+    mocks.sdkSessionGet
+      .mockResolvedValueOnce({ data: { id: "s-old-1" }, error: null })
+      .mockRejectedValueOnce(new Error("offline"))
+
+    mocks.useSession.mockImplementation(() => ({
+      currentSession: { id: "s-current", title: "当前会话" },
+      setCurrentSession: vi.fn(),
+      sessions: [
+        { id: "s-draft", title: "New session" },
+        { id: "s-current", title: "当前会话" },
+      ],
+      setSessions: vi.fn(),
+      switchSession: vi.fn(),
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading,
+    }))
+    mocks.useTabStore.mockReturnValue({
+      openTabs: ["s-old-1", "s-draft", "s-current", "s-old-2"],
+      activeTab: "s-current",
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab,
+      activateTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs: vi.fn(),
+    })
+
+    const props = {
+      connectionState: "connected" as ConnectionState,
+      onNewSession: vi.fn(),
+      isCreatingSession: false,
+      onOpenCommandPalette: vi.fn(),
+    }
+    const view = render(<CompactHeader {...props} />)
+    isLoading = false
+    view.rerender(<CompactHeader {...props} />)
+
+    await waitFor(() => expect(mocks.sdkSessionGet).toHaveBeenCalledTimes(2))
+    await act(async () => {})
+    expect(removeTab).not.toHaveBeenCalled()
+  })
+
+  it("缺失会话查询期间新打开的标签不会被旧结果修剪", async () => {
+    let isLoading = true
+    let resolveGet!: (value: { data: null; error: { status: number } }) => void
+    const request = new Promise<{ data: null; error: { status: number } }>((resolve) => {
+      resolveGet = resolve
+    })
+    const state = { openTabs: ["s-current", "s-missing"], activeTab: "s-current" }
+    const pruneTabs = vi.fn((validIds: Set<string>) => {
+      state.openTabs = state.openTabs.filter((id) => validIds.has(id))
+    })
+    const removeTab = vi.fn((id: string) => {
+      state.openTabs = state.openTabs.filter((tab) => tab !== id)
+    })
+    mocks.sdkSessionGet.mockReturnValue(request)
+    mocks.useSession.mockImplementation(() => ({
+      currentSession: { id: "s-current", title: "当前会话" },
+      setCurrentSession: vi.fn(),
+      sessions: [{ id: "s-current", title: "当前会话" }],
+      setSessions: vi.fn(),
+      switchSession: vi.fn(),
+      updateSessionTitle: vi.fn(),
+      deleteSession: vi.fn(),
+      isLoading,
+    }))
+    mocks.useTabStore.mockImplementation(() => ({
+      openTabs: state.openTabs,
+      activeTab: state.activeTab,
+      loaded: true,
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+      removeTab,
+      activateTab: vi.fn(),
+      reorderTabs: vi.fn(),
+      replaceTab: vi.fn(),
+      closeOtherTabs: vi.fn(),
+      closeTabsToRight: vi.fn(),
+      pruneTabs,
+    }))
+
+    const props = {
+      connectionState: "connected" as ConnectionState,
+      onNewSession: vi.fn(),
+      isCreatingSession: false,
+      onOpenCommandPalette: vi.fn(),
+    }
+    const view = render(<CompactHeader {...props} />)
+    isLoading = false
+    view.rerender(<CompactHeader {...props} />)
+    await waitFor(() => expect(mocks.sdkSessionGet).toHaveBeenCalledWith({ path: { id: "s-missing" } }))
+
+    state.openTabs.push("s-new")
+    resolveGet({ data: null, error: { status: 404 } })
+
+    await waitFor(() => expect(removeTab).toHaveBeenCalledWith("s-missing"))
+    expect(pruneTabs).not.toHaveBeenCalled()
+    expect(state.openTabs).toEqual(["s-current", "s-new"])
   })
 
   it("switches to restored activeTab when currentSession is null", async () => {
@@ -801,8 +908,8 @@ describe("CompactHeader", () => {
       openTabs: ["s-draft"],
       activeTab: "s-draft",
     }
-    const pruneTabs = vi.fn((validIds: Set<string>) => {
-      const openTabs = state.openTabs.filter((id) => validIds.has(id))
+    const removeTab = vi.fn((id: string) => {
+      const openTabs = state.openTabs.filter((tab) => tab !== id)
       state.openTabs = openTabs
       state.activeTab = openTabs.includes(state.activeTab) ? state.activeTab : openTabs[openTabs.length - 1] || ""
     })
@@ -823,13 +930,13 @@ describe("CompactHeader", () => {
       loaded: true,
       openTab: vi.fn(),
       closeTab: vi.fn(),
-      removeTab: vi.fn(),
+      removeTab,
       activateTab: vi.fn(),
       reorderTabs: vi.fn(),
       replaceTab: vi.fn(),
       closeOtherTabs: vi.fn(),
       closeTabsToRight: vi.fn(),
-      pruneTabs,
+      pruneTabs: vi.fn(),
     }))
     mocks.useToast.mockReturnValue({ showToast })
 
@@ -855,7 +962,7 @@ describe("CompactHeader", () => {
     )
 
     await waitFor(() => {
-      expect(pruneTabs).toHaveBeenCalledWith(new Set())
+      expect(removeTab).toHaveBeenCalledWith("s-draft")
     })
 
     view.rerender(
