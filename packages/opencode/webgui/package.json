@@ -1,7 +1,7 @@
 {
   "name": "webgui",
   "private": true,
-  "version": "26.8.800",
+  "version": "26.8.802",
   "type": "module",
   "scripts": {
     "dev": "vite",

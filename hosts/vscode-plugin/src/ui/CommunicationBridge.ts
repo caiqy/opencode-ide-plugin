@@ -288,46 +288,47 @@ export class CommunicationBridge implements PluginCommunicator {
         logger.appendLine(`File not found, attempting to refresh: ${normalizedPath}`)
       }
 
+      if (startLine === undefined) {
+        await vscode.commands.executeCommand("vscode.open", fileUri)
+        logger.appendLine(`Opened file: ${normalizedPath}`)
+        return
+      }
+
       const document = await vscode.workspace.openTextDocument(fileUri)
 
-      if (startLine !== undefined) {
-        const startZero = Math.max(0, startLine - 1)
-        let endZero = startZero
+      const startZero = Math.max(0, startLine - 1)
+      let endZero = startZero
+      if (endLine !== undefined) {
+        endZero = Math.max(startZero, endLine - 1)
+      }
+
+      const lastIndex = document.lineCount > 0 ? document.lineCount - 1 : 0
+      const clampedStart = Math.min(startZero, lastIndex)
+      const clampedEnd = Math.min(endZero, lastIndex)
+
+      const startPos = new vscode.Position(clampedStart, 0)
+      const endLineObj = document.lineAt(clampedEnd)
+      const endPos = endLineObj.range.end
+      const range = new vscode.Range(startPos, endPos)
+
+      try {
+        const editor = await vscode.window.showTextDocument(document, {
+          selection: range,
+          viewColumn: vscode.ViewColumn.Active,
+        })
+
+        editor.selection = new vscode.Selection(range.start, range.end)
+        editor.revealRange(range, vscode.TextEditorRevealType.InCenter)
+
         if (endLine !== undefined) {
-          endZero = Math.max(startZero, endLine - 1)
+          logger.appendLine(`Opened file at lines ${startLine}-${endLine}: ${normalizedPath}`)
+        } else {
+          logger.appendLine(`Opened file at line ${startLine}: ${normalizedPath}`)
         }
-
-        const lastIndex = document.lineCount > 0 ? document.lineCount - 1 : 0
-        const clampedStart = Math.min(startZero, lastIndex)
-        const clampedEnd = Math.min(endZero, lastIndex)
-
-        const startPos = new vscode.Position(clampedStart, 0)
-        const endLineObj = document.lineAt(clampedEnd)
-        const endPos = endLineObj.range.end
-        const range = new vscode.Range(startPos, endPos)
-
-        try {
-          const editor = await vscode.window.showTextDocument(document, {
-            selection: range,
-            viewColumn: vscode.ViewColumn.Active,
-          })
-
-          editor.selection = new vscode.Selection(range.start, range.end)
-          editor.revealRange(range, vscode.TextEditorRevealType.InCenter)
-
-          if (endLine !== undefined) {
-            logger.appendLine(`Opened file at lines ${startLine}-${endLine}: ${normalizedPath}`)
-          } else {
-            logger.appendLine(`Opened file at line ${startLine}: ${normalizedPath}`)
-          }
-        } catch (error) {
-          logger.appendLine(`Failed to open file with line number, trying without: ${error}`)
-          await vscode.window.showTextDocument(fileUri)
-          logger.appendLine(`Opened file (fallback): ${normalizedPath}`)
-        }
-      } else {
-        await vscode.window.showTextDocument(document)
-        logger.appendLine(`Opened file: ${normalizedPath}`)
+      } catch (error) {
+        logger.appendLine(`Failed to open file with line number, trying without: ${error}`)
+        await vscode.window.showTextDocument(fileUri)
+        logger.appendLine(`Opened file (fallback): ${normalizedPath}`)
       }
     } catch (error) {
       logger.appendLine(`Error opening file: ${error}`)
@@ -612,7 +613,7 @@ export class CommunicationBridge implements PluginCommunicator {
       let normalizedPath = rawPath.trim()
 
       // Handle VSCode URI format
-      if (normalizedPath.startsWith("file://")) {
+      if (/^file:/i.test(normalizedPath)) {
         normalizedPath = vscode.Uri.parse(normalizedPath).fsPath
       }
 

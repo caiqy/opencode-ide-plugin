@@ -4,6 +4,7 @@ import type { ReactElement } from "react"
 import { MarkdownRenderer } from "./MarkdownRenderer"
 import { ThemeProvider } from "../state/ThemeContext"
 import { getGeneratedImageUrl } from "../lib/fileUtils"
+import { ideBridge } from "../lib/ideBridge"
 
 const project = vi.hoisted(() => ({
   directory: null as string | null,
@@ -27,6 +28,7 @@ function renderWithTheme(ui: ReactElement) {
 
 describe("MarkdownRenderer", () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     project.directory = null
     project.worktree = null
     window.getSelection()?.removeAllRanges()
@@ -207,6 +209,35 @@ describe("MarkdownRenderer", () => {
     expect(link).toHaveClass("dark:text-gray-400")
     expect(link).not.toHaveClass("text-blue-600")
     expect(link).not.toHaveClass("dark:text-blue-400")
+  })
+
+  it.each(["D:/repo/README.md", String.raw`D:\repo\opencode.vsix`])("本地文件链接交给 IDE 打开：%s", (path) => {
+    const request = vi.spyOn(ideBridge, "request").mockResolvedValue({ type: "reply" })
+    renderWithTheme(<MarkdownRenderer>{`[打开文件](${path})`}</MarkdownRenderer>)
+
+    fireEvent.click(screen.getByText("打开文件"))
+
+    expect(request).toHaveBeenCalledWith("openFile", { path })
+  })
+
+  it("相对文件行号使用项目目录并交给 IDE 打开", () => {
+    project.directory = "D:\\repo"
+    const request = vi.spyOn(ideBridge, "request").mockResolvedValue({ type: "reply" })
+    renderWithTheme(<MarkdownRenderer>{"[README](README.md:10)"}</MarkdownRenderer>)
+
+    fireEvent.click(screen.getByText("README"))
+
+    expect(request).toHaveBeenCalledWith("openFile", { path: "D:\\repo/README.md:10" })
+  })
+
+  it("file URL 保留编码后交给 IDE 打开", () => {
+    const request = vi.spyOn(ideBridge, "request").mockResolvedValue({ type: "reply" })
+    const path = "file:///D:/repo/a%23b.md"
+    renderWithTheme(<MarkdownRenderer>{`[编码文件](${path})`}</MarkdownRenderer>)
+
+    fireEvent.click(screen.getByText("编码文件"))
+
+    expect(request).toHaveBeenCalledWith("openFile", { path })
   })
 
   it("muted tone 下代码块正文使用灰色文本", () => {

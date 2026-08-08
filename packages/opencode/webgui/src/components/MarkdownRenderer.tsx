@@ -75,6 +75,28 @@ function imageName(src: string) {
   }
 }
 
+function localFilePath(url: string) {
+  if (/^file:/i.test(url)) return url
+  const decoded = (() => {
+    try {
+      return decodeURIComponent(url)
+    } catch {
+      return url
+    }
+  })()
+  if (/^[A-Za-z]:[\\/]/.test(decoded) || /^\\\\/.test(decoded)) return decoded
+  if (decoded.startsWith("#") || decoded.startsWith("//")) return ""
+  // A trailing line range belongs to a file path, not a URI scheme.
+  if (/^[^:]*[.\\/][^:]*:\d+(?:-\d+)?$/.test(decoded)) return decoded
+  if (/^[A-Za-z][A-Za-z\d+.-]*:/.test(decoded)) return ""
+  return decoded
+}
+
+function resolveLocalFilePath(path: string, directory: string | null | undefined) {
+  if (!directory || /^file:/i.test(path) || /^[A-Za-z]:[\\/]/.test(path) || /^[/\\]/.test(path)) return path
+  return `${directory.replace(/[\\/]+$/, "")}/${path.replace(/^[\\/]+/, "")}`
+}
+
 function createUrlTransform(): UrlTransform {
   return (url, key) => {
     if (key === "src") {
@@ -82,6 +104,10 @@ function createUrlTransform(): UrlTransform {
       if (relative) return relative
       if (/^data:image\/[a-z0-9.+-]+(?:[;,]|$)/i.test(url)) return url
       if (/^blob:/i.test(url)) return url
+    }
+    if (key === "href") {
+      const path = localFilePath(url)
+      if (path) return path
     }
 
     return defaultUrlTransform(url)
@@ -223,10 +249,19 @@ function createMarkdownComponents(
       return <p className={`mb-1.5 ${styles.text} leading-relaxed`}>{props.children}</p>
     },
 
-    // Links that open in new tab (via IDE bridge when in JCEF to avoid hangs)
+    // Local links open in the IDE; external links use the browser bridge when installed.
     a: ({ href, children }) => {
       const handleClick = (e: React.MouseEvent) => {
-        if (href && ideBridge.isInstalled()) {
+        if (!href) return
+        const path = localFilePath(href)
+        if (path) {
+          e.preventDefault()
+          void ideBridge
+            .request("openFile", { path: resolveLocalFilePath(path, directory) })
+            .catch((error) => console.error("[MarkdownRenderer] Failed to open file", error))
+          return
+        }
+        if (ideBridge.isInstalled()) {
           e.preventDefault()
           ideBridge.send({ type: "openUrl", payload: { url: href } })
         }
