@@ -15,6 +15,7 @@ interface MessagePartProps {
   sessionID?: string
   messageID?: string
   skipPartIds?: Set<string>
+  sessionInterrupted?: boolean
 }
 
 export function MessagePart({
@@ -25,6 +26,7 @@ export function MessagePart({
   sessionID,
   messageID,
   skipPartIds,
+  sessionInterrupted,
 }: MessagePartProps) {
   // Skip if this part was already rendered as an attachment
   if (skipPartIds?.has(part.id)) {
@@ -73,7 +75,7 @@ export function MessagePart({
 
   // Reasoning parts (thinking blocks)
   if (part.type === "reasoning") {
-    return <ReasoningPart key={part.id} part={part} durationMs={durationMs} />
+    return <ReasoningPart key={part.id} part={part} durationMs={durationMs} interrupted={sessionInterrupted} />
   }
 
   // Tool invocations
@@ -110,6 +112,7 @@ export function MessagePart({
         sessionID={sessionID}
         messageID={messageID}
         associatedPatch={associatedPatch}
+        interrupted={sessionInterrupted}
       />
     )
   }

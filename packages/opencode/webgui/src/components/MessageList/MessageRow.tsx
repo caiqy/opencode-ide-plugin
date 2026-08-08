@@ -19,6 +19,7 @@ interface MessageRowProps {
   isLast?: boolean
   showMeta?: boolean
   turnDurationMs?: number
+  sessionInterrupted?: boolean
 }
 
 export function MessageRow({
@@ -30,6 +31,7 @@ export function MessageRow({
   isLast,
   showMeta,
   turnDurationMs,
+  sessionInterrupted,
 }: MessageRowProps) {
   const [isHovered, setIsHovered] = useState(false)
   const isUser = message.info.role === "user"
@@ -114,6 +116,7 @@ export function MessageRow({
             sessionID={sessionID}
             messageID={message.info.id}
             skipPartIds={skipPartIds}
+            sessionInterrupted={sessionInterrupted}
           />
         ))}
 

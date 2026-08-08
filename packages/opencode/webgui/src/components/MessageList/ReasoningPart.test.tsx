@@ -74,4 +74,18 @@ describe("ReasoningPart", () => {
     expect(screen.getByText("After")).toBeInTheDocument()
     expect(screen.queryByText(/hidden/)).not.toBeInTheDocument()
   })
+
+  it("shows interrupted instead of thinking for an unfinished idle part", () => {
+    render(
+      <PartOpenProvider items={[]}>
+        <ReasoningPart
+          part={{ id: "r4", sessionID: "s1", messageID: "m1", type: "reasoning", text: "partial" }}
+          interrupted
+        />
+      </PartOpenProvider>,
+    )
+
+    expect(screen.getByText("思考已中断")).toBeInTheDocument()
+    expect(screen.queryByText("思考中…")).not.toBeInTheDocument()
+  })
 })

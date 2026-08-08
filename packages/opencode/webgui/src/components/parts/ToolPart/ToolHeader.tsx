@@ -19,6 +19,7 @@ interface ToolHeaderProps {
   lineRange?: string
   blocked?: "permission" | "question" | null
   onBlockedClick?: () => void
+  interrupted?: boolean
 }
 
 function getFileName(path: string): string {
@@ -39,6 +40,7 @@ export function ToolHeader({
   lineRange,
   blocked = null,
   onBlockedClick,
+  interrupted,
 }: ToolHeaderProps) {
   const openFile = useOpenFile()
   const { worktree } = useProject()
@@ -149,6 +151,7 @@ export function ToolHeader({
           {lineRange && <span className="text-gray-500 dark:text-gray-400 ml-1.5 font-normal">{lineRange}</span>}
         </span>
       )}
+      {interrupted && <span className="text-xs font-medium flex-shrink-0">已中断</span>}
       {durationText && (
         <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">{durationText}</span>
       )}

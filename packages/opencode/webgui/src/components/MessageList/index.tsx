@@ -79,7 +79,7 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
     loadOlder,
     permissions = [],
   } = useMessages()
-  const { isIdle, isReasoning, currentSession } = useSession()
+  const { isIdle, isReasoning, currentSession, sessionStatusReady } = useSession()
   const box = useRef<HTMLDivElement>(null)
   const tailRef = useRef<HTMLDivElement>(null)
   const automaticCursorRef = useRef<string | null>(null)
@@ -145,6 +145,7 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
     return sortedMessages.slice(0, revertBoundaryIndex)
   }, [revertBoundaryID, revertBoundaryIndex, sortedMessages])
   const typing = !isIdle && !isReasoning
+  const sessionInterrupted = Boolean(sessionID && sessionStatusReady && isIdle)
   const blocks = useHistoryBlocks({
     sessionID,
     messages: visibleMessages,
@@ -240,11 +241,12 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
             isLast={message.info.id === lastMessageID}
             showMeta={!!turnMetas.get(message.info.id)}
             turnDurationMs={turnMetas.get(message.info.id)?.turnDurationMs}
+            sessionInterrupted={sessionInterrupted}
           />
         </div>
       )
     },
-    [handleForkStart, handleRevert, isRevertBusy, lastMessageID, revertBoundaryID, sessionID, turnMetas],
+    [handleForkStart, handleRevert, isRevertBusy, lastMessageID, revertBoundaryID, sessionID, sessionInterrupted, turnMetas],
   )
 
   const rows = useMemo(() => {

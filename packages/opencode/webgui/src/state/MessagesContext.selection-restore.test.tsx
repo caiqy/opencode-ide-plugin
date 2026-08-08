@@ -235,7 +235,7 @@ describe("MessagesContext session loading", () => {
     })
 
     expect(api!.getMessagesBySession("s3").map((msg) => msg.info.id)).toEqual(["new-u1"])
-    expect(mocks.setSessionIdle).toHaveBeenCalledTimes(1)
+    expect(mocks.setSessionIdle).not.toHaveBeenCalled()
   })
 
   it("加载期间收到 message.updated 时应保留实时更新并合并快照缺失消息", async () => {

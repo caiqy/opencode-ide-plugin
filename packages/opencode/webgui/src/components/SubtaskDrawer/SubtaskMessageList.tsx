@@ -16,7 +16,7 @@ interface SubtaskMessageListProps {
 
 export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
   const { getMessagesBySession, getQuestionsBySession } = useMessages()
-  const { isSessionIdle, isSessionReasoning } = useSession()
+  const { isSessionIdle, isSessionReasoning, sessionStatusReady } = useSession()
 
   const pendingQuestions = sessionID ? getQuestionsBySession(sessionID) : []
 
@@ -26,6 +26,7 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
 
   const isIdle = sessionID ? isSessionIdle(sessionID) : true
   const isReasoning = sessionID ? isSessionReasoning(sessionID) : false
+  const sessionInterrupted = Boolean(sessionID && sessionStatusReady && isIdle)
 
   const { messagesEndRef, messagesContainerRef, showScrollToBottom, scrollToBottom } = useMessageScroll(
     sessionID,
@@ -80,6 +81,7 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
                 isLast={message.info.id === lastMessageID}
                 showMeta={!!turnMetas.get(message.info.id)}
                 turnDurationMs={turnMetas.get(message.info.id)?.turnDurationMs}
+                sessionInterrupted={sessionInterrupted}
               />
             ))}
 

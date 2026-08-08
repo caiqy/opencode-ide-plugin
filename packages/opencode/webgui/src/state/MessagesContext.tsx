@@ -189,7 +189,6 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
   const currentSessionIDRef = useRef(session.currentSession?.id ?? null)
   currentSessionIDRef.current = session.currentSession?.id ?? null
   const setReasoning = session.setReasoning
-  const setSessionIdle = session.setSessionIdle
   const reasoningPartsBySessionRef = useRef<Map<string, Set<string>>>(new Map())
   const notificationStatusRef = useRef<Record<string, string>>({})
   const notificationGenerationRef = useRef<Record<string, number>>({})
@@ -750,20 +749,6 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
 
             syncSessionReasoningFromMessages(sessionID, rows)
 
-            let last: Message | undefined
-            let lastCreated = -Infinity
-            for (const message of rows) {
-              const created = message.info.time.created
-              if (created <= lastCreated) continue
-              last = message
-              lastCreated = created
-            }
-
-            const completed = (last ? (last.info as any)?.time?.completed : 0) as unknown
-            const isAssistant = last ? (last.info as any)?.role === "assistant" : false
-            const busy = Boolean(last && isAssistant && (!completed || completed === 0))
-            setSessionIdle(sessionID, !busy)
-
             setPage(sessionID, {
               cursor,
               complete: !cursor,
@@ -794,20 +779,6 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
           if (loadedMessages.length > 0) {
             syncSessionReasoningFromMessages(sessionID, loadedMessages)
           }
-
-          let last: Message | undefined
-          let lastCreated = -Infinity
-          for (const message of loadedMessages) {
-            const created = message.info.time.created
-            if (created <= lastCreated) continue
-            last = message
-            lastCreated = created
-          }
-
-          const completed = (last ? (last.info as any)?.time?.completed : 0) as unknown
-          const isAssistant = last ? (last.info as any)?.role === "assistant" : false
-          const busy = Boolean(last && isAssistant && (!completed || completed === 0))
-          setSessionIdle(sessionID, !busy)
 
           setPage(sessionID, {
             cursor,
@@ -855,7 +826,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       latestLoadRef.current[sessionID] = entry
       return promise
     },
-    [mergeSessionMessages, normalizeMsg, setPage, setSessionIdle, syncSessionReasoningFromMessages],
+    [mergeSessionMessages, normalizeMsg, setPage, syncSessionReasoningFromMessages],
   )
 
   const ensureSession = useCallback(

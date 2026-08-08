@@ -29,16 +29,22 @@ vi.mock("../MessageList/MessageRow", async () => {
   )
 
   return {
-    MessageRow: ({ message }: { message: any }) => {
+    MessageRow: ({ message, sessionInterrupted }: { message: any; sessionInterrupted?: boolean }) => {
       const open = actual.usePartOpen()
       const toolParts = message.parts.filter((part: any) => part.type === "tool")
+      const reasoningParts = message.parts.filter((part: any) => part.type === "reasoning")
 
       return (
         <div data-testid={`message-row-${message.info.id}`}>
           {toolParts.length === 0 ? <div data-testid="message-row" /> : null}
+          {reasoningParts.map((part: any) => (
+            <div key={part.id} data-testid={`part-${part.id}`}>
+              {sessionInterrupted ? "思考已中断" : "思考中…"}
+            </div>
+          ))}
           {toolParts.map((part: any) => (
             <div key={part.id} data-testid={`part-${part.id}`}>
-              {open.isOpen(part.id) ? "open" : "closed"}
+              {sessionInterrupted ? "已中断" : open.isOpen(part.id) ? "open" : "closed"}
             </div>
           ))}
         </div>
@@ -86,6 +92,7 @@ describe("SubtaskMessageList", () => {
     mocks.useSession.mockReturnValue({
       isSessionIdle: () => false,
       isSessionReasoning: () => true,
+      sessionStatusReady: false,
     })
     mocks.useMessageScroll.mockReturnValue({
       messagesEndRef: { current: null },
@@ -131,6 +138,49 @@ describe("SubtaskMessageList", () => {
     expect(sorted.map((m: any) => m.info.id)).toEqual(["m1", "m2"])
     expect(isIdle).toBe(false)
     expect(isReasoning).toBe(true)
+  })
+
+  it("只在状态恢复完成且子会话 idle 时将未完成部分显示为中断", () => {
+    mocks.useMessages.mockReturnValue({
+      getMessagesBySession: () => [
+        {
+          info: { id: "m-interrupted", sessionID: "s-child", role: "assistant", time: { created: 1 } },
+          parts: [
+            { id: "r-interrupted", type: "reasoning", text: "partial" },
+            { id: "t-interrupted", type: "tool", tool: "bash", state: { status: "running" } },
+          ],
+        },
+      ],
+      getQuestionsBySession: () => [],
+    })
+    mocks.useSession.mockReturnValue({
+      isSessionIdle: () => true,
+      isSessionReasoning: () => false,
+      sessionStatusReady: true,
+    })
+
+    const view = render(<SubtaskMessageList sessionID="s-child" />)
+
+    expect(screen.getByTestId("part-r-interrupted")).toHaveTextContent("思考已中断")
+    expect(screen.getByTestId("part-t-interrupted")).toHaveTextContent("已中断")
+
+    mocks.useSession.mockReturnValue({
+      isSessionIdle: () => false,
+      isSessionReasoning: () => true,
+      sessionStatusReady: true,
+    })
+    view.rerender(<SubtaskMessageList sessionID="s-child" />)
+    expect(screen.getByTestId("part-r-interrupted")).toHaveTextContent("思考中…")
+    expect(screen.getByTestId("part-t-interrupted")).toHaveTextContent("open")
+
+    mocks.useSession.mockReturnValue({
+      isSessionIdle: () => true,
+      isSessionReasoning: () => false,
+      sessionStatusReady: false,
+    })
+    view.rerender(<SubtaskMessageList sessionID="s-child" />)
+    expect(screen.getByTestId("part-r-interrupted")).toHaveTextContent("思考中…")
+    expect(screen.getByTestId("part-t-interrupted")).toHaveTextContent("open")
   })
 
   it("showScrollToBottom=false 时不渲染 sticky layer 与按钮", () => {

@@ -60,12 +60,14 @@ interface ToolPartProps {
     hash: string
     files: string[]
   }
+  interrupted?: boolean
 }
 
-export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPartProps) {
+export function ToolPart({ part, sessionID, messageID, associatedPatch, interrupted }: ToolPartProps) {
   const [showDiffModal, setShowDiffModal] = useState(false)
   const [isResponding, setIsResponding] = useState<"once" | "always" | "reject" | null>(null)
   const autoExpandedRef = useRef<string | null>(null)
+  const interruptedClosedRef = useRef<string | null>(null)
 
   const open = usePartOpen()
   const isExpanded = open.isOpen(part.id)
@@ -82,9 +84,11 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   } = useMessages()
   const partialInput = usePartialToolInput(part.tool, part.state.status, part.state.raw)
   const displayInput = (partialInput ?? part.state.input ?? {}) as Record<string, unknown>
+  const wasInterrupted = Boolean(interrupted && (part.state.status === "pending" || part.state.status === "running"))
   const permission = useMemo(() => {
     return sessionID ? getPermissionForCall(sessionID, part.callID) : undefined
   }, [getPermissionForCall, sessionID, part.callID])
+  const displayPermission = wasInterrupted ? undefined : permission
 
   const toolName = getToolDisplayName(part.tool, part.state.input, part.state.title, part.state.output)
   const filePath = typeof displayInput.filePath === "string" ? displayInput.filePath : undefined
@@ -209,7 +213,6 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     if (questionDismissed) return "ignored" as const
     return null
   }, [part.tool, part.state.status, questionDismissed, questionInput.length])
-
   const answeredQuestionCount = useMemo(() => {
     return questionAnswers.filter((answer) => Array.isArray(answer) && answer.length > 0).length
   }, [questionAnswers])
@@ -237,9 +240,9 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const isContentOnlyTool = part.tool === "edit" || part.tool === "write" || part.tool === "apply_patch"
 
   const onRespond = async (reply: "once" | "always" | "reject") => {
-    if (!permission) return
+    if (!displayPermission) return
     setIsResponding(reply)
-    await respondPermission(permission.id, reply)
+    await respondPermission(displayPermission.id, reply)
     setIsResponding(null)
   }
 
@@ -299,7 +302,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   const isQuestionStatic = Boolean(questionMode)
   const isExpandable = !isHeaderOnlyTool && !isQuestionStatic
   const shouldShowExpandedContent = isQuestionStatic || (isExpandable && isExpanded)
-  const showPermission = Boolean(permission)
+  const showPermission = Boolean(displayPermission)
   const expandedBorder = showPermission ? "" : "border-t border-gray-200 dark:border-gray-800"
 
   const subtaskSessionId = useMemo(() => {
@@ -315,6 +318,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     if (getQuestionsBySession(subtaskSessionId).length > 0) return "question" as const
     return null
   })()
+  const displayBlocked = wasInterrupted ? null : blocked
 
   const subtaskTitle = useMemo(() => {
     if (part.tool !== "task") return null
@@ -335,7 +339,16 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   }, [subtaskSessionId, ensureSession])
 
   useEffect(() => {
-    // Auto-expand once per pending session; after that, respect manual collapse.
+    if (wasInterrupted) {
+      autoExpandedRef.current = null
+      if (interruptedClosedRef.current === part.id) return
+      interruptedClosedRef.current = part.id
+      open.setOpen(part.id, false)
+      return
+    }
+    interruptedClosedRef.current = null
+
+    // Only active pending tools auto-expand; interruption closes once and preserves later manual expansion.
     if (part.state.status !== "pending") {
       autoExpandedRef.current = null
       return
@@ -344,9 +357,10 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     if (!isStreamableTool(part.tool)) return
     autoExpandedRef.current = part.id
     if (!open.isOpen(part.id)) open.setOpen(part.id, true)
-  }, [part.state.status, part.tool, part.id, open])
+  }, [part.state.status, part.tool, part.id, open, wasInterrupted])
 
   const progress = (() => {
+    if (wasInterrupted) return null
     if (part.tool !== "task") return null
     if (!subtaskSessionId) return null
 
@@ -354,8 +368,8 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
     const agentTag = subagentType ? ` (${subagentType})` : ""
     const base = `${label}${agentTag}${subtaskTitle ? `：${subtaskTitle}` : ""}`
 
-    if (blocked === "permission") return `${base} [ ⚠ 等待授权 — 点击查看 ]`
-    if (blocked === "question") return `${base} [ ❓ 等待回答 — 点击查看 ]`
+    if (displayBlocked === "permission") return `${base} [ ⚠ 等待授权 — 点击查看 ]`
+    if (displayBlocked === "question") return `${base} [ ❓ 等待回答 — 点击查看 ]`
 
     const toolParts = getMessagesBySession(subtaskSessionId)
       .flatMap((message) => message.parts)
@@ -373,7 +387,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   })()
 
   const heading = questionHeading ?? progress ?? toolName
-  const displayStatus = questionMode === "ignored" ? "completed" : part.state.status
+  const displayStatus = wasInterrupted ? "error" : questionMode === "ignored" ? "completed" : part.state.status
 
   const drawerParent = useMemo(
     () => (sessionID ? { sessionId: sessionID, messageId: messageID, partId: part.id } : null),
@@ -381,7 +395,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
   )
 
   const handleBlockedClick = useMemo(() => {
-    if (!blocked || !subtaskSessionId) return undefined
+    if (!displayBlocked || !subtaskSessionId) return undefined
     return () =>
       openSubtaskDrawer({
         sessionId: subtaskSessionId,
@@ -389,7 +403,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
         subagentType,
         parent: drawerParent,
       })
-  }, [blocked, subtaskSessionId, subtaskTitle, subagentType, drawerParent, openSubtaskDrawer])
+  }, [displayBlocked, subtaskSessionId, subtaskTitle, subagentType, drawerParent, openSubtaskDrawer])
 
   const rightActions = useMemo(() => {
     if (!subtaskSessionId) return undefined
@@ -422,7 +436,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
 
   return (
     <div
-      className={`rounded-lg border ${getBorderColor(displayStatus, Boolean(permission), blocked)} overflow-hidden bg-gray-50 dark:bg-gray-900`}
+      className={`rounded-lg border ${getBorderColor(displayStatus, Boolean(displayPermission), displayBlocked)} overflow-hidden bg-gray-50 dark:bg-gray-900`}
     >
       {/* Header */}
       <ToolHeader
@@ -437,14 +451,15 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch }: ToolPa
         time={part.state.time}
         rightActions={rightActions}
         lineRange={streamingLineCount ? `(已接收 ${streamingLineCount} 行)` : lineRange}
-        blocked={blocked}
+        blocked={displayBlocked}
         onBlockedClick={handleBlockedClick}
+        interrupted={wasInterrupted}
       />
 
       {/* Permission banner */}
-      {permission && (
+      {displayPermission && (
         <div className="border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
-          <PermissionBanner permission={permission} isResponding={isResponding} onRespond={onRespond} />
+          <PermissionBanner permission={displayPermission} isResponding={isResponding} onRespond={onRespond} />
         </div>
       )}
 

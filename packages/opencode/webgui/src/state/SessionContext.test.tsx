@@ -811,6 +811,136 @@ describe("SessionContext session 状态查询", () => {
       expect(ctx().isSessionIdle("s-child")).toBe(false)
       expect(ctx().isSessionReasoning("s-child")).toBe(true)
     })
+
+    await act(async () => {
+      ctx().setSessionIdle("s-child", true)
+    })
+    expect(ctx().isSessionReasoning("s-child")).toBe(false)
+  })
+
+  it("active-only reconnect snapshot clears missing session activity", async () => {
+    ;(sdk.session.status as any).mockResolvedValueOnce({ data: {}, error: null })
+    ;(sdk.session.get as any).mockResolvedValueOnce({ data: null, error: null })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      result.current.setSessionIdle("s1", false)
+      result.current.setReasoning("s1", true)
+    })
+    expect(result.current.isSessionReasoning("s1")).toBe(true)
+
+    await act(async () => {
+      events.emit("server.connected", { type: "server.connected", properties: {} })
+    })
+
+    await waitFor(() => expect(result.current.sessionStatusReady).toBe(true))
+    expect(result.current.isSessionIdle("s1")).toBe(true)
+    expect(result.current.isSessionReasoning("s1")).toBe(false)
+  })
+
+  it("applies the status snapshot before the current session request completes", async () => {
+    const current = deferred<{ data: ReturnType<typeof session>; error: null }>()
+    ;(sdk.session.status as any).mockResolvedValueOnce({ data: { s1: { type: "busy" } }, error: null })
+    ;(sdk.session.get as any).mockImplementationOnce(() => current.promise)
+    ;(sdk.session.diff as any).mockResolvedValue({ data: [], error: null })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => result.current.setCurrentSession(session("s1", 1)))
+
+    await act(async () => {
+      events.emit("server.connected", { type: "server.connected", properties: {} })
+    })
+
+    await waitFor(() => {
+      expect(sdk.session.get).toHaveBeenCalledWith({ path: { id: "s1" } })
+      expect(result.current.sessionStatusReady).toBe(true)
+      expect(result.current.isSessionIdle("s1")).toBe(false)
+    })
+
+    await act(async () => {
+      current.resolve({ data: session("s1", 1), error: null })
+    })
+  })
+
+  it("does not apply an older reconnect session snapshot after a newer reconnect returns no data", async () => {
+    const firstCurrent = deferred<{ data: ReturnType<typeof session> & { revert: { messageID: string } }; error: null }>()
+    ;(sdk.session.status as any).mockResolvedValue({ data: {}, error: null })
+    ;(sdk.session.get as any)
+      .mockImplementationOnce(() => firstCurrent.promise)
+      .mockResolvedValueOnce({ data: null, error: null })
+    ;(sdk.session.diff as any).mockResolvedValue({ data: [], error: null })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => result.current.setCurrentSession({ ...session("s1", 1), title: "current" }))
+
+    await act(async () => {
+      events.emit("server.connected", { type: "server.connected", properties: {} })
+    })
+    await waitFor(() => expect(sdk.session.get).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      events.emit("server.connected", { type: "server.connected", properties: {} })
+    })
+    await waitFor(() => expect(sdk.session.get).toHaveBeenCalledTimes(2))
+
+    await act(async () => {
+      firstCurrent.resolve({
+        data: { ...session("s1", 1), title: "stale", revert: { messageID: "m-stale" } },
+        error: null,
+      })
+    })
+
+    expect(result.current.currentSession).toMatchObject({ id: "s1", title: "current" })
+    expect(result.current.currentSession?.revert).toBeUndefined()
+  })
+
+  it("resets status readiness for every reconnect after a successful snapshot", async () => {
+    const nextStatus = deferred<{ data: Record<string, never>; error: null }>()
+    ;(sdk.session.status as any)
+      .mockResolvedValueOnce({ data: {}, error: null })
+      .mockImplementationOnce(() => nextStatus.promise)
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      events.emit("server.connected", { type: "server.connected", properties: {} })
+    })
+    await waitFor(() => expect(result.current.sessionStatusReady).toBe(true))
+
+    await act(async () => {
+      events.emit("server.connected", { type: "server.connected", properties: {} })
+    })
+    expect(result.current.sessionStatusReady).toBe(false)
+
+    await act(async () => {
+      nextStatus.resolve({ data: {}, error: null })
+    })
+  })
+
+  it("keeps status readiness false when recovery rejects or has no data", async () => {
+    ;(sdk.session.status as any)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ data: null, error: null })
+
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      events.emit("server.connected", { type: "server.connected", properties: {} })
+    })
+    await waitFor(() => expect(sdk.session.status).toHaveBeenCalledTimes(1))
+    expect(result.current.sessionStatusReady).toBe(false)
+
+    await act(async () => {
+      events.emit("server.connected", { type: "server.connected", properties: {} })
+    })
+    await waitFor(() => expect(sdk.session.status).toHaveBeenCalledTimes(2))
+    expect(result.current.sessionStatusReady).toBe(false)
   })
 
   it("server.connected 时恢复 current session snapshot 和 idle 状态", async () => {

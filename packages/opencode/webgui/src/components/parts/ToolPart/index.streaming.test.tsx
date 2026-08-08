@@ -250,6 +250,54 @@ describe("ToolPart streaming preview", () => {
     expect(mocks.setOpen).toHaveBeenCalledWith("prt_auto1", true)
   })
 
+  for (const status of ["pending", "running"]) {
+    it(`initial interrupted ${status} tool closes once and preserves later manual expansion`, () => {
+      const part = {
+        id: `prt_interrupted_${status}`,
+        type: "tool",
+        callID: `call_interrupted_${status}`,
+        tool: "write",
+        state: {
+          status,
+          input: {},
+          raw: '{"filePath":"/tmp/a.ts","content":"x',
+        },
+      } as any
+
+      const view = render(<ToolPart part={part} sessionID="s1" messageID="m1" interrupted />)
+      expect(mocks.setOpen).toHaveBeenCalledTimes(1)
+      expect(mocks.setOpen).toHaveBeenCalledWith(part.id, false)
+
+      mocks.isOpen.mockReturnValue(true)
+      view.rerender(<ToolPart part={part} sessionID="s1" messageID="m1" interrupted />)
+      expect(mocks.setOpen).toHaveBeenCalledTimes(1)
+    })
+  }
+
+  it("active pending tool closes when recovery confirms interruption", () => {
+    mocks.isOpen.mockReturnValue(false)
+    const part = {
+      id: "prt_interrupted_transition",
+      type: "tool",
+      callID: "call_interrupted_transition",
+      tool: "write",
+      state: {
+        status: "pending",
+        input: {},
+        raw: '{"filePath":"/tmp/a.ts","content":"x',
+      },
+    } as any
+
+    const view = render(<ToolPart part={part} sessionID="s1" messageID="m1" />)
+    expect(mocks.setOpen).toHaveBeenCalledWith(part.id, true)
+
+    mocks.setOpen.mockClear()
+    mocks.isOpen.mockReturnValue(true)
+    view.rerender(<ToolPart part={part} sessionID="s1" messageID="m1" interrupted />)
+    expect(mocks.setOpen).toHaveBeenCalledTimes(1)
+    expect(mocks.setOpen).toHaveBeenCalledWith(part.id, false)
+  })
+
   it("用户手动收起 pending 卡片后，effect 不应再次自动展开", () => {
     // First render: card is closed -> effect should auto-expand once
     mocks.isOpen.mockReturnValue(false)

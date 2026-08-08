@@ -116,6 +116,13 @@ describe("CompactHeader/Tab", () => {
     expect(container.querySelector(".bg-yellow-500")).toBeTruthy()
   })
 
+  it("does not show a stale reasoning dot while idle", () => {
+    const { container } = render(<Tab {...props({ isBusy: false, isReasoning: true })} />)
+
+    expect(container.querySelector(".bg-purple-500")).toBeNull()
+    expect(container.querySelector(".animate-pulse")).toBeNull()
+  })
+
   it("enters edit mode when isRenaming becomes true", () => {
     const p = props({ title: "old title", isRenaming: false })
     const { rerender } = render(<Tab {...p} />)

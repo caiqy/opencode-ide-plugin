@@ -131,7 +131,7 @@ export function Tab({
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
     >
-      {(isBusy || isReasoning) && (
+      {isBusy && (
         <span
           className={`w-1.5 h-1.5 rounded-full flex-shrink-0 animate-pulse ${isReasoning ? "bg-purple-500" : "bg-yellow-500"}`}
         />

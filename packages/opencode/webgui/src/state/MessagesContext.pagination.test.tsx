@@ -150,6 +150,37 @@ describe("MessagesContext pagination", () => {
     })
   })
 
+  it("loadLatest does not infer live status from an incomplete assistant message", async () => {
+    ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      page(
+        [
+          {
+            info: {
+              id: "m-stale",
+              sessionID: "s-stale",
+              role: "assistant",
+              time: { created: 1, completed: 0 },
+            },
+            parts: [],
+          } as any,
+        ],
+        null,
+      ),
+    )
+
+    render(
+      <MessagesProvider>
+        <Capture />
+      </MessagesProvider>,
+    )
+
+    await act(async () => {
+      await api!.loadLatest("s-stale")
+    })
+
+    expect(mocks.setSessionIdle).not.toHaveBeenCalled()
+  })
+
   it("ensureSession 遇到已中止的 pending latest 时会重新发起加载", async () => {
     ;(sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
       if ((sdk.session.messages as unknown as ReturnType<typeof vi.fn>).mock.calls.length === 1) {
@@ -516,7 +547,7 @@ describe("MessagesContext pagination", () => {
     expect(rows[0]?.info.id).toBe("m-live")
     expect(rows[0]?.parts[0]).toMatchObject({ id: "p-live", type: "reasoning", text: "live" })
     expect(mocks.setReasoning).toHaveBeenCalledWith("s3z", true)
-    expect(mocks.setSessionIdle).toHaveBeenCalledWith("s3z", false)
+    expect(mocks.setSessionIdle).not.toHaveBeenCalled()
   })
 
   it("loadLatest abort 后不会误标为已加载或错误状态", async () => {

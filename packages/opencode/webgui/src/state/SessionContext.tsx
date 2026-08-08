@@ -49,6 +49,7 @@ interface SessionContextState {
   isLoading: boolean
   isLoadingMore: boolean
   error: Error | null
+  sessionStatusReady: boolean
 
   // Idle state for current session
   isIdle: boolean
@@ -224,6 +225,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [reasoningMap, setReasoningMap] = useState<Record<string, boolean>>({})
   const [foregroundCounts, setForegroundCounts] = useState<Record<string, number>>({})
   const [statusMap, setStatusMap] = useState<Record<string, SessionStatusInfo>>({})
+  const [sessionStatusReady, setSessionStatusReady] = useState(false)
   const [sessionDiffMap, setSessionDiffMap] = useState<Record<string, SnapshotFileDiff[]>>({})
   const [sessionDiffStatusMap, setSessionDiffStatusMap] = useState<Record<string, SessionDiffStatusInfo>>({})
   const draftCleanupQueueRef = useRef<Promise<void>>(Promise.resolve())
@@ -275,7 +277,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setSelectionRestoreNotice(null)
   }, [])
 
-  const isReasoning = currentSession?.id ? Boolean(reasoningMap[currentSession.id]) : false
+  const isReasoning = currentSession?.id ? Boolean(busyMap[currentSession.id] && reasoningMap[currentSession.id]) : false
   const isIdle = currentSession?.id ? !(busyMap[currentSession.id] ?? false) : true
 
   const isSessionIdle = useCallback(
@@ -289,9 +291,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const isSessionReasoning = useCallback(
     (sessionId: string) => {
       if (!sessionId) return false
-      return Boolean(reasoningMap[sessionId])
+      return Boolean(busyMap[sessionId] && reasoningMap[sessionId])
     },
-    [reasoningMap],
+    [busyMap, reasoningMap],
   )
   const currentStatus: SessionStatusInfo =
     currentSession?.id && statusMap[currentSession.id]
@@ -1286,27 +1288,39 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
     const handleServerConnected = async () => {
       const reconnectEpoch = ++reconnectEpochRef.current
+      setSessionStatusReady(false)
       const sessionID = currentSessionIDRef.current
       const sessionEpoch = currentSessionEpochRef.current
       const statusVersions = { ...statusVersionRef.current }
       void loadSessions()
-      const [statusResult, sessionResult] = await Promise.allSettled([
-        sdk.session.status(),
-        sessionID ? sdk.session.get({ path: { id: sessionID } }) : Promise.resolve({ data: null, error: null }),
-      ])
+      const statusRequest = sdk.session.status()
+      const sessionRequest = sessionID ? sdk.session.get({ path: { id: sessionID } }) : Promise.resolve({ data: null, error: null })
 
-      if (reconnectEpoch !== reconnectEpochRef.current) return
+      void statusRequest.then(
+        (statusResult) => {
+          if (reconnectEpoch !== reconnectEpochRef.current) return
+          if (!statusResult.data) return
 
-      if (statusResult.status === "fulfilled" && statusResult.value.data) {
-        const entries = Object.entries(statusResult.value.data)
+          const entries = Object.entries(statusResult.data)
         const snapshot = new Map(entries)
+        // Preserve status writes made after this request started while applying untouched snapshot entries.
         const unchanged = (id: string) => statusVersions[id] === statusVersionRef.current[id]
         setBusyMap((prev) => {
           const next = { ...prev }
           for (const id of new Set([...Object.keys(prev), ...snapshot.keys()])) {
             if (!unchanged(id)) continue
-            if (snapshot.get(id)?.type !== "idle") next[id] = true
+            const value = snapshot.get(id)
+            if (value && value.type !== "idle") next[id] = true
             else delete next[id]
+          }
+          return next
+        })
+        setReasoningMap((prev) => {
+          const next = { ...prev }
+          for (const id of Object.keys(prev)) {
+            if (!unchanged(id)) continue
+            const value = snapshot.get(id)
+            if (!value || value.type === "idle") delete next[id]
           }
           return next
         })
@@ -1328,20 +1342,25 @@ export function SessionProvider({ children }: SessionProviderProps) {
           }
           return next
         })
-        for (const [id, value] of entries) {
-          if (value.type === "idle" && unchanged(id)) setReasoning(id, false)
-        }
-      }
+        setSessionStatusReady(true)
+        },
+        () => {},
+      )
 
-      if (
-        sessionResult.status === "fulfilled" &&
-        sessionResult.value.data &&
-        sessionID === currentSessionIDRef.current &&
-        sessionEpoch === currentSessionEpochRef.current &&
-        sessionID === sessionResult.value.data.id
-      ) {
-        setCurrentSession(sessionResult.value.data)
-      }
+      void sessionRequest.then(
+        (sessionResult) => {
+          if (reconnectEpoch !== reconnectEpochRef.current) return
+          if (
+            sessionResult.data &&
+            sessionID === currentSessionIDRef.current &&
+            sessionEpoch === currentSessionEpochRef.current &&
+            sessionID === sessionResult.data.id
+          ) {
+            setCurrentSession(sessionResult.data)
+          }
+        },
+        () => {},
+      )
     }
 
     const handleSessionCreated = (event: any) => {
@@ -1534,6 +1553,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     isLoading,
     isLoadingMore,
     error,
+    sessionStatusReady,
     isIdle,
     setSessionIdle,
     isSessionIdle,

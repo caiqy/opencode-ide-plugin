@@ -67,10 +67,142 @@ describe("ToolPart", () => {
     mocks.isSessionLoaded.mockReturnValue(true)
     mocks.isSessionLoadError.mockReturnValue(false)
     mocks.respondPermission.mockResolvedValue(true)
+    mocks.toggle.mockReset()
     mocks.openSubtaskDrawer.mockReset()
     mocks.permissions = []
     mocks.getQuestionsBySession.mockReturnValue([])
     mocks.directory = null
+  })
+
+  it("renders a stale running tool as interrupted without animation", () => {
+    const { container } = render(
+      <ToolPart
+        sessionID="s1"
+        messageID="m1"
+        interrupted
+        part={{
+          id: "t-interrupted",
+          type: "tool",
+          callID: "c-interrupted",
+          tool: "bash",
+          state: { status: "running", input: { command: "sleep 10" } },
+        }}
+      />,
+    )
+
+    expect(screen.getByText("已中断")).toBeInTheDocument()
+    expect(container.querySelector(".animate-pulse, .animate-spin")).toBeNull()
+  })
+
+  it("interrupted task does not show live subtask progress", () => {
+    mocks.getMessagesBySession.mockReturnValue([
+      {
+        info: { id: "m-child", sessionID: "s-child", role: "assistant", time: { created: 1 } },
+        parts: [{ id: "t-child", type: "tool", tool: "bash", state: { status: "running" } }],
+      },
+    ])
+
+    render(
+      <ToolPart
+        sessionID="s1"
+        messageID="m1"
+        interrupted
+        part={{
+          id: "t-interrupted-task",
+          type: "tool",
+          callID: "c-interrupted-task",
+          tool: "task",
+          state: {
+            status: "running",
+            title: "Interrupted task",
+            input: { description: "Interrupted task", subagent_type: "general" },
+            metadata: { sessionId: "s-child" },
+          },
+        }}
+      />,
+    )
+
+    expect(screen.getByText("已中断")).toBeInTheDocument()
+    expect(screen.queryByText(/思考中|执行命令/)).not.toBeInTheDocument()
+  })
+
+  it("hides a stale permission request for an interrupted tool", () => {
+    mocks.getPermissionForCall.mockReturnValue({ id: "perm-interrupted", permission: "glob", metadata: {} })
+
+    const { container } = render(
+      <ToolPart
+        sessionID="s1"
+        messageID="m1"
+        interrupted
+        part={{
+          id: "t-interrupted-permission",
+          type: "tool",
+          callID: "c-interrupted-permission",
+          tool: "glob",
+          state: { status: "running", input: { pattern: "**/*.ts" } },
+        }}
+      />,
+    )
+
+    expect(screen.getByText("已中断")).toBeInTheDocument()
+    expect(screen.queryByText("执行该工具需要授权")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "本次允许" })).not.toBeInTheDocument()
+    expect(container.querySelector(".animate-pulse, .animate-spin")).toBeNull()
+  })
+
+  it("interrupted blocked tasks use the static interruption state", () => {
+    mocks.permissions = [{ id: "perm-interrupted", sessionID: "s-permission" }]
+    mocks.getQuestionsBySession.mockImplementation((sessionID) =>
+      sessionID === "s-question" ? [{ id: "q-interrupted", sessionID }] : [],
+    )
+
+    const { container } = render(
+      <>
+        <ToolPart
+          sessionID="s1"
+          messageID="m1"
+          interrupted
+          part={{
+            id: "t-interrupted-permission",
+            type: "tool",
+            callID: "c-interrupted-permission",
+            tool: "task",
+            state: {
+              status: "running",
+              input: { description: "Permission task", subagent_type: "general" },
+              metadata: { sessionId: "s-permission" },
+            },
+          }}
+        />
+        <ToolPart
+          sessionID="s1"
+          messageID="m1"
+          interrupted
+          part={{
+            id: "t-interrupted-question",
+            type: "tool",
+            callID: "c-interrupted-question",
+            tool: "task",
+            state: {
+              status: "running",
+              input: { description: "Question task", subagent_type: "general" },
+              metadata: { sessionId: "s-question" },
+            },
+          }}
+        />
+      </>,
+    )
+
+    expect(screen.getAllByText("已中断")).toHaveLength(2)
+    expect(container.querySelector(".animate-pulse, .animate-spin")).toBeNull()
+    expect(screen.queryByText(/等待授权|等待回答/)).not.toBeInTheDocument()
+
+    for (const label of screen.getAllByText("已中断")) {
+      const header = label.closest('[role="button"]')
+      expect(header).toBeTruthy()
+      fireEvent.click(header!)
+    }
+    expect(mocks.openSubtaskDrawer).not.toHaveBeenCalled()
   })
 
   it("apply_patch 使用 patchText 字段时，展开应显示补丁内容", () => {
