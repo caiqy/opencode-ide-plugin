@@ -64,6 +64,18 @@ function mergePendingSnapshot<T extends { id: string }>(
   return result
 }
 
+function mergePendingNotificationRequests(
+  current: Map<string, string>,
+  snapshot: PermissionRequest[],
+  touched: Record<string, number>,
+) {
+  const incoming = new Map(snapshot.map((item) => [item.id, item.sessionID]))
+  return new Map([
+    ...[...current].filter(([id]) => incoming.has(id) || (touched[`permission:${id}`] ?? 0) > 0),
+    ...[...incoming].filter(([id]) => (touched[`permission:${id}`] ?? 0) === 0 || current.has(id)),
+  ])
+}
+
 // Re-export types for convenience
 export type { Message, Part, WebguiPart, SDKMessage, QuestionRequest, QuestionRequestPart } from "../types/messages"
 
@@ -972,9 +984,12 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     if (event.type !== "permission.asked") return
     const perm = event.properties as PermissionRequest
     touchPending("permission", perm.id)
-    const first = !notifiedPermissionsRef.current.has(perm.id)
+    const firstForSession =
+      !notifiedPermissionsRef.current.has(perm.id) &&
+      ![...notifiedPermissionsRef.current.values()].includes(perm.sessionID)
+    // ponytail: pending permission counts are tiny; add a session index only if this becomes hot.
     notifiedPermissionsRef.current.set(perm.id, perm.sessionID)
-    if (first) {
+    if (firstForSession) {
       sendIdeNotification(
         "permission",
         perm.sessionID,
@@ -1074,6 +1089,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
       const ok = Boolean(result && "data" in result && result.data === true)
       if (ok) {
         touchPending("permission", requestID)
+        notifiedPermissionsRef.current.delete(requestID)
         setPermissions((prev) => prev.filter((p) => p.id !== requestID))
       }
       return ok
@@ -1234,6 +1250,11 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
         const permissions = permissionResult.data
         if (!permissionResult.error && permissions) {
           const visiblePermissions = permissions.filter((item) => !window.deletedSessions.has(item.sessionID))
+          notifiedPermissionsRef.current = mergePendingNotificationRequests(
+            notifiedPermissionsRef.current,
+            visiblePermissions,
+            window.touched,
+          )
           setPermissions((prev) => mergePendingSnapshot(prev, visiblePermissions, window.touched, "permission", 0))
         }
         const questions = questionResult.data

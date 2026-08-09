@@ -142,7 +142,7 @@ describe("MessagesContext questions", () => {
     api = null
   })
 
-  it("同一权限请求只通知一次，回复后释放去重 ID", async () => {
+  it("同一会话的待处理权限只通知一次，清空后恢复通知", async () => {
     const emitter = new EventEmitter()
     mocks.bridgeInstalled.mockReturnValue(true)
     mount(emitter)
@@ -150,17 +150,40 @@ describe("MessagesContext questions", () => {
     await act(async () => {
       emitter.emit(permissionAsked("p1"))
       emitter.emit(permissionAsked("p1"))
+      emitter.emit(permissionAsked("p2"))
+      emitter.emit(permissionAsked("other", "s2"))
     })
-    expect(mocks.bridgeSend).toHaveBeenCalledTimes(1)
+    expect(mocks.bridgeSend).toHaveBeenCalledTimes(2)
+    expect(mocks.bridgeSend).toHaveBeenNthCalledWith(1, {
+      type: "showSystemNotification",
+      payload: { sessionID: "s1", title: "Agent needs permission", body: "edit" },
+    })
+    expect(mocks.bridgeSend).toHaveBeenNthCalledWith(2, {
+      type: "showSystemNotification",
+      payload: { sessionID: "s2", title: "Agent needs permission", body: "edit" },
+    })
 
     await act(async () => {
       emitter.emit({
         type: "permission.replied",
         properties: { sessionID: "s1", requestID: "p1", reply: "once" },
       } as ServerEvent)
-      emitter.emit(permissionAsked("p1"))
+      emitter.emit(permissionAsked("p3"))
     })
     expect(mocks.bridgeSend).toHaveBeenCalledTimes(2)
+
+    await act(async () => {
+      emitter.emit({
+        type: "permission.replied",
+        properties: { sessionID: "s1", requestID: "p2", reply: "once" },
+      } as ServerEvent)
+      emitter.emit({
+        type: "permission.replied",
+        properties: { sessionID: "s1", requestID: "p3", reply: "once" },
+      } as ServerEvent)
+      emitter.emit(permissionAsked("p4"))
+    })
+    expect(mocks.bridgeSend).toHaveBeenCalledTimes(3)
   })
 
   it("会话删除后释放权限通知去重 ID", async () => {
@@ -613,6 +636,28 @@ describe("MessagesContext questions", () => {
     await waitFor(() => expect(api?.getQuestionsBySession("s1")).toEqual([]))
   })
 
+  it("permission hydration 同步通知门且不补发通知", async () => {
+    vi.mocked(sdk.permissions.list)
+      .mockResolvedValueOnce({ data: [permission("p1")], error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+    vi.mocked(sdk.question.list).mockResolvedValue({ data: [], error: null })
+    const emitter = new EventEmitter()
+    mocks.bridgeInstalled.mockReturnValue(true)
+    mount(emitter)
+
+    await act(async () => emitter.emit({ type: "server.connected", properties: {} }))
+    await waitFor(() => expect(api?.permissions.map((item) => item.id)).toEqual(["p1"]))
+    expect(mocks.bridgeSend).not.toHaveBeenCalled()
+
+    await act(async () => emitter.emit(permissionAsked("p2")))
+    expect(mocks.bridgeSend).not.toHaveBeenCalled()
+
+    await act(async () => emitter.emit({ type: "server.connected", properties: {} }))
+    await waitFor(() => expect(api?.permissions).toEqual([]))
+    await act(async () => emitter.emit(permissionAsked("p3")))
+    expect(mocks.bridgeSend).toHaveBeenCalledTimes(1)
+  })
+
   it("成功 respondPermission 后旧 pending permission 快照不会复活请求", async () => {
     const first = deferred<{ data: PermissionRequest[]; error: null }>()
     vi.mocked(sdk.permissions.list)
@@ -634,6 +679,10 @@ describe("MessagesContext questions", () => {
 
     await waitFor(() => expect(sdk.permissions.list).toHaveBeenCalledTimes(2))
     expect(api?.permissions).toEqual([])
+
+    mocks.bridgeInstalled.mockReturnValue(true)
+    await act(async () => emitter.emit(permissionAsked("p2")))
+    expect(mocks.bridgeSend).toHaveBeenCalledTimes(1)
   })
 
   it("成功 replyQuestion 后旧 pending question 快照不会复活请求", async () => {
