@@ -26,7 +26,7 @@ base-ref: baf0674fd108ac43785cb4f4622c6f58e7c645f6
 - 不使用整文件 `ours`/`theirs` 解决语义冲突；不手工拼 `bun.lock`；不直接编辑 `packages/client/src/generated/**`、`packages/client/src/generated-effect/**` 或 legacy SDK 生成输出。
 - 公共 Protocol 或 Server `HttpApi` 变化必须同时从 `packages/client` 运行 `bun run generate`，并从 `packages/sdk/js` 运行 `bun run build`。只能提交这些命令的输出。
 - 测试、typecheck 和 build 一律从 owning package 目录运行。typecheck 一律为 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun typecheck`，禁止直接运行 `tsc`。
-- 严格零失败表示每条门禁的失败和错误均为 0。既有 intentional skip/todo 可以保留，但任务 2 或任务 24 的动态扩展基线必须记录每个 package 的数量，后续任何轮次都不得增加、启用或新增 skip/todo 来规避失败。
+- 严格零失败表示每条门禁的失败和错误均为 0。既有 intentional skip/todo 可以保留，但任务 3 或任务 24 的动态扩展基线必须记录每个 package 的数量，后续任何轮次都不得增加、启用或新增 skip/todo 来规避失败。
 - 等价替换候选必须记录双方入口、调用路径、输出、覆盖、风险和建议后暂停，等待用户明确选择；不得自行替换。
 - 不运行 App Playwright E2E、benchmark、稳定性测试或 Desktop 平台打包。VS Code 验证只运行 compile/test，不运行任何 `package` 或 VSIX 打包脚本。
 - 持续维护 `docs/superpowers/reports/2026-08-10-merge-upstream-tags.md`。报告命令行只保留完整命令、退出码、计数和首个失败签名，不复制完整终端日志。
@@ -203,6 +203,21 @@ function Get-InitialState {
   return ($matches[0].Groups['json'].Value | ConvertFrom-Json)
 }
 
+function Get-PathFingerprint([string]$Path) {
+  $fullPath = Join-Path $RepoRoot $Path
+  if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { return '<missing>' }
+  return (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Assert-InitialDirtyUnchanged {
+  $initial = Get-InitialState
+  foreach ($path in @($initial.protected)) {
+    $property = $initial.fingerprints.PSObject.Properties[$path]
+    if ($null -eq $property) { throw "initial dirty path lacks fingerprint: $path" }
+    if ((Get-PathFingerprint $path) -ne $property.Value) { throw "initial dirty path changed: $path" }
+  }
+}
+
 function Assert-RepositoryPathSet([string]$Label, [string[]]$Paths) {
   if ($Paths.Count -eq 0) { throw "$Label has no paths" }
   $invalid = @($Paths | Where-Object {
@@ -277,7 +292,7 @@ function Commit-ChangeArtifacts([string]$Message) {
     [IO.Path]::GetRelativePath($RepoRoot, $_.FullName).Replace('\', '/')
   })
   if ($nativePaths.Count -eq 0) { throw 'merge-upstream-tags Native change prefix has no artifacts' }
-  $expected = @($changePaths + $nativePaths + $DesignPath + $PlanPath | Sort-Object -Unique)
+  $expected = @($changePaths + $nativePaths + $DesignPath + $PlanPath + $ReportPath | Sort-Object -Unique)
   Assert-RepositoryPathSet 'planning artifact allowlist' $expected
   Invoke-GitChecked 'stage complete change artifacts' (@('add', '-f', '--') + $expected) | Out-Null
   $staged = @(Invoke-GitChecked 'list staged planning artifacts' @('diff', '--cached', '--name-only', '--no-renames'))
@@ -299,6 +314,7 @@ function Commit-DocumentSubset([string]$Message) {
 }
 
 function Assert-FixPaths([string[]]$FixPaths) {
+  Assert-InitialDirtyUnchanged
   $initial = Get-InitialState
   Assert-RepositoryPathSet 'focused fix' $FixPaths
   $forbidden = @($FixPaths | Where-Object {
@@ -310,7 +326,7 @@ function Assert-FixPaths([string[]]$FixPaths) {
   $status = Get-StatusSnapshot
   $trackedChanged = @(Invoke-GitChecked 'list tracked focused fix changes' @('diff', '--name-only', '--no-renames'))
   $changed = @($trackedChanged + $status.Untracked | Sort-Object -Unique)
-  $unexpected = @($changed | Where-Object { $_ -ne $ReportPath -and $FixPaths -notcontains $_ -and $initial.dirty -notcontains $_ -and $initial.staged -notcontains $_ })
+  $unexpected = @($changed | Where-Object { $_ -ne $ReportPath -and $FixPaths -notcontains $_ -and $initial.protected -notcontains $_ -and $initial.staged -notcontains $_ })
   if ($unexpected.Count -gt 0) { throw "unowned working changes during focused fix: $($unexpected -join ', ')" }
   foreach ($path in $FixPaths) {
     if ($changed -notcontains $path) { throw "diagnosed fix path has no add/delete/rename change: $path" }
@@ -334,9 +350,10 @@ function Assert-FinalCleanGate {
   Invoke-GitChecked 'final working diff check' @('diff', '--check') | Out-Null
   Assert-NoUnmergedIndex
   Assert-IndexEmpty
+  Assert-InitialDirtyUnchanged
   $initial = Get-InitialState
   $status = Get-StatusSnapshot
-  $allowedDocs = @($ReportPath, $TasksPath) + @($initial.dirty) + @($initial.staged)
+  $allowedDocs = @($ReportPath, $TasksPath) + @($initial.protected) + @($initial.staged)
   $unexpectedDirty = @($status.Dirty | Where-Object { $allowedDocs -notcontains $_ })
   $unexpectedUntracked = @($status.Untracked | Where-Object { $allowedDocs -notcontains $_ })
   if ($unexpectedDirty.Count -gt 0) { throw "unexpected final dirty paths: $($unexpectedDirty -join ', ')" }
@@ -368,6 +385,7 @@ function Start-TagMerge([string]$Tag) {
 function Assert-MergeReady([pscustomobject]$Merge) {
   if ((Get-OptionalGitRef 'MERGE_HEAD') -ne $Merge.Peeled) { throw "MERGE_HEAD does not equal $($Merge.Tag) peeled commit" }
   Assert-NoUnmergedIndex
+  Assert-InitialDirtyUnchanged
   Invoke-GitChecked "cached diff check $($Merge.Tag)" @('diff', '--cached', '--check') | Out-Null
   $initial = Get-InitialState
   $staged = @(Invoke-GitChecked "list staged $($Merge.Tag) paths" @('diff', '--cached', '--name-only'))
@@ -381,7 +399,7 @@ function Assert-MergeReady([pscustomobject]$Merge) {
   $unexpectedUnstaged = @($unstaged | Where-Object { $_ -ne $ReportPath })
   if ($unexpectedUnstaged.Count -gt 0) { throw "unstaged merge paths remain: $($unexpectedUnstaged -join ', ')" }
   $status = Get-StatusSnapshot
-  $unexpectedStatus = @($status.Dirty | Where-Object { $_ -ne $ReportPath -and $initial.dirty -notcontains $_ -and $initial.staged -notcontains $_ })
+  $unexpectedStatus = @($status.Dirty | Where-Object { $_ -ne $ReportPath -and $initial.protected -notcontains $_ -and $initial.staged -notcontains $_ })
   if ($unexpectedStatus.Count -gt 0) { throw "only the attributed report and initial dirty paths may remain dirty during merge: $($unexpectedStatus -join ', ')" }
 }
 
@@ -521,19 +539,32 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
   ```powershell
   $initial = Get-InitialStatusRecord
+  $protected = @($initial.Dirty | Where-Object {
+    $_ -ne $ReportPath -and $_ -ne $DesignPath -and $_ -ne $PlanPath -and
+    $_ -notlike 'docs/openspec/changes/merge-upstream-tags/*' -and
+    $_ -notlike 'docs/comet/changes/merge-upstream-tags/*'
+  })
+  $fingerprints = [ordered]@{}
+  foreach ($path in $protected) { $fingerprints[$path] = Get-PathFingerprint $path }
   $initial.Porcelain
-  [pscustomobject]@{ dirty = $initial.Dirty; staged = $initial.Staged; untracked = $initial.Untracked; porcelain = $initial.Porcelain } | ConvertTo-Json -Compress
+  [pscustomobject]@{ dirty = $initial.Dirty; staged = $initial.Staged; untracked = $initial.Untracked; porcelain = $initial.Porcelain; protected = $protected; fingerprints = $fingerprints } | ConvertTo-Json -Compress
   ```
 
-  将该压缩 JSON 放入报告的 `<!-- merge-upstream-tags:initial JSON -->` 单行 comment。验收：报告中的 initial marker 使用上述真实 JSON，且恰好一个；之后所有 merge 前 `Assert-IndexEmpty` 成功；初始 dirty/staged 路径成为 fix/merge denylist。
+  将该压缩 JSON 放入报告的 `<!-- merge-upstream-tags:initial JSON -->` 单行 comment。验收：报告中的 initial marker 使用上述真实 JSON，且恰好一个；`protected` 只含 allowlist 外既有路径并有逐文件 SHA-256；之后所有 merge 前 `Assert-IndexEmpty` 成功；初始 dirty/staged 路径成为 fix/merge denylist，protected 路径还必须保持指纹不变。
 
-- [x] **步骤 3：在 base 校验后初始提交规划产物**
+- [x] **步骤 3：刷新官方发布事实并记录可恢复起点**
+
+  通过 `Get-StableReleaseTags` 查询 `opencode` 远端，验证 `v1.18.6` 是 `$BaseRef` 的祖先，记录查询时间、快照 HEAD、最高已集成 tag `v1.18.6` 和版本升序待处理队列。只查询稳定 `vMAJOR.MINOR.PATCH` tag；本步骤不开始 merge。
+
+  验收：报告明确区分快照 HEAD 与规划提交后的 HEAD，包含最高已集成 tag、完整待处理队列和远端查询证据；队列至少从 `v1.18.7` 开始。
+
+- [x] **步骤 4：在 base 校验后初始提交规划产物与起点报告**
 
   ```powershell
   Commit-ChangeArtifacts 'docs(opencode): plan upstream tag merge'
   ```
 
-  验收：函数递归收集并强制 stage `docs/openspec/changes/merge-upstream-tags/**` 与 `docs/comet/changes/merge-upstream-tags/**` 的完整文件集，再加 Design/plan；staged set 必须精确等于这些前缀 allowlist。根 `.comet/`、`.gitignore`、`.agents/`、`.opencode/`、`skills-lock.json` 不能通过该 allowlist。后续 merge 时已提交的 change 产物必须保持干净，报告和 initial marker 中的既有 dirty 路径是唯一允许的 unstaged 例外。
+  验收：函数递归收集并强制 stage `docs/openspec/changes/merge-upstream-tags/**` 与 `docs/comet/changes/merge-upstream-tags/**` 的完整文件集，再加 Design、plan 和起点报告；staged set 必须精确等于这些 allowlist。根 `.comet/`、`.gitignore`、`.agents/`、`.opencode/`、`skills-lock.json` 不能通过该 allowlist。后续 merge 时已提交的 change 产物必须保持干净，报告的新验证记录和 initial marker 中的既有 dirty 路径是唯一允许的 unstaged 例外。
 
 **提交边界：** 一个 `docs(opencode): plan upstream tag merge` 提交。不得在该任务创建/切换 branch 或 worktree。
 
@@ -558,7 +589,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
   $closure.Packages | Select-Object Name,Directory | Format-Table -AutoSize
   ```
 
-  验收：报告包含直接 owner、递归反向消费者、根/shared-config 扩展原因、WebGUI/VS Code 特殊边界、每个 package 的真实 scripts 和初始 skip/todo 数量。根不是验证 package。
+  验收：报告包含直接 owner、递归反向消费者、根/shared-config 扩展原因、WebGUI/VS Code 特殊边界、每个 package 的真实 scripts，以及任务 3 将填写的 skip/todo 计数字段和采集命令。根不是验证 package。
 
 - [ ] **步骤 3：提交矩阵报告**
 
@@ -901,6 +932,6 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 ## 计划自检
 
 - 覆盖：任务 1-3 对应 OpenSpec 1.1-1.3；任务 4-23 覆盖已知 `v1.18.7` 至 `v1.18.16` 的 20 项 merge/验证；任务 24-25 覆盖动态前沿；任务 26-28 覆盖最终审计、跨包验证与独立审查。
-- 可恢复：每个任务重新加载会话函数；验证从 Git 中精确 subject/第二父重建 round base；fix path 从报告 marker 加载，不从 PowerShell 遗留变量或全量 diff 推断。
+- 可恢复：每个任务重新加载会话函数；验证从 Git 中精确 subject/第二父重建 round base；fix path 从报告 marker 加载，不从 PowerShell 遗留变量或全量 diff 推断。若 `Commit-ExactPaths` 或 `Commit-ChangeArtifacts` 的 stage assertion 在提交前失败，只运行 `git restore --staged -- <the same exact allowlist paths>`，随后重新检查 index；不使用 reset。
 - 停止条件：缺失 Comet Build 决策、错误 branch/worktree、非空 index、tag object/peeled 不一致、无效 MERGE_HEAD、未解决冲突、非零 fail/error、skip/todo 增加、等价替换、未归因路径和动态 pending tag 均阻止推进。
 - 范围：不新增仓库脚本，不直接编辑 generated，不执行 App E2E/benchmark/Desktop 打包。
