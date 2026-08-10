@@ -70,6 +70,11 @@ const debugTerminal = (...values: unknown[]) => {
   console.debug("[terminal]", ...values)
 }
 
+export function resolvePtyConnectTicket(result: { response: { status: number }; data?: { ticket?: unknown } }) {
+  if (typeof result.data?.ticket === "string" && result.data.ticket) return result.data.ticket
+  throw new Error("PTY connect ticket response was 200 but did not include a valid ticket")
+}
+
 const resolveV2Token = (tokens: ResolvedV2Theme, key: string) => {
   let current = tokens[key]
   for (let i = 0; i < 8 && current; i++) {
@@ -567,7 +572,7 @@ export const Terminal = (props: TerminalProps) => {
               throw err
             })
           if (!result) return
-          if (result.response.status === 200 && result.data?.ticket) return result.data.ticket
+          if (result.response.status === 200) return resolvePtyConnectTicket(result)
           if (result.response.status === 404 || result.response.status === 405) return
           if (result.response.status === 403)
             throw new Error("PTY connect ticket rejected by origin or CSRF checks. Check the server CORS config.")
