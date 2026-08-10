@@ -598,6 +598,7 @@ describe("prompt submit worktree selection", () => {
 
   test("does not let legacy locked guards block prompt submit", async () => {
     const submit = createPromptSubmit({
+      prompt,
       info: () => undefined,
       imageAttachments: () => [],
       commentCount: () => 0,
@@ -624,6 +625,8 @@ describe("prompt submit worktree selection", () => {
 
     expect(createdClients).toEqual(["/repo/worktree-a"])
     expect(createdSessions).toEqual(["/repo/worktree-a"])
-    expect(sentShell).toEqual(["/repo/worktree-a"])
+    expect(sentShell).toEqual([
+      expect.objectContaining({ sessionID: "session-1", id: expect.stringMatching(/^evt_/), command: "ls" }),
+    ])
   })
 })
