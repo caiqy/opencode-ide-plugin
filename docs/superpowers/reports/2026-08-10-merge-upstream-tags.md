@@ -7,7 +7,7 @@
 - Execution workspace: branch isolation on `merge-upstream-tags`; Comet Native Runtime is active in Build.
 - Toolchain: vfox Bun `1.3.14`; Node.js `v22.23.1`.
 - Initial staged index: empty. No active merge was present.
-- Attribution: the marker records all pre-existing user/tool-upgrade and planning artifacts. Paths outside the Task 1 allowlist remain untouched, unstaged, and uncommitted.
+- Attribution: the marker records all pre-existing user/tool-upgrade and planning artifacts. `git show --name-only` audits of planning commit `76791ea78324a583d8e5ee8b1b23b63cee0591cb` and round-1 fix `76e3d3c007ac74e9321112b86ac0dab12e29e8d8` exclude protected paths. SHA-256 fingerprints were established at the recorded round-1 review time, `2026-08-11T02:43:52+08:00`, and attest only to unchanged protected paths since that fingerprint baseline, not to earlier history.
 
 ## Initial Release Snapshot
 

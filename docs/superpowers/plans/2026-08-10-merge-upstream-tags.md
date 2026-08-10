@@ -296,7 +296,7 @@ function Commit-ChangeArtifacts([string]$Message) {
   Assert-RepositoryPathSet 'planning artifact allowlist' $expected
   Invoke-GitChecked 'stage complete change artifacts' (@('add', '-f', '--') + $expected) | Out-Null
   $staged = @(Invoke-GitChecked 'list staged planning artifacts' @('diff', '--cached', '--name-only', '--no-renames'))
-  $outsidePrefix = @($staged | Where-Object { $_ -notlike "$changePrefix*" -and $_ -notlike "$nativePrefix*" -and $_ -notin @($DesignPath, $PlanPath) })
+  $outsidePrefix = @($staged | Where-Object { $_ -notlike "$changePrefix*" -and $_ -notlike "$nativePrefix*" -and $_ -notin @($DesignPath, $PlanPath, $ReportPath) })
   if ($outsidePrefix.Count -gt 0) { throw "planning stage escaped the change-prefix allowlist: $($outsidePrefix -join ', ')" }
   Assert-ExactPathSet 'staged complete planning artifacts' $staged $expected
   Invoke-GitChecked 'commit complete change artifacts' (@('commit', '--only', '-m', $Message, '--') + $expected) | Out-Null
@@ -396,7 +396,7 @@ function Assert-MergeReady([pscustomobject]$Merge) {
   })
   if ($forbidden.Count -gt 0) { throw "merge index contains forbidden paths: $($forbidden -join ', ')" }
   $unstaged = @(Invoke-GitChecked "list unstaged $($Merge.Tag) paths" @('diff', '--name-only'))
-  $unexpectedUnstaged = @($unstaged | Where-Object { $_ -ne $ReportPath })
+  $unexpectedUnstaged = @($unstaged | Where-Object { $_ -ne $ReportPath -and $initial.protected -notcontains $_ })
   if ($unexpectedUnstaged.Count -gt 0) { throw "unstaged merge paths remain: $($unexpectedUnstaged -join ', ')" }
   $status = Get-StatusSnapshot
   $unexpectedStatus = @($status.Dirty | Where-Object { $_ -ne $ReportPath -and $initial.protected -notcontains $_ -and $initial.staged -notcontains $_ })
@@ -501,7 +501,7 @@ function Get-ImpactClosure([string[]]$ChangedPaths) {
 - `bun.lock` 或根/工作区 manifest 改动：先解决 manifest，再从仓库根运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun install` 生成 lockfile，随后运行同工具链的 `bun install --frozen-lockfile` 验证。不得手工编辑 lockfile。
 - `hosts/vscode-plugin/package.json` 是宿主 extension manifest。只要宿主进入闭包，就读取完整 `packageManager` pin，要求匹配 `pnpm@版本+sha512-哈希`，用 `vfox exec nodejs@22.23.1 -- corepack pnpm --version` 实际执行 Corepack，并无条件运行 `corepack pnpm install --frozen-lockfile`。随后运行 `pnpm run compile` 和 `pnpm test`；报告必须注明后者自动执行 `pretest`（compile 和 lint）。
 - 宿主 manifest 或 `pnpm-lock.yaml` 变化时，在该 owner 完成语义合并后先运行 `vfox exec nodejs@22.23.1 -- corepack pnpm install --lockfile-only`，再运行 frozen install。`package-lock.json` 若变化必须在报告注明其生成来源；本计划不运行 npm install。
-- 对每条测试命令记录 pass/fail/error/skip/todo。fail/error 必须为 0；skip/todo 与任务 2 基线或该 package 的任务 24 动态扩展基线相比不得增加。没有标准计数输出的命令也必须记录退出码为 0 及其可见计数摘要。
+- 对每条测试命令记录 pass/fail/error/skip/todo。fail/error 必须为 0；skip/todo 与任务 3 基线或该 package 的任务 24 动态扩展基线相比不得增加。没有标准计数输出的命令也必须记录退出码为 0 及其可见计数摘要。
 
 宿主进入闭包时在 `hosts/vscode-plugin` 目录执行：
 
@@ -568,7 +568,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 **提交边界：** 一个 `docs(opencode): plan upstream tag merge` 提交。不得在该任务创建/切换 branch 或 worktree。
 
-### Task 2：建立已知队列闭包、门禁与 skip/todo 基线（OpenSpec 1.2）
+### Task 2：建立已知队列闭包与门禁矩阵（OpenSpec 1.2）
 
 **文件：** `docs/superpowers/reports/2026-08-10-merge-upstream-tags.md`。
 
@@ -898,7 +898,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
   合并任务 2、每个 tag 和动态 tag 的 closure，去重后从 package 目录运行存在的默认门禁。公共 API 触发时必须包含：Client test/typecheck/check:generated、legacy SDK test/typecheck/build、OpenCode test/typecheck/build/test:httpapi、WebGUI test:run/build、VS Code Corepack/pnpm pin/frozen/compile/test。
 
-  验收：每条命令 fail/error 为 0，skip/todo 不高于任务 2 基线或对应动态扩展基线；不运行 App E2E、benchmark 或 Desktop 打包。
+  验收：每条命令 fail/error 为 0，skip/todo 不高于任务 3 基线或对应动态扩展基线；不运行 App E2E、benchmark 或 Desktop 打包。
 
 - [ ] **步骤 2：检查最终 Git 状态与 merge 痕迹**
 
@@ -932,6 +932,6 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 ## 计划自检
 
 - 覆盖：任务 1-3 对应 OpenSpec 1.1-1.3；任务 4-23 覆盖已知 `v1.18.7` 至 `v1.18.16` 的 20 项 merge/验证；任务 24-25 覆盖动态前沿；任务 26-28 覆盖最终审计、跨包验证与独立审查。
-- 可恢复：每个任务重新加载会话函数；验证从 Git 中精确 subject/第二父重建 round base；fix path 从报告 marker 加载，不从 PowerShell 遗留变量或全量 diff 推断。若 `Commit-ExactPaths` 或 `Commit-ChangeArtifacts` 的 stage assertion 在提交前失败，只运行 `git restore --staged -- <the same exact allowlist paths>`，随后重新检查 index；不使用 reset。
+- 可恢复：每个任务重新加载会话函数；验证从 Git 中精确 subject/第二父重建 round base；fix path 从报告 marker 加载，不从 PowerShell 遗留变量或全量 diff 推断。若任一 helper 在 stage 后因校验、hook 或 commit 失败，只运行 `git restore --staged -- <the same exact allowlist paths>`，随后重新检查 index；不使用 reset，也不改动 working tree。
 - 停止条件：缺失 Comet Build 决策、错误 branch/worktree、非空 index、tag object/peeled 不一致、无效 MERGE_HEAD、未解决冲突、非零 fail/error、skip/todo 增加、等价替换、未归因路径和动态 pending tag 均阻止推进。
 - 范围：不新增仓库脚本，不直接编辑 generated，不执行 App E2E/benchmark/Desktop 打包。
