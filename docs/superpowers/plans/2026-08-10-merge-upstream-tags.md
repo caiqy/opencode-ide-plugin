@@ -511,9 +511,9 @@ if ($hostOnly.RootChanged -or $hostOnly.Packages.Count -ne 0 -or $hostOnly.Exter
 - 对 `$closure.Packages` 和 `$closure.ExternalConsumers` 中每个真实 manifest，读取其 `scripts`；只从该 package 目录运行存在的 `test`、`typecheck`、`build`。分别使用 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test`、`vfox exec bun@1.3.14 nodejs@22.23.1 -- bun typecheck` 和 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run build`。
 - `packages/opencode/webgui` 的 `test` 是 watch 模式，使用 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test:run`；其 build 使用 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run build`。
 - 若 `$closure.PublicApi` 为真，必须同时执行：`packages/client` 的 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run generate`；`packages/sdk/js` 的 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run build`、test、typecheck；`packages/opencode` 的 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test:httpapi`；WebGUI 和 VS Code 宿主门禁。生成变更提交后执行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run check:generated`。
-- Task 3 baseline 只从仓库根运行一次 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun install --frozen-lockfile`。Task 2 矩阵提交之后，只要 Task 3 聚焦修复或任一后续 tag 的语义处理实际改变根/工作区 manifest 或 `bun.lock`，就先运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun install` 重新生成 lockfile，再运行/重跑默认 root frozen gate 和完整受影响矩阵。不得手工编辑 lockfile。
+- Task 3 baseline 只从仓库根运行一次 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun install --frozen-lockfile`。Task 2 矩阵提交之后，只要 Task 3 聚焦修复或任一后续 tag 的语义处理实际改变根/工作区 manifest 或 `bun.lock`，就先运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun install` 重新生成 lockfile，再运行 conditional `root-frozen-after-regenerate` 并重跑其余受影响 default gates；该 conditional ID 就是本轮 frozen 验证，不重复 default root frozen。不得手工编辑 lockfile。
 - `hosts/vscode-plugin/package.json` 是宿主 extension manifest。只要宿主进入闭包，就读取完整 `packageManager` pin，要求严格匹配完整 pnpm version 和 128 位 lowercase SHA-512 hash；用 `vfox exec nodejs@22.23.1 -- corepack pnpm --version` 实际执行 Corepack，且输出必须等于捕获的 pin version。随后无条件运行 Corepack frozen install、compile 和 test；报告必须注明后者自动执行 `pretest`（compile 和 lint）。
-- Task 2 矩阵提交之后，只要 Task 3 聚焦修复或任一后续 tag 的语义处理实际改变 `hosts/vscode-plugin/package.json` 或 `pnpm-lock.yaml`，就先运行 `vfox exec nodejs@22.23.1 -- corepack pnpm install --lockfile-only`，再重跑 host frozen/default gates。`package-lock.json` 若变化必须在报告注明其生成来源；本计划不运行 npm install。
+- Task 2 矩阵提交之后，只要 Task 3 聚焦修复或任一后续 tag 的语义处理实际改变 `hosts/vscode-plugin/package.json` 或 `pnpm-lock.yaml`，就先运行 `vfox exec nodejs@22.23.1 -- corepack pnpm install --lockfile-only`，再运行 conditional `vscode-frozen-after-lockfile` 并重跑其余 host default gates；该 conditional ID 就是本轮 frozen 验证，不重复 default host frozen。`package-lock.json` 若变化必须在报告注明其生成来源；本计划不运行 npm install。
 - 对每条测试命令记录 pass/fail/error/skip/todo。fail/error 必须为 0；skip/todo 与任务 3 基线或该 package 的任务 24 动态扩展基线相比不得增加。没有标准计数输出的命令也必须记录退出码为 0 及其可见计数摘要。
 
 宿主进入闭包时在 `hosts/vscode-plugin` 目录执行：
@@ -644,12 +644,12 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 - [ ] **步骤 3：记录零失败并关闭 1.1-1.3**
 
   ```powershell
-  Commit-ExactPaths 'docs(opencode): verify pre-merge baseline' @($ReportPath, $TasksPath)
+  Commit-ExactPaths 'docs(opencode): verify pre-merge baseline' @($ReportPath, $TasksPath, $PlanPath)
   ```
 
   验收：当前 HEAD 是严格零失败 verified state；报告中基线 skip/todo 数量固定。
 
-**提交边界：** 每个已诊断根因一个 `fix: restore baseline package gate` 提交，随后一个 `docs(opencode): verify pre-merge baseline` 提交。
+**提交边界：** 每个已诊断根因一个 `fix: restore baseline package gate` 提交，随后一个只含 report、OpenSpec tasks 和 plan 实际变更的 `docs(opencode): verify pre-merge baseline` 提交。
 
 ### Task 4：合并 v1.18.7（OpenSpec 2.1）
 
