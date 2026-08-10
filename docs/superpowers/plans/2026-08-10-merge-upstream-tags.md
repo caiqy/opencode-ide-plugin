@@ -24,7 +24,7 @@ base-ref: baf0674fd108ac43785cb4f4622c6f58e7c645f6
 - 每轮 merge 前 staged index 必须为空。merge index 只包含 Git 自动合并结果、逐项调查后的冲突解决和规定生成物；报告、OpenSpec、Native、Design、计划和初始 dirty 路径不得进入 merge/fix 提交。branch 隔离允许 initial marker 中的既有 dirty 路径原样保留，但不得修改、stage 或提交。
 - 所有 native 命令必须经会话函数显式检查退出码。`git merge --no-ff --no-commit` 是唯一例外：退出 0 可继续；非 0 仅在 exit 为 1、`MERGE_HEAD` 精确等于 tag peeled commit 且 unmerged index 非空时作为冲突现场继续。
 - 不使用整文件 `ours`/`theirs` 解决语义冲突；不手工拼 `bun.lock`；不直接编辑 `packages/client/src/generated/**`、`packages/client/src/generated-effect/**` 或 legacy SDK 生成输出。
-- 公共 Protocol 或 Server `HttpApi` 变化必须同时从 `packages/client` 运行 `bun run generate`，并从 `packages/sdk/js` 运行 `bun run build`。只能提交这些命令的输出。
+- 公共 Protocol 或 Server `HttpApi` 变化必须同时从 `packages/client` 运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run generate`，并从 `packages/sdk/js` 运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run build`。只能提交这些命令的输出。
 - 测试、typecheck 和 build 一律从 owning package 目录运行。typecheck 一律为 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun typecheck`，禁止直接运行 `tsc`。
 - 严格零失败表示每条门禁的失败和错误均为 0。既有 intentional skip/todo 可以保留，但任务 3 或任务 24 的动态扩展基线必须记录每个 package 的数量，后续任何轮次都不得增加、启用或新增 skip/todo 来规避失败。
 - 等价替换候选必须记录双方入口、调用路径、输出、覆盖、风险和建议后暂停，等待用户明确选择；不得自行替换。
@@ -48,7 +48,9 @@ base-ref: baf0674fd108ac43785cb4f4622c6f58e7c645f6
 
 ```powershell
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $BaseRef = 'baf0674fd108ac43785cb4f4622c6f58e7c645f6'
+$InitialStateRef = '76e3d3c007ac74e9321112b86ac0dab12e29e8d8'
 $ReportPath = 'docs/superpowers/reports/2026-08-10-merge-upstream-tags.md'
 $PlanPath = 'docs/superpowers/plans/2026-08-10-merge-upstream-tags.md'
 $DesignPath = 'docs/superpowers/specs/2026-08-10-merge-upstream-tags-design.md'
@@ -197,7 +199,8 @@ function Get-PendingReleaseTags {
 }
 
 function Get-InitialState {
-  $content = [IO.File]::ReadAllText((Join-Path $RepoRoot $ReportPath))
+  Invoke-GitChecked 'initial state source ancestor' @('merge-base', '--is-ancestor', $InitialStateRef, 'HEAD') | Out-Null
+  $content = (@(Invoke-GitChecked 'show initial state report' @('show', "${InitialStateRef}:$ReportPath")) -join "`n")
   $matches = @([regex]::Matches($content, '<!-- merge-upstream-tags:initial (?<json>\{.*?\}) -->', 'Singleline'))
   if ($matches.Count -ne 1) { throw 'report must contain exactly one merge-upstream-tags initial-state marker' }
   return ($matches[0].Groups['json'].Value | ConvertFrom-Json)
@@ -438,6 +441,8 @@ function Get-TagMergeRecord([string]$Tag) {
 每轮先用 `Get-TagMergeRecord` 或当前 merge 的 `$Merge.Base` 获取 diff，再从根 `package.json` 的 `workspaces.packages`（兼容 `workspaces` 数组）把每个 workspace glob 转为 tracked manifest 集合。仅这些 workspace manifest 建立 `dependencies`、`devDependencies`、`peerDependencies` 的反向图；VS Code host 是图外显式 external consumer。先汇总直接 owner、根/shared-config owner、全部条件 owner 和 external consumer，再统一递归 BFS；根 `package.json`、共享 TypeScript 配置和 `bun.lock` 仅扩展消费者，绝不作为 test package 或从仓库根运行测试。
 
 ```powershell
+Set-StrictMode -Version Latest
+
 function Get-ImpactClosure([string[]]$ChangedPaths) {
   $rootManifest = Get-Content -LiteralPath (Join-Path $RepoRoot 'package.json') -Raw | ConvertFrom-Json
   $workspacePatterns = if ($rootManifest.workspaces -is [array]) { @($rootManifest.workspaces) } else { @($rootManifest.workspaces.packages) }
@@ -462,7 +467,10 @@ function Get-ImpactClosure([string[]]$ChangedPaths) {
   $reverse = @{}
   foreach ($package in $packages) { $byName[$package.Name] = $package; $reverse[$package.Name] = [Collections.Generic.List[object]]::new() }
   foreach ($package in $packages) {
-    foreach ($section in @($package.Json.dependencies, $package.Json.devDependencies, $package.Json.peerDependencies, $package.Json.optionalDependencies)) {
+    foreach ($sectionName in @('dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies')) {
+      $sectionProperty = $package.Json.PSObject.Properties[$sectionName]
+      if ($null -eq $sectionProperty) { continue }
+      $section = $sectionProperty.Value
       if ($null -eq $section) { continue }
       foreach ($dependency in $section.PSObject.Properties.Name) { if ($byName.ContainsKey($dependency)) { $reverse[$dependency].Add($package) } }
     }
@@ -471,7 +479,7 @@ function Get-ImpactClosure([string[]]$ChangedPaths) {
   $includeHost = $false
   $rootChanged = $false
   foreach ($path in $ChangedPaths) {
-    if ($path -like "$($host.Directory)/*") { $includeHost = $true; continue }
+    if ($path -like "$($hostPackage.Directory)/*") { $includeHost = $true; continue }
     $owner = @($packages | Where-Object { $path -like "$($_.Directory)/*" } | Sort-Object { $_.Directory.Length } -Descending | Select-Object -First 1)
     if ($owner.Count -eq 0) { $rootChanged = $true; continue }
     [void]$owners.Add($owner[0].Name)
@@ -493,13 +501,18 @@ function Get-ImpactClosure([string[]]$ChangedPaths) {
   while ($queue.Count -gt 0) { foreach ($consumer in $reverse[$queue.Dequeue()]) { if ($owners.Add($consumer.Name)) { $queue.Enqueue($consumer.Name) } } }
   return [pscustomobject]@{ Packages = @($owners | ForEach-Object { $byName[$_] } | Where-Object { $_ }); ExternalConsumers = $(if ($includeHost) { @($hostPackage) } else { @() }); PublicApi = ($publicApiPaths.Count -gt 0); RootChanged = $rootChanged }
 }
+
+$hostOnly = Get-ImpactClosure @('hosts/vscode-plugin/package.json')
+if ($hostOnly.RootChanged -or $hostOnly.Packages.Count -ne 0 -or $hostOnly.ExternalConsumers.Count -ne 1 -or $hostOnly.ExternalConsumers[0].Directory -ne 'hosts/vscode-plugin') {
+  throw 'host-only impact closure must include only the VS Code external consumer'
+}
 ```
 
-- 对 `$closure.Packages` 和 `$closure.ExternalConsumers` 中每个真实 manifest，读取其 `scripts`；只从该 package 目录运行存在的 `test`、`typecheck`、`build`。`typecheck` 使用 `bun typecheck`，test/build 使用 `bun run test`、`bun run build`。
-- `packages/opencode/webgui` 的 `test` 是 watch 模式，使用同配置的 `bun run test:run`；其 build 使用 `bun run build`。
-- 若 `$closure.PublicApi` 为真，必须同时执行：`packages/client` 的 `bun run generate` 和提交后 `bun run check:generated`；`packages/sdk/js` 的 `bun run build`、test、typecheck；`packages/opencode` 的 `bun run test:httpapi`；WebGUI 和 VS Code 宿主门禁。
-- `bun.lock` 或根/工作区 manifest 改动：先解决 manifest，再从仓库根运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun install` 生成 lockfile，随后运行同工具链的 `bun install --frozen-lockfile` 验证。不得手工编辑 lockfile。
-- `hosts/vscode-plugin/package.json` 是宿主 extension manifest。只要宿主进入闭包，就读取完整 `packageManager` pin，要求匹配 `pnpm@版本+sha512-哈希`，用 `vfox exec nodejs@22.23.1 -- corepack pnpm --version` 实际执行 Corepack，并无条件运行 `corepack pnpm install --frozen-lockfile`。随后运行 `pnpm run compile` 和 `pnpm test`；报告必须注明后者自动执行 `pretest`（compile 和 lint）。
+- 对 `$closure.Packages` 和 `$closure.ExternalConsumers` 中每个真实 manifest，读取其 `scripts`；只从该 package 目录运行存在的 `test`、`typecheck`、`build`。分别使用 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test`、`vfox exec bun@1.3.14 nodejs@22.23.1 -- bun typecheck` 和 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run build`。
+- `packages/opencode/webgui` 的 `test` 是 watch 模式，使用 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test:run`；其 build 使用 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run build`。
+- 若 `$closure.PublicApi` 为真，必须同时执行：`packages/client` 的 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run generate`；`packages/sdk/js` 的 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run build`、test、typecheck；`packages/opencode` 的 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test:httpapi`；WebGUI 和 VS Code 宿主门禁。生成变更提交后执行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run check:generated`。
+- Task 3 baseline 只从仓库根运行一次 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun install --frozen-lockfile`。只有未来 tag 的语义合并实际改变根/工作区 manifest 或 `bun.lock` 时，才先运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun install` 重新生成 lockfile，再运行同工具链的 frozen install。不得手工编辑 lockfile。
+- `hosts/vscode-plugin/package.json` 是宿主 extension manifest。只要宿主进入闭包，就读取完整 `packageManager` pin，要求严格匹配完整 pnpm version 和 128 位 lowercase SHA-512 hash；用 `vfox exec nodejs@22.23.1 -- corepack pnpm --version` 实际执行 Corepack，且输出必须等于捕获的 pin version。随后无条件运行 Corepack frozen install、compile 和 test；报告必须注明后者自动执行 `pretest`（compile 和 lint）。
 - 宿主 manifest 或 `pnpm-lock.yaml` 变化时，在该 owner 完成语义合并后先运行 `vfox exec nodejs@22.23.1 -- corepack pnpm install --lockfile-only`，再运行 frozen install。`package-lock.json` 若变化必须在报告注明其生成来源；本计划不运行 npm install。
 - 对每条测试命令记录 pass/fail/error/skip/todo。fail/error 必须为 0；skip/todo 与任务 3 基线或该 package 的任务 24 动态扩展基线相比不得增加。没有标准计数输出的命令也必须记录退出码为 0 及其可见计数摘要。
 
@@ -508,8 +521,13 @@ function Get-ImpactClosure([string[]]$ChangedPaths) {
 ```powershell
 $hostManifest = Get-Content -LiteralPath 'package.json' -Raw | ConvertFrom-Json
 $pin = [string]$hostManifest.packageManager
-if ($pin -notmatch '^pnpm@\d+\.\d+\.\d+\+sha512-') { throw "packageManager is not a complete pnpm pin: $pin" }
-Invoke-Checked 'Corepack pinned pnpm version' { vfox exec nodejs@22.23.1 -- corepack pnpm --version }
+$pinMatch = [regex]::Match($pin, '^pnpm@(?<version>\d+\.\d+\.\d+)\+sha512\.(?<hash>[0-9a-f]{128})$')
+if (-not $pinMatch.Success) { throw "packageManager is not a complete pnpm pin: $pin" }
+$pinVersion = $pinMatch.Groups['version'].Value
+$corepackVersionLines = @(& vfox exec nodejs@22.23.1 -- corepack pnpm --version)
+Assert-NativeExit 'Corepack pinned pnpm version' $LASTEXITCODE
+$corepackVersion = Get-OneLine 'Corepack pinned pnpm version' $corepackVersionLines
+if ($corepackVersion -ne $pinVersion) { throw "Corepack pnpm version $corepackVersion does not match manifest pin $pinVersion" }
 Invoke-Checked 'Corepack frozen install' { vfox exec nodejs@22.23.1 -- corepack pnpm install --frozen-lockfile }
 Invoke-Checked 'VS Code compile' { vfox exec nodejs@22.23.1 -- corepack pnpm run compile }
 Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepack pnpm test }
