@@ -157,7 +157,7 @@ function Get-RemoteTagObject([string]$Tag) {
 
 function Fetch-VerifiedTag([string]$Tag) {
   $remote = Get-RemoteTagObject $Tag
-  Invoke-GitChecked "fetch $Tag" @('fetch', '--no-tags', 'opencode', "refs/tags/$Tag:refs/tags/$Tag") | Out-Null
+  Invoke-GitChecked "fetch $Tag" @('fetch', '--no-tags', 'opencode', "refs/tags/${Tag}:refs/tags/${Tag}") | Out-Null
   $localObject = Get-GitRef "refs/tags/$Tag"
   $localPeeled = Get-GitRef "$Tag^{commit}"
   if ($localObject -ne $remote.Object) { throw "$Tag local tag object does not match remote object" }
@@ -457,7 +457,7 @@ function Get-ImpactClosure([string[]]$ChangedPaths) {
   $hostManifestPaths = @(Invoke-GitChecked 'locate VS Code host manifest' @('ls-files', '--', 'hosts/vscode-plugin/package.json'))
   if ($hostManifestPaths.Count -ne 1) { throw 'VS Code host manifest must be one tracked external consumer' }
   $hostJson = Get-Content -LiteralPath (Join-Path $RepoRoot $hostManifestPaths[0]) -Raw | ConvertFrom-Json
-  $host = [pscustomobject]@{ Name = $hostJson.name; Directory = 'hosts/vscode-plugin'; Json = $hostJson }
+  $hostPackage = [pscustomobject]@{ Name = $hostJson.name; Directory = 'hosts/vscode-plugin'; Json = $hostJson }
   $byName = @{}
   $reverse = @{}
   foreach ($package in $packages) { $byName[$package.Name] = $package; $reverse[$package.Name] = [Collections.Generic.List[object]]::new() }
@@ -491,7 +491,7 @@ function Get-ImpactClosure([string[]]$ChangedPaths) {
   $queue = [Collections.Generic.Queue[string]]::new()
   foreach ($name in $owners) { $queue.Enqueue($name) }
   while ($queue.Count -gt 0) { foreach ($consumer in $reverse[$queue.Dequeue()]) { if ($owners.Add($consumer.Name)) { $queue.Enqueue($consumer.Name) } } }
-  return [pscustomobject]@{ Packages = @($owners | ForEach-Object { $byName[$_] } | Where-Object { $_ }); ExternalConsumers = $(if ($includeHost) { @($host) } else { @() }); PublicApi = ($publicApiPaths.Count -gt 0); RootChanged = $rootChanged }
+  return [pscustomobject]@{ Packages = @($owners | ForEach-Object { $byName[$_] } | Where-Object { $_ }); ExternalConsumers = $(if ($includeHost) { @($hostPackage) } else { @() }); PublicApi = ($publicApiPaths.Count -gt 0); RootChanged = $rootChanged }
 }
 ```
 
@@ -572,7 +572,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 **文件：** `docs/superpowers/reports/2026-08-10-merge-upstream-tags.md`。
 
-- [ ] **步骤 1：发现并精确校验 v1.18.7 至 v1.18.16**
+- [x] **步骤 1：发现并精确校验 v1.18.7 至 v1.18.16**
 
   ```powershell
   $knownTags = Get-KnownTagNames
@@ -581,7 +581,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
   验收：每个 tag 报告 remote object SHA 和 peeled commit SHA；annotated tag 的两者可不同，lightweight tag 的两者必须相同。
 
-- [ ] **步骤 2：从总 diff 建反向依赖闭包并记录矩阵**
+- [x] **步骤 2：从总 diff 建反向依赖闭包并记录矩阵**
 
   ```powershell
   $paths = foreach ($tag in (Get-KnownTagNames)) { Invoke-GitChecked "diff v1.18.6 to $tag" @('diff', '--name-only', 'v1.18.6', "$tag^{commit}") }
@@ -591,13 +591,13 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
   验收：报告包含直接 owner、递归反向消费者、根/shared-config 扩展原因、WebGUI/VS Code 特殊边界、每个 package 的真实 scripts，以及任务 3 将填写的 skip/todo 计数字段和采集命令。根不是验证 package。
 
-- [ ] **步骤 3：提交矩阵报告**
+- [x] **步骤 3：提交矩阵报告**
 
   ```powershell
-  Commit-ExactPaths 'docs(opencode): define upstream merge gate' @($ReportPath)
+  Commit-ExactPaths 'docs(opencode): define upstream merge gate' @($ReportPath, $TasksPath, $PlanPath)
   ```
 
-**提交边界：** 一个 `docs(opencode): define upstream merge gate` 提交。
+**提交边界：** 一个 `docs(opencode): define upstream merge gate` 提交，只包含 report、OpenSpec tasks 和本计划的实际变更。
 
 ### Task 3：将当前 HEAD 修至严格零失败基线（OpenSpec 1.3）
 
