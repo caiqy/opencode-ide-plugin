@@ -1,6 +1,6 @@
 import fs from "fs/promises"
 import path from "path"
-import { describe, expect, test } from "bun:test"
+import { beforeAll, describe, expect, test } from "bun:test"
 import { Effect, Option } from "effect"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { Global } from "@opencode-ai/core/global"
@@ -20,6 +20,11 @@ const writePackage = (dir: string, pkg: Record<string, unknown>) =>
 
 const npmLayer = (cache: string) =>
   AppNodeBuilder.build(Npm.node, [[Global.node, Global.layerWith({ cache, state: path.join(cache, "state") })]])
+
+beforeAll(async () => {
+  // Npm.add lazily loads Arborist; keep the test budget focused on reification.
+  await import("@npmcli/arborist")
+})
 
 describe("Npm.sanitize", () => {
   test("keeps normal scoped package specs unchanged", () => {
