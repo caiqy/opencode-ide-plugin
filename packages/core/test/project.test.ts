@@ -72,7 +72,6 @@ describe("ProjectV2.resolve", () => {
       expect(result.previous).toBeUndefined()
       expect(result.vcs?.type).toBe("git")
     }),
-    30_000,
   )
 
   it.live("falls back to root commit when origin is missing", () =>
@@ -91,7 +90,6 @@ describe("ProjectV2.resolve", () => {
       expect(result.previous).toBeUndefined()
       expect(result.vcs?.type).toBe("git")
     }),
-    30_000,
   )
 
   it.live("prefers normalized origin over root commit", () =>
@@ -110,7 +108,6 @@ describe("ProjectV2.resolve", () => {
       expect(result.directory).toBe(yield* real(tmp.path))
       expect(result.vcs?.type).toBe("git")
     }),
-    30_000,
   )
 
   it.live("normalizes ssh and https remotes to the same id", () =>
@@ -133,7 +130,6 @@ describe("ProjectV2.resolve", () => {
       expect(a.id).toBe(remoteID("github.com/owner/repo"))
       expect(b.id).toBe(a.id)
     }),
-    30_000,
   )
 
   it.live("ignores file remotes and falls back to root commit", () =>
@@ -149,7 +145,6 @@ describe("ProjectV2.resolve", () => {
 
       expect(result.id).toBe(ProjectV2.ID.make(yield* Effect.promise(() => rootCommit(tmp.path))))
     }),
-    30_000,
   )
 
   it.live("returns previous cached id from common dir", () =>
@@ -167,7 +162,6 @@ describe("ProjectV2.resolve", () => {
       expect(result.previous).toBe(ProjectV2.ID.make("old-id"))
       expect(result.id).toBe(remoteID("github.com/owner/repo"))
     }),
-    30_000,
   )
 
   it.live("does not write the cache while resolving", () =>
@@ -183,7 +177,6 @@ describe("ProjectV2.resolve", () => {
 
       expect(yield* Effect.promise(() => Bun.file(path.join(tmp.path, ".git", "opencode")).exists())).toBe(false)
     }),
-    30_000,
   )
 
   it.live("resolves from nested directories to repo root", () =>
@@ -200,7 +193,6 @@ describe("ProjectV2.resolve", () => {
 
       expect(result.directory).toBe(yield* real(tmp.path))
     }),
-    30_000,
   )
 
   it.live("linked worktree returns opened worktree directory and previous from common dir", () =>
@@ -225,6 +217,5 @@ describe("ProjectV2.resolve", () => {
       expect(result.id).toBe(remoteID("github.com/owner/repo"))
       expect(result.vcs?.type).toBe("git")
     }),
-    30_000,
   )
 })

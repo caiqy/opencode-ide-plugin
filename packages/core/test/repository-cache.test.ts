@@ -1,4 +1,4 @@
-import { describe, expect } from "bun:test"
+import { afterAll, beforeAll, describe, expect } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -31,7 +31,6 @@ describe("RepositoryCache", () => {
         expect(yield* read(path.join(localPath, "README.md"))).toBe("one\n")
       }).pipe(Effect.provide(cacheLayer(fixture.root))),
     ),
-    30_000,
   )
 
   it.live("serializes concurrent materialization for the same checkout", () =>
@@ -47,7 +46,6 @@ describe("RepositoryCache", () => {
         expect(results[0].localPath).toBe(results[1].localPath)
       }).pipe(Effect.provide(cacheLayer(fixture.root))),
     ),
-    30_000,
   )
 
   it.live("replaces an existing checkout whose origin does not match", () =>
@@ -66,11 +64,22 @@ describe("RepositoryCache", () => {
         expect(yield* exists(path.join(replaced.localPath, "stale.txt"))).toBe(false)
       }).pipe(Effect.provide(cacheLayer(fixture.root))),
     ),
-    30_000,
   )
 
-  it.live("keeps branch checkouts isolated from branchless refreshes", () =>
-    withRemote((fixture) =>
+  describe("branch checkout isolation", () => {
+    let fixture: Awaited<ReturnType<typeof gitRemote>>
+    let root: Awaited<ReturnType<typeof tmpdir>>
+
+    beforeAll(async () => {
+      root = await tmpdir()
+      fixture = await gitRemote(root.path)
+    })
+
+    afterAll(async () => {
+      await root[Symbol.asyncDispose]()
+    })
+
+    it.live("keeps branch checkouts isolated from branchless refreshes", () =>
       Effect.gen(function* () {
         yield* Effect.promise(() => branch(fixture.source, "feature", "two\n"))
         const cache = yield* RepositoryCache.Service
@@ -88,9 +97,8 @@ describe("RepositoryCache", () => {
         expect(cached.status).toBe("cached")
         expect(yield* read(path.join(cached.localPath, "README.md"))).toBe("two\n")
       }).pipe(Effect.provide(cacheLayer(fixture.root))),
-    ),
-    30_000,
-  )
+    )
+  })
 
   it.live("does not mistake an enclosing repository for the cache checkout", () =>
     withRemote((fixture) =>
@@ -103,7 +111,6 @@ describe("RepositoryCache", () => {
         expect(yield* read(path.join(result.localPath, "README.md"))).toBe("one\n")
       }).pipe(Effect.provide(cacheLayer(fixture.root))),
     ),
-    30_000,
   )
 
   it.live("returns typed validation and clone failures", () =>
