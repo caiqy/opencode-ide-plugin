@@ -40,9 +40,7 @@ test("reports a divergent native offset once and ignores equal offsets and unrel
 
   document.body.append(unrelated)
   unrelated.remove()
-  await frames(2)
-  expect(calls).toEqual([])
-
+  // Keep these mutations in one delivery batch for Happy DOM.
   route.remove()
   document.body.append(route)
   await new Promise((resolve) => setTimeout(resolve, 0))
