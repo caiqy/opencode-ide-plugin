@@ -639,7 +639,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
   Commit-FocusedFix 'baseline' 1
   ```
 
-  验收：`Commit-FocusedFix` 拒绝报告、OpenSpec、Design、计划和初始 dirty；提交使用 `--only`，只包含报告 marker 中的实际 owning paths。每次修复后从矩阵首条重跑。
+  验收：`Commit-FocusedFix` 拒绝报告、OpenSpec、Design、计划和初始 dirty；提交使用 `--only`，只包含报告 marker 中的实际 owning paths。发现阶段先对失败 gate 做聚焦 RED/GREEN，再从下一 gate 继续，避免重复已通过门禁；全部适用 gate 至少单独通过一次后，从矩阵首条执行一次最终完整重跑。最终重跑若发现回归，聚焦修复后再完整重跑，只有最新完整 attempt 全部通过才关闭基线。
 
 - [ ] **步骤 3：记录零失败并关闭 1.1-1.3**
 
