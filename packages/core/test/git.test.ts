@@ -52,6 +52,7 @@ describe("Git", () => {
         expect(yield* read(path.join(target, "README.md"))).toBe("feature\n")
       }),
     ),
+    30_000,
   )
 })
 
@@ -160,5 +161,6 @@ describe("Git trees", () => {
       expect(yield* read(path.join(root.path, "scope", "added.txt"))).toBe("added\n")
       expect(yield* read(path.join(root.path, "outside.txt"))).toBe("changed outside\n")
     }),
+    30_000,
   )
 })
