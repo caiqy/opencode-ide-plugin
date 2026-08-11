@@ -26,7 +26,7 @@ base-ref: baf0674fd108ac43785cb4f4622c6f58e7c645f6
 - 不使用整文件 `ours`/`theirs` 解决语义冲突；不手工拼 `bun.lock`；不直接编辑 `packages/client/src/generated/**`、`packages/client/src/generated-effect/**` 或 legacy SDK 生成输出。
 - 公共 Protocol 或 Server `HttpApi` 变化必须同时从 `packages/client` 运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run generate`，并从 `packages/sdk/js` 运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run build`。只能提交这些命令的输出。
 - 测试、typecheck 和 build 一律从 owning package 目录运行。typecheck 一律为 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun typecheck`，禁止直接运行 `tsc`。
-- 当前 Windows Classic change 的 `@opencode-ai/core` 测试 gate 固定为从 `packages/core` 运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --only-failures --max-concurrency=1`；仅改变本 change 的验证调度，不修改 package script、测试范围或其他 package gate。baseline、逐 tag 和最终验证统一从 report matrix 读取该命令。
+- 当前 Windows Classic change 的 `@opencode-ai/core` 和 `@opencode-ai/sdk-next` 测试 gate 分别固定为从 owning package 运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --only-failures --max-concurrency=1` 和 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --timeout 5000 --max-concurrency=1`；仅改变本 change 的验证调度，不修改 package script、测试范围或其他 package gate。baseline、逐 tag 和最终验证统一从 report matrix 读取对应命令。
 - 严格零失败表示每条门禁的失败和错误均为 0。既有 intentional skip/todo 可以保留，但任务 3 或任务 24 的动态扩展基线必须记录每个 package 的数量，后续任何轮次都不得增加、启用或新增 skip/todo 来规避失败。
 - 等价替换候选必须记录双方入口、调用路径、输出、覆盖、风险和建议后暂停，等待用户明确选择；不得自行替换。
 - 不运行 App Playwright E2E、benchmark、稳定性测试或 Desktop 平台打包。VS Code 验证只运行 compile/test，不运行任何 `package` 或 VSIX 打包脚本。
@@ -510,7 +510,7 @@ if ($hostOnly.RootChanged -or $hostOnly.Packages.Count -ne 0 -or $hostOnly.Exter
 ```
 
 - 对 `$closure.Packages` 和 `$closure.ExternalConsumers` 中每个真实 manifest，读取其 `scripts`；只从该 package 目录运行存在的 `test`、`typecheck`、`build`。分别使用 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test`、`vfox exec bun@1.3.14 nodejs@22.23.1 -- bun typecheck` 和 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run build`。
-- `packages/core` 是当前 Windows Classic change 的唯一 test 调度例外：matrix ID `packages-core-test` 使用 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --only-failures --max-concurrency=1`，不修改 `packages/core/package.json`。该命令仍执行完整 Core 测试集合，并要求 fail/error 为 0、skip/todo 不增加。
+- 当前 Windows Classic change 有两个 test 调度例外：matrix ID `packages-core-test` 使用 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --only-failures --max-concurrency=1`，matrix ID `packages-sdk-next-test` 使用 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --timeout 5000 --max-concurrency=1`。不修改对应 `package.json`；命令仍执行完整测试集合，并要求 fail/error 为 0、skip/todo 不增加。
 - `packages/opencode/webgui` 的 `test` 是 watch 模式，使用 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test:run`；其 build 使用 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run build`。
 - 若 `$closure.PublicApi` 为真，必须同时执行：`packages/client` 的 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run generate`；`packages/sdk/js` 的 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run build`、test、typecheck；`packages/opencode` 的 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run test:httpapi`；WebGUI 和 VS Code 宿主门禁。生成变更提交后执行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun run check:generated`。
 - Task 3 baseline 只从仓库根运行一次 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun install --frozen-lockfile`。Task 2 矩阵提交之后，只要 Task 3 聚焦修复或任一后续 tag 的语义处理实际改变根/工作区 manifest 或 `bun.lock`，就先运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun install` 重新生成 lockfile，再运行 conditional `root-frozen-after-regenerate` 并重跑其余受影响 default gates；该 conditional ID 就是本轮 frozen 验证，不重复 default root frozen。不得手工编辑 lockfile。
@@ -625,7 +625,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 - [ ] **步骤 1：从任务 2 的 package 目录完整运行基线矩阵**
 
-  先把 report 中唯一 gate matrix 的 `packages-core-test.command` 更新为已批准的 pinned 低并发命令 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --only-failures --max-concurrency=1`。保留既有失败 attempt 历史，把最新 baseline result 中该 gate 恢复为 pending，并记录 Design/Spec commit `a54e9b1b1b0f36aa0cc0b8816167c8e856f925b7`；不得修改 `packages/core/package.json`。
+  先把 report 中唯一 gate matrix 的 `packages-core-test.command` 更新为已批准的 pinned 低并发命令 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --only-failures --max-concurrency=1`，并把 `packages-sdk-next-test.command` 更新为 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --timeout 5000 --max-concurrency=1`。保留既有失败 attempt 历史，把最新 baseline result 中对应 gate 恢复为 pending，并记录 Design/Spec commits `a54e9b1b1b0f36aa0cc0b8816167c8e856f925b7`、`afb3c61627`；不得修改对应 `package.json`。
 
   在任何 package 门禁前，从仓库根无条件运行：
 
@@ -633,7 +633,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
   Invoke-Checked 'root Bun frozen install' { vfox exec bun@1.3.14 nodejs@22.23.1 -- bun install --frozen-lockfile }
   ```
 
-  随后对每个闭包 package 执行 matrix 指定的 test/typecheck/build 和适用条件门禁；逐命令记录 fail/error/skip/todo。验收：`packages-core-test` 精确使用批准的 `--max-concurrency=1` 命令，其余 gate 不变；任何 fail/error 非 0 或 skip/todo 增加均关闭基线；不从根运行 test。
+  随后对每个闭包 package 执行 matrix 指定的 test/typecheck/build 和适用条件门禁；逐命令记录 fail/error/skip/todo。验收：`packages-core-test` 和 `packages-sdk-next-test` 精确使用批准的 `--max-concurrency=1` 命令，其他 gate 不变；任何 fail/error 非 0 或 skip/todo 增加均关闭基线；不从根运行 test。
 
 - [ ] **步骤 2：按报告中的实际 owning path 创建聚焦修复**
 
