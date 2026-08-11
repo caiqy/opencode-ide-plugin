@@ -18,30 +18,18 @@ test("bundles the client and in-memory host", async () => {
 async function bundleInputs() {
   const temporary = await mkdtemp(join(import.meta.dir, ".import-boundary-"))
   const entrypoint = join(temporary, "index.ts")
-  const metafile = join(temporary, "meta.json")
   try {
     await Bun.write(entrypoint, 'export * from "@opencode-ai/sdk-next"')
-    const child = Bun.spawn(
-      [
-        process.execPath,
-        "build",
-        entrypoint,
-        "--target=bun",
-        "--format=esm",
-        "--packages=bundle",
-        `--metafile=${metafile}`,
-        `--outdir=${join(temporary, "out")}`,
-      ],
-      { cwd: directory, stdout: "pipe", stderr: "pipe" },
-    )
-    const [exitCode, stdout, stderr] = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ])
-    if (exitCode !== 0) throw new Error(stdout + stderr)
-    const metadata = await Bun.file(metafile).json()
-    return Object.keys(metadata.inputs).map((input) => resolve(directory, input))
+    const build = await Bun.build({
+      entrypoints: [entrypoint],
+      target: "bun",
+      format: "esm",
+      packages: "bundle",
+      metafile: true,
+      outdir: join(temporary, "out"),
+    })
+    if (!build.success) throw new AggregateError(build.logs, "Failed to bundle @opencode-ai/sdk-next")
+    return Object.keys(build.metafile.inputs).map((input) => resolve(directory, input))
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }
