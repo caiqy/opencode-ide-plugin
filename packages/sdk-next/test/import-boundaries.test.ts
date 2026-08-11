@@ -20,14 +20,19 @@ async function bundleInputs() {
   const entrypoint = join(temporary, "index.ts")
   try {
     await Bun.write(entrypoint, 'export * from "@opencode-ai/sdk-next"')
-    const build = await Bun.build({
-      entrypoints: [entrypoint],
-      target: "bun",
-      format: "esm",
-      packages: "bundle",
-      metafile: true,
-      outdir: join(temporary, "out"),
-    })
+    const build = await Bun.build(
+      Object.assign(
+        {
+          entrypoints: [entrypoint],
+          target: "bun",
+          format: "esm",
+          packages: "bundle",
+          metafile: true,
+          outdir: join(temporary, "out"),
+        } satisfies Parameters<typeof Bun.build>[0],
+        { write: false },
+      ),
+    )
     if (!build.success) throw new AggregateError(build.logs, "Failed to bundle @opencode-ai/sdk-next")
     if (!build.metafile) throw new Error("SDK-next bundle did not produce a metafile")
     return Object.keys(build.metafile.inputs).map((input) => resolve(directory, input))

@@ -10,6 +10,7 @@ let databaseDirectory = ""
 let previousDatabase = Flag.OPENCODE_DB
 
 beforeAll(async () => {
+  // Dynamic imports must observe this file's isolated database before their module cache initializes.
   databaseDirectory = await mkdtemp(join(tmpdir(), "opencode-embedded-db-"))
   previousDatabase = Flag.OPENCODE_DB
   Flag.OPENCODE_DB = join(databaseDirectory, "opencode.sqlite")
@@ -20,7 +21,7 @@ afterAll(async () => {
   await rm(databaseDirectory, { recursive: true, force: true })
 })
 
-test.serial("embedded client uses the real router and handlers", async () => {
+test("embedded client uses the real router and handlers", async () => {
   const directory = await mkdtemp(join(tmpdir(), "opencode-embedded-"))
   const { AbsolutePath, Agent, Location, Model, OpenCode, Prompt, Provider, Session, Tool } = await import("../src")
   const sessionID = Session.ID.make(`ses_embedded_${crypto.randomUUID()}`)
@@ -115,7 +116,7 @@ test.serial("embedded client uses the real router and handlers", async () => {
   }
 })
 
-test.serial("Location-owned runner events reach the ready global client", async () => {
+test("Location-owned runner events reach the ready global client", async () => {
   const directory = await mkdtemp(join(tmpdir(), "opencode-embedded-events-"))
   const { AbsolutePath, Location, OpenCode, Prompt, Session } = await import("../src")
   const sessionID = Session.ID.make(`ses_embedded_${crypto.randomUUID()}`)
@@ -151,7 +152,7 @@ test.serial("Location-owned runner events reach the ready global client", async 
   }
 }, 10_000)
 
-test.serial("independent embedded hosts do not share live notifications", async () => {
+test("independent embedded hosts do not share live notifications", async () => {
   const directory = await mkdtemp(join(tmpdir(), "opencode-embedded-hosts-"))
   const { AbsolutePath, Agent, Location, OpenCode, Session } = await import("../src")
   const sessionID = Session.ID.make(`ses_embedded_${crypto.randomUUID()}`)
@@ -191,7 +192,7 @@ test.serial("independent embedded hosts do not share live notifications", async 
   }
 }, 10_000)
 
-test.serial("embedded client is available as a Layer service", async () => {
+test("embedded client is available as a Layer service", async () => {
   const directory = await mkdtemp(join(tmpdir(), "opencode-embedded-layer-"))
   const { AbsolutePath, Location, OpenCode, Session } = await import("../src")
   const sessionID = Session.ID.make(`ses_embedded_${crypto.randomUUID()}`)
