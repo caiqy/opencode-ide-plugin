@@ -99,7 +99,7 @@ export const fileSystem = (
         read: (name) =>
           fs.readFileString(pathFor(name)).pipe(
             Effect.map((raw) => parseCassette(raw).interactions),
-            Effect.catch(() => Effect.fail(new CassetteNotFoundError({ cassetteName: name }))),
+            Effect.mapError(() => new CassetteNotFoundError({ cassetteName: name })),
           ),
         append: (name, interaction, metadata) =>
           appendLock.withPermit(
