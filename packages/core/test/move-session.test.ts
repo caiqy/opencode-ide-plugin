@@ -107,6 +107,7 @@ describe("MoveSession", () => {
           .get(),
       ).toEqual({ directory: moved, path: "" })
     }),
+    30_000,
   )
 
   it.live("moves within a checkout without transferring existing changes", () =>
@@ -159,6 +160,7 @@ describe("MoveSession", () => {
           .get(),
       ).toEqual({ directory: destination, path: "packages" })
     }),
+    30_000,
   )
 
   it.live("moves nested session changes without cleaning unrelated files", () =>

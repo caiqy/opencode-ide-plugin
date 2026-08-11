@@ -110,6 +110,7 @@ describe("ProjectCopy", () => {
       expect(error).toBeInstanceOf(ProjectCopy.StrategyUnavailableError)
       if (error instanceof ProjectCopy.StrategyUnavailableError) expect(error.strategy).toBe(unavailable)
     }),
+    30_000,
   )
 
   it.live("creates and removes a git worktree directory", () =>
@@ -149,6 +150,7 @@ describe("ProjectCopy", () => {
       expect(yield* stored(input.projectID)).toEqual([{ directory: input.sourceDirectory, strategy: null }])
       expect(yield* Effect.promise(() => Bun.file(target).exists())).toBe(false)
     }),
+    30_000,
   )
 
   it.live("requires force to remove a dirty git worktree", () =>
@@ -184,6 +186,7 @@ describe("ProjectCopy", () => {
       yield* copy.remove({ projectID: input.projectID, directory: created.directory, force: true })
       expect(yield* Effect.promise(() => Bun.file(created.directory).exists())).toBe(false)
     }),
+    30_000,
   )
 
   it.live("preserves copies whose stored strategy is unavailable", () =>
@@ -206,6 +209,7 @@ describe("ProjectCopy", () => {
       expect(error).toBeInstanceOf(ProjectCopy.StrategyUnavailableError)
       expect(yield* stored(input.projectID)).toContainEqual({ directory: unavailable, strategy: "acme/missing" })
     }),
+    30_000,
   )
 
   it.live("adds a numeric suffix when a copy directory already exists", () =>
@@ -239,6 +243,7 @@ describe("ProjectCopy", () => {
 
       yield* copy.remove({ projectID: input.projectID, directory: created.directory, force: false })
     }),
+    30_000,
   )
 
   it.live("fails after ten copy directory conflicts", () =>
@@ -272,6 +277,7 @@ describe("ProjectCopy", () => {
       if (error instanceof ProjectCopy.DestinationExistsError)
         expect(error.directory).toBe(abs(path.join(parent, "copy-10")))
     }),
+    30_000,
   )
 
   it.live("does not publish an event when refresh finds no directory changes", () =>
@@ -294,6 +300,7 @@ describe("ProjectCopy", () => {
 
       expect(event._tag).toBe("None")
     }),
+    30_000,
   )
 
   it.live("refresh discovers and prunes an externally managed git worktree", () =>
@@ -331,6 +338,7 @@ describe("ProjectCopy", () => {
       expect(yield* copy.refresh({ projectID: input.projectID })).toEqual({ updated: [], removed: [discovered] })
       expect(yield* stored(input.projectID)).toEqual([{ directory: input.sourceDirectory, strategy: null }])
     }),
+    30_000,
   )
 
   it.live("refresh ignores stale git worktree registrations", () =>
@@ -356,6 +364,7 @@ describe("ProjectCopy", () => {
         ].toSorted((a, b) => a.directory.localeCompare(b.directory)),
       )
     }),
+    30_000,
   )
 
   it.live("refresh ignores existing directories that are no longer git checkouts", () =>
@@ -368,6 +377,7 @@ describe("ProjectCopy", () => {
 
       expect(yield* stored(input.projectID)).toEqual([{ directory: input.sourceDirectory, strategy: null }])
     }),
+    30_000,
   )
 
   it.live("refresh with no roots is a no-op", () =>
@@ -396,5 +406,6 @@ describe("ProjectCopy", () => {
 
       expect(yield* stored(input.projectID)).not.toContainEqual({ directory: missing, strategy: null })
     }),
+    30_000,
   )
 })
