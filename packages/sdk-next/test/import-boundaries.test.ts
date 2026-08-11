@@ -29,6 +29,7 @@ async function bundleInputs() {
       outdir: join(temporary, "out"),
     })
     if (!build.success) throw new AggregateError(build.logs, "Failed to bundle @opencode-ai/sdk-next")
+    if (!build.metafile) throw new Error("SDK-next bundle did not produce a metafile")
     return Object.keys(build.metafile.inputs).map((input) => resolve(directory, input))
   } finally {
     await rm(temporary, { recursive: true, force: true })
