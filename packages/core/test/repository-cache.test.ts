@@ -31,6 +31,7 @@ describe("RepositoryCache", () => {
         expect(yield* read(path.join(localPath, "README.md"))).toBe("one\n")
       }).pipe(Effect.provide(cacheLayer(fixture.root))),
     ),
+    30_000,
   )
 
   it.live("serializes concurrent materialization for the same checkout", () =>

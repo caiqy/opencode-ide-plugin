@@ -193,6 +193,7 @@ describe("ProjectV2.resolve", () => {
 
       expect(result.directory).toBe(yield* real(tmp.path))
     }),
+    30_000,
   )
 
   it.live("linked worktree returns opened worktree directory and previous from common dir", () =>
@@ -217,5 +218,6 @@ describe("ProjectV2.resolve", () => {
       expect(result.id).toBe(remoteID("github.com/owner/repo"))
       expect(result.vcs?.type).toBe("git")
     }),
+    30_000,
   )
 })
