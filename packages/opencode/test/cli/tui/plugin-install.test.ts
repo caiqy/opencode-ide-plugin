@@ -2,6 +2,7 @@ import { expect, spyOn, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
+import type { HostPluginApi } from "@opencode-ai/tui/plugin/slots"
 import { tmpdir } from "../../fixture/fixture"
 import { createTuiPluginApi } from "../../fixture/tui-plugin"
 import { createTuiResolvedConfig } from "../../fixture/tui-runtime"
@@ -57,6 +58,11 @@ test("installs plugin without loading it", async () => {
   const wait = spyOn(TuiConfig, "waitForDependencies").mockResolvedValue()
   const cwd = spyOn(process, "cwd").mockImplementation(() => tmp.path)
   const api = createTuiPluginApi({
+    client: {
+      project: {
+        current: async () => ({ data: undefined }),
+      },
+    } as unknown as HostPluginApi["client"],
     state: {
       path: {
         state: path.join(tmp.path, "state.json"),
