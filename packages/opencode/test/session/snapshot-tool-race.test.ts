@@ -141,17 +141,12 @@ it.live("tool execution produces non-empty session diff (snapshot race)", () =>
         permission: [{ permission: "*", pattern: "*", action: "allow" }],
       })
       const summarized = yield* Deferred.make<void>()
-      let final = false
-      // Wait for the summary forked after the final assistant step, not an earlier turn summary.
+      // The summary is forked when the first step starts, before the final assistant update.
       const off = yield* events.listen((event) => {
         if (event.type !== MessageV2.Event.Updated.type) return Effect.void
         const data = event.data as typeof MessageV2.Event.Updated.data.Type
         if (data.sessionID !== session.id) return Effect.void
-        if (data.info.role === "assistant" && data.info.finish === "stop") {
-          final = true
-          return Effect.void
-        }
-        if (!final || data.info.role !== "user" || data.info.summary?.diffs === undefined) return Effect.void
+        if (data.info.role !== "user" || data.info.summary?.diffs === undefined) return Effect.void
         return Deferred.succeed(summarized, undefined).pipe(Effect.asVoid)
       })
       yield* Effect.addFinalizer(() => off)

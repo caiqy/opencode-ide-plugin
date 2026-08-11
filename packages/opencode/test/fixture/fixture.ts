@@ -1,6 +1,5 @@
 import { $ } from "bun"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
-import { spawn } from "node:child_process"
 import * as fs from "fs/promises"
 import os from "os"
 import path from "path"
@@ -56,32 +55,12 @@ function sanitizePath(p: string): string {
   return p.replace(/\0/g, "")
 }
 
-function exists(dir: string) {
-  return fs
-    .stat(dir)
-    .then(() => true)
-    .catch(() => false)
-}
-
 function clean(dir: string) {
   return fs.rm(dir, {
     recursive: true,
     force: true,
     maxRetries: 5,
     retryDelay: 100,
-  })
-}
-
-async function stop(dir: string) {
-  if (!(await exists(dir))) return
-  await new Promise<void>((resolve) => {
-    const child = spawn("git", ["fsmonitor--daemon", "stop"], {
-      cwd: dir,
-      stdio: "ignore",
-      windowsHide: process.platform === "win32",
-    })
-    child.once("error", () => resolve())
-    child.once("close", () => resolve())
   })
 }
 
@@ -119,7 +98,6 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
         await options?.dispose?.(realpath)
       } finally {
         await disposeInstance(realpath)
-        if (options?.git) await stop(realpath).catch(() => undefined)
         await clean(realpath)
       }
     },
@@ -144,7 +122,6 @@ export function tmpdirScoped<E = never, R = never>(options?: {
     yield* Effect.addFinalizer(() =>
       Effect.promise(async () => {
         await disposeInstance(dir)
-        if (options?.git) await stop(dir).catch(() => undefined)
         await clean(dir)
       }),
     )
