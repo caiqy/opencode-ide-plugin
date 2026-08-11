@@ -48,7 +48,9 @@
 
 每次 merge 后根据第一父提交到当前 HEAD 的变更确定受影响 owning packages。对每个受影响 package 执行其完整测试、`bun typecheck` 和适用 build；测试和 typecheck 均从 package 目录运行，不从仓库根运行测试。
 
-任何失败都停留在当前 tag。先判断是合并回归、生成物漂移还是已知环境限制；修复后重新完成该 tag 的整套门禁，结果通过后才进入下一个 tag。
+在当前 Windows Classic change 中，影响闭包含 `@opencode-ai/core` 时，合并前 baseline、每个包含 Core 的 tag 验证和最终验证都从 `packages/core` 运行 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --only-failures --max-concurrency=1`。该命令的输出必须为 `fail=0`、`error=0`，且 `skip`/`todo` 不得较采用该策略前同一完整套件的已记录计数增加。
+
+`--max-concurrency=1` 只改变本 change 验证矩阵内 Core gate 的调度并发，不修改 `packages/core/package.json` test script，不影响其他开发者或 CI，不缩减测试文件或测试用例，也不改变其他 package gate。任何超时或其他失败都停留在当前 tag；不接受环境例外、skip/todo、增加 timeout 或忽略失败。使用 discovery 聚焦根因和修复，全部相关单项通过后运行一次完整适用矩阵；不进行无新增信息的全量循环，完整矩阵仍失败时才返回 discovery。
 
 选择该方案是用户明确要求的最强归因策略。备选的聚焦验证或仅最终验证耗时更低，但会扩大故障定位范围。
 
@@ -61,7 +63,7 @@
 ## Risks / Trade-offs
 
 - **[非线性 release tag 导致重复冲突或内容回摆]** → 每次验证第二父提交、检查相对第一父提交的实际 diff，并禁止批量 `ours`/`theirs`。
-- **[逐 tag 完整验证耗时和 Windows 资源占用高]** → 严格串行执行，从 owning package 目录运行并保留每个 tag 的结果；失败不通过重试掩盖。
+- **[逐 tag 完整验证耗时和 Windows 资源占用高]** → 默认 `max-concurrency=20` 的 Core 全量套件曾在不同 Git/npm 资源型测试超时，而相同 focused tests 通过；已有持续扩大 timeout 的趋势，因此本 Windows Classic change 对 Core gate 使用 pinned 串行调度。失败不通过环境例外、skip/todo、增加 timeout 或忽略失败掩盖。
 - **[动态追踪最新版本使范围增长]** → 只在完成当前前沿后查询；一次查询无新增即收敛。
 - **[上游与下游实现表面相似但语义不同]** → 等价替换必须有代码路径和测试证据，并由用户明确选择。
 - **[Protocol/SDK 生成物被错误手改]** → 仅执行仓库生成命令并检查生成差异。

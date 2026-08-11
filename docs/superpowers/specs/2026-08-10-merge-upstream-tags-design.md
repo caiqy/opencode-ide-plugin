@@ -20,7 +20,7 @@ canonical_spec: openspec
 
 1. 只接受 `opencode` remote 上的稳定 release tag，不用 `dev` 或任意未标记 commit 替代。
 2. 每个 tag 有独立 merge commit，第一父是前一轮已验证状态，第二父精确等于官方 tag commit。
-3. 当前基线和每个 tag 的适用默认门禁都必须零失败，未解决失败阻止推进。
+3. 当前基线和每个 tag 的适用默认门禁都必须零失败，未解决失败（包括超时）阻止推进；不接受环境例外、skip/todo、增加 timeout 或忽略失败作为通过条件。
 4. 不通过整文件 `ours`/`theirs`、手工拼 lockfile 或直接编辑 generated 文件解决冲突。
 5. IDE 插件下游行为默认受保护；等价替换只有在用户明确选择后发生。
 6. 每轮结束时不存在活动 merge、冲突标记、意外 generated 漂移或未归因工作区变化。
@@ -43,7 +43,7 @@ git merge --no-ff --no-commit {tag}
 语义解冲突 → 生成 lock/SDK → merge commit
   ↓
 运行当前 tag 完整默认门禁
-  ├─ 失败：定位根因 → 聚焦修复提交 → 重跑完整门禁
+  ├─ 失败：discovery 聚焦根因 → 修复提交 → 单项通过后重跑一次完整门禁
   └─ 通过：验证父链、生成物和工作区
   ↓
 处理下一个 tag
@@ -76,9 +76,9 @@ git merge --no-ff --no-commit {tag}
 1. 按测试名和完整错误签名定位根因。
 2. 区分产品缺陷、测试缺陷、生成物漂移和环境缺失。
 3. 在当前 change 内创建范围明确的修复提交。
-4. 从头运行完整基线矩阵，直到全部命令退出 0。
+4. 使用 discovery 聚焦根因和修复；全部相关单项通过后运行一次完整基线矩阵。只有该完整矩阵仍失败时才返回 discovery，不重复无新增信息的全量循环。
 
-不接受 2026-07-28 历史残余清单，也不建立允许失败列表。同一代码和环境下不得仅靠重复执行获取偶然通过；只有代码或可证明的环境前置条件发生修正后才能重新运行。
+不接受 2026-07-28 历史残余清单，也不建立允许失败列表。同一代码和环境下不得仅靠重复执行获取偶然通过；环境前置条件修正后仍须达到零失败，不得以环境例外、skip/todo、增加 timeout 或忽略失败通过。
 
 ## 6. 单个 Tag 事务
 
@@ -101,7 +101,7 @@ chore(opencode): merge upstream {tag}
 
 ### 6.3 验证与修复
 
-以第一父到当前 HEAD 的实际 diff 计算本轮影响闭包并运行完整矩阵。失败时停留在当前 tag，按系统化调试定位并创建聚焦修复提交。修复后从头执行当前 tag 的完整矩阵；全部通过后才关闭该事务。
+以第一父到当前 HEAD 的实际 diff 计算本轮影响闭包并运行完整矩阵。失败时停留在当前 tag，按系统化调试定位并创建聚焦修复提交。全部相关单项通过后运行一次当前 tag 的完整矩阵；只有该矩阵仍失败时才返回 discovery，全部通过后才关闭该事务。
 
 ## 7. 冲突解决协议
 
@@ -153,6 +153,14 @@ chore(opencode): merge upstream {tag}
 - `typecheck`，必须使用 `bun typecheck`，不直接运行 `tsc`
 - `build`
 
+当前 Windows Classic change 中，合并前 baseline、每个影响闭包含 `@opencode-ai/core` 的 tag 验证和最终验证，均从 `packages/core` 运行完整 pinned Core gate：
+
+```text
+vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --only-failures --max-concurrency=1
+```
+
+该命令输出必须为 `fail=0`、`error=0`，且 `skip`/`todo` 不得较采用此策略前同一完整套件的已记录计数增加。`--max-concurrency=1` 只改变本 change 验证矩阵内 Core gate 的调度并发：不修改 `packages/core/package.json` test script，不影响其他开发者或 CI，不缩减测试文件或测试用例，也不改变其他 package gate。默认 `max-concurrency=20` 的 Core 全量套件曾在不同 Git/npm 资源型测试超时，而相同 focused tests 通过；已有持续扩大 timeout 的趋势，因此采用串行调度，而不是以 timeout 或环境例外掩盖失败。
+
 条件门禁：
 
 - Client 生成变化：`packages/client` 的 `check:generated`。
@@ -169,6 +177,7 @@ chore(opencode): merge upstream {tag}
 - tag、远端 SHA、merge commit 和可选修复 commit。
 - 影响闭包和实际命令。
 - 每个命令的退出码、通过/失败数量和关键失败签名。
+- Core gate 的完整 pinned 命令、`fail`/`error`/`skip`/`todo` 计数，以及适用阶段（baseline、tag 或最终验证）。
 - 冲突文件、生成命令和等价替换决策。
 
 报告保留高信号摘要，不复制完整终端日志。
@@ -176,8 +185,8 @@ chore(opencode): merge upstream {tag}
 ## 11. 失败与恢复
 
 - **活动 merge 冲突无法安全处理**：保留现场调查；确认 tag 或边界错误时才 `git merge --abort`。
-- **测试或 build 失败**：不推进 tag；定位根因、聚焦修复、重跑完整矩阵。
-- **环境前置条件缺失**：修复可验证的环境前置条件后重新运行；不能把环境失败记为通过。
+- **测试或 build 失败**：不推进 tag；定位根因、聚焦修复，全部相关单项通过后运行一次完整矩阵。只有完整矩阵仍失败时才返回 discovery。
+- **环境前置条件缺失**：修复可验证的环境前置条件后重新运行；仍须零失败，不能把环境失败记为通过，也不能以 skip/todo、增加 timeout 或忽略失败替代。
 - **生成物漂移**：回到源 Protocol/HttpApi/manifest 修复并重新生成。
 - **已提交 merge 需要撤销**：不重写历史；仅在用户明确确认后使用 merge revert。
 - **执行中断**：从报告、tasks、当前父链和工作区状态恢复，先确认活动 tag 再继续。
