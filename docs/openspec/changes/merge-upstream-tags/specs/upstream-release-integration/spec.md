@@ -66,10 +66,10 @@
 - **WHEN** 当前 HEAD 的任一适用默认门禁失败
 - **THEN** 系统先修复该失败并重新完成全部基线门禁，不开始 release tag 合并
 
-### Requirement: Windows Core gate 使用串行矩阵调度
-在当前 Windows Classic change 的验证矩阵中，影响闭包含 `@opencode-ai/core` 时，系统 MUST 从 `packages/core` 运行完整 pinned 命令 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --only-failures --max-concurrency=1`。该 Core gate 适用于合并前 baseline、每个影响闭包含 Core 的 tag 验证和最终验证；其输出 MUST 为 `fail=0`、`error=0`，且 `skip`/`todo` 不得较采用该策略前同一完整套件的已记录计数增加。
+### Requirement: Windows 资源密集型 gate 使用串行矩阵调度
+在当前 Windows Classic change 的验证矩阵中，影响闭包含 `@opencode-ai/core` 时，系统 MUST 从 `packages/core` 运行完整 pinned 命令 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --only-failures --max-concurrency=1`；影响闭包含 `@opencode-ai/sdk-next` 时，系统 MUST 从 `packages/sdk-next` 运行完整 pinned 命令 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --timeout 5000 --max-concurrency=1`。对应 gate 适用于合并前 baseline、每个影响闭包含该 package 的 tag 验证和最终验证；其输出 MUST 为 `fail=0`、`error=0`，且 `skip`/`todo` 不得较采用该策略前同一完整套件的已记录计数增加。
 
-此变更只调整本 change 验证矩阵中的 Core 测试调度并发；系统 MUST NOT 修改 `packages/core/package.json` 的 test script，不得影响其他开发者或 CI，不得缩减测试文件或测试用例，也不得改变其他 package gate。
+此变更只调整本 change 验证矩阵中的 Core 和 SDK-next 测试调度并发；系统 MUST NOT 修改对应 `package.json` 的 test script，不得影响其他开发者或 CI，不得缩减测试文件或测试用例，也不得改变其他 package gate。
 
 任何超时或其他失败仍是失败，不接受环境例外、skip/todo、增加 timeout 或忽略失败作为通过条件。
 
@@ -84,6 +84,10 @@
 #### Scenario: Core gate 发生超时或失败
 - **WHEN** 指定 pinned 命令超时或报告任一失败
 - **THEN** 系统使用 discovery 聚焦根因和修复，全部相关单项通过后运行一次完整适用矩阵；不得以环境例外、skip/todo、增加 timeout 或忽略失败推进
+
+#### Scenario: baseline、tag 或最终验证包含 SDK-next
+- **WHEN** 已知队列或当前 tag 的影响闭包含 `@opencode-ai/sdk-next`，或发布前沿稳定后运行最终验证
+- **THEN** 系统从 `packages/sdk-next` 运行指定 pinned 命令，且只有完整 5 秒预算套件满足零失败与 `skip`/`todo` 不增加时，该验证才能通过
 
 ### Requirement: 每个 tag 通过完整验证
 系统 MUST 在每个 tag 后对全部受影响 owning package 完成适用的测试、typecheck 和 build；任何未解决失败 SHALL 阻止下一个 tag 的合并。
