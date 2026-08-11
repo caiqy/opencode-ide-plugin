@@ -18,6 +18,7 @@ import type { InstanceContext } from "../../src/project/instance-context"
 import { InstanceRuntime } from "../../src/project/instance-runtime"
 import { InstanceStore } from "../../src/project/instance-store"
 import { TestLLMServer } from "../lib/llm-server"
+import { cleanupTestDir } from "./cleanup"
 
 const noopBootstrap = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
 export const testInstanceStoreLayer = LayerNode.compile(InstanceStore.node, [
@@ -56,12 +57,7 @@ function sanitizePath(p: string): string {
 }
 
 function clean(dir: string) {
-  return fs.rm(dir, {
-    recursive: true,
-    force: true,
-    maxRetries: 5,
-    retryDelay: 100,
-  })
+  return cleanupTestDir(dir)
 }
 
 type TmpDirOptions<T> = {
