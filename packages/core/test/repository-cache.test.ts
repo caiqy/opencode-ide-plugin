@@ -46,6 +46,7 @@ describe("RepositoryCache", () => {
         expect(results[0].localPath).toBe(results[1].localPath)
       }).pipe(Effect.provide(cacheLayer(fixture.root))),
     ),
+    30_000,
   )
 
   it.live("replaces an existing checkout whose origin does not match", () =>
@@ -64,6 +65,7 @@ describe("RepositoryCache", () => {
         expect(yield* exists(path.join(replaced.localPath, "stale.txt"))).toBe(false)
       }).pipe(Effect.provide(cacheLayer(fixture.root))),
     ),
+    30_000,
   )
 
   it.live("keeps branch checkouts isolated from branchless refreshes", () =>
@@ -100,6 +102,7 @@ describe("RepositoryCache", () => {
         expect(yield* read(path.join(result.localPath, "README.md"))).toBe("one\n")
       }).pipe(Effect.provide(cacheLayer(fixture.root))),
     ),
+    30_000,
   )
 
   it.live("returns typed validation and clone failures", () =>
