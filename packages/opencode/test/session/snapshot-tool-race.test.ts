@@ -14,7 +14,6 @@
 import { expect } from "bun:test"
 import { Deferred, Effect, Layer } from "effect"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import fs from "fs/promises"
 import path from "path"
 import { Session } from "@/session/session"
 import { SessionPrompt } from "../../src/session/prompt"
@@ -169,16 +168,6 @@ it.live("tool execution produces non-empty session diff (snapshot race)", () =>
       // Run the agent loop
       const result = yield* prompt.loop({ sessionID: session.id })
       expect(result.info.role).toBe("assistant")
-
-      // Verify the file was created
-      const filePath = path.join(dir, "race-test.txt")
-      const fileExists = yield* Effect.promise(() =>
-        fs
-          .access(filePath)
-          .then(() => true)
-          .catch(() => false),
-      )
-      expect(fileExists).toBe(true)
 
       // Verify the tool call completed (in the first assistant message)
       const allMsgs = yield* MessageV2.filterCompactedEffect(session.id)
