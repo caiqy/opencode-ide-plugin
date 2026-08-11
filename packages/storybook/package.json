@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "storybook": "storybook dev -p 6006",
-    "build": "node --max-old-space-size=8192 ./node_modules/storybook/dist/bin/dispatcher.js build"
+    "build": "node --max-old-space-size=10240 ./node_modules/storybook/dist/bin/dispatcher.js build"
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",
