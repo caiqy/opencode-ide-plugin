@@ -1,4 +1,9 @@
-import { Client, LATEST_PROTOCOL_VERSION, StreamableHTTPClientTransport } from "@modelcontextprotocol/client"
+import { createRequire } from "node:module"
+
+const { Client, LATEST_PROTOCOL_VERSION, StreamableHTTPClientTransport } =
+  process.env.MCP_RECOVERY_MODULE === "cjs"
+    ? createRequire(import.meta.url)("@modelcontextprotocol/client")
+    : await import("@modelcontextprotocol/client")
 
 const posts: Array<{ method: string; session: string | null }> = []
 const mode = process.env.MCP_RECOVERY_MODE ?? "success"
@@ -22,7 +27,7 @@ const server = Bun.serve({
     if (message.method === "initialize") {
       initializeCount++
       if (initializeCount === 2) replacementStarted()
-      if (initializeCount === 2 && mode === "abort-waiter") await releaseReplacement
+      if (initializeCount === 2 && (mode === "abort-waiter" || mode === "timeout-waiter")) await releaseReplacement
       if (initializeCount === 2 && mode === "rehandshake-failure") return new Response("re-handshake failed", { status: 500 })
       return Response.json(
         {
@@ -73,6 +78,24 @@ try {
     await recovering
     await client.ping()
     process.stdout.write(JSON.stringify({ posts, aborted }))
+  } else if (mode === "timeout-waiter") {
+    const recovering = client.ping()
+    await replacement
+    const waiting = client.ping({ timeout: 20 })
+    const timedOut = await Promise.race([
+      waiting.then(
+        () => false,
+        () => true,
+      ),
+      Bun.sleep(250).then(() => {
+        throw new Error("waiting request did not time out before recovery completed")
+      }),
+    ])
+    replacementReleased()
+    await recovering
+    await Bun.sleep(50)
+    const retried = posts.filter((post) => post.method === "ping" && post.session === "replacement").length > 1
+    process.stdout.write(JSON.stringify({ posts, timedOut, retried }))
   } else if (mode === "rehandshake-failure") {
     const failed = await client.ping().then(
       () => false,
@@ -80,7 +103,7 @@ try {
     )
     const recovered = await client.ping().then(
       () => ({ success: true }),
-      (error) => ({ success: false, error: error instanceof Error ? error.message : String(error) }),
+      (error: unknown) => ({ success: false, error: error instanceof Error ? error.message : String(error) }),
     )
     process.stdout.write(JSON.stringify({ posts, failed, recovered }))
   } else if (mode === "retry-limit") {

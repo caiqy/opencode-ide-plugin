@@ -2,10 +2,14 @@ import path from "node:path"
 import { describe, expect, test } from "bun:test"
 
 describe("mcp session recovery", () => {
-  async function fixture(mode?: string) {
+  async function fixture(mode?: string, module?: "cjs") {
     const child = Bun.spawn([process.execPath, path.join(import.meta.dir, "../fixture/mcp-session-recovery.ts")], {
       cwd: path.join(import.meta.dir, "../.."),
-      env: { ...process.env, ...(mode ? { MCP_RECOVERY_MODE: mode } : {}) },
+      env: {
+        ...process.env,
+        ...(mode ? { MCP_RECOVERY_MODE: mode } : {}),
+        ...(module ? { MCP_RECOVERY_MODULE: module } : {}),
+      },
       stdout: "pipe",
       stderr: "pipe",
     })
@@ -37,13 +41,29 @@ describe("mcp session recovery", () => {
   })
 
   test("aborts a waiting request without retrying it after shared recovery", async () => {
-    const result = (await fixture("abort-waiter")) as unknown as {
-      posts: Array<{ method: string; session: string | null }>
-      aborted: boolean
+    for (const module of [undefined, "cjs"] as const) {
+      const result = (await fixture("abort-waiter", module)) as unknown as {
+        posts: Array<{ method: string; session: string | null }>
+        aborted: boolean
+      }
+      expect(result.aborted).toBeTrue()
+      expect(result.posts.filter((post) => post.method === "initialize")).toHaveLength(2)
+      expect(result.posts.filter((post) => post.method === "ping" && post.session === "replacement")).toHaveLength(2)
     }
-    expect(result.aborted).toBeTrue()
-    expect(result.posts.filter((post) => post.method === "initialize")).toHaveLength(2)
-    expect(result.posts.filter((post) => post.method === "ping" && post.session === "replacement")).toHaveLength(2)
+  })
+
+  test("times out a waiting request without retrying it after shared recovery", async () => {
+    for (const module of [undefined, "cjs"] as const) {
+      const result = (await fixture("timeout-waiter", module)) as unknown as {
+        posts: Array<{ method: string; session: string | null }>
+        timedOut: boolean
+        retried: boolean
+      }
+      expect(result.timedOut).toBeTrue()
+      expect(result.retried).toBeFalse()
+      expect(result.posts.filter((post) => post.method === "initialize")).toHaveLength(2)
+      expect(result.posts.filter((post) => post.method === "ping" && post.session === "replacement")).toHaveLength(1)
+    }
   })
 
   test("clears a failed re-handshake so a later request can recover", async () => {

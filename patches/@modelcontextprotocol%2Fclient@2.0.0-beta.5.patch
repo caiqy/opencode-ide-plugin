@@ -1,11 +1,5 @@
-diff --git a/node_modules/@modelcontextprotocol/client/.bun-tag-714e5af0d75b7eca b/.bun-tag-714e5af0d75b7eca
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
-diff --git a/node_modules/@modelcontextprotocol/client/.bun-tag-e694fb75c674b41d b/.bun-tag-e694fb75c674b41d
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/dist/index.cjs b/dist/index.cjs
-index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..3dc814f2b6eaeccc486b860efc3b2094efd7b802 100644
+index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..60eb21b2faeaec93b23c3ce734b8eac901ac6087 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
 @@ -3154,6 +3154,7 @@ var Client = class extends require_src.Protocol {
@@ -43,7 +37,7 @@ index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..3dc814f2b6eaeccc486b860efc3b2094
  			return;
  		}
  		this._resetConnectionState();
-@@ -5211,10 +5214,42 @@ var StreamableHTTPClientTransport = class {
+@@ -5211,10 +5214,43 @@ var StreamableHTTPClientTransport = class {
  		}
  	}
  	async send(message, options) {
@@ -84,11 +78,12 @@ index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..3dc814f2b6eaeccc486b860efc3b2094
 +					}
 +				} else await this._sessionRecovery;
 +				options?.requestSignal?.throwIfAborted();
++				if (options?.isRequestActive?.() === false) throw new Error("Request is no longer active");
 +			}
  			const { resumptionToken, onresumptiontoken } = options || {};
  			if (resumptionToken) {
  				this._startOrAuthSse({
-@@ -5226,8 +5261,8 @@ var StreamableHTTPClientTransport = class {
+@@ -5226,8 +5262,8 @@ var StreamableHTTPClientTransport = class {
  			}
  			const headers = await this._commonHeaders();
  			this._applyBodyDerivedHeaders(headers, message);
@@ -98,7 +93,7 @@ index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..3dc814f2b6eaeccc486b860efc3b2094
  			if (options?.headers !== void 0) for (const [name, value] of Object.entries(options.headers)) {
  				if (RESERVED_REQUEST_HEADER_NAMES.has(name.toLowerCase())) continue;
  				headers.set(name, value);
-@@ -5249,8 +5284,17 @@ var StreamableHTTPClientTransport = class {
+@@ -5249,8 +5285,18 @@ var StreamableHTTPClientTransport = class {
  				signal
  			};
  			const response = await (this._fetch ?? fetch)(this._url, init);
@@ -111,13 +106,14 @@ index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..3dc814f2b6eaeccc486b860efc3b2094
 +				if (response.status === 404 && (requestSessionId || this._sessionRecoveryFailed) && !isSessionRetry && !isInitialized) {
 +					if (await this._recoverSession(requestSessionId)) {
 +						options?.requestSignal?.throwIfAborted();
++						if (options?.isRequestActive?.() === false) throw new Error("Request is no longer active");
 +						return this._send(message, options, isAuthRetry, stepUpRetries, true);
 +					}
 +				}
  				if (response.status === 401 && this._authProvider) {
  					if (response.headers.has("www-authenticate")) {
  						const { resourceMetadataUrl, scope } = extractWWWAuthenticateParams(response);
-@@ -5264,7 +5308,7 @@ var StreamableHTTPClientTransport = class {
+@@ -5264,7 +5310,7 @@ var StreamableHTTPClientTransport = class {
  							fetchFn: this._fetchWithInit
  						});
  						await response.text?.().catch(() => {});
@@ -126,7 +122,7 @@ index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..3dc814f2b6eaeccc486b860efc3b2094
  					}
  					await response.text?.().catch(() => {});
  					if (isAuthRetry) throw new require_src.SdkHttpError(require_src.SdkErrorCode.ClientHttpAuthentication, "Server returned 401 after re-authentication", {
-@@ -5284,7 +5328,7 @@ var StreamableHTTPClientTransport = class {
+@@ -5284,7 +5330,7 @@ var StreamableHTTPClientTransport = class {
  							statusText: response.statusText,
  							text
  						}, stepUpRetries) !== "AUTHORIZED") throw new UnauthorizedError();
@@ -136,7 +132,7 @@ index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..3dc814f2b6eaeccc486b860efc3b2094
  				}
  				if (response.status === 400 && typeof text === "string" && this._isModernEnvelopedRequest(message)) try {
 diff --git a/dist/index.mjs b/dist/index.mjs
-index 77e2389913cb5c5c2b047f95d990ab2892bef923..759721ac09fb6d3fd76db0e1abdcada66b4aa202 100644
+index 77e2389913cb5c5c2b047f95d990ab2892bef923..1266ca8dc8541f56de9247700bd5267d1b60a4cd 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -3151,6 +3151,7 @@ var Client = class extends Protocol {
@@ -174,7 +170,7 @@ index 77e2389913cb5c5c2b047f95d990ab2892bef923..759721ac09fb6d3fd76db0e1abdcada6
  			return;
  		}
  		this._resetConnectionState();
-@@ -5208,10 +5211,42 @@ var StreamableHTTPClientTransport = class {
+@@ -5208,10 +5211,43 @@ var StreamableHTTPClientTransport = class {
  		}
  	}
  	async send(message, options) {
@@ -215,11 +211,12 @@ index 77e2389913cb5c5c2b047f95d990ab2892bef923..759721ac09fb6d3fd76db0e1abdcada6
 +					}
 +				} else await this._sessionRecovery;
 +				options?.requestSignal?.throwIfAborted();
++				if (options?.isRequestActive?.() === false) throw new Error("Request is no longer active");
 +			}
  			const { resumptionToken, onresumptiontoken } = options || {};
  			if (resumptionToken) {
  				this._startOrAuthSse({
-@@ -5223,8 +5258,8 @@ var StreamableHTTPClientTransport = class {
+@@ -5223,8 +5259,8 @@ var StreamableHTTPClientTransport = class {
  			}
  			const headers = await this._commonHeaders();
  			this._applyBodyDerivedHeaders(headers, message);
@@ -229,7 +226,7 @@ index 77e2389913cb5c5c2b047f95d990ab2892bef923..759721ac09fb6d3fd76db0e1abdcada6
  			if (options?.headers !== void 0) for (const [name, value] of Object.entries(options.headers)) {
  				if (RESERVED_REQUEST_HEADER_NAMES.has(name.toLowerCase())) continue;
  				headers.set(name, value);
-@@ -5246,8 +5281,17 @@ var StreamableHTTPClientTransport = class {
+@@ -5246,8 +5282,18 @@ var StreamableHTTPClientTransport = class {
  				signal
  			};
  			const response = await (this._fetch ?? fetch)(this._url, init);
@@ -242,13 +239,14 @@ index 77e2389913cb5c5c2b047f95d990ab2892bef923..759721ac09fb6d3fd76db0e1abdcada6
 +				if (response.status === 404 && (requestSessionId || this._sessionRecoveryFailed) && !isSessionRetry && !isInitialized) {
 +					if (await this._recoverSession(requestSessionId)) {
 +						options?.requestSignal?.throwIfAborted();
++						if (options?.isRequestActive?.() === false) throw new Error("Request is no longer active");
 +						return this._send(message, options, isAuthRetry, stepUpRetries, true);
 +					}
 +				}
  				if (response.status === 401 && this._authProvider) {
  					if (response.headers.has("www-authenticate")) {
  						const { resourceMetadataUrl, scope } = extractWWWAuthenticateParams(response);
-@@ -5261,7 +5305,7 @@ var StreamableHTTPClientTransport = class {
+@@ -5261,7 +5307,7 @@ var StreamableHTTPClientTransport = class {
  							fetchFn: this._fetchWithInit
  						});
  						await response.text?.().catch(() => {});
@@ -257,7 +255,7 @@ index 77e2389913cb5c5c2b047f95d990ab2892bef923..759721ac09fb6d3fd76db0e1abdcada6
  					}
  					await response.text?.().catch(() => {});
  					if (isAuthRetry) throw new SdkHttpError(SdkErrorCode.ClientHttpAuthentication, "Server returned 401 after re-authentication", {
-@@ -5281,7 +5325,7 @@ var StreamableHTTPClientTransport = class {
+@@ -5281,7 +5327,7 @@ var StreamableHTTPClientTransport = class {
  							statusText: response.statusText,
  							text
  						}, stepUpRetries) !== "AUTHORIZED") throw new UnauthorizedError();
@@ -267,28 +265,30 @@ index 77e2389913cb5c5c2b047f95d990ab2892bef923..759721ac09fb6d3fd76db0e1abdcada6
  				}
  				if (response.status === 400 && typeof text === "string" && this._isModernEnvelopedRequest(message)) try {
 diff --git a/dist/src-BdldTATN.cjs b/dist/src-BdldTATN.cjs
-index 4461b566e92f951a2ef76b717765480e86f21394..71106224a87ba9c386be845ce39fe1fa9f2ef015 100644
+index 4461b566e92f951a2ef76b717765480e86f21394..a5b396ad5b26eafd21cf979bbc5e4f4e287b06a2 100644
 --- a/dist/src-BdldTATN.cjs
 +++ b/dist/src-BdldTATN.cjs
-@@ -6119,7 +6119,7 @@ var Protocol = class {
+@@ -6119,7 +6119,8 @@ var Protocol = class {
  				resumptionToken,
  				onresumptiontoken,
  				headers,
 -				requestSignal: requestAbort?.signal
-+				requestSignal: requestAbort?.signal ?? options?.signal
++				requestSignal: requestAbort?.signal ?? options?.signal,
++				isRequestActive: () => this._responseHandlers.has(messageId)
  			}).catch((error) => {
  				this._progressHandlers.delete(messageId);
  				reject(error);
 diff --git a/dist/src-CgOncMok.mjs b/dist/src-CgOncMok.mjs
-index 7ac68cc966ee0a859b52b1f1e12de06a16d6e713..fb7d389219e19bbd443431e80b5d2ac480d23b9a 100644
+index 7ac68cc966ee0a859b52b1f1e12de06a16d6e713..7c569ef6c6a9ee9cdd094b0ea173e88adf212156 100644
 --- a/dist/src-CgOncMok.mjs
 +++ b/dist/src-CgOncMok.mjs
-@@ -6118,7 +6118,7 @@ var Protocol = class {
+@@ -6118,7 +6118,8 @@ var Protocol = class {
  				resumptionToken,
  				onresumptiontoken,
  				headers,
 -				requestSignal: requestAbort?.signal
-+				requestSignal: requestAbort?.signal ?? options?.signal
++				requestSignal: requestAbort?.signal ?? options?.signal,
++				isRequestActive: () => this._responseHandlers.has(messageId)
  			}).catch((error) => {
  				this._progressHandlers.delete(messageId);
  				reject(error);
