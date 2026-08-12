@@ -1,32 +1,49 @@
+diff --git a/node_modules/@modelcontextprotocol/client/.bun-tag-714e5af0d75b7eca b/.bun-tag-714e5af0d75b7eca
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/@modelcontextprotocol/client/.bun-tag-e694fb75c674b41d b/.bun-tag-e694fb75c674b41d
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/dist/index.cjs b/dist/index.cjs
-index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..7e2108326f368ccbc48897195d57e370a4553855 100644
+index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..3dc814f2b6eaeccc486b860efc3b2094efd7b802 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
 @@ -3154,6 +3154,7 @@ var Client = class extends require_src.Protocol {
  	*/
  	async _connectPlainLegacy(transport, options) {
  		await super.connect(transport);
-+		transport.onsessionexpired = () => this._legacyHandshake(transport, options);
++		transport.onsessionexpired = () => this._legacyHandshake(transport, options, true);
  		if (transport.sessionId !== void 0) {
  			const negotiatedProtocolVersion = this._negotiatedProtocolVersion;
  			if (negotiatedProtocolVersion !== void 0) transport.setProtocolVersion?.(negotiatedProtocolVersion);
-@@ -3170,6 +3171,7 @@ var Client = class extends require_src.Protocol {
+@@ -3169,7 +3170,8 @@ var Client = class extends require_src.Protocol {
+ 	* in-place modes it rides the probed connection). Callers clear the negotiated protocol version before
  	* the handshake; its completion sets the negotiated (legacy) version.
  	*/
- 	async _legacyHandshake(transport, options) {
-+		transport.onsessionexpired = () => this._legacyHandshake(transport, options);
+-	async _legacyHandshake(transport, options) {
++	async _legacyHandshake(transport, options, recovery = false) {
++		transport.onsessionexpired = () => this._legacyHandshake(transport, options, true);
  		const legacyVersions = require_src.legacyProtocolVersions(this._supportedProtocolVersions);
  		try {
  			const offeredVersion = legacyVersions[0];
+@@ -3193,7 +3195,7 @@ var Client = class extends require_src.Protocol {
+ 			this._negotiatedProtocolVersion = result.protocolVersion;
+ 			if (this._listChangedConfig) this._setupListChangedHandlers(this._listChangedConfig);
+ 		} catch (error) {
+-			this.close();
++			if (!recovery) this.close();
+ 			throw error;
+ 		}
+ 	}
 @@ -3208,6 +3210,7 @@ var Client = class extends require_src.Protocol {
  			await super.connect(transport);
  			const negotiatedProtocolVersion = this._negotiatedProtocolVersion;
  			if (negotiatedProtocolVersion !== void 0 && transport.setProtocolVersion) transport.setProtocolVersion(negotiatedProtocolVersion);
-+			if (negotiatedProtocolVersion !== void 0 && !require_src.isModernProtocolVersion(negotiatedProtocolVersion)) transport.onsessionexpired = () => this._legacyHandshake(transport, options);
++			if (negotiatedProtocolVersion !== void 0 && !require_src.isModernProtocolVersion(negotiatedProtocolVersion)) transport.onsessionexpired = () => this._legacyHandshake(transport, options, true);
  			return;
  		}
  		this._resetConnectionState();
-@@ -5211,10 +5214,32 @@ var StreamableHTTPClientTransport = class {
+@@ -5211,10 +5214,42 @@ var StreamableHTTPClientTransport = class {
  		}
  	}
  	async send(message, options) {
@@ -43,7 +60,7 @@ index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..7e2108326f368ccbc48897195d57e370
 +			return await this._sessionRecovery;
 +		} catch (error) {
 +			this._sessionId = void 0;
-+			await this.close();
++			this._sessionRecoveryFailed = true;
 +			throw error;
 +		} finally {
 +			this._sessionRecovery = void 0;
@@ -55,13 +72,23 @@ index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..7e2108326f368ccbc48897195d57e370
 +			const isHandshake = Array.isArray(message) ? message.some((m) => require_src.isInitializeRequest(m)) : require_src.isInitializeRequest(message);
 +			const isInitialized = Array.isArray(message) ? message.some((m) => require_src.isInitializedNotification(m)) : require_src.isInitializedNotification(message);
 +			if (this._sessionRecovery && !isHandshake && !isInitialized) {
-+				await this._sessionRecovery;
++				if (options?.requestSignal) {
++					options.requestSignal.throwIfAborted();
++					const abort = Promise.withResolvers();
++					const reject = () => abort.reject(options.requestSignal.reason);
++					options.requestSignal.addEventListener("abort", reject, { once: true });
++					try {
++						await Promise.race([this._sessionRecovery, abort.promise]);
++					} finally {
++						options.requestSignal.removeEventListener("abort", reject);
++					}
++				} else await this._sessionRecovery;
 +				options?.requestSignal?.throwIfAborted();
 +			}
  			const { resumptionToken, onresumptiontoken } = options || {};
  			if (resumptionToken) {
  				this._startOrAuthSse({
-@@ -5226,8 +5251,8 @@ var StreamableHTTPClientTransport = class {
+@@ -5226,8 +5261,8 @@ var StreamableHTTPClientTransport = class {
  			}
  			const headers = await this._commonHeaders();
  			this._applyBodyDerivedHeaders(headers, message);
@@ -71,14 +98,17 @@ index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..7e2108326f368ccbc48897195d57e370
  			if (options?.headers !== void 0) for (const [name, value] of Object.entries(options.headers)) {
  				if (RESERVED_REQUEST_HEADER_NAMES.has(name.toLowerCase())) continue;
  				headers.set(name, value);
-@@ -5249,8 +5274,14 @@ var StreamableHTTPClientTransport = class {
+@@ -5249,8 +5284,17 @@ var StreamableHTTPClientTransport = class {
  				signal
  			};
  			const response = await (this._fetch ?? fetch)(this._url, init);
 -			if (isHandshake && response.ok) this._sessionId = response.headers.get("mcp-session-id") || void 0;
-+			if (isHandshake && response.ok && (requestSessionId === void 0 || this._sessionId === requestSessionId)) this._sessionId = response.headers.get("mcp-session-id") || void 0;
++			if (isHandshake && response.ok && (requestSessionId === void 0 || this._sessionId === requestSessionId)) {
++				this._sessionId = response.headers.get("mcp-session-id") || void 0;
++				this._sessionRecoveryFailed = false;
++			}
  			if (!response.ok) {
-+				if (response.status === 404 && requestSessionId && !isSessionRetry && !isInitialized) {
++				if (response.status === 404 && (requestSessionId || this._sessionRecoveryFailed) && !isSessionRetry && !isInitialized) {
 +					if (await this._recoverSession(requestSessionId)) {
 +						options?.requestSignal?.throwIfAborted();
 +						return this._send(message, options, isAuthRetry, stepUpRetries, true);
@@ -87,7 +117,7 @@ index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..7e2108326f368ccbc48897195d57e370
  				if (response.status === 401 && this._authProvider) {
  					if (response.headers.has("www-authenticate")) {
  						const { resourceMetadataUrl, scope } = extractWWWAuthenticateParams(response);
-@@ -5264,7 +5295,7 @@ var StreamableHTTPClientTransport = class {
+@@ -5264,7 +5308,7 @@ var StreamableHTTPClientTransport = class {
  							fetchFn: this._fetchWithInit
  						});
  						await response.text?.().catch(() => {});
@@ -96,7 +126,7 @@ index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..7e2108326f368ccbc48897195d57e370
  					}
  					await response.text?.().catch(() => {});
  					if (isAuthRetry) throw new require_src.SdkHttpError(require_src.SdkErrorCode.ClientHttpAuthentication, "Server returned 401 after re-authentication", {
-@@ -5284,7 +5315,7 @@ var StreamableHTTPClientTransport = class {
+@@ -5284,7 +5328,7 @@ var StreamableHTTPClientTransport = class {
  							statusText: response.statusText,
  							text
  						}, stepUpRetries) !== "AUTHORIZED") throw new UnauthorizedError();
@@ -106,34 +136,45 @@ index 1c43bac25a1037416fdf2ddfb4534ba0897a2e69..7e2108326f368ccbc48897195d57e370
  				}
  				if (response.status === 400 && typeof text === "string" && this._isModernEnvelopedRequest(message)) try {
 diff --git a/dist/index.mjs b/dist/index.mjs
-index 77e2389913cb5c5c2b047f95d990ab2892bef923..4b5e4ff2869189d600ca644488a7749668c39747 100644
+index 77e2389913cb5c5c2b047f95d990ab2892bef923..759721ac09fb6d3fd76db0e1abdcada66b4aa202 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -3151,6 +3151,7 @@ var Client = class extends Protocol {
  	*/
  	async _connectPlainLegacy(transport, options) {
  		await super.connect(transport);
-+		transport.onsessionexpired = () => this._legacyHandshake(transport, options);
++		transport.onsessionexpired = () => this._legacyHandshake(transport, options, true);
  		if (transport.sessionId !== void 0) {
  			const negotiatedProtocolVersion = this._negotiatedProtocolVersion;
  			if (negotiatedProtocolVersion !== void 0) transport.setProtocolVersion?.(negotiatedProtocolVersion);
-@@ -3167,6 +3168,7 @@ var Client = class extends Protocol {
+@@ -3166,7 +3167,8 @@ var Client = class extends Protocol {
+ 	* in-place modes it rides the probed connection). Callers clear the negotiated protocol version before
  	* the handshake; its completion sets the negotiated (legacy) version.
  	*/
- 	async _legacyHandshake(transport, options) {
-+		transport.onsessionexpired = () => this._legacyHandshake(transport, options);
+-	async _legacyHandshake(transport, options) {
++	async _legacyHandshake(transport, options, recovery = false) {
++		transport.onsessionexpired = () => this._legacyHandshake(transport, options, true);
  		const legacyVersions = legacyProtocolVersions(this._supportedProtocolVersions);
  		try {
  			const offeredVersion = legacyVersions[0];
+@@ -3190,7 +3192,7 @@ var Client = class extends Protocol {
+ 			this._negotiatedProtocolVersion = result.protocolVersion;
+ 			if (this._listChangedConfig) this._setupListChangedHandlers(this._listChangedConfig);
+ 		} catch (error) {
+-			this.close();
++			if (!recovery) this.close();
+ 			throw error;
+ 		}
+ 	}
 @@ -3205,6 +3207,7 @@ var Client = class extends Protocol {
  			await super.connect(transport);
  			const negotiatedProtocolVersion = this._negotiatedProtocolVersion;
  			if (negotiatedProtocolVersion !== void 0 && transport.setProtocolVersion) transport.setProtocolVersion(negotiatedProtocolVersion);
-+			if (negotiatedProtocolVersion !== void 0 && !isModernProtocolVersion(negotiatedProtocolVersion)) transport.onsessionexpired = () => this._legacyHandshake(transport, options);
++			if (negotiatedProtocolVersion !== void 0 && !isModernProtocolVersion(negotiatedProtocolVersion)) transport.onsessionexpired = () => this._legacyHandshake(transport, options, true);
  			return;
  		}
  		this._resetConnectionState();
-@@ -5208,10 +5211,32 @@ var StreamableHTTPClientTransport = class {
+@@ -5208,10 +5211,42 @@ var StreamableHTTPClientTransport = class {
  		}
  	}
  	async send(message, options) {
@@ -150,7 +191,7 @@ index 77e2389913cb5c5c2b047f95d990ab2892bef923..4b5e4ff2869189d600ca644488a77496
 +			return await this._sessionRecovery;
 +		} catch (error) {
 +			this._sessionId = void 0;
-+			await this.close();
++			this._sessionRecoveryFailed = true;
 +			throw error;
 +		} finally {
 +			this._sessionRecovery = void 0;
@@ -162,13 +203,23 @@ index 77e2389913cb5c5c2b047f95d990ab2892bef923..4b5e4ff2869189d600ca644488a77496
 +			const isHandshake = Array.isArray(message) ? message.some((m) => isInitializeRequest(m)) : isInitializeRequest(message);
 +			const isInitialized = Array.isArray(message) ? message.some((m) => isInitializedNotification(m)) : isInitializedNotification(message);
 +			if (this._sessionRecovery && !isHandshake && !isInitialized) {
-+				await this._sessionRecovery;
++				if (options?.requestSignal) {
++					options.requestSignal.throwIfAborted();
++					const abort = Promise.withResolvers();
++					const reject = () => abort.reject(options.requestSignal.reason);
++					options.requestSignal.addEventListener("abort", reject, { once: true });
++					try {
++						await Promise.race([this._sessionRecovery, abort.promise]);
++					} finally {
++						options.requestSignal.removeEventListener("abort", reject);
++					}
++				} else await this._sessionRecovery;
 +				options?.requestSignal?.throwIfAborted();
 +			}
  			const { resumptionToken, onresumptiontoken } = options || {};
  			if (resumptionToken) {
  				this._startOrAuthSse({
-@@ -5223,8 +5248,8 @@ var StreamableHTTPClientTransport = class {
+@@ -5223,8 +5258,8 @@ var StreamableHTTPClientTransport = class {
  			}
  			const headers = await this._commonHeaders();
  			this._applyBodyDerivedHeaders(headers, message);
@@ -178,14 +229,17 @@ index 77e2389913cb5c5c2b047f95d990ab2892bef923..4b5e4ff2869189d600ca644488a77496
  			if (options?.headers !== void 0) for (const [name, value] of Object.entries(options.headers)) {
  				if (RESERVED_REQUEST_HEADER_NAMES.has(name.toLowerCase())) continue;
  				headers.set(name, value);
-@@ -5246,8 +5271,14 @@ var StreamableHTTPClientTransport = class {
+@@ -5246,8 +5281,17 @@ var StreamableHTTPClientTransport = class {
  				signal
  			};
  			const response = await (this._fetch ?? fetch)(this._url, init);
 -			if (isHandshake && response.ok) this._sessionId = response.headers.get("mcp-session-id") || void 0;
-+			if (isHandshake && response.ok && (requestSessionId === void 0 || this._sessionId === requestSessionId)) this._sessionId = response.headers.get("mcp-session-id") || void 0;
++			if (isHandshake && response.ok && (requestSessionId === void 0 || this._sessionId === requestSessionId)) {
++				this._sessionId = response.headers.get("mcp-session-id") || void 0;
++				this._sessionRecoveryFailed = false;
++			}
  			if (!response.ok) {
-+				if (response.status === 404 && requestSessionId && !isSessionRetry && !isInitialized) {
++				if (response.status === 404 && (requestSessionId || this._sessionRecoveryFailed) && !isSessionRetry && !isInitialized) {
 +					if (await this._recoverSession(requestSessionId)) {
 +						options?.requestSignal?.throwIfAborted();
 +						return this._send(message, options, isAuthRetry, stepUpRetries, true);
@@ -194,7 +248,7 @@ index 77e2389913cb5c5c2b047f95d990ab2892bef923..4b5e4ff2869189d600ca644488a77496
  				if (response.status === 401 && this._authProvider) {
  					if (response.headers.has("www-authenticate")) {
  						const { resourceMetadataUrl, scope } = extractWWWAuthenticateParams(response);
-@@ -5261,7 +5292,7 @@ var StreamableHTTPClientTransport = class {
+@@ -5261,7 +5305,7 @@ var StreamableHTTPClientTransport = class {
  							fetchFn: this._fetchWithInit
  						});
  						await response.text?.().catch(() => {});
@@ -203,7 +257,7 @@ index 77e2389913cb5c5c2b047f95d990ab2892bef923..4b5e4ff2869189d600ca644488a77496
  					}
  					await response.text?.().catch(() => {});
  					if (isAuthRetry) throw new SdkHttpError(SdkErrorCode.ClientHttpAuthentication, "Server returned 401 after re-authentication", {
-@@ -5281,7 +5312,7 @@ var StreamableHTTPClientTransport = class {
+@@ -5281,7 +5325,7 @@ var StreamableHTTPClientTransport = class {
  							statusText: response.statusText,
  							text
  						}, stepUpRetries) !== "AUTHORIZED") throw new UnauthorizedError();
@@ -212,3 +266,29 @@ index 77e2389913cb5c5c2b047f95d990ab2892bef923..4b5e4ff2869189d600ca644488a77496
  					}
  				}
  				if (response.status === 400 && typeof text === "string" && this._isModernEnvelopedRequest(message)) try {
+diff --git a/dist/src-BdldTATN.cjs b/dist/src-BdldTATN.cjs
+index 4461b566e92f951a2ef76b717765480e86f21394..71106224a87ba9c386be845ce39fe1fa9f2ef015 100644
+--- a/dist/src-BdldTATN.cjs
++++ b/dist/src-BdldTATN.cjs
+@@ -6119,7 +6119,7 @@ var Protocol = class {
+ 				resumptionToken,
+ 				onresumptiontoken,
+ 				headers,
+-				requestSignal: requestAbort?.signal
++				requestSignal: requestAbort?.signal ?? options?.signal
+ 			}).catch((error) => {
+ 				this._progressHandlers.delete(messageId);
+ 				reject(error);
+diff --git a/dist/src-CgOncMok.mjs b/dist/src-CgOncMok.mjs
+index 7ac68cc966ee0a859b52b1f1e12de06a16d6e713..fb7d389219e19bbd443431e80b5d2ac480d23b9a 100644
+--- a/dist/src-CgOncMok.mjs
++++ b/dist/src-CgOncMok.mjs
+@@ -6118,7 +6118,7 @@ var Protocol = class {
+ 				resumptionToken,
+ 				onresumptiontoken,
+ 				headers,
+-				requestSignal: requestAbort?.signal
++				requestSignal: requestAbort?.signal ?? options?.signal
+ 			}).catch((error) => {
+ 				this._progressHandlers.delete(messageId);
+ 				reject(error);
