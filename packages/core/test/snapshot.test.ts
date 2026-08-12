@@ -169,7 +169,6 @@ describe("Snapshot", () => {
         }),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ),
-    30_000,
   )
 })
 
