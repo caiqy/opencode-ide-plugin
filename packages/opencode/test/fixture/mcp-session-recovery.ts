@@ -1,9 +1,20 @@
 import { createRequire } from "node:module"
 
-const { Client, LATEST_PROTOCOL_VERSION, StreamableHTTPClientTransport } =
+const require = createRequire(import.meta.url)
+const sdk =
   process.env.MCP_RECOVERY_MODULE === "cjs"
-    ? createRequire(import.meta.url)("@modelcontextprotocol/client")
-    : await import("@modelcontextprotocol/client")
+    ? {
+        Client: require("@modelcontextprotocol/sdk/client/index.js").Client,
+        LATEST_PROTOCOL_VERSION: require("@modelcontextprotocol/sdk/types.js").LATEST_PROTOCOL_VERSION,
+        StreamableHTTPClientTransport: require("@modelcontextprotocol/sdk/client/streamableHttp.js")
+          .StreamableHTTPClientTransport,
+      }
+    : {
+        Client: (await import("@modelcontextprotocol/sdk/client/index.js")).Client,
+        LATEST_PROTOCOL_VERSION: (await import("@modelcontextprotocol/sdk/types.js")).LATEST_PROTOCOL_VERSION,
+        StreamableHTTPClientTransport: (await import("@modelcontextprotocol/sdk/client/streamableHttp.js"))
+          .StreamableHTTPClientTransport,
+      }
 
 const posts: Array<{ method: string; session: string | null }> = []
 const mode = process.env.MCP_RECOVERY_MODE ?? "success"
@@ -48,7 +59,7 @@ const server = Bun.serve({
           jsonrpc: "2.0",
           id: message.id,
           result: {
-            protocolVersion: LATEST_PROTOCOL_VERSION,
+            protocolVersion: sdk.LATEST_PROTOCOL_VERSION,
             capabilities: {},
             serverInfo: { name: "test", version: "1" },
           },
@@ -73,18 +84,18 @@ const server = Bun.serve({
     return Response.json({ jsonrpc: "2.0", id: message.id, result: {} })
   },
 })
-const client = new Client({ name: "test", version: "1" })
-const transport = new StreamableHTTPClientTransport(
+const client = new sdk.Client({ name: "test", version: "1" })
+const transport = new sdk.StreamableHTTPClientTransport(
   server.url,
   mode === "timeout-auth-waiter" || mode === "abort-auth-waiter"
     ? {
         authProvider: {
-          token: async () => {
-            if (!blockReplacementToken) return "test"
+          tokens: async () => {
+            if (!blockReplacementToken) return { access_token: "test", token_type: "Bearer" }
             tokenWaiters++
             if (tokenWaiters === 2) tokenWaitersStarted()
             await releaseReplacementTokens
-            return "test"
+            return { access_token: "test", token_type: "Bearer" }
           },
         },
         ...(mode === "abort-auth-waiter"
