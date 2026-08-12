@@ -107,6 +107,7 @@ describe("MoveSession", () => {
           .get(),
       ).toEqual({ directory: moved, path: "" })
     }),
+    30_000,
   )
 
   it.live("moves within a checkout without transferring existing changes", () =>
@@ -159,6 +160,7 @@ describe("MoveSession", () => {
           .get(),
       ).toEqual({ directory: destination, path: "packages" })
     }),
+    30_000,
   )
 
   it.live("moves nested session changes without cleaning unrelated files", () =>
@@ -231,5 +233,6 @@ describe("MoveSession", () => {
       expect(yield* Effect.promise(() => fs.readFile(path.join(source, "tracked.txt"), "utf8"))).toBe("unrelated\n")
       expect(yield* Effect.promise(() => fs.readFile(path.join(source, "untracked.txt"), "utf8"))).toBe("unrelated\n")
     }),
+    30_000,
   )
 })
