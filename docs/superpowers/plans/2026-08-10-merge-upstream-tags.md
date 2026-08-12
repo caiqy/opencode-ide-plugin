@@ -678,8 +678,8 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 ### Task 6：合并 v1.18.8（OpenSpec 2.3）
 
-- [ ] 执行 `$merge = Start-TagMerge 'v1.18.8'`，以实际冲突 index 完成语义决策、必要生成和用户等价替换暂停。
-- [ ] 逐路径 stage 后运行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
+- [x] 执行 `$merge = Start-TagMerge 'v1.18.8'`，以实际冲突 index 完成语义决策、必要生成和用户等价替换暂停。
+- [x] 逐路径 stage 后运行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
 
 验收：精确 tag object/peeled SHA、MERGE_HEAD 和双父链均正确；空树差异仍允许 merge。
 
