@@ -66,6 +66,28 @@ describe("mcp session recovery", () => {
     }
   })
 
+  test("does not send a timed-out waiter after its replacement-session auth completes", async () => {
+    for (const module of [undefined, "cjs"] as const) {
+      const result = (await fixture("timeout-auth-waiter", module)) as unknown as {
+        posts: Array<{ method: string; session: string | null }>
+        timedOut: boolean
+      }
+      expect(result.timedOut).toBeTrue()
+      expect(result.posts.filter((post) => post.method === "ping" && post.session === "replacement")).toHaveLength(1)
+    }
+  })
+
+  test("does not send an aborted waiter after its replacement-session auth completes", async () => {
+    for (const module of [undefined, "cjs"] as const) {
+      const result = (await fixture("abort-auth-waiter", module)) as unknown as {
+        posts: Array<{ method: string; session: string | null }>
+        aborted: boolean
+      }
+      expect(result.aborted).toBeTrue()
+      expect(result.posts.filter((post) => post.method === "ping" && post.session === "replacement")).toHaveLength(1)
+    }
+  })
+
   test("clears a failed re-handshake so a later request can recover", async () => {
     const result = (await fixture("rehandshake-failure")) as unknown as {
       posts: Array<{ method: string; session: string | null }>

@@ -10,6 +10,12 @@ const mode = process.env.MCP_RECOVERY_MODE ?? "success"
 const concurrent = mode === "concurrent"
 let initializeCount = 0
 let pingCount = 0
+let blockReplacementToken = false
+let tokenWaiters = 0
+let tokenWaitersStarted!: () => void
+const replacementTokenWaiters = new Promise<void>((resolve) => (tokenWaitersStarted = resolve))
+let tokenWaitersReleased!: () => void
+const releaseReplacementTokens = new Promise<void>((resolve) => (tokenWaitersReleased = resolve))
 let replacementStarted!: () => void
 const replacement = new Promise<void>((resolve) => (replacementStarted = resolve))
 let replacementReleased!: () => void
@@ -27,7 +33,15 @@ const server = Bun.serve({
     if (message.method === "initialize") {
       initializeCount++
       if (initializeCount === 2) replacementStarted()
-      if (initializeCount === 2 && (mode === "abort-waiter" || mode === "timeout-waiter")) await releaseReplacement
+      if (
+        initializeCount === 2 &&
+        (mode === "abort-waiter" ||
+          mode === "timeout-waiter" ||
+          mode === "timeout-auth-waiter" ||
+          mode === "abort-auth-waiter")
+      ) {
+        await releaseReplacement
+      }
       if (initializeCount === 2 && mode === "rehandshake-failure") return new Response("re-handshake failed", { status: 500 })
       return Response.json(
         {
@@ -43,7 +57,12 @@ const server = Bun.serve({
       )
     }
 
-    if (message.method === "notifications/initialized") return new Response(null, { status: 202 })
+    if (message.method === "notifications/initialized") {
+      if ((mode === "timeout-auth-waiter" || mode === "abort-auth-waiter") && session === "replacement") {
+        blockReplacementToken = true
+      }
+      return new Response(null, { status: 202 })
+    }
     if (message.method !== "ping") return new Response(null, { status: 202 })
 
     pingCount++
@@ -55,9 +74,35 @@ const server = Bun.serve({
   },
 })
 const client = new Client({ name: "test", version: "1" })
+const transport = new StreamableHTTPClientTransport(
+  server.url,
+  mode === "timeout-auth-waiter" || mode === "abort-auth-waiter"
+    ? {
+        authProvider: {
+          token: async () => {
+            if (!blockReplacementToken) return "test"
+            tokenWaiters++
+            if (tokenWaiters === 2) tokenWaitersStarted()
+            await releaseReplacementTokens
+            return "test"
+          },
+        },
+        ...(mode === "abort-auth-waiter"
+          ? {
+              fetch: (...args: Parameters<typeof fetch>) => {
+                const [input, init] = args
+                const requestInit = { ...init }
+                delete requestInit.signal
+                return fetch(input, requestInit)
+              },
+            }
+          : {}),
+      }
+    : undefined,
+)
 
 try {
-  await client.connect(new StreamableHTTPClientTransport(server.url))
+  await client.connect(transport)
   if (concurrent) await Promise.all([client.ping(), client.ping()])
   if (mode === "abort-waiter") {
     const recovering = client.ping()
@@ -96,6 +141,56 @@ try {
     await Bun.sleep(50)
     const retried = posts.filter((post) => post.method === "ping" && post.session === "replacement").length > 1
     process.stdout.write(JSON.stringify({ posts, timedOut, retried }))
+  } else if (mode === "timeout-auth-waiter") {
+    const recovering = client.ping()
+    await replacement
+    const waiting = client.ping({ timeout: 100 })
+    replacementReleased()
+    await Promise.race([
+      replacementTokenWaiters,
+      Bun.sleep(250).then(() => {
+        throw new Error("replacement-session requests did not reach auth token preparation")
+      }),
+    ])
+    const timedOut = await Promise.race([
+      waiting.then(
+        () => false,
+        () => true,
+      ),
+      Bun.sleep(250).then(() => {
+        throw new Error("waiting request did not time out while auth token preparation was blocked")
+      }),
+    ])
+    tokenWaitersReleased()
+    await recovering
+    await Bun.sleep(50)
+    process.stdout.write(JSON.stringify({ posts, timedOut }))
+  } else if (mode === "abort-auth-waiter") {
+    const recovering = client.ping()
+    await replacement
+    const controller = new AbortController()
+    const waiting = client.ping({ signal: controller.signal })
+    replacementReleased()
+    await Promise.race([
+      replacementTokenWaiters,
+      Bun.sleep(250).then(() => {
+        throw new Error("replacement-session requests did not reach auth token preparation")
+      }),
+    ])
+    controller.abort(new Error("waiter aborted"))
+    const aborted = await Promise.race([
+      waiting.then(
+        () => false,
+        () => true,
+      ),
+      Bun.sleep(250).then(() => {
+        throw new Error("waiting request did not abort while auth token preparation was blocked")
+      }),
+    ])
+    tokenWaitersReleased()
+    await recovering
+    await Bun.sleep(50)
+    process.stdout.write(JSON.stringify({ posts, aborted }))
   } else if (mode === "rehandshake-failure") {
     const failed = await client.ping().then(
       () => false,
