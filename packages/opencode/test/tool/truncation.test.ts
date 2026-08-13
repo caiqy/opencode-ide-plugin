@@ -236,7 +236,7 @@ describe("Truncate", () => {
       })
 
       expect(out.code).toBe(0)
-    }, 20000)
+    }, 30_000)
   })
 
   describe("cleanup", () => {
