@@ -14,6 +14,16 @@ export function notificationHref(server: ServerConnection.Key, directory: string
   return sessionID ? sessionHref(server, sessionID) : `/${base64Encode(directory)}`
 }
 
+export function navigateNotification(
+  server: ServerConnection.Key,
+  href: string,
+  setActive: (server: ServerConnection.Key) => void,
+  navigate: (href: string) => void,
+) {
+  setActive(server)
+  navigate(href)
+}
+
 export function requireServerKey(segment: string | undefined) {
   const key = decode64(segment)
   if (!key || base64Encode(key) !== segment) throw new Error("Invalid server route")

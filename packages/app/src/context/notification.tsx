@@ -14,7 +14,7 @@ import { playSoundById } from "@/utils/sound"
 import { useGlobal } from "./global"
 import { ServerConnection, useServer } from "./server"
 import { type DraftTab, useTabs } from "./tabs"
-import { notificationHref, requireServerKey } from "@/utils/session-route"
+import { navigateNotification, notificationHref, requireServerKey } from "@/utils/session-route"
 import type { ServerScope } from "@/utils/server-scope"
 
 type NotificationBase = {
@@ -146,6 +146,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
           dispose,
           state: createServerNotificationState({
             serverKey: key,
+            setActiveServer: server.setActive,
             sdk: ctx.sdk,
             sync: ctx.sync,
             active: () => server.scope(activeServer()) === ctx.sdk.scope,
@@ -212,6 +213,7 @@ type NotificationState = ReturnType<typeof createServerNotificationState>
 
 function createServerNotificationState(input: {
   serverKey: ServerConnection.Key
+  setActiveServer: (server: ServerConnection.Key) => void
   sdk: ServerSDK
   sync: ServerSync
   active: Accessor<boolean>
@@ -358,7 +360,7 @@ function createServerNotificationState(input: {
       const href = notificationHref(input.serverKey, directory, sessionID)
       if (settings.notifications.agent()) {
         void platform.notify(language.t("notification.session.responseReady.title"), session.title ?? sessionID, () =>
-          input.navigate(href),
+          navigateNotification(input.serverKey, href, input.setActiveServer, input.navigate),
         )
       }
     })
@@ -392,7 +394,9 @@ function createServerNotificationState(input: {
         (typeof error === "string" ? error : language.t("notification.session.error.fallbackDescription"))
       const href = notificationHref(input.serverKey, directory, sessionID)
       if (settings.notifications.errors()) {
-        void platform.notify(language.t("notification.session.error.title"), description, () => input.navigate(href))
+        void platform.notify(language.t("notification.session.error.title"), description, () =>
+          navigateNotification(input.serverKey, href, input.setActiveServer, input.navigate),
+        )
       }
     })
   }

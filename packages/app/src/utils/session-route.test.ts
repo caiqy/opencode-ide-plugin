@@ -3,6 +3,7 @@ import { ServerConnection } from "@/context/server"
 import {
   legacySessionHref,
   legacySessionServer,
+  navigateNotification,
   notificationHref,
   requireServerKey,
   rootSession,
@@ -61,6 +62,18 @@ describe("session routes", () => {
     expect(notificationHref(ServerConnection.Key.make("server-b"), "/Users/example/project")).toBe(
       "/L1VzZXJzL2V4YW1wbGUvcHJvamVjdA",
     )
+  })
+
+  test("activates the source server before notification navigation", () => {
+    const calls: string[] = []
+    navigateNotification(
+      ServerConnection.Key.make("server-b"),
+      "/target",
+      (server) => calls.push(`active:${server}`),
+      (href) => calls.push(`navigate:${href}`),
+    )
+
+    expect(calls).toEqual(["active:server-b", "navigate:/target"])
   })
 
   test("resolves the root session", async () => {
