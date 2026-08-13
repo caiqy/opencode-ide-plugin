@@ -1,17 +1,17 @@
 # Subagent Progress
 
 - Plan: `docs/superpowers/plans/2026-08-10-merge-upstream-tags.md`
-- Plan task: `Task 8：合并 v1.18.9（OpenSpec 2.5）`
-- OpenSpec task: `2.5 合并 v1.18.9，按所有权解决冲突、更新生成物并建立独立 merge commit`
+- Plan task: `Task 9：验证并修复 v1.18.9（OpenSpec 2.6）`
+- OpenSpec task: `2.6 完成 v1.18.9 全部受影响 owning-package 验证，修复并重新完成失败门禁`
 - Phase: `implementing`
 - Agent role: `implementer`
 - Model: `general`（当前 harness 不暴露单独 model 参数）
 - Review mode: `thorough`
 - TDD mode: `direct`
 - Review/fix round: `0/2`
-- Implementation commits: Task 7 修复链 `744ecf6b7b`、`e8ffd16883`、`5a073d3745`、`9ef2838e22`、`f27e6d5f49`、`ecf82665ae`、`9284c603c9`、`d2ed3b64f3`；最终保留6个有RED证据的Core局部预算与1个MCP fixture readiness预算。
-- Changed files: 最终Task 7代码差异仅涉及Core真实Git测试与OpenCode MCP lifecycle测试；报告记录完整reconciliation。两个manifest经index refresh后不在porcelain且无内容漂移。
-- Test evidence: 最终HEAD `d2ed3b64f37e55f5b4b5ccc4acbc9155e1dfe3c8`上从`966eaa7712..HEAD`重建121 paths闭包，覆盖37 workspace packages与VS Code host；69条适用命令exit均为0，tests fail/error为0且skip/todo不增；canonical v3唯一，generated/index/MERGE_HEAD/protected/manifests审计通过。
-- Resume point: 派发Task 8 implementer，先确认当前verified HEAD、index/merge状态和protected指纹，再`Start-TagMerge 'v1.18.9'`，调查实际冲突、公共API生成与等价替换候选，建立精确双父merge commit；不得在Task 8运行Task 9矩阵。
-- Open reviewer feedback: Task 7最终代码与矩阵审查通过；用户授权的纯文档修复消除双canonical，scoped re-review为`Spec: PASS`、`Quality: PASS`、`Verdict: READY`，无阻断项。
+- Implementation commits: Task 8 merge `8776a884be`，聚焦修复 `825bc54d56`（恢复Hono直接runtime依赖）与`8a07392380`（标准Bun重生成legacy SDK patch target IDs）。
+- Changed files: merge结果89 paths；聚焦修复仅`packages/opencode/package.json`、`bun.lock`与`patches/@modelcontextprotocol%2Fsdk@1.29.0.patch`。用户选择legacy SDK边界并完整移植Task 6保护。
+- Test evidence: merge父链/subject精确；dependency contract、OpenCode typecheck、recovery `8/0/45`、MCP lifecycle `21/0/48`、root frozen、Client generated check与legacy SDK build drift通过。最终patch blob`def7a0c2615e982e3770313164af5b95bbf2a449`/SHA-256`59ECCAE343370F0FEBE5F03EB9EDC1EAD679E48231650478EE7B6425E153291B`由clean Bun生成并在第二clean normal frozen workspace验证。
+- Resume point: 派发Task 9 implementer，从v1.18.9 merge第一父`53288faa0d`到当前HEAD重建递归闭包，按报告矩阵运行全部适用default/conditional gates；任何失败写递增fix marker并聚焦修复后从头重跑。零失败前不得推进v1.18.10。
+- Open reviewer feedback: Task 8 round1 scoped re-review为`Spec: PASS`、`Quality: PASS`、`Verdict: READY`；无Critical/Important新问题，Task 9矩阵尚未运行。
 - Workflow correction: 当前 change 是 Comet Classic；误建的同名 Native 正式产物已移除，Classic selection 已恢复。

@@ -695,8 +695,8 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 ### Task 8：合并 v1.18.9（OpenSpec 2.5）
 
-- [ ] 执行 `$merge = Start-TagMerge 'v1.18.9'`；实际冲突按所有权解决，公共 API 同时生成 Client 和 legacy SDK。
-- [ ] 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
+- [x] 执行 `$merge = Start-TagMerge 'v1.18.9'`；实际冲突按所有权解决，公共 API 同时生成 Client 和 legacy SDK。
+- [x] `v1.18.9`：执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
 
 验收：没有报告/初始 dirty 进入 merge index，第二父精确为 v1.18.9 peeled commit。
 
