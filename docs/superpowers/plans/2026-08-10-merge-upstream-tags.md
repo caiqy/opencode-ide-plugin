@@ -730,7 +730,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 ### Task 12：合并 v1.18.11（OpenSpec 3.3）
 
 - [x] 执行 `$merge = Start-TagMerge 'v1.18.11'`，逐项处理实际冲突；等价替换候选保留现场等待用户。
-- [x] 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
+- [x] 对 `v1.18.12` 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
 
 验收：MERGE_HEAD 精确、unmerged index 为空、cached diff check 通过。
 
