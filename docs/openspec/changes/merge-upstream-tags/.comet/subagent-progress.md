@@ -1,17 +1,17 @@
 # Subagent Progress
 
 - Plan: `docs/superpowers/plans/2026-08-10-merge-upstream-tags.md`
-- Plan task: `Task 10：合并 v1.18.10（OpenSpec 3.1）`
-- OpenSpec task: `3.1 合并 v1.18.10，按所有权解决冲突、更新生成物并建立独立 merge commit`
+- Plan task: `Task 11：验证并修复 v1.18.10（OpenSpec 3.2）`
+- OpenSpec task: `3.2 完成 v1.18.10 全部受影响 owning-package 验证，修复并重新完成失败门禁`
 - Phase: `implementing`
 - Agent role: `implementer`
 - Model: `general`（当前 harness 不暴露单独 model 参数）
 - Review mode: `thorough`
 - TDD mode: `direct`
-- Review/fix round: `0/2`
-- Implementation commits: Task 9 product fix `74049e9bf7`（OAuth callback测试动态loopback端口）；docs evidence `1451c831a0`、`cc9a9f9b41`、`85abe2a58f`、`2db2540e7d`记录并修正canonical审计。
-- Changed files: product tree仅`packages/opencode/test/mcp/oauth-callback.test.ts`；后续提交仅report/tasks/plan/checkpoint。提前勾选2.6的流程偏差已记录并由thorough review确认接受。
-- Test evidence: product HEAD`74049e9bf795fbe0fe1f651c5546715912ea4705`上93 paths、28 direct owners、root expansion后37 packages+VS Code host；69/69适用命令exit 0，18 test counters fail/error 0且skip/todo不增。desktop gate的npmjs registry env已结构化记录，generated/index/MERGE_HEAD/65 fingerprints/manifests审计通过，后续docs commits无product drift。
-- Resume point: 派发Task 10 implementer，从当前verified docs HEAD确认product tree等价、index/merge/protected状态后合并`v1.18.10`；逐项调查冲突、生成物与等价候选，建立精确双父merge。Task 11矩阵不得在Task 10运行。
-- Open reviewer feedback: Task 9 round2最终scoped re-review为`Spec: PASS`、`Quality: PASS`、`Verdict: READY`；无Critical/Important，OpenSpec2.6提前checkoff现由review确认有效。
+- Review/fix round: `1/2`
+- Implementation commits: merge `a0f2f04bbb`（父`8238b77f75`/`7902e04c3a`）；focused fix `41e433dcc0`将legacy OpenCode发布生成器默认catalog URL对齐到`models.opencode.ai`。
+- Changed files: merge包含上游83 paths；follow-up产品修复仅`packages/opencode/script/generate.ts`一行。当前协调更新限report/tasks/plan/checkpoint。
+- Test evidence: Task10 focused gates全部exit 0：plugin 168、app context 306、browser 10、UI 9、Session UI 76、Core models 12；9包typecheck、app/UI build、root frozen install通过。URL修复RED/GREEN、离线snapshot import/parse及OpenCode typecheck通过；generated无drift，index空，MERGE_HEAD absent，65 fingerprints不变。Task11完整矩阵尚未运行。
+- Resume point: 从canonical product HEAD`41e433dcc0c70bc06a490b0d2713a9361147a5f8`执行Task11；用`Get-TagMergeRecord 'v1.18.10'`从merge第一父重建closure，运行完整适用矩阵。任何失败先写fix marker并聚焦提交，然后从第一条门禁重跑。
+- Open reviewer feedback: Task10首轮发现legacy OpenCode model catalog默认URL遗漏（Important）；`41e433dcc0`修复后scoped re-review为READY，无Critical/Important。toast story promise API和toast routing注释为第二父已有Minor，不阻塞Task11。
 - Workflow correction: 当前 change 是 Comet Classic；误建的同名 Native 正式产物已移除，Classic selection 已恢复。

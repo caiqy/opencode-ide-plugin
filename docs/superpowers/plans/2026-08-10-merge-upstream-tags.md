@@ -712,8 +712,8 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 ### Task 10：合并 v1.18.10（OpenSpec 3.1）
 
-- [ ] 执行 `$merge = Start-TagMerge 'v1.18.10'`，调查实际冲突、生成物和等价替换候选。
-- [ ] 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
+- [x] 执行 `$merge = Start-TagMerge 'v1.18.10'`，调查实际冲突、生成物和等价替换候选。
+- [x] 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
 
 验收：remote object/peeled SHA 已记录，merge 保留独立双父边界。
 
