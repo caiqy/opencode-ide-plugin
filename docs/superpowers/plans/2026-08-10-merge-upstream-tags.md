@@ -721,9 +721,9 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 ### Task 11：验证并修复 v1.18.10（OpenSpec 3.2）
 
-- [ ] 执行 `$round = Get-TagMergeRecord 'v1.18.10'`，从记录的第一父重新推导闭包与条件门禁。
-- [ ] 每个失败使用报告 marker，并以其递增 N 调用 `Commit-FocusedFix`；完整矩阵重跑至零失败。
-- [ ] 提交 `docs(opencode): verify upstream v1.18.10` 并勾选 3.1、3.2。
+- [x] 执行 `$round = Get-TagMergeRecord 'v1.18.10'`，从记录的第一父重新推导闭包与条件门禁。
+- [x] 每个失败使用报告 marker，并以其递增 N 调用 `Commit-FocusedFix`；完整矩阵重跑至零失败。
+- [x] 提交 `docs(opencode): verify upstream v1.18.10` 并勾选 3.1、3.2。
 
 验收：HttpApi/Client/SDK/WebGUI/VS Code 条件验证在触发时均有退出 0 证据。
 
