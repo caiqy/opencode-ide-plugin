@@ -763,8 +763,8 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 ### Task 16：合并 v1.18.13（OpenSpec 4.1）
 
-- [ ] 执行 `$merge = Start-TagMerge 'v1.18.13'`，将冲突的所有权和生成命令写入报告。
-- [ ] 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
+- [x] 执行 `$merge = Start-TagMerge 'v1.18.13'`，将冲突的所有权和生成命令写入报告。
+- [x] 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`，仅限 `v1.18.13`。
 
 验收：下游宿主/发布版本不被上游 workspace 版本覆盖。
 
@@ -773,7 +773,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 ### Task 17：验证并修复 v1.18.13（OpenSpec 4.2）
 
 - [ ] 执行 `$round = Get-TagMergeRecord 'v1.18.13'`，从其第一父重建闭包。
-- [ ] 用报告 marker 和递增 N 的 `Commit-FocusedFix` 逐根因收敛，再完整复验。
+- [ ] 用 `v1.18.13` 报告 marker 和递增 N 的 `Commit-FocusedFix` 逐根因收敛，再完整复验。
 - [ ] 提交 `docs(opencode): verify upstream v1.18.13` 并勾选 4.1、4.2。
 
 验收：每条适用默认和条件门禁退出 0。
