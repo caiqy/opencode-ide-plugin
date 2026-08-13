@@ -746,8 +746,8 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 ### Task 14：合并 v1.18.12（OpenSpec 3.5）
 
-- [ ] 执行 `$merge = Start-TagMerge 'v1.18.12'`；遵循 manifest 先于 lockfile、源先于生成物的决策顺序。
-- [ ] 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
+- [x] 执行 `$merge = Start-TagMerge 'v1.18.12'`；遵循 manifest 先于 lockfile、源先于生成物的决策顺序。
+- [x] 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
 
 验收：lockfile 仅由 vfox Bun 或受控 Corepack/pnpm 更新。
 
