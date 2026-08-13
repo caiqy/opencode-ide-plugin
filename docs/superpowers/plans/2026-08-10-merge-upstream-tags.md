@@ -704,9 +704,9 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 ### Task 9：验证并修复 v1.18.9（OpenSpec 2.6）
 
-- [ ] 执行 `$round = Get-TagMergeRecord 'v1.18.9'`，以其第一父重建闭包和矩阵。
-- [ ] 每个失败先写报告 fix marker，再以其递增 N 作为第二参数调用 `Commit-FocusedFix`，从第一条门禁重跑。
-- [ ] 零失败后提交 `docs(opencode): verify upstream v1.18.9` 并勾选 2.5、2.6。
+- [x] 执行 `$round = Get-TagMergeRecord 'v1.18.9'`，以其第一父重建闭包和矩阵。
+- [x] 每个失败先写报告 fix marker，再以其递增 N 作为第二参数调用 `Commit-FocusedFix`，从第一条门禁重跑。
+- [x] 零失败后提交 `docs(opencode): verify upstream v1.18.9` 并勾选 2.5、2.6。
 
 验收：当前 HEAD 是 verified state，且无 staged 路径。
 
