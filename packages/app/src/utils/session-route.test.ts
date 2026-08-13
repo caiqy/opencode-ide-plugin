@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import { ServerConnection } from "@/context/server"
-import { legacySessionHref, legacySessionServer, requireServerKey, rootSession, sessionHref } from "./session-route"
+import {
+  legacySessionHref,
+  legacySessionServer,
+  notificationHref,
+  requireServerKey,
+  rootSession,
+  sessionHref,
+} from "./session-route"
 
 describe("session routes", () => {
   test("uses the unique persisted server for a legacy session route", () => {
@@ -41,6 +48,18 @@ describe("session routes", () => {
   test("builds the legacy directory-keyed route", () => {
     expect(legacySessionHref("/Users/example/project", "session-1")).toBe(
       "/L1VzZXJzL2V4YW1wbGUvcHJvamVjdA/session/session-1",
+    )
+  })
+
+  test("keeps the source server in a session notification route", () => {
+    expect(
+      notificationHref(ServerConnection.Key.make("server-b"), "/Users/example/project", "session-1"),
+    ).toBe("/server/c2VydmVyLWI/session/session-1")
+  })
+
+  test("uses the directory route for a global notification", () => {
+    expect(notificationHref(ServerConnection.Key.make("server-b"), "/Users/example/project")).toBe(
+      "/L1VzZXJzL2V4YW1wbGUvcHJvamVjdA",
     )
   })
 

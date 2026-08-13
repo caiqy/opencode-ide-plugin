@@ -10,6 +10,10 @@ export function legacySessionHref(directory: string, sessionID: string) {
   return `/${base64Encode(directory)}/session/${sessionID}`
 }
 
+export function notificationHref(server: ServerConnection.Key, directory: string, sessionID?: string) {
+  return sessionID ? sessionHref(server, sessionID) : `/${base64Encode(directory)}`
+}
+
 export function requireServerKey(segment: string | undefined) {
   const key = decode64(segment)
   if (!key || base64Encode(key) !== segment) throw new Error("Invalid server route")
