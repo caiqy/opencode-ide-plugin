@@ -26,6 +26,7 @@ import {
 
 export type UsageInfo = {
   inputTokens: number
+  // Output includes reasoning.
   outputTokens: number
   reasoningTokens?: number
   cacheReadTokens?: number
