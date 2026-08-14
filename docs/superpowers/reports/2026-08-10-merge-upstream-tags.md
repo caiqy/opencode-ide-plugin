@@ -744,3 +744,10 @@ The default matrix has 67 gates: one root frozen install, 60 workspace gates, tw
 ## Task 25 upstream release frontier confirmation
 
 - After verifying `v1.18.18` (docs commit `7989cec3ed37bfa7122a57c55aa99733ef782345`), the official remote was queried again. Latest verified tag rebuilt from Git history: `v1.18.18` (merge commit `ff4317ce2a08578fd1d62d4949a020750550d6d8` + focused fix `3f9e98a6806116aeb1ae7e2f8faa0eb7b2073cae`). Pending queue: empty. The release frontier is stable for this session; this is an idempotent confirmation, not a claim that the upstream branch will stay still.
+
+## Task 26 upstream merge chain audit
+
+- Merge chain: 12 first-parent merge commits over `baf0674fd1…..HEAD` (v1.18.7 through v1.18.18, including the two dynamic tags). Each passes `Get-TagMergeRecord`: exactly one first-parent occurrence, first parent on the first-parent chain, second parent byte-equal to the remote peeled commit. All 12 tags are lightweight (annotated=False); remote object == peeled SHA for each.
+- Committed range diff check (`git diff --check baf0674fd1..HEAD`) passes, including the verbatim upstream bun patch files covered by the `.gitattributes` patches exception.
+- Generated artifacts: `packages/client/src/generated` and `src/generated-effect` have zero net range diff; per-commit history shows the v1.18.8/v1.18.9/v1.18.11 merges touched them and those rounds ran the prescribed `bun run generate` gate with zero drift. `packages/sdk/js` net range diff is the manifest version bumps plus `src/v2/gen/types.gen.ts` originating from the v1.18.11 merge, covered by that round's generation gate. Endpoint re-run at HEAD: `check:generated` exit 0 (generate + no diff), SDK build exit 0 with every gen output unchanged; zero working-tree drift afterwards.
+- VS Code host protection: `hosts/vscode-plugin/package.json`, `pnpm-lock.yaml`, and `package-lock.json` have zero range diff over all 12 merges. Host extension version remains `26.8.1000` with the `pnpm@9.0.0` packageManager pin intact; no upstream workspace version overwrote the downstream host version.
