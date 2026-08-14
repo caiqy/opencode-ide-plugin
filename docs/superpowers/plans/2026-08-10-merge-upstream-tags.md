@@ -789,9 +789,9 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 ### Task 19：验证并修复 v1.18.14（OpenSpec 4.4）
 
-- [ ] 执行 `$round = Get-TagMergeRecord 'v1.18.14'`，重建实际闭包和完整矩阵。
-- [ ] 先在报告写实际 owning paths，再以递增 N 调用 `Commit-FocusedFix`，从头复验。
-- [ ] 提交 `docs(opencode): verify upstream v1.18.14` 并勾选 4.3、4.4。
+- [x] 执行 `$round = Get-TagMergeRecord 'v1.18.14'`，重建实际闭包和完整矩阵。
+- [x] 先在报告写实际 owning paths，再以递增 N 调用 `Commit-FocusedFix`，从头复验。
+- [x] 提交 `docs(opencode): verify upstream v1.18.14` 并勾选 4.3、4.4。
 
 验收：无未归因工作区漂移，无新增 skip/todo。
 
