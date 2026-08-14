@@ -855,7 +855,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 **文件：** 运行时冲突/修复文件、报告、OpenSpec tasks。
 
-- [ ] **步骤 1：每轮只选择一个当前 pending tag**
+- [x] **步骤 1：每轮只选择一个当前 pending tag**
 
   本任务开始时重新加载函数块并运行：
 
@@ -867,13 +867,13 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
   验收：`$item` 是当前版本最小的 pending tag，不使用未定义变量，也不批量处理整个数组。
 
-- [ ] **步骤 2：仅处理 `$item.Tag` 的完整事务**
+- [x] **步骤 2：仅处理 `$item.Tag` 的完整事务**
 
   对 `$item.Tag`：运行 `Start-TagMerge $item.Tag`、语义冲突/等价替换协议、必要 Client+legacy SDK 生成、`Assert-MergeReady`、`Commit-TagMerge`；再以 `Get-TagMergeRecord $item.Tag` 重建闭包、完整验证、报告 fix marker 和 `Commit-FocusedFix`。每个 tag 仅在零失败后提交 `docs(opencode): verify upstream vX.Y.Z`。
 
   验收：每个动态 tag 具有自己精确 fetch、双父 merge、父链审计、完整 package 门禁和报告证据；不得批量 merge。
 
-- [ ] **步骤 3：完成当前 pending 后重新进入 task 24**
+- [x] **步骤 3：完成当前 pending 后重新进入 task 24**
 
   每个 `$item.Tag` 验证后重新加载函数块并运行 `$pending = @(Get-PendingReleaseTags | Sort-Object Version)`；若又有 pending，回到本任务步骤 1。仅 `$pending.Count -eq 0` 才结束循环。
 
