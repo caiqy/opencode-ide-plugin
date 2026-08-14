@@ -1,15 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@opencode-ai/cli",
-  "version": "1.18.13",
+  "version": "1.18.14",
   "type": "module",
   "license": "MIT",
   "bin": {
     "lildax": "./bin/lildax.cjs"
   },
-  "files": [
-    "bin"
-  ],
+  "files": "bin",
   "scripts": {
     "build": "bun run script/build.ts",
     "dev": "bun run src/index.ts",

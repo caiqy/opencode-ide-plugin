@@ -202,6 +202,7 @@ export async function requestDeviceCode(options: XaiAuthPluginOptions = {}): Pro
     body: new URLSearchParams({
       client_id: CLIENT_ID,
       scope: SCOPE,
+      referrer: "opencode",
     }).toString(),
   })
   if (!response.ok) {
@@ -593,7 +594,7 @@ export async function XaiAuthPlugin(input: PluginInput, options: XaiAuthPluginOp
           // user's browser. Defends the only attack surface (the polling
           // loop) with the standard authorization_pending / slow_down
           // backoff and a hard deadline from xAI's `expires_in`.
-          label: "xAI Grok OAuth (Headless / Remote / VPS)",
+          label: "SuperGrok Subscription",
           type: "oauth",
           authorize: async () => {
             const device = await requestDeviceCode(options)

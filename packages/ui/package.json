@@ -1,6 +1,6 @@
 {
   "name": "@opencode-ai/ui",
-  "version": "1.18.13",
+  "version": "1.18.14",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -11,9 +11,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "sideEffects": [
-    "**/*.css"
-  ],
+  "sideEffects": "**/*.css",
   "files": [
     "dist/**/*.d.ts",
     "src/**/*.ts",
