@@ -1,16 +1,16 @@
 # Subagent Progress
 
 - Plan: `docs/superpowers/plans/2026-08-10-merge-upstream-tags.md`
-- Plan task: `Task 18：合并 v1.18.14（OpenSpec 4.3）`
-- OpenSpec task: `4.3 合并 v1.18.14，按所有权解决冲突、更新生成物并建立独立 merge commit`
+- Plan task: `Task 19：验证并修复 v1.18.14（OpenSpec 4.4）`
+- OpenSpec task: `4.4 完成 v1.18.14 全部受影响 owning-package 验证，修复并重新完成失败门禁`
 - Phase: `implementing`
 - Agent role: `implementer`
 - Model: `general`（当前 harness 不暴露单独 model 参数）
 - Review mode: `thorough`
 - TDD mode: `direct`
 - Review/fix round: `0/2`
-- Task 17 commits: merge `29fa90b6e81a38e47fbceeed93970565d4e3e5ee`，parents `8fe314e4cea024756f0a7486a4e0ed0b8544d30a` / `a105350812f05f914c768e468559dbd6bd508d8e`；focused fix 1 `057fd83500120169362e72c504757f715ab9f256`。
-- Task 17 tests: attempt 1 在 gate 34 `packages-opencode-test` 以 `3581/1/0/58/1` 的 `stdin EOF exits cleanly` 5 秒 timeout fail-fast 停止；fix 后聚焦 `1 pass / 0 fail` 与 OpenCode typecheck exit `0`。独立 fresh foreground attempt 2 从 gate 1 完整运行，66/66 exit `0`，账目 `72=66 executed+5 N/A+1 superseded`，17 numeric gates aggregate `8104/0/0/97/1`。
-- Task 17 review: final reviewer READY，Critical `0`、Important `0`、Minor `1`；Minor 要求保留 launcher 透明度与双根账目，已记录在 canonical close-out。一个 bootstrap failure 与外部 `0xc000013a` 均 discarded；有效 attempt2 不复用 partial result。双根各 75 files、74-entry self-excluded manifests byte-identical，SHA-256 `1bd5d58b08a9a547a9c01fd28d24107f2853d0bbee4bef891127fba5d1e3f771`。
-- Task 17 residual: referral durability、GitHub context/worker RPC/locale 边界覆盖、`black-stats` 离线 CSV output/reasoning 计数和 Desktop/CI 保持非阻断；`dualRoots: true` 的 configured docs root 与 ignored standalone root 已由 `comet doctor` 确认有效，runtime check pass。
-- Resume point: `Start-TagMerge v1.18.14`。
+- Task 18 merge: `1a119abca7413c1e18abd070b3496fe9361446a9`，parents `b6fb8d76b33cb3f1018b980c4706b3a39f597794` / `65cf14df16c191f3e9684f0d9a8bae69103ced6d`；second parent is lightweight tag `v1.18.14` object/peeled commit.
+- Task 18 tests: mutable and frozen root Bun installs passed; focused OpenCode conflict/overlap suite `153/153` and typecheck passed; Client test `16/16`, typecheck, generate and `check:generated` passed; legacy SDK build, test `5/5`, and typecheck passed; HttpApi coverage/auth/effect three modes passed. Task 19 full owning-package matrix has not started.
+- Task 18 review: initial review was NOT READY with `0/2/1` Critical/Important/Minor. TDD RED was retry `56/2`; the repair constrains the status pattern and gives structured `responseBody`/`message` precedence, then retry GREEN `58/58` and final focused GREEN `153/153`. Re-review is READY with `0/0/0`.
+- Task 18 residual: xAI device-only OAuth is not equivalent to downstream loopback OAuth, so loopback remains without a user decision; raw `rate_limit` and downstream normalized `Rate Limited` are not equivalent, so downstream normalization remains. The permanent post-listen xAI listener comment is byte-identical in the first parent, is not a Task 18 finding, and remains a pre-existing non-blocking residual. Protected dirty/untracked paths remain unchanged; configured `docs/openspec` is valid while standalone `openspec` is ignored, and `comet doctor` runtime check passes.
+- Resume point: `$round = Get-TagMergeRecord 'v1.18.14'`。
