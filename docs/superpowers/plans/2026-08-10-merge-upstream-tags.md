@@ -814,8 +814,8 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 ### Task 22：合并 v1.18.16（OpenSpec 4.7）
 
-- [ ] 执行 `$merge = Start-TagMerge 'v1.18.16'`，完成实际冲突的语义决策和适用生成。
-- [ ] 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
+- [x] 执行 `$merge = Start-TagMerge 'v1.18.16'`，完成实际冲突的语义决策和适用生成。
+- [x] 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
 
 验收：此 tag 只清空当前已知队列，不宣称远端前沿稳定。
 
@@ -823,9 +823,9 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 ### Task 23：验证并修复 v1.18.16（OpenSpec 4.8）
 
-- [ ] 执行 `$round = Get-TagMergeRecord 'v1.18.16'`，完整验证其实际闭包。
-- [ ] 每个根因写报告 marker 后以递增 N 调用 `Commit-FocusedFix`，从第一条门禁重跑。
-- [ ] 提交 `docs(opencode): verify upstream v1.18.16` 并勾选 4.7、4.8。
+- [x] 执行 `$round = Get-TagMergeRecord 'v1.18.16'`，完整验证其实际闭包。
+- [x] 每个根因写报告 marker 后以递增 N 调用 `Commit-FocusedFix`，从第一条门禁重跑。
+- [x] 提交 `docs(opencode): verify upstream v1.18.16` 并勾选 4.7、4.8。
 
 验收：fail/error 为 0、skip/todo 不增加，随后进入动态前沿查询。
 
