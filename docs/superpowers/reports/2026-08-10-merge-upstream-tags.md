@@ -702,3 +702,12 @@ The default matrix has 67 gates: one root frozen install, 60 workspace gates, tw
 - Evidence: attempt 1 is canonical with no interruption. Dual roots hold 75 files each, with 74-entry self-excluded SHA manifests that are byte-identical and zero path/hash differences. Final audit confirms index empty, `MERGE_HEAD` absent, all 65 protected fingerprints and both coordination documents unchanged, no porcelain/content/generated/manifest drift, product-tree equivalence, and clean diff checks.
 - Review: initial `NOT_READY 0/1/0` flagged a baseline provenance mislabel introduced by generic bootstrap rewrites; the baseline path always pointed at Task21 attempt-2 and only labels were wrong. Labels in report, matrix, and the sealed runner were corrected and resealed, then re-review returned `READY 0/0/0`.
 - Existing non-blocking residuals remain xAI first-parent listener annotation, referral durability, GitHub/worker/locale coverage, `black-stats` offline CSV accounting, and Desktop/CI coverage. This round introduced no new residual.
+
+## Task 24 upstream release frontier query
+
+- After verifying `v1.18.16` (docs commit `96f32ef793600efcb147fafb41e8fa682cd518c7`), the official remote was queried. The latest verified tag is rebuilt from Git history as `v1.18.16` (merge commit `2f9dd5e2f5d41e30b79aa31f8f6c0ef839312c4e`); it is not treated as a fixed frontier.
+- Pending queue in version-ascending order: `v1.18.17`, `v1.18.18`.
+- Remote objects: `v1.18.17` -> `02546dfc2e4515a4f90aaf9ceb3890df2ac2b479` (lightweight); `v1.18.18` -> `31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d` (lightweight).
+- Impact closure against the current verified HEAD: `v1.18.17` = 1528 paths, 37 packages, `RootChanged=true`, `PublicApi=true`, external host `hosts/vscode-plugin`; `v1.18.18` = 1535 paths, 37 packages, `RootChanged=true`, `PublicApi=true`, external host `hosts/vscode-plugin`.
+- Both closures stay within the known-queue closure: all 37 workspace packages plus the host consumer have been gated in every round, so no new package or consumer requires an extended baseline gate run at the current HEAD.
+- Frontier conclusion is NOT committed while pending tags remain.

@@ -833,7 +833,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 **文件：** 报告、OpenSpec tasks。
 
-- [ ] **步骤 1：从 Git 历史重建最新 verified tag，而不是固定版本**
+- [x] **步骤 1：从 Git 历史重建最新 verified tag，而不是固定版本**
 
   ```powershell
   $latestVerified = Get-LatestVerifiedTag
@@ -843,7 +843,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
   验收：报告记录由 Git 提交重建的最新 verified tag、查询时间和 pending 队列；不将 `v1.18.16` 写为固定前沿。
 
-- [ ] **步骤 2：对新增 tag 先扩展当前基线闭包**
+- [x] **步骤 2：对新增 tag 先扩展当前基线闭包**
 
   在本步骤重新运行 `$pending = @(Get-PendingReleaseTags | Sort-Object Version)`。对每个 `$pending.Tag` 执行 `Fetch-VerifiedTag`，以当前 verified HEAD 和该 peeled commit 的 diff 运行 `Get-ImpactClosure`。对于此前未在任务 2 出现的 package/消费者，先在当前 HEAD 运行其门禁并记录独立 skip/todo 基线；任何 fail/error 非 0 或新增 skip/todo 都阻止 merge。
 
