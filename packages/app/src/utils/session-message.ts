@@ -12,6 +12,27 @@ const emptyTokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write
 const emptyModel: { id: string; providerID: string; variant?: string } = { id: "", providerID: "" }
 const decodeToolInput = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
 
+export function compareMessages(a: Pick<Message, "id" | "time">, b: Pick<Message, "id" | "time">) {
+  if (a.time.created !== b.time.created) return a.time.created - b.time.created
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
+export function searchMessages(
+  messages: readonly Pick<Message, "id" | "time">[],
+  target: Pick<Message, "id" | "time">,
+) {
+  let left = 0
+  let right = messages.length - 1
+  while (left <= right) {
+    const middle = Math.floor((left + right) / 2)
+    const order = compareMessages(messages[middle], target)
+    if (order === 0) return { found: true, index: middle }
+    if (order < 0) left = middle + 1
+    if (order > 0) right = middle - 1
+  }
+  return { found: false, index: left }
+}
+
 function record(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value)
 }
