@@ -797,8 +797,8 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 ### Task 20：合并 v1.18.15（OpenSpec 4.5）
 
-- [ ] 执行 `$merge = Start-TagMerge 'v1.18.15'`，按语义解决实际冲突并执行适用的生成/lock 流程。
-- [ ] 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
+- [x] 执行 `$merge = Start-TagMerge 'v1.18.15'`，按语义解决实际冲突并执行适用的生成/lock 流程。
+- [x] 执行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
 
 验收：merge 不混入后续 tag、docs 或用户路径。
 
