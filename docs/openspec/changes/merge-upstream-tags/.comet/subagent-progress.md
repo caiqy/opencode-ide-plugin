@@ -16,4 +16,6 @@
 - Task 25 v1.18.17 audits: index empty、`MERGE_HEAD` absent、65 protected + 2 coordination docs unchanged；双根各 75 files、74-entry manifests byte-identical。
 - Task 25 v1.18.18: merge `ff4317ce2a08578fd1d62d4949a020750550d6d8`（parents `27191bda9591…` / `31406ccc51b…`），有效 changeset 40 paths，冲突 30 同型解决；聚焦修复 `3f9e98a680…`（三个 upstream patch 恢复 tag-verbatim + `.gitattributes` patches 行 whitespace 例外）。attempt-1 在 gate1 被 patch 解析回归 BLOCKED（未复用），attempt-2 canonical：66/66 exit `0`，17 numeric gates `8190/0/0/97/1` versus v1.18.17 `8185/0/0/97/1`；review `NOT_READY 0/2/1`→`READY`。verify 提交 `7989cec3ed…`。
 - Task 25 frontier: 重新查询后 pending=0，前沿稳定（latest verified `v1.18.18`）；已记录幂等确认并提交 `docs(opencode): confirm upstream release frontier`。
-- Resume point: `Task 26`，从 `$BaseRef..HEAD` 审计所有 merge commit 父链、生成物与宿主 manifest/lockfile。
+- Task 26 audit: 12 个 merge commit 全部 Get-TagMergeRecord 有效（轻量 tag、第二父=远端 peeled）；范围 diff check 通过；client generated 范围净差 0、sdk/js 净差为 manifest+types.gen.ts（源自 v1.18.11 轮生成门禁）；端点复跑 check:generated 与 SDK build exit 0 无漂移；host package.json/pnpm-lock/package-lock 全范围零变化、版本 26.8.1000 与 pnpm pin 未被动。提交 `2c1c0467c1…`。
+- Task 27 final matrix: union closure（$BaseRef..HEAD），69 executed（含 public-api 三件套 client-generate/opencode-test-httpapi/client-check-generated）+ 2 N/A + 1 superseded；69/69 exit 0；18 numeric gates `8838/0/0/97/1`；HttpApi `648/0/0`；`Assert-FinalCleanGate` pass、无 MERGE_HEAD；双根 79/79 files。提交 `docs(opencode): verify upstream integration`。
+- Resume point: `Task 28`，对 `$BaseRef..HEAD` 做 thorough 独立审查，重新运行前沿查询并提交最终审查。

@@ -893,11 +893,11 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 **文件：** 报告、OpenSpec tasks。
 
-- [ ] **步骤 1：审计所有 first-parent merge 和远端对象**
+- [x] **步骤 1：审计所有 first-parent merge 和远端对象**
 
   从 `$BaseRef..HEAD` 收集每个 `chore(opencode): merge upstream vX.Y.Z` subject；对每项调用 `Get-TagMergeRecord`，确认恰有一次、第一父在 first-parent 链、第二父等于远端 peeled commit，并将 remote object SHA、peeled SHA、annotated 状态记录到报告。
 
-- [ ] **步骤 2：审计生成来源与 VS Code 宿主版本保护**
+- [x] **步骤 2：审计生成来源与 VS Code 宿主版本保护**
 
   ```powershell
   Invoke-GitChecked 'final committed diff check' @('diff', '--check', "$BaseRef..HEAD") | Out-Null
@@ -908,7 +908,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
   对 Protocol/HttpApi 改动复跑 Client `check:generated` 和 SDK build；核对报告中生成命令。核对 `hosts/vscode-plugin/package.json` 的 extension 版本、`packageManager` pin、pnpm/package lock 变化及下游发布版本保护。验收：所有产物都有源变更和规定命令来源；没有上游 workspace 版本覆盖宿主版本。
 
-- [ ] **步骤 3：提交审计证据并勾选 6.1**
+- [x] **步骤 3：提交审计证据并勾选 6.1**
 
   调用 `Commit-DocumentSubset 'docs(opencode): audit upstream merge chain'`，只提交报告/tasks 的实际变更子集。验收：审计失败回到所属 tag 的修复/验证，再重跑本任务。
 
@@ -916,13 +916,13 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 **文件：** 报告、OpenSpec tasks；若失败，仅报告中实际 owning paths。
 
-- [ ] **步骤 1：合并整个执行期间闭包并运行最终矩阵**
+- [x] **步骤 1：合并整个执行期间闭包并运行最终矩阵**
 
   合并任务 2、每个 tag 和动态 tag 的 closure，去重后从 package 目录运行存在的默认门禁。公共 API 触发时必须包含：Client test/typecheck/check:generated、legacy SDK test/typecheck/build、OpenCode test/typecheck/build/test:httpapi、WebGUI test:run/build、VS Code Corepack/pnpm pin/frozen/compile/test。
 
   验收：每条命令 fail/error 为 0，skip/todo 不高于任务 3 基线或对应动态扩展基线；不运行 App E2E、benchmark 或 Desktop 打包。
 
-- [ ] **步骤 2：检查最终 Git 状态与 merge 痕迹**
+- [x] **步骤 2：检查最终 Git 状态与 merge 痕迹**
 
   ```powershell
   Assert-FinalCleanGate
@@ -931,7 +931,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
   验收：检查 committed range、working diff、unmerged、unstaged、untracked 和 staged。此时仅明确归因的报告/tasks 可保持 dirty；任何 generated drift 阻塞。不用全仓 conflict-marker grep，以 unmerged index、每轮 cached diff check 和最终 range diff check 为准，避免 fixture 假阳性。
 
-- [ ] **步骤 3：提交最终验证并勾选 6.2**
+- [x] **步骤 3：提交最终验证并勾选 6.2**
 
   调用 `Commit-DocumentSubset 'docs(opencode): verify upstream integration'`，只提交报告/tasks 的实际变更子集。验收：若最终矩阵失败，创建报告 marker、聚焦修复、重跑所属与最终矩阵。
 

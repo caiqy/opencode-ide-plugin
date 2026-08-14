@@ -751,3 +751,10 @@ The default matrix has 67 gates: one root frozen install, 60 workspace gates, tw
 - Committed range diff check (`git diff --check baf0674fd1..HEAD`) passes, including the verbatim upstream bun patch files covered by the `.gitattributes` patches exception.
 - Generated artifacts: `packages/client/src/generated` and `src/generated-effect` have zero net range diff; per-commit history shows the v1.18.8/v1.18.9/v1.18.11 merges touched them and those rounds ran the prescribed `bun run generate` gate with zero drift. `packages/sdk/js` net range diff is the manifest version bumps plus `src/v2/gen/types.gen.ts` originating from the v1.18.11 merge, covered by that round's generation gate. Endpoint re-run at HEAD: `check:generated` exit 0 (generate + no diff), SDK build exit 0 with every gen output unchanged; zero working-tree drift afterwards.
 - VS Code host protection: `hosts/vscode-plugin/package.json`, `pnpm-lock.yaml`, and `package-lock.json` have zero range diff over all 12 merges. Host extension version remains `26.8.1000` with the `pnpm@9.0.0` packageManager pin intact; no upstream workspace version overwrote the downstream host version.
+
+## Task 27 final cross-package verification
+
+- Union closure over `baf0674fd1..HEAD` recomputes `RootChanged=true` and `PublicApi=true`, so the final matrix includes the public-api trio on top of the 66 default gates: `69 executed + 2 host-lock N/A + 1 superseded = 72`. All 69 gates exited `0`.
+- 18 numeric gates aggregate `8838/0/0/97/1` (17 package/host gates `8190/0/0/97/1` plus HttpApi coverage/auth/effect `648/0/0`); no fail/error anywhere; skip/todo unchanged from the Task21 baseline. Client generation and exact `check:generated` passed with zero drift.
+- Final clean gate: `Assert-FinalCleanGate` passes, no active `MERGE_HEAD`, index empty, 65 protected fingerprints and both coordination documents unchanged, no generated drift.
+- Evidence: canonical attempt 1 with no interruption; dual roots hold 79 files each with 78-entry self-excluded SHA manifests, byte-identical, zero path/hash differences.
