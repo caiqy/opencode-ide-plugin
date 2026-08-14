@@ -877,7 +877,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
   每个 `$item.Tag` 验证后重新加载函数块并运行 `$pending = @(Get-PendingReleaseTags | Sort-Object Version)`；若又有 pending，回到本任务步骤 1。仅 `$pending.Count -eq 0` 才结束循环。
 
-- [ ] **步骤 4：幂等记录稳定前沿结论**
+- [x] **步骤 4：幂等记录稳定前沿结论**
 
   ```powershell
   if ($pending.Count -ne 0) { throw 'release frontier still has pending tags' }

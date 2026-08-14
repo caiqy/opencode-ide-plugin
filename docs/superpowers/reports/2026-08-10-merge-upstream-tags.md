@@ -740,3 +740,7 @@ The default matrix has 67 gates: one root frozen install, 60 workspace gates, tw
 - Evidence: dual roots hold 75 files each with 74-entry self-excluded SHA manifests, byte-identical, zero path/hash differences. Final audit confirms index empty, `MERGE_HEAD` absent, 65 protected + 2 coordination docs unchanged, no drift of any kind, product-tree equivalence, clean diff checks.
 - Review: initial `NOT_READY 0/2/1` (baseline label typo, attempt-1 provenance persistence, finalization fields); all closed with label corrections, attempt-1 sealing, and a finalizer reseal. Final review `READY`.
 - The three v1.18.18 patch files are blob-identical to the tag; the only patch differing from the tag is the MCP SDK patch, a pre-existing downstream modification from earlier rounds outside this changeset.
+
+## Task 25 upstream release frontier confirmation
+
+- After verifying `v1.18.18` (docs commit `7989cec3ed37bfa7122a57c55aa99733ef782345`), the official remote was queried again. Latest verified tag rebuilt from Git history: `v1.18.18` (merge commit `ff4317ce2a08578fd1d62d4949a020750550d6d8` + focused fix `3f9e98a6806116aeb1ae7e2f8faa0eb7b2073cae`). Pending queue: empty. The release frontier is stable for this session; this is an idempotent confirmation, not a claim that the upstream branch will stay still.
