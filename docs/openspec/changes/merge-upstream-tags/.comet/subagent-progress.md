@@ -18,4 +18,5 @@
 - Task 25 frontier: 重新查询后 pending=0，前沿稳定（latest verified `v1.18.18`）；已记录幂等确认并提交 `docs(opencode): confirm upstream release frontier`。
 - Task 26 audit: 12 个 merge commit 全部 Get-TagMergeRecord 有效（轻量 tag、第二父=远端 peeled）；范围 diff check 通过；client generated 范围净差 0、sdk/js 净差为 manifest+types.gen.ts（源自 v1.18.11 轮生成门禁）；端点复跑 check:generated 与 SDK build exit 0 无漂移；host package.json/pnpm-lock/package-lock 全范围零变化、版本 26.8.1000 与 pnpm pin 未被动。提交 `2c1c0467c1…`。
 - Task 27 final matrix: union closure（$BaseRef..HEAD），69 executed（含 public-api 三件套 client-generate/opencode-test-httpapi/client-check-generated）+ 2 N/A + 1 superseded；69/69 exit 0；18 numeric gates `8838/0/0/97/1`；HttpApi `648/0/0`；`Assert-FinalCleanGate` pass、无 MERGE_HEAD；双根 79/79 files。提交 `docs(opencode): verify upstream integration`。
-- Resume point: `Task 28`，对 `$BaseRef..HEAD` 做 thorough 独立审查，重新运行前沿查询并提交最终审查。
+- Task 28 review: `$BaseRef..HEAD` thorough 独立审查无 Critical/Important 产品发现；依赖方向符合 AGENTS.md；12/12 第二父独立复算与远端 peeled 一致；审查后前沿查询 pending=0（latest verified `v1.18.18`）。Minor 已记录：Task25 v1.18.18 封存报告将 fix 路径标为 docs-only，canonical 报告已按产品修复描述。提交 `docs(opencode): record upstream integration review`。
+- Resume point: `change 完成`。所有 OpenSpec 任务（1.1-6.3）已勾选；后续可进入归档/合并评审。

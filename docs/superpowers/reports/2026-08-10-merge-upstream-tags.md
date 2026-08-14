@@ -758,3 +758,11 @@ The default matrix has 67 gates: one root frozen install, 60 workspace gates, tw
 - 18 numeric gates aggregate `8838/0/0/97/1` (17 package/host gates `8190/0/0/97/1` plus HttpApi coverage/auth/effect `648/0/0`); no fail/error anywhere; skip/todo unchanged from the Task21 baseline. Client generation and exact `check:generated` passed with zero drift.
 - Final clean gate: `Assert-FinalCleanGate` passes, no active `MERGE_HEAD`, index empty, 65 protected fingerprints and both coordination documents unchanged, no generated drift.
 - Evidence: canonical attempt 1 with no interruption; dual roots hold 79 files each with 78-entry self-excluded SHA manifests, byte-identical, zero path/hash differences.
+
+## Task 28 independent integration review and final frontier check
+
+- Independent thorough review over `baf0674fd1..HEAD`: no Critical or Important product findings. Runtime dependency directions match AGENTS.md (Schema -> Core/Protocol -> Server; Client runtime depends only on Schema/Protocol; `sdk-next` composes Client, Core, Server). Protocol/HttpApi changes align with regenerated Client and legacy SDK outputs; WebGUI and VS Code consumption surfaces are intact; the downstream host manifest is untouched across all 12 merges (version `26.8.1000`, `pnpm@9.0.0` pin preserved).
+- The 12 merge commits were independently re-checked: each has exactly two parents and its second parent equals the remote peeled commit for its tag (12/12).
+- Final frontier query after the review: pending queue is empty; latest verified tag rebuilt from Git history is `v1.18.18`. This is the last actual remote query for this change.
+- Minor corrections recorded (non-blocking): Task25 v1.18.18 evidence labels the `.gitattributes` and three patch-file paths as part of the docs-only closure; they are in fact the focused product fix `3f9e98a680` carried on top of the merge commit. The canonical close-out already describes them as the product fix; no sealed evidence was rewritten.
+- Residuals carried forward (unchanged by this integration): xAI first-parent listener annotation, referral durability, GitHub/worker/locale coverage, `black-stats` offline CSV accounting, and Desktop/CI coverage.

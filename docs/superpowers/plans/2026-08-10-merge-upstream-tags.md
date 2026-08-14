@@ -939,15 +939,15 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 **文件：** 报告、OpenSpec tasks。
 
-- [ ] **步骤 1：对 `$BaseRef..HEAD` 做 thorough 独立审查**
+- [x] **步骤 1：对 `$BaseRef..HEAD` 做 thorough 独立审查**
 
   审查 Protocol/HttpApi、Client/legacy SDK 生成一致性、WebGUI/VS Code 消费面、宿主版本保护、每个 merge 父链、冲突决策和聚焦修复归属。额外按 `AGENTS.md` 核对 runtime 依赖方向：Schema 只能向 Core/Protocol 供给依赖，Core/Protocol 才可供给 Server；Client runtime 只能依赖 Schema/Protocol，不得依赖 Core/Server；`sdk-next` 负责组合 Client、Core 和 Server。按 Critical、Important、Minor 写入报告；Critical/Important 必须修复并重新执行其 tag、任务 26 和任务 27。
 
-- [ ] **步骤 2：再次运行 task 24 的动态前沿查询**
+- [x] **步骤 2：再次运行 task 24 的动态前沿查询**
 
   重新加载函数块并运行任务 24 步骤 1。若发现 pending，不得完成任务 28：重新打开并执行任务 24、25，随后重跑任务 26 和任务 27，最后从任务 28 步骤 1 重新开始审查。只接受 `$pending.Count -eq 0`。验收：最终结论以最后一次实际查询为准，而非任何固定 tag。
 
-- [ ] **步骤 3：提交最终审查并勾选 6.3**
+- [x] **步骤 3：提交最终审查并勾选 6.3**
 
   调用 `Commit-DocumentSubset 'docs(opencode): record upstream integration review'`，只提交报告/tasks 的实际变更子集。验收：基线零失败、每 tag 零失败、最后一次前沿无新增、生成/父链/宿主审计通过，且没有未处理等价替换或 Critical/Important 阻塞。
 
