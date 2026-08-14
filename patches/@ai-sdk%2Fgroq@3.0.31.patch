@@ -74,6 +74,6 @@ index 3812cdf53308709f166f05c58c5d46a5d8189c8b..af520c5459bd752b3cce03c3b4afbeed
 -    .enum(['none', 'default', 'low', 'medium', 'high'])
 -    .optional(),
 +  reasoningEffort: z.string().optional(),
-
+ 
    /**
     * Whether to enable parallel function calling during tool use. Default to true.
