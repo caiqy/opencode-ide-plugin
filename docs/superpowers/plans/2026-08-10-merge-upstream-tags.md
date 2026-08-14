@@ -806,9 +806,9 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 ### Task 21：验证并修复 v1.18.15（OpenSpec 4.6）
 
-- [ ] 执行 `$round = Get-TagMergeRecord 'v1.18.15'`，从其第一父重建 matrix。
-- [ ] 每个失败在报告 marker 固化实际 paths 后以递增 N 运行 `Commit-FocusedFix`，重跑全部门禁。
-- [ ] 提交 `docs(opencode): verify upstream v1.18.15` 并勾选 4.5、4.6。
+- [x] 执行 `$round = Get-TagMergeRecord 'v1.18.15'`，从其第一父重建 matrix。
+- [x] 每个失败在报告 marker 固化实际 paths 后以递增 N 运行 `Commit-FocusedFix`，重跑全部门禁。
+- [x] 提交 `docs(opencode): verify upstream v1.18.15` 并勾选 4.5、4.6。
 
 验收：当前 verified state 是下一 tag 唯一允许第一父。
 
