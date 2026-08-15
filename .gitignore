@@ -101,6 +101,7 @@ tsconfig.tsbuildinfo
 # Comet-generated local state
 /.comet/
 /.agents/
+/skills-lock.json
 /.opencode/rules/comet-workflow-guard.md
 /.opencode/skills/comet*/
 /.opencode/skills/
