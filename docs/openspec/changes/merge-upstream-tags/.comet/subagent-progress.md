@@ -1,22 +1,16 @@
 # Subagent Progress
 
 - Plan: `docs/superpowers/plans/2026-08-10-merge-upstream-tags.md`
-- Plan task: `Task 25：逐项处理动态 tag（OpenSpec 5.2）`
-- OpenSpec task: `5.2 对每个新增 tag 重复独立 merge、冲突决策、生成物更新和完整 owning-package 验证，直到一次查询无新增`
-- Phase: `implementing`
+- Plan task: `步骤 1：从任务 2 的 package 目录完整运行基线矩阵`
+- OpenSpec task: `1.3 执行全部适用验证并把当前 HEAD 修复到零失败，禁止以历史残余或允许失败代替当前基线`
+- Phase: `done`
 - Agent role: `implementer`
 - Model: `general`（当前 harness 不暴露单独 model 参数）
 - Review mode: `thorough`
 - TDD mode: `direct`
 - Review/fix round: `0/2`
-- Task 24 frontier: 最新 verified `v1.18.16`（merge commit `2f9dd5e2f5d41e30b79aa31f8f6c0ef839312c4e`）；pending 队列 `v1.18.17`、`v1.18.18`；`v1.18.17` -> `02546dfc2e4515a4f90aaf9ceb3890df2ac2b479`（lightweight），`v1.18.18` -> `31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d`（lightweight）；两者闭包均在已知队列内（37 packages + host）。
-- Task 25 v1.18.17 merge: `ac8c4eae4ba25d325e948072ddc437d3063155f2`，parents `96f32ef793600efcb147fafb41e8fa682cd518c7` / `02546dfc2e4515a4f90aaf9ceb3890df2ac2b479`；有效 changeset 94 paths（merge-base 为 dev 线 `0bff28de`，v1.18.17 是 v1.18.16 的后继），冲突 30（bun.lock + 29 manifests），三方结构化 merge 无非-version 冲突，bun.lock 由 pinned Bun 重新生成并 frozen replay。
-- Task 25 v1.18.17 focused gates: core `88/0`、opencode focused `661/0/1skip`、App `769/0`、stats core/server、console-app、session-ui `83/0`、ui `27/0`、web build 全 exit `0`；`Assert-MergeReady` 通过，first-parent diff 94。
-- Task 25 v1.18.17 full matrix: closure `94/37`、`RootChanged=true`、`PublicApi=false`；`66 executed + 5 N/A + 1 superseded`，66/66 exit `0`；17 numeric gates `8185/0/0/97/1` versus Task23 `8162/0/0/97/1`（core +3、opencode +16、app +4）。Review `READY 0/0/1`（Minor 为 baseline provenance 标签 typo，已修正并重新封存；比较数据始终来自 Task23 evidence）。
-- Task 25 v1.18.17 audits: index empty、`MERGE_HEAD` absent、65 protected + 2 coordination docs unchanged；双根各 75 files、74-entry manifests byte-identical。
-- Task 25 v1.18.18: merge `ff4317ce2a08578fd1d62d4949a020750550d6d8`（parents `27191bda9591…` / `31406ccc51b…`），有效 changeset 40 paths，冲突 30 同型解决；聚焦修复 `3f9e98a680…`（三个 upstream patch 恢复 tag-verbatim + `.gitattributes` patches 行 whitespace 例外）。attempt-1 在 gate1 被 patch 解析回归 BLOCKED（未复用），attempt-2 canonical：66/66 exit `0`，17 numeric gates `8190/0/0/97/1` versus v1.18.17 `8185/0/0/97/1`；review `NOT_READY 0/2/1`→`READY`。verify 提交 `7989cec3ed…`。
-- Task 25 frontier: 重新查询后 pending=0，前沿稳定（latest verified `v1.18.18`）；已记录幂等确认并提交 `docs(opencode): confirm upstream release frontier`。
-- Task 26 audit: 12 个 merge commit 全部 Get-TagMergeRecord 有效（轻量 tag、第二父=远端 peeled）；范围 diff check 通过；client generated 范围净差 0、sdk/js 净差为 manifest+types.gen.ts（源自 v1.18.11 轮生成门禁）；端点复跑 check:generated 与 SDK build exit 0 无漂移；host package.json/pnpm-lock/package-lock 全范围零变化、版本 26.8.1000 与 pnpm pin 未被动。提交 `2c1c0467c1…`。
-- Task 27 final matrix: union closure（$BaseRef..HEAD），69 executed（含 public-api 三件套 client-generate/opencode-test-httpapi/client-check-generated）+ 2 N/A + 1 superseded；69/69 exit 0；18 numeric gates `8838/0/0/97/1`；HttpApi `648/0/0`；`Assert-FinalCleanGate` pass、无 MERGE_HEAD；双根 79/79 files。提交 `docs(opencode): verify upstream integration`。
-- Task 28 review: `$BaseRef..HEAD` thorough 独立审查无 Critical/Important 产品发现；依赖方向符合 AGENTS.md；12/12 第二父独立复算与远端 peeled 一致；审查后前沿查询 pending=0（latest verified `v1.18.18`）。Minor 已记录：Task25 v1.18.18 封存报告将 fix 路径标为 docs-only，canonical 报告已按产品修复描述。提交 `docs(opencode): record upstream integration review`。
-- Resume point: `change 完成`。所有 OpenSpec 任务（1.1-6.3）已勾选；后续可进入归档/合并评审。
+- Recovery: 原检查点记录 Task 25-28 已完成，OpenSpec tasks 1.1-6.3 已全部勾选；当前仅恢复计划中 8 个滞后的嵌套复选框。
+- Candidate evidence: baseline commits `32462740c5`、`4f73bae1da`；待独立 agent 对照任务文本、报告和 Git 内容确认。
+- Implementer result: `DONE_WITH_CONCERNS`；提交与报告完整证明 pinned 工具链、root frozen install、67/67 默认 gate、条件 gate 与 skip/todo 计数；无需实现。唯一 concern 是当前正在恢复的 plan checkbox 漂移。
+- Risk signals: `DONE_WITH_CONCERNS`；其余风险信号未命中。
+- Review result: `PASS`；无 Critical/Important，准许定向勾选。

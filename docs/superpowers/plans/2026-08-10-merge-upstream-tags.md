@@ -623,7 +623,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
 **文件：** 报告中诊断出的 owning source/test/manifest 路径；`docs/superpowers/reports/2026-08-10-merge-upstream-tags.md`；`docs/openspec/changes/merge-upstream-tags/tasks.md`。
 
-- [ ] **步骤 1：从任务 2 的 package 目录完整运行基线矩阵**
+- [x] **步骤 1：从任务 2 的 package 目录完整运行基线矩阵**
 
   先把 report 中唯一 gate matrix 的 `packages-core-test.command` 更新为已批准的 pinned 低并发命令 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --only-failures --max-concurrency=1`，并把 `packages-sdk-next-test.command` 更新为 `vfox exec bun@1.3.14 nodejs@22.23.1 -- bun test --timeout 5000 --max-concurrency=1`。保留既有失败 attempt 历史，把最新 baseline result 中对应 gate 恢复为 pending，并记录 Design/Spec commits `a54e9b1b1b0f36aa0cc0b8816167c8e856f925b7`、`afb3c61627`；不得修改对应 `package.json`。
 
