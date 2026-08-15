@@ -660,7 +660,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 **文件：** 运行时冲突 index 确定的路径及规定生成物。
 
 - [x] 执行 `$merge = Start-TagMerge 'v1.18.7'`；逐路径调查 `$merge.Base` 与 tag 的语义、调用方和测试。公共 Protocol/HttpApi 变化同时运行 Client generate 与 legacy SDK build；等价替换暂停用户选择。
-- [ ] 逐项 stage 已调查的冲突解法和生成物，运行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
+- [x] 逐项 stage 已调查的冲突解法和生成物，运行 `Assert-MergeReady $merge`、`Commit-TagMerge $merge`。
 
 验收：MERGE_HEAD 在提交前等于 `v1.18.7` peeled commit；可接受空树 merge index；提交后父链准确。
 

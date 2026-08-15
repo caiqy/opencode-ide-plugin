@@ -1,7 +1,7 @@
 # Subagent Progress
 
 - Plan: `docs/superpowers/plans/2026-08-10-merge-upstream-tags.md`
-- Plan task: `执行 $merge = Start-TagMerge 'v1.18.7'；逐路径调查 $merge.Base 与 tag 的语义、调用方和测试。公共 Protocol/HttpApi 变化同时运行 Client generate 与 legacy SDK build；等价替换暂停用户选择。`
+- Plan task: `逐项 stage 已调查的冲突解法和生成物，运行 Assert-MergeReady $merge、Commit-TagMerge $merge。`
 - OpenSpec task: `2.1 合并 v1.18.7，并保留独立双父 tag merge 边界`
 - Phase: `done`
 - Agent role: `implementer`
@@ -10,7 +10,7 @@
 - TDD mode: `direct`
 - Review/fix round: `0/2`
 - Recovery: 原检查点记录 Task 25-28 已完成，OpenSpec tasks 1.1-6.3 已全部勾选；当前仅恢复计划中 8 个滞后的嵌套复选框。
-- Candidate evidence: merge commit `0eb10bf4f6`、正式报告和 tag refs；待独立 agent 核对 Start-TagMerge 边界、冲突调查、公共 API 条件门禁与等价替换约束。
-- Implementer result: `DONE`；merge 第二父精确等于 v1.18.7 peeled commit，差异仅 lockfile 与版本 manifest，publicApi=false，条件生成门禁正确为 N/A，无等价替换候选。
-- Risk signals: 报告缺少单独 merge narrative 且章节顺序较弱，但 round marker 与 Git 对象提供可复算证据。
-- Review result: `PASS`；无 Critical/Important，证据叙述缺陷为非阻塞，准许只勾选当前 merge 步骤。
+- Candidate evidence: merge commit `0eb10bf4f6`、正式报告、index/merge audit；待独立 agent 核对 staged 边界、Assert-MergeReady 与 Commit-TagMerge 后置条件。
+- Implementer result: `DONE_WITH_CONCERNS`；双父、50 个 staged 路径、protected 边界和提交后状态均可由 Git/marker 证明。
+- Risk signals: v1.18.7 未单独持久化 Assert-MergeReady 的预提交 MERGE_HEAD/index 快照，运行时事件丢失；最终双父结构仅间接证明该瞬时条件。
+- Review result: `PASS`；Git 对象足以证明实质边界，缺少独立预提交快照记为 Minor process-evidence gap，准许勾选。
