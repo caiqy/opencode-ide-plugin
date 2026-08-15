@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { act, render, screen } from "@testing-library/react"
+import { act, render, screen, within } from "@testing-library/react"
 
 let attachments: Array<{
   getKey: () => string
@@ -45,12 +45,19 @@ describe("AttachmentRail", () => {
         getKey: () => "attachment-1",
         getMetadata: () => ({ id: "image-1", display: "Image #1" }),
       },
+      {
+        getKey: () => "attachment-2",
+        getMetadata: () => ({ id: "image-2", display: "Image #2" }),
+      },
     ]
 
     const { rerender } = render(<AttachmentRail />)
 
-    expect(screen.getByTestId("attachment-rail-items")).toHaveClass("overflow-x-auto")
-    expect(screen.getByTestId("attachment-image-1")).toHaveTextContent("Image #1")
+    const rail = screen.getByTestId("attachment-rail-items")
+    expect(rail).toHaveClass("overflow-x-auto")
+    expect(rail).toHaveClass("p-1")
+    expect(within(rail).getByTestId("attachment-image-1")).toHaveTextContent("Image #1")
+    expect(within(rail).getByTestId("attachment-image-2")).toHaveTextContent("Image #2")
 
     attachments = []
     act(() => {

@@ -59,7 +59,7 @@ export function MessageActions({
         <button
           type="button"
           onClick={onAbort}
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white hover:bg-red-700"
+          className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300"
           aria-label="停止生成"
           title="停止生成"
           data-tip="停止生成"

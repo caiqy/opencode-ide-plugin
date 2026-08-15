@@ -40,7 +40,7 @@ export function AttachmentRail() {
 
   return (
     <div className="px-3 pt-2" data-testid="attachment-rail">
-      <div className="flex max-w-full gap-2 overflow-x-auto pb-1" data-testid="attachment-rail-items">
+      <div className="flex max-w-full gap-2 overflow-x-auto p-1" data-testid="attachment-rail-items">
         {attachments.map((attachment) => (
           <AttachmentComponent key={attachment.key} nodeKey={attachment.key} metadata={attachment.metadata} />
         ))}

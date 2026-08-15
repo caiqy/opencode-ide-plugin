@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
+import { forwardRef } from "react"
 import { EditorContent } from "./EditorContent"
 
 vi.mock("@lexical/react/LexicalRichTextPlugin", () => {
@@ -10,7 +11,11 @@ vi.mock("@lexical/react/LexicalRichTextPlugin", () => {
 
 vi.mock("@lexical/react/LexicalContentEditable", () => {
   return {
-    ContentEditable: ({ placeholder, ...props }: any) => <div {...props}>{placeholder}</div>,
+    ContentEditable: forwardRef<HTMLDivElement, any>(({ placeholder, ...props }, ref) => (
+      <div ref={ref} {...props}>
+        {placeholder}
+      </div>
+    )),
   }
 })
 
@@ -72,5 +77,62 @@ describe("EditorContent", () => {
     const input = container.querySelector("#opencode-message-input")
     expect(input).toHaveAttribute("id", "opencode-message-input")
     expect(input).toHaveAttribute("aria-label", "输入消息（回车发送）")
+  })
+
+  it("向下拖动分隔线会缩小输入框", () => {
+    const { container } = render(
+      <EditorContent
+        contentEditableRef={{ current: null } as any}
+        containerRef={{ current: null } as any}
+        onEditorChange={vi.fn()}
+      />,
+    )
+
+    const input = container.querySelector("#opencode-message-input") as HTMLDivElement
+    Object.defineProperty(input, "getBoundingClientRect", { value: () => ({ height: 128 }) })
+    const handle = screen.getByRole("separator", { name: "调整输入框高度" })
+
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientY: 100 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 140 })
+
+    expect(input).toHaveStyle({ height: "88px" })
+  })
+
+  it("双击分隔线会恢复输入框默认高度", () => {
+    const { container } = render(
+      <EditorContent
+        contentEditableRef={{ current: null } as any}
+        containerRef={{ current: null } as any}
+        onEditorChange={vi.fn()}
+      />,
+    )
+
+    const input = container.querySelector("#opencode-message-input") as HTMLDivElement
+    Object.defineProperty(input, "getBoundingClientRect", { value: () => ({ height: 64 }) })
+    const handle = screen.getByRole("separator", { name: "调整输入框高度" })
+
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientY: 100 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 140 })
+    fireEvent.doubleClick(handle)
+
+    expect(input).not.toHaveStyle({ height: "104px" })
+  })
+
+  it("分隔线可通过键盘调整输入框高度", () => {
+    const { container } = render(
+      <EditorContent
+        contentEditableRef={{ current: null } as any}
+        containerRef={{ current: null } as any}
+        onEditorChange={vi.fn()}
+      />,
+    )
+
+    const input = container.querySelector("#opencode-message-input") as HTMLDivElement
+    Object.defineProperty(input, "getBoundingClientRect", { value: () => ({ height: 64 }) })
+    const handle = screen.getByRole("separator", { name: "调整输入框高度" })
+
+    fireEvent.keyDown(handle, { key: "ArrowDown" })
+
+    expect(input).toHaveStyle({ height: "88px" })
   })
 })

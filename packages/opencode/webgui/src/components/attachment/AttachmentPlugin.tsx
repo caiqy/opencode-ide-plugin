@@ -18,6 +18,8 @@ export function AttachmentPlugin() {
         for (const item of items) {
           if (item.type.startsWith("image/")) {
             event.preventDefault()
+            // Clipboard item metadata may be cleared before FileReader finishes.
+            const mime = item.type
 
             const file = item.getAsFile()
             if (!file) continue
@@ -31,8 +33,8 @@ export function AttachmentPlugin() {
               const metadata: AttachmentMetadata = {
                 id: crypto.randomUUID(),
                 display: `Image #${attachmentCount + 1}`,
-                filename: `image-${attachmentCount + 1}.${getExtensionFromMime(item.type)}`,
-                mime: item.type,
+                filename: `image-${attachmentCount + 1}.${getExtensionFromMime(mime)}`,
+                mime,
                 url: dataUrl,
                 size: file.size,
               }

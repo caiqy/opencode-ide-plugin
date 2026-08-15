@@ -20,9 +20,12 @@ export function QuickPhraseBar({ items, disabled, onSend, onFill }: QuickPhraseB
   const row = useRef<HTMLDivElement>(null)
   const drag = useRef<{ id: number; x: number; left: number; moved: boolean } | null>(null)
   const lastRightClick = useRef<{ id: string; time: number } | null>(null)
+  const lastLeftClick = useRef<{ id: string; time: number } | null>(null)
+  const suppressLeftClick = useRef(false)
   const list = useMemo(() => items.filter((item) => item.title.trim()), [items])
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      suppressLeftClick.current = false
       if (expanded) return
       if (e.button !== 0) return
       const el = row.current
@@ -44,6 +47,8 @@ export function QuickPhraseBar({ items, disabled, onSend, onFill }: QuickPhraseB
     if (!cur.moved && Math.abs(delta) < 2) return
     if (!cur.moved) {
       cur.moved = true
+      suppressLeftClick.current = true
+      lastLeftClick.current = null
       el.setPointerCapture(e.pointerId)
     }
     el.scrollLeft = cur.left - delta
@@ -56,6 +61,24 @@ export function QuickPhraseBar({ items, disabled, onSend, onFill }: QuickPhraseB
     if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
     drag.current = null
   }, [])
+  const handleLeftClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>, item: QuickPhraseItem) => {
+      if (disabled || e.detail === 0) return
+      if (suppressLeftClick.current) {
+        suppressLeftClick.current = false
+        return
+      }
+      const now = Date.now()
+      const prev = lastLeftClick.current
+      if (prev && prev.id === item.id && now - prev.time <= RIGHT_DOUBLE_CLICK_MS) {
+        lastLeftClick.current = null
+        onSend(item)
+        return
+      }
+      lastLeftClick.current = { id: item.id, time: now }
+    },
+    [disabled, onSend],
+  )
   const handleContextMenu = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>, item: QuickPhraseItem) => {
       e.preventDefault()
@@ -74,7 +97,7 @@ export function QuickPhraseBar({ items, disabled, onSend, onFill }: QuickPhraseB
   if (list.length === 0) return null
 
   return (
-    <div className="border-b border-gray-100 px-3 py-1.5 dark:border-gray-800">
+    <div className="px-3 py-1.5">
       <div className="flex items-center gap-1.5">
         <div
           ref={row}
@@ -90,10 +113,7 @@ export function QuickPhraseBar({ items, disabled, onSend, onFill }: QuickPhraseB
               key={item.id}
               disabled={disabled}
               title={`左键双击发送 / 右键双击回填：${item.body}`}
-              onDoubleClick={() => {
-                if (disabled) return
-                onSend(item)
-              }}
+              onClick={(e) => handleLeftClick(e, item)}
               onContextMenu={(e) => handleContextMenu(e, item)}
               className="inline-flex h-6 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-100 px-2 text-xs text-gray-700 hover:border-gray-300 hover:bg-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-gray-600 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
             >

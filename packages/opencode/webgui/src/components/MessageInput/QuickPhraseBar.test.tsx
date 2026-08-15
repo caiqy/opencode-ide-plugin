@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { QuickPhraseBar } from "./QuickPhraseBar"
 
@@ -7,7 +7,16 @@ const items = [
   { id: "b", title: "风险检查", body: "y" },
 ]
 
+function stubPointerCapture(row: HTMLElement) {
+  Object.defineProperty(row, "setPointerCapture", { value: vi.fn(), configurable: true })
+  Object.defineProperty(row, "hasPointerCapture", { value: vi.fn(() => false), configurable: true })
+  Object.defineProperty(row, "releasePointerCapture", { value: vi.fn(), configurable: true })
+}
+
 describe("QuickPhraseBar", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
   it("默认单行横向滚动并显示展开按钮", () => {
     render(<QuickPhraseBar items={items} disabled={false} onSend={vi.fn()} onFill={vi.fn()} />)
 
@@ -55,15 +64,118 @@ describe("QuickPhraseBar", () => {
     expect(set).not.toHaveBeenCalled()
   })
 
-  it("左键双击短语会发送", () => {
+  it("400ms 内两次左键点击短语会发送", () => {
     const onSend = vi.fn()
     const onFill = vi.fn()
     render(<QuickPhraseBar items={items} disabled={false} onSend={onSend} onFill={onFill} />)
 
-    fireEvent.doubleClick(screen.getByRole("button", { name: "提交总结" }))
+    const btn = screen.getByRole("button", { name: "提交总结" })
+    fireEvent.click(btn, { detail: 1 })
+    fireEvent.click(btn, { detail: 1 })
 
+    expect(onSend).toHaveBeenCalledTimes(1)
     expect(onSend).toHaveBeenCalledWith(items[0])
     expect(onFill).not.toHaveBeenCalled()
+  })
+
+  it("单次左键点击短语不发送", () => {
+    const onSend = vi.fn()
+    const onFill = vi.fn()
+    render(<QuickPhraseBar items={items} disabled={false} onSend={onSend} onFill={onFill} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "提交总结" }), { detail: 1 })
+
+    expect(onSend).not.toHaveBeenCalled()
+    expect(onFill).not.toHaveBeenCalled()
+  })
+
+  it("连续两次键盘激活 click（detail 0）不发送", () => {
+    const onSend = vi.fn()
+    render(<QuickPhraseBar items={items} disabled={false} onSend={onSend} onFill={vi.fn()} />)
+
+    const btn = screen.getByRole("button", { name: "提交总结" })
+    fireEvent.click(btn, { detail: 0 })
+    fireEvent.click(btn, { detail: 0 })
+    fireEvent.click(btn, { detail: 1 })
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("键盘 click（detail 0）不更新左键配对状态", () => {
+    vi.useFakeTimers()
+    const onSend = vi.fn()
+    render(<QuickPhraseBar items={items} disabled={false} onSend={onSend} onFill={vi.fn()} />)
+
+    const btn = screen.getByRole("button", { name: "提交总结" })
+    fireEvent.click(btn, { detail: 1 })
+    vi.advanceTimersByTime(500)
+    fireEvent.click(btn, { detail: 0 })
+    fireEvent.click(btn, { detail: 1 })
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("超过 400ms 的两次左键点击不发送", () => {
+    vi.useFakeTimers()
+    const onSend = vi.fn()
+    render(<QuickPhraseBar items={items} disabled={false} onSend={onSend} onFill={vi.fn()} />)
+
+    const btn = screen.getByRole("button", { name: "提交总结" })
+    fireEvent.click(btn, { detail: 1 })
+    vi.advanceTimersByTime(401)
+    fireEvent.click(btn, { detail: 1 })
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("两次点击落在不同短语上不配对", () => {
+    const onSend = vi.fn()
+    render(<QuickPhraseBar items={items} disabled={false} onSend={onSend} onFill={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "提交总结" }), { detail: 1 })
+    fireEvent.click(screen.getByRole("button", { name: "风险检查" }), { detail: 1 })
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("拖动滚动后的点击不发送也不参与配对", () => {
+    const onSend = vi.fn()
+    const onFill = vi.fn()
+    render(<QuickPhraseBar items={items} disabled={false} onSend={onSend} onFill={onFill} />)
+
+    const row = screen.getByTestId("quick-phrase-row")
+    const btn = screen.getByRole("button", { name: "提交总结" })
+    stubPointerCapture(row)
+
+    fireEvent.pointerDown(row, { button: 0, pointerId: 1, clientX: 100 })
+    fireEvent.pointerMove(row, { pointerId: 1, clientX: 110 })
+    fireEvent.pointerUp(row, { pointerId: 1 })
+    fireEvent.click(btn, { detail: 1 })
+    fireEvent.click(btn, { detail: 1 })
+
+    expect(onSend).not.toHaveBeenCalled()
+    expect(onFill).not.toHaveBeenCalled()
+  })
+
+  it("拖动未产生 click 时下一次 pointerDown 复位忽略标记", () => {
+    const onSend = vi.fn()
+    render(<QuickPhraseBar items={items} disabled={false} onSend={onSend} onFill={vi.fn()} />)
+
+    const row = screen.getByTestId("quick-phrase-row")
+    const btn = screen.getByRole("button", { name: "提交总结" })
+    stubPointerCapture(row)
+
+    fireEvent.pointerDown(row, { button: 0, pointerId: 1, clientX: 100 })
+    fireEvent.pointerMove(row, { pointerId: 1, clientX: 110 })
+    fireEvent.pointerUp(row, { pointerId: 1 })
+
+    fireEvent.pointerDown(row, { button: 0, pointerId: 2, clientX: 50 })
+    fireEvent.pointerUp(row, { pointerId: 2 })
+
+    fireEvent.click(btn, { detail: 1 })
+    fireEvent.click(btn, { detail: 1 })
+
+    expect(onSend).toHaveBeenCalledTimes(1)
   })
 
   it("右键双击短语会回填且阻止系统菜单", () => {
@@ -106,7 +218,8 @@ describe("QuickPhraseBar", () => {
     render(<QuickPhraseBar items={items} disabled={true} onSend={onSend} onFill={onFill} />)
 
     const btn = screen.getByRole("button", { name: "提交总结" })
-    fireEvent.doubleClick(btn)
+    fireEvent.click(btn, { detail: 1 })
+    fireEvent.click(btn, { detail: 1 })
     fireEvent.contextMenu(btn)
     fireEvent.contextMenu(btn)
 

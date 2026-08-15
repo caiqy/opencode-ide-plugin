@@ -143,4 +143,19 @@ describe("MessageActions", () => {
     expect(screen.getByTitle("精简会话历史")).toBeDisabled()
     expect(screen.getByTitle("停止生成")).toBeInTheDocument()
   })
+
+  it("生成中停止按钮使用与发送按钮相同的中性配色", () => {
+    render(
+      <MessageActions
+        isIdle={false}
+        isButtonDisabled={false}
+        isCompactDisabled={false}
+        onSubmit={vi.fn()}
+        onAbort={vi.fn()}
+        onCompactClick={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTitle("停止生成")).toHaveClass("bg-gray-200", "text-gray-700", "hover:bg-gray-300")
+  })
 })
