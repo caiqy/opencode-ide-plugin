@@ -21,6 +21,17 @@ interface UsageDisplayProps {
   variant?: "bar" | "ring"
 }
 
+function contextRingStroke(pct: number) {
+  if (pct < 50) return
+  const [from, to, progress] =
+    pct <= 60 ? ["#fef3c7", "#facc15", (pct - 50) / 10] : ["#facc15", "#ef4444", Math.min((pct - 60) / 20, 1)]
+  const start = Number.parseInt(from.slice(1), 16)
+  const end = Number.parseInt(to.slice(1), 16)
+  return `#${[16, 8, 0]
+    .map((shift) => Math.round(((start >> shift) & 0xff) + ((((end >> shift) & 0xff) - ((start >> shift) & 0xff)) * progress)).toString(16).padStart(2, "0"))
+    .join("")}`
+}
+
 export function UsageDisplay({ usage, variant = "bar" }: UsageDisplayProps) {
   const [showDetails, setShowDetails] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -29,6 +40,7 @@ export function UsageDisplay({ usage, variant = "bar" }: UsageDisplayProps) {
   const pct = Math.min(100, Math.max(0, usage.percentage))
   const circumference = 2 * Math.PI * 6
   const color = pct <= 40 ? "bg-green-500" : pct <= 60 ? "bg-yellow-500" : pct <= 75 ? "bg-orange-500" : "bg-red-500"
+  const ringStroke = contextRingStroke(pct)
 
   // Close popup when clicking outside
   useEffect(() => {
@@ -72,10 +84,11 @@ export function UsageDisplay({ usage, variant = "bar" }: UsageDisplayProps) {
               strokeWidth="2"
             />
             <circle
-              className="stroke-gray-900 dark:stroke-white"
+              className={ringStroke ? undefined : "stroke-gray-900 dark:stroke-white"}
               cx="8"
               cy="8"
               r="6"
+              stroke={ringStroke}
               strokeWidth="2"
               strokeDasharray={circumference}
               strokeDashoffset={circumference * (1 - pct / 100)}

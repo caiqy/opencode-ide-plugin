@@ -39,6 +39,33 @@ describe("CompactHeader/UsageDisplay", () => {
     expect(screen.getByTestId("usage-details")).toHaveAttribute("id", button.getAttribute("aria-controls"))
   })
 
+  it("在 50% 到 80% 将进度环从黄色渐变至红色", () => {
+    const usage = {
+      contextUsed: 1000,
+      contextLimit: 8000,
+      tokens: 12345,
+      cost: 0.12,
+      breakdown: { input: 100, cacheWrite: 0, cacheRead: 0, output: 200, reasoning: 300 },
+    }
+    const { rerender } = render(<UsageDisplay variant="ring" usage={{ ...usage, percentage: 50 }} />)
+
+    const stroke = () => screen.getByRole("button").querySelectorAll("circle")[1]
+
+    expect(stroke()).toHaveAttribute("stroke", "#fef3c7")
+
+    rerender(<UsageDisplay variant="ring" usage={{ ...usage, percentage: 60 }} />)
+    expect(stroke()).toHaveAttribute("stroke", "#facc15")
+
+    rerender(<UsageDisplay variant="ring" usage={{ ...usage, percentage: 70 }} />)
+    expect(stroke()).toHaveAttribute("stroke", "#f5882d")
+
+    rerender(<UsageDisplay variant="ring" usage={{ ...usage, percentage: 80 }} />)
+    expect(stroke()).toHaveAttribute("stroke", "#ef4444")
+
+    rerender(<UsageDisplay variant="ring" usage={{ ...usage, percentage: 90 }} />)
+    expect(stroke()).toHaveAttribute("stroke", "#ef4444")
+  })
+
   it("用量详情面板的文案为中文", async () => {
     const user = userEvent.setup()
 

@@ -317,6 +317,24 @@ describe("MessageInput compact confirm", () => {
     ])
   })
 
+  it("深色主题下编辑区使用较浅背景与正文分层", () => {
+    const { container } = render(<MessageInput sessionID="s1" />)
+
+    expect(container.querySelector(".mx-2.mb-2 > div")).toHaveClass("dark:bg-gray-900")
+  })
+
+  it("黑色快捷栏保持直角且不包含编辑区焦点边框", async () => {
+    mocks.loadQuickPhraseState.mockResolvedValue(quick)
+    const { container } = render(<MessageInput sessionID="s1" />)
+    const composer = container.querySelector(".mx-2.mb-2")
+
+    await waitFor(() => {
+      expect(composer).toHaveClass("bg-black")
+      expect(composer).not.toHaveClass("focus-within:border-blue-500")
+      expect(composer?.querySelector(":scope > div")).toHaveClass("focus-within:border-blue-500", "rounded-b-lg")
+    })
+  })
+
   it("onFill 回调仅回填不发送", async () => {
     mocks.loadQuickPhraseState.mockResolvedValue(quick)
     render(<MessageInput sessionID="s1" />)
