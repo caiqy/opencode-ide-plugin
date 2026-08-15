@@ -13,6 +13,8 @@ export type ScopedStateWriteResult =
       error: ScopedStateWriteError
     }
 
+type ScopedStateWriteReport = { key: string; error: ScopedStateWriteError; message: string }
+
 const cache = {
   global: new Map<string, string>(),
   workspace: new Map<string, string>(),
@@ -33,10 +35,9 @@ const revisions = {
   workspace: new Map<string, number>(),
   mem: new Map<string, number>(),
 }
-const seen = new Map<string, number>()
-const delay = 5000
-
-let report: ((input: { key: string; error: ScopedStateWriteError; message: string }) => void) | null = null
+let report: ((input: ScopedStateWriteReport) => void) | null = null
+let pendingReport: ScopedStateWriteReport | null = null
+let warned = false
 
 function browserKey(scope: StorageScope, key: string) {
   return `opencode:webgui:scoped:${scope}:${key}`
@@ -62,18 +63,22 @@ function browserSet(scope: StorageScope, key: string, value: string) {
 }
 
 function warn(key: string, error: ScopedStateWriteError) {
-  const id = `${key}:${error}`
-  const now = Date.now()
-  const last = seen.get(id) ?? 0
-  if (now - last < delay) return
-  seen.set(id, now)
-  report?.({ key, error, message: "设置未保存，本次会话可继续使用" })
+  if (warned) return
+  const input = { key, error, message: "设置未保存，本次会话可继续使用" }
+  if (!report) {
+    pendingReport ??= input
+    return
+  }
+  warned = true
+  report(input)
 }
 
-export function setScopedStateWriteErrorReporter(
-  fn: ((input: { key: string; error: ScopedStateWriteError; message: string }) => void) | null,
-) {
+export function setScopedStateWriteErrorReporter(fn: ((input: ScopedStateWriteReport) => void) | null) {
   report = fn
+  if (!report || warned || !pendingReport) return
+  warned = true
+  report(pendingReport)
+  pendingReport = null
 }
 
 export function resetScopedStateForTest() {
@@ -89,7 +94,8 @@ export function resetScopedStateForTest() {
   revisions.global.clear()
   revisions.workspace.clear()
   revisions.mem.clear()
-  seen.clear()
+  warned = false
+  pendingReport = null
   report = null
 }
 
@@ -192,6 +198,18 @@ export async function flushScopedStateWrites(): Promise<void> {
     }
     await Promise.all(pending)
   }
+}
+
+export async function retryScopedStateWrites(): Promise<void> {
+  await Promise.all(
+    (["global", "workspace", "mem"] as const).flatMap((scope) =>
+      [...dirty[scope]].flatMap((key) => {
+        if (writes[scope].has(key)) return []
+        const value = cache[scope].get(key)
+        return value === undefined ? [] : [scopedStateSet(scope, key, value)]
+      }),
+    ),
+  )
 }
 
 export async function scopedStateGetJSON<T>(scope: StorageScope, key: string, fallback: T): Promise<T> {

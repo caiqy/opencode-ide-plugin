@@ -30,7 +30,7 @@ import { initKeyboardHandler, destroyKeyboardHandler } from "./lib/keyboardHandl
 import { useSessionActivation } from "./state/useSessionActivation"
 import { useTabStore } from "./state/tabStore"
 import { sdk } from "./lib/api/sdkClient"
-import { setScopedStateWriteErrorReporter } from "./state/scopedStorage"
+import { retryScopedStateWrites, setScopedStateWriteErrorReporter } from "./state/scopedStorage"
 import { loadDraftSession, saveDraftSession } from "./state/repo/draftRepo"
 import { switchSessionWithTabRollback } from "./state/switchSession"
 import { useSessionVisibilitySync } from "./hooks/useSessionVisibilitySync"
@@ -297,7 +297,11 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
         duration: 2500,
       })
     })
+    const disposeReady = ideBridge.onReady(() => {
+      void retryScopedStateWrites()
+    })
     return () => {
+      disposeReady()
       setScopedStateWriteErrorReporter(null)
     }
   }, [showToast])

@@ -60,6 +60,29 @@ describe("ideBridge connected metadata", () => {
     expect(ideBridge.restartMode).toBeNull()
   })
 
+  it("onReady 在当前连接和后续重连时都会触发", async () => {
+    const { ideBridge } = await import("./ideBridge")
+    ideBridge.init()
+
+    const source = MockEventSource.all[0]
+    expect(source).toBeDefined()
+    source.onopen?.call(source as unknown as EventSource, new Event("open"))
+
+    const ready = vi.fn()
+    const dispose = ideBridge.onReady(ready)
+    expect(ready).toHaveBeenCalledTimes(1)
+
+    source.onerror?.call(source as unknown as EventSource, new Event("error"))
+    await vi.advanceTimersByTimeAsync(1000)
+
+    const next = MockEventSource.all[1]
+    expect(next).toBeDefined()
+    next.onopen?.call(next as unknown as EventSource, new Event("open"))
+    expect(ready).toHaveBeenCalledTimes(2)
+
+    dispose()
+  })
+
   it("restartHost 请求超时会 reject", async () => {
     const { ideBridge } = await import("./ideBridge")
     ideBridge.init()
@@ -91,6 +114,54 @@ describe("ideBridge connected metadata", () => {
 
     await vi.advanceTimersByTimeAsync(5001)
 
+    expect(done).toHaveBeenCalledWith(false)
+  })
+
+  it("storageSet 失败记录 key 和原始错误但不记录 value", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const { ideBridge } = await import("./ideBridge")
+    ideBridge.init()
+
+    const source = MockEventSource.all[0]
+    expect(source).toBeDefined()
+    source.onopen?.call(source as unknown as EventSource, new Event("open"))
+
+    const saved = ideBridge.storageSet("workspace", "key", "secret-value")
+    await Promise.resolve()
+    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body ?? "{}"))
+    source.onmessage?.call(
+      source as unknown as EventSource,
+      { data: JSON.stringify({ replyTo: body.id, ok: false, error: "storage denied" }) } as MessageEvent,
+    )
+
+    await expect(saved).resolves.toBe(false)
+    expect(warn).toHaveBeenCalledWith(
+      "[ideBridge] storageSet failed",
+      { scope: "workspace", key: "key" },
+      expect.any(Error),
+    )
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("secret-value")
+  })
+
+  it("storageSet 等待 bridge 连接期间不计入回复超时", async () => {
+    const { ideBridge } = await import("./ideBridge")
+    ideBridge.init()
+
+    const done = vi.fn()
+    ideBridge.storageSet("workspace", "key", "value").then(done)
+
+    await vi.advanceTimersByTimeAsync(5001)
+    expect(done).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+
+    const source = MockEventSource.all[0]
+    expect(source).toBeDefined()
+    source.onopen?.call(source as unknown as EventSource, new Event("open"))
+
+    await vi.advanceTimersByTimeAsync(4999)
+    expect(done).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(2)
     expect(done).toHaveBeenCalledWith(false)
   })
 
@@ -256,25 +327,33 @@ describe("ideBridge connected metadata", () => {
     expect(send).toHaveBeenCalledTimes(1)
   })
 
-  it("timeout 后不会再触发 fetch/send", async () => {
+  it("已发送请求 timeout 后重连不会补发", async () => {
     const send = vi.fn().mockResolvedValue({ ok: true })
     vi.stubGlobal("fetch", send)
 
     const { ideBridge } = await import("./ideBridge")
     ideBridge.init()
 
+    const source = MockEventSource.all[0]
+    expect(source).toBeDefined()
+    source.onopen?.call(source as unknown as EventSource, new Event("open"))
+
     const bad = vi.fn()
     ideBridge.request("restartHost").catch(bad)
 
     await vi.advanceTimersByTimeAsync(5001)
     expect(bad).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledTimes(1)
 
-    const source = MockEventSource.all[0]
-    expect(source).toBeDefined()
-    source.onopen?.call(source as unknown as EventSource, new Event("open"))
+    source.onerror?.call(source as unknown as EventSource, new Event("error"))
+    await vi.advanceTimersByTimeAsync(1000)
+
+    const next = MockEventSource.all[1]
+    expect(next).toBeDefined()
+    next.onopen?.call(next as unknown as EventSource, new Event("open"))
     await Promise.resolve()
 
-    expect(send).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledTimes(1)
   })
 
   it("disconnect reject 后重连也不会补发该 request", async () => {

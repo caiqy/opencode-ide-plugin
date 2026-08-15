@@ -125,13 +125,9 @@ class IdeBridge {
       }
     }
 
-    if (this.ready) {
-      run()
-      return () => {}
-    }
-
     const listener = () => run()
     window.addEventListener("opencode:idebridge-ready", listener)
+    if (this.ready) run()
     return () => window.removeEventListener("opencode:idebridge-ready", listener)
   }
 
@@ -200,6 +196,18 @@ class IdeBridge {
   private async doSend(msg: Message, retryCount = 0, allowRetry = true) {
     if (!bridgeBase || !token) return
 
+    if (msg.id) {
+      const pending = this.pending.get(msg.id)
+      const timeout = this.timeout[msg.type]
+      if (pending && timeout && !pending.timer) {
+        // Reply deadlines start at the first actual send and cover the whole retry cycle.
+        pending.timer = setTimeout(() => {
+          this.clearPending(msg.id!)
+          pending.reject(new Error(`[ideBridge] Request timed out: ${msg.type}`))
+        }, timeout)
+      }
+    }
+
     try {
       const response = await fetch(`${bridgeBase}/send?token=${encodeURIComponent(token)}`, {
         method: "POST",
@@ -260,14 +268,7 @@ class IdeBridge {
       }
       const id = String(Date.now()) + Math.random().toString(36).slice(2)
       try {
-        const ms = this.timeout[type]
-        const timer = ms
-          ? setTimeout(() => {
-              this.clearPending(id)
-              reject(new Error(`[ideBridge] Request timed out: ${type}`))
-            }, ms)
-          : undefined
-        this.pending.set(id, { resolve, reject, timer })
+        this.pending.set(id, { resolve, reject })
         this.send({ id, type, payload, timestamp: Date.now() })
       } catch (e) {
         this.clearPending(id)
@@ -333,7 +334,8 @@ class IdeBridge {
     try {
       const res = await this.request("storageSet", { scope, key, value })
       return !!res.ok
-    } catch {
+    } catch (error) {
+      console.warn("[ideBridge] storageSet failed", { scope, key }, error)
       return false
     }
   }

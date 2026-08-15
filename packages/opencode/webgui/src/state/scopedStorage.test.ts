@@ -12,6 +12,7 @@ import { ideBridge } from "../lib/ideBridge"
 import {
   flushScopedStateWrites,
   resetScopedStateForTest,
+  retryScopedStateWrites,
   scopedStateGetJSON,
   scopedStateSetJSON,
   setScopedStateWriteErrorReporter,
@@ -57,7 +58,7 @@ describe("scopedStorage", () => {
     expect(ideBridge.storageGet).toHaveBeenCalledWith("workspace", ["opencode:webgui:workspace:tabs:v1"])
   })
 
-  it("host 写失败按 key+error 节流告警", async () => {
+  it("host 写失败每次会话只告警一次", async () => {
     vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
     vi.mocked(ideBridge.storageSet).mockResolvedValue(false)
 
@@ -65,12 +66,59 @@ describe("scopedStorage", () => {
     setScopedStateWriteErrorReporter(report)
 
     await scopedStateSetJSON("global", "opencode:webgui:global:theme:v1", "dark")
-    await scopedStateSetJSON("global", "opencode:webgui:global:theme:v1", "light")
+    await scopedStateSetJSON("workspace", "opencode:webgui:workspace:last_selection:v1", { agent: "build" })
     expect(report).toHaveBeenCalledTimes(1)
 
     vi.setSystemTime(new Date("2026-02-26T00:00:06Z"))
+    await scopedStateSetJSON("workspace", "opencode:webgui:workspace:tabs:v1", { open_tabs: [] })
+    expect(report).toHaveBeenCalledTimes(1)
+  })
+
+  it("reporter 延迟注册时交付首次失败告警", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+    vi.mocked(ideBridge.storageSet).mockResolvedValue(false)
+
     await scopedStateSetJSON("global", "opencode:webgui:global:theme:v1", "dark")
-    expect(report).toHaveBeenCalledTimes(2)
+
+    const report = vi.fn()
+    setScopedStateWriteErrorReporter(report)
+    expect(report).toHaveBeenCalledTimes(1)
+  })
+
+  it("恢复写入时保存 dirty key 的最新内存值", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+    vi.mocked(ideBridge.storageSet).mockResolvedValue(false)
+
+    await scopedStateSetJSON("global", "opencode:webgui:global:theme:v1", "dark")
+    await scopedStateSetJSON("global", "opencode:webgui:global:theme:v1", "light")
+
+    vi.mocked(ideBridge.storageSet).mockResolvedValue(true)
+    await retryScopedStateWrites()
+
+    expect(ideBridge.storageSet).toHaveBeenLastCalledWith(
+      "global",
+      "opencode:webgui:global:theme:v1",
+      JSON.stringify("light"),
+    )
+    await expect(flushScopedStateWrites()).resolves.toBeUndefined()
+  })
+
+  it("已有同 key 写入时恢复不会追加重复写入", async () => {
+    vi.mocked(ideBridge.isInstalled).mockReturnValue(true)
+    vi.mocked(ideBridge.storageSet).mockResolvedValueOnce(false)
+    await scopedStateSetJSON("global", "opencode:webgui:global:theme:v1", "dark")
+
+    const pending = deferred<boolean>()
+    vi.mocked(ideBridge.storageSet).mockReturnValueOnce(pending.promise).mockResolvedValue(false)
+    const writing = scopedStateSetJSON("global", "opencode:webgui:global:theme:v1", "light")
+    await vi.waitFor(() => expect(ideBridge.storageSet).toHaveBeenCalledTimes(2))
+
+    const retrying = retryScopedStateWrites()
+    pending.resolve(true)
+    await Promise.all([writing, retrying])
+
+    expect(ideBridge.storageSet).toHaveBeenCalledTimes(2)
+    await expect(flushScopedStateWrites()).resolves.toBeUndefined()
   })
 
   it("JSON 解析失败返回 fallback", async () => {
