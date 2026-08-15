@@ -50,6 +50,7 @@ import { SessionRunState } from "./run-state"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Database } from "@opencode-ai/core/database/database"
+import { Global } from "@opencode-ai/core/global"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { eq } from "drizzle-orm"
@@ -157,6 +158,15 @@ const layer = Layer.effect(
           )
         }),
       ).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    })
+
+    const saveDataUrlToTemp = Effect.fn("SessionPrompt.saveDataUrlToTemp")(function* (url: string, mime: string) {
+      if (!url.includes(";base64,")) return undefined
+      const base64 = url.slice(url.indexOf(";base64,") + ";base64,".length)
+      const ext = (mime.split("/")[1] || "bin").replace(/[^a-z0-9]/gi, "") || "bin"
+      const filepath = path.join(Global.Path.tmp, "attachments", `${ulid()}.${ext}`)
+      yield* fsys.writeWithDirs(filepath, Buffer.from(base64, "base64"))
+      return filepath
     })
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
@@ -835,6 +845,33 @@ const layer = Layer.effect(
                   },
                   { ...part, messageID: info.id, sessionID: input.sessionID },
                 ]
+              }
+              // Pasted screenshots arrive as base64 data URLs. Keep the base64
+              // payload as-is, and also write a copy to a temp file so the model
+              // gets a real path it can reference on disk.
+              // Some clients send an empty mime for pasted images; the data URL
+              // header is authoritative, so fall back to it.
+              const mime = part.mime || part.url.slice("data:".length).split(/[;,]/, 1)[0]
+              if (mime.startsWith("image/")) {
+                const filepath = yield* saveDataUrlToTemp(part.url, mime).pipe(
+                  Effect.catch((error) =>
+                    Effect.logWarning("failed to save attachment to temp file", { error }).pipe(
+                      Effect.as(undefined),
+                    ),
+                  ),
+                )
+                if (filepath) {
+                  return [
+                    {
+                      messageID: info.id,
+                      sessionID: input.sessionID,
+                      type: "text",
+                      synthetic: true,
+                      text: `Attached image saved to a temporary file: ${filepath}`,
+                    },
+                    { ...part, messageID: info.id, sessionID: input.sessionID },
+                  ]
+                }
               }
               break
             case "file:": {

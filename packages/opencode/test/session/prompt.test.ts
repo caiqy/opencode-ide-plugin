@@ -1,6 +1,7 @@
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Database } from "@opencode-ai/core/database/database"
+import { Global } from "@opencode-ai/core/global"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { eq } from "drizzle-orm"
@@ -801,6 +802,44 @@ noLLMServer.instance.skip(
         ]),
       )
     }),
+  { config: cfg },
+)
+
+noLLMServer.instance("data URL image attachments keep base64 and get a temp file path", () =>
+  Effect.gen(function* () {
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Temp image" })
+
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NMQ0AAAwDoEqqf3VT0WMJGCAdi0AgEAgEAoFAIOiT4ADYvEAfMIOjPQAAAABJRU5ErkJggg=="
+    const url = `data:image/png;base64,${png}`
+    const message = yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [
+        { type: "text", text: "look at this" },
+        // webgui image pastes can arrive with an empty mime; the data URL header is authoritative
+        { type: "file", mime: "", filename: "shot.png", url },
+      ],
+    })
+
+    expect(message.parts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "file", url })]),
+    )
+    const tempText = message.parts.find(
+      (part) => part.type === "text" && part.text.includes("Attached image saved to a temporary file"),
+    )
+    expect(tempText?.type).toBe("text")
+    if (tempText?.type !== "text") return
+    const filepath = tempText.text.slice(tempText.text.lastIndexOf(" ") + 1)
+    expect(filepath.startsWith(path.join(Global.Path.tmp, "attachments"))).toBe(true)
+    expect(yield* Effect.promise(() => Bun.file(filepath).exists())).toBe(true)
+    const bytes = yield* Effect.promise(() => Bun.file(filepath).arrayBuffer())
+    expect(Buffer.from(bytes).toString("base64")).toBe(png)
+    yield* Effect.promise(() => Bun.file(filepath).delete())
+  }),
   { config: cfg },
 )
 
