@@ -190,6 +190,100 @@ describe("useMessageInput", () => {
     })
   })
 
+  it("发送失败时使用附件快照并可完整恢复编辑器", async () => {
+    mocks.root.getTextContent.mockReturnValue("请查看 [image.png]")
+    mocks.prompt.mockRejectedValueOnce(new Error("network down"))
+    const snapshot = {
+      read: (fn: () => void) => fn(),
+    }
+    const editor = {
+      getEditorState: () => snapshot,
+      update: (fn: () => void) => fn(),
+      setEditorState: vi.fn(),
+      focus: vi.fn(),
+    } as any
+    const parts = [
+      { type: "text", text: "请查看 [image.png]" },
+      {
+        type: "file",
+        mime: "image/png",
+        filename: "image.png",
+        url: "data:image/png;base64,AA==",
+        source: { type: "file", path: "image.png", text: { value: "[image.png]", start: 4, end: 15 } },
+      },
+    ]
+    const extractMessageParts = vi.fn(() => parts)
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-attachment",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts,
+      }),
+    )
+
+    await act(async () => {
+      await result.current.handleSubmit()
+    })
+
+    expect(extractMessageParts).toHaveBeenCalledWith(snapshot)
+    expect(mocks.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ body: expect.objectContaining({ parts }) }),
+    )
+
+    act(() => {
+      result.current.handleRetry()
+    })
+
+    expect(editor.setEditorState).toHaveBeenCalledWith(snapshot)
+  })
+
+  it("异步 slash 解析期间只接受首次提交", async () => {
+    mocks.root.getTextContent.mockReturnValue("/status")
+    let resolveCommands!: (value: { data: Array<{ name: string }>; error: null }) => void
+    mocks.commandList.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCommands = resolve
+      }),
+    )
+    const editor = {
+      getEditorState: () => ({ read: (fn: () => void) => fn() }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-submit-lock",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "/status" }]),
+      }),
+    )
+
+    const first = result.current.handleSubmit()
+    const second = result.current.handleSubmit()
+
+    expect(mocks.setSessionIdle).toHaveBeenCalledTimes(1)
+    expect(mocks.setSessionIdle).toHaveBeenCalledWith("s-submit-lock", false)
+
+    await act(async () => {
+      resolveCommands({ data: [{ name: "status" }], error: null })
+      await Promise.all([first, second])
+    })
+
+    expect(mocks.command).toHaveBeenCalledTimes(1)
+  })
+
   it("summarize 返回错误时显示压缩失败 toast", async () => {
     mocks.summarize.mockResolvedValueOnce({
       data: null,
@@ -586,23 +680,15 @@ describe("useMessageInput", () => {
     expect(mocks.showToast).not.toHaveBeenCalled()
   })
 
-  it("并发 editor 发送时旧请求失败也会清理自身 optimistic", async () => {
+  it("并发 editor 发送只保留首次请求并报告其失败", async () => {
     mocks.root.getTextContent.mockReturnValue("hello")
     let firstReject: ((reason?: unknown) => void) | null = null
-    let secondResolve: ((value: any) => void) | null = null
-    mocks.prompt
-      .mockImplementationOnce(
-        async () =>
-          new Promise((_resolve, reject) => {
-            firstReject = reject
-          }),
-      )
-      .mockImplementationOnce(
-        async () =>
-          new Promise((resolve) => {
-            secondResolve = resolve
-          }),
-      )
+    mocks.prompt.mockImplementationOnce(
+      async () =>
+        new Promise((_resolve, reject) => {
+          firstReject = reject
+        }),
+    )
 
     const editor = {
       getEditorState: () => ({
@@ -631,12 +717,16 @@ describe("useMessageInput", () => {
     })
 
     await act(async () => {
-      secondResolve?.({ data: {}, error: null })
       firstReject?.(new Error("late fail"))
     })
 
+    expect(mocks.prompt).toHaveBeenCalledTimes(1)
     expect(mocks.setMessages).toHaveBeenCalled()
-    expect(mocks.showToast).not.toHaveBeenCalled()
+    expect(mocks.showToast).toHaveBeenCalledWith("late fail", {
+      title: "发送失败",
+      variant: "error",
+      duration: 8000,
+    })
   })
 
   it("普通消息发送成功后会清空匹配的 draftSessionId", async () => {

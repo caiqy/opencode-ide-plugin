@@ -509,37 +509,42 @@ const MessageInputInner = forwardRef<
     <>
       <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex-shrink-0">
         <FooterPanels sessionID={sessionID} />
-        <QuickPhraseBar items={phraseItems} disabled={isDisabled} onSend={onSendPhrase} onFill={onFillPhrase} />
-        <EditorContent
-          contentEditableRef={contentEditableRef}
-          containerRef={containerRef}
-          onEditorChange={handleEditorChange}
-        />
-        <EditorToolbar
-          selectedProviderId={selectedProviderId}
-          selectedModelId={selectedModelId}
-          selectedAgent={selectedAgent}
-          onModelSelect={setSelectedModel}
-          onAgentSelect={setSelectedAgent}
-          onFileSelect={handleFileSelect}
-          isDisabled={isDisabled}
-          modelSelectorKey={modelSelectorKey}
-          lastFailedMessage={lastFailedMessage}
-          onRetry={handleRetry}
-          fileInputRef={fileInputRef}
-          onFileChange={handleFileChange}
-          isIdle={isIdle}
-          isButtonDisabled={isButtonDisabled}
-          isCompactDisabled={isCompactDisabled}
-          onSubmit={handleSubmit}
-          onAbort={handleAbort}
-          onCompactClick={() => setIsCompactConfirmOpen(true)}
-          variants={currentModelInfo.variants}
-          selectedVariant={selectedVariant}
-          onVariantSelect={(variant) => setSelectedVariant(variant)}
-          isReasoningModel={currentModelInfo.isReasoning}
-          selectionPending={selectionPending}
-        />
+        <div
+          className="mx-2 mb-2 rounded-lg border border-gray-200 bg-white focus-within:border-blue-500 dark:border-gray-800 dark:bg-gray-950 dark:focus-within:border-blue-400"
+          data-testid="message-composer"
+        >
+          <QuickPhraseBar items={phraseItems} disabled={isDisabled} onSend={onSendPhrase} onFill={onFillPhrase} />
+          <EditorContent
+            contentEditableRef={contentEditableRef}
+            containerRef={containerRef}
+            onEditorChange={handleEditorChange}
+          />
+          <EditorToolbar
+            selectedProviderId={selectedProviderId}
+            selectedModelId={selectedModelId}
+            selectedAgent={selectedAgent}
+            onModelSelect={setSelectedModel}
+            onAgentSelect={setSelectedAgent}
+            onFileSelect={handleFileSelect}
+            isDisabled={isDisabled}
+            modelSelectorKey={modelSelectorKey}
+          lastFailedMessage={Boolean(lastFailedMessage)}
+            onRetry={handleRetry}
+            fileInputRef={fileInputRef}
+            onFileChange={handleFileChange}
+            isIdle={isIdle}
+            isButtonDisabled={isButtonDisabled}
+            isCompactDisabled={isCompactDisabled}
+            onSubmit={handleSubmit}
+            onAbort={handleAbort}
+            onCompactClick={() => setIsCompactConfirmOpen(true)}
+            variants={currentModelInfo.variants}
+            selectedVariant={selectedVariant}
+            onVariantSelect={(variant) => setSelectedVariant(variant)}
+            isReasoningModel={currentModelInfo.isReasoning}
+            selectionPending={selectionPending}
+          />
+        </div>
       </footer>
 
       <ConfirmModal

@@ -74,8 +74,8 @@ export function QuickPhraseBar({ items, disabled, onSend, onFill }: QuickPhraseB
   if (list.length === 0) return null
 
   return (
-    <div className="px-2 py-1 border-b border-gray-100 dark:border-gray-800">
-      <div className="flex items-start gap-2">
+    <div className="border-b border-gray-100 px-3 py-1.5 dark:border-gray-800">
+      <div className="flex items-center gap-1.5">
         <div
           ref={row}
           data-testid="quick-phrase-row"
@@ -83,7 +83,7 @@ export function QuickPhraseBar({ items, disabled, onSend, onFill }: QuickPhraseB
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
-          className={`flex gap-1 flex-1 ${expanded ? "flex-wrap" : "overflow-x-auto whitespace-nowrap scrollbar-hide cursor-grab"}`}
+          className={`flex flex-1 gap-1.5 ${expanded ? "flex-wrap" : "cursor-grab overflow-x-auto whitespace-nowrap scrollbar-hide"}`}
         >
           {list.map((item) => (
             <button
@@ -95,18 +95,24 @@ export function QuickPhraseBar({ items, disabled, onSend, onFill }: QuickPhraseB
                 onSend(item)
               }}
               onContextMenu={(e) => handleContextMenu(e, item)}
-              className="inline-flex items-center justify-center shrink-0 h-6 px-2 rounded border border-blue-300 dark:border-blue-700 bg-blue-100 dark:bg-blue-900/30 text-xs text-blue-700 dark:text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex h-6 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-100 px-2 text-xs text-gray-700 hover:border-gray-300 hover:bg-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-gray-600 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {item.title}
             </button>
           ))}
         </div>
         <button
+          type="button"
           onClick={() => setExpanded((v) => !v)}
           disabled={disabled}
-          className="inline-flex h-6 items-center shrink-0 text-xs text-gray-500 dark:text-gray-400 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label={expanded ? "收起快捷短语" : "展开快捷短语"}
+          title={expanded ? "收起快捷短语" : "展开快捷短语"}
+          data-tip={expanded ? "收起快捷短语" : "展开快捷短语"}
         >
-          {expanded ? "收起" : "展开"}
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={expanded ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
+          </svg>
         </button>
       </div>
     </div>

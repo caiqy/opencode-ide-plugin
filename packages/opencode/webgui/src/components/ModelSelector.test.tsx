@@ -62,6 +62,18 @@ describe("ModelSelector favorites", () => {
     repo.addRecentModel.mockResolvedValue({ recent: [], favorite: [] })
   })
 
+  it("触发器使用模型语义图标", async () => {
+    render(
+      <ModelSelector
+        onSelect={() => {}}
+        providersData={[]}
+      />,
+    )
+
+    expect(screen.getByTitle("选择模型").querySelector("svg rect")).toHaveAttribute("width", "14")
+    await waitFor(() => expect(repo.loadModelPrefs).toHaveBeenCalled())
+  })
+
   it("在下拉顶部展示收藏分组（来自 sdk.model）", async () => {
     repo.loadModelPrefs.mockResolvedValue({
       recent: [],
@@ -417,6 +429,22 @@ describe("ModelSelector favorites", () => {
     })
 
     await waitFor(() => expect(portal).toHaveStyle({ top: "114px", left: "40px", minWidth: "300px" }))
+  })
+
+  it("portal dropdown 在窄视口内保持右边界", async () => {
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(390)
+    render(<ModelSelector onSelect={() => {}} renderInPortal />)
+    await screen.findByText("GPT 4.1")
+
+    const button = screen.getByTitle("选择模型")
+    vi.spyOn(button, "getBoundingClientRect").mockImplementation(
+      () => ({ left: 105, bottom: 804, top: 780, width: 126, right: 231, height: 24, x: 105, y: 780, toJSON: () => ({}) }) as DOMRect,
+    )
+
+    const user = userEvent.setup()
+    await user.click(button)
+    const portal = await screen.findByTestId("model-selector-portal")
+    await waitFor(() => expect(portal).toHaveStyle({ left: "82px", minWidth: "300px" }))
   })
 
   it("portal dropdown repositions on ancestor container scroll (capture)", async () => {

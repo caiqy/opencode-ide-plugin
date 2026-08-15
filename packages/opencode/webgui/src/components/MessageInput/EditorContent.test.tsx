@@ -34,6 +34,10 @@ vi.mock("../attachment/AttachmentPlugin", () => {
   return { AttachmentPlugin: () => null }
 })
 
+vi.mock("../attachment/AttachmentRail", () => {
+  return { AttachmentRail: () => null }
+})
+
 vi.mock("../command/CommandPlugin", () => {
   return { CommandPlugin: () => null }
 })

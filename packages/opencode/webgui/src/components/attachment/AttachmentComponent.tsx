@@ -1,6 +1,7 @@
-import { type NodeKey } from "lexical"
+import { $getNodeByKey, type NodeKey } from "lexical"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import { type AttachmentMetadata } from "./AttachmentNode"
+import { ImagePreview } from "../parts/ImagePreview"
 
 interface AttachmentComponentProps {
   nodeKey: NodeKey
@@ -12,13 +13,7 @@ export function AttachmentComponent({ nodeKey, metadata }: AttachmentComponentPr
 
   const handleRemove = () => {
     editor.update(() => {
-      const node = editor.getElementByKey(nodeKey)
-      if (node) {
-        const lexicalNode = editor.getEditorState()._nodeMap.get(nodeKey)
-        if (lexicalNode) {
-          lexicalNode.remove()
-        }
-      }
+      $getNodeByKey(nodeKey)?.remove()
     })
   }
 
@@ -65,6 +60,36 @@ export function AttachmentComponent({ nodeKey, metadata }: AttachmentComponentPr
     return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
   }
 
+  if (metadata.mime.startsWith("image/")) {
+    return (
+      <div className="relative h-[72px] w-[72px] shrink-0" contentEditable={false} data-lexical-attachment="true">
+        <ImagePreview
+          src={metadata.url}
+          alt={metadata.filename ?? metadata.display}
+          filename={metadata.filename}
+          className="block h-[72px] w-[72px] overflow-hidden rounded-[7px] border border-gray-200 bg-gray-100 text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-gray-800 dark:bg-gray-950 dark:focus:ring-offset-gray-950"
+          imageClassName="block h-[72px] w-[72px] object-cover"
+          fallbackClassName="flex h-[72px] w-[72px] items-center justify-center rounded-[7px] border border-dashed border-gray-300 bg-gray-100 px-1 text-center text-[10px] text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400"
+        />
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            handleRemove()
+          }}
+          className="absolute -right-1 -top-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm hover:bg-gray-100 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+          aria-label="移除附件"
+          title="移除附件"
+          data-tip="移除附件"
+        >
+          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    )
+  }
+
   return (
     <span
       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
@@ -75,12 +100,14 @@ export function AttachmentComponent({ nodeKey, metadata }: AttachmentComponentPr
       <span>{metadata.display}</span>
       <span className="text-[10px] opacity-70">{formatSize(metadata.size)}</span>
       <button
+        type="button"
         onClick={handleRemove}
-        className="ml-0.5 hover:bg-blue-200 dark:hover:bg-blue-800/50 rounded p-0.5"
+        className="ml-0.5 flex h-[18px] w-[18px] items-center justify-center rounded hover:bg-blue-200 dark:hover:bg-blue-800/50"
+        aria-label="移除附件"
         title="移除附件"
         data-tip="移除附件"
       >
-        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>

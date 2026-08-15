@@ -1,5 +1,5 @@
 import { useCallback } from "react"
-import { $getRoot, $isElementNode, type LexicalEditor } from "lexical"
+import { $getRoot, $isElementNode, type EditorState, type LexicalEditor } from "lexical"
 import { $isMentionNode } from "../../mention/MentionNode"
 import { $isAttachmentNode } from "../../attachment/AttachmentNode"
 import { normalizeTextAttachment } from "../../../lib/fileUtils"
@@ -11,7 +11,7 @@ interface UseMessagePartsOptions {
 }
 
 export function useMessageParts({ editor, resolveToAbsolutePath }: UseMessagePartsOptions) {
-  const extractMessageParts = useCallback(() => {
+  const extractMessageParts = useCallback((editorState: EditorState = editor.getEditorState()) => {
     let fullText = ""
     const mentions: Array<{
       type: "file" | "directory" | "agent" | "symbol"
@@ -32,7 +32,7 @@ export function useMessageParts({ editor, resolveToAbsolutePath }: UseMessagePar
       source?: FilePart["source"]
     }> = []
 
-    editor.getEditorState().read(() => {
+    editorState.read(() => {
       const root = $getRoot()
 
       // Process each paragraph

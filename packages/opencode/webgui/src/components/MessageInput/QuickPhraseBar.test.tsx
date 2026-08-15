@@ -13,16 +13,18 @@ describe("QuickPhraseBar", () => {
 
     expect(screen.getByText("提交总结")).toBeInTheDocument()
     expect(screen.getByText("风险检查")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "展开" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "展开快捷短语" })).toBeInTheDocument()
     expect(screen.getByTestId("quick-phrase-row")).toHaveClass("whitespace-nowrap")
     expect(screen.getByTestId("quick-phrase-row")).toHaveClass("overflow-x-auto")
+    expect(screen.getByTestId("quick-phrase-row")).toHaveClass("gap-1.5")
+    expect(screen.getByRole("button", { name: "提交总结" })).toHaveClass("border-gray-200")
   })
 
   it("点击展开后显示收起状态", () => {
     render(<QuickPhraseBar items={items} disabled={false} onSend={vi.fn()} onFill={vi.fn()} />)
 
-    fireEvent.click(screen.getByRole("button", { name: "展开" }))
-    expect(screen.getByRole("button", { name: "收起" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "展开快捷短语" }))
+    expect(screen.getByRole("button", { name: "收起快捷短语" })).toBeInTheDocument()
     expect(screen.getByTestId("quick-phrase-row")).toHaveClass("flex-wrap")
   })
 
@@ -30,7 +32,7 @@ describe("QuickPhraseBar", () => {
     render(<QuickPhraseBar items={items} disabled={true} onSend={vi.fn()} onFill={vi.fn()} />)
 
     expect(screen.getByRole("button", { name: "提交总结" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "展开" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "展开快捷短语" })).toBeDisabled()
   })
 
   it("按下短语行时不会立即捕获指针", () => {

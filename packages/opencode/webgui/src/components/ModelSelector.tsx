@@ -198,10 +198,12 @@ export function ModelSelector({
   const updatePortalPosition = useCallback(() => {
     if (!renderInPortal || !triggerRef.current) return
     const rect = triggerRef.current.getBoundingClientRect()
+    const width = Math.min(Math.max(rect.width, 300), window.innerWidth - 16)
     const style: React.CSSProperties = {
       position: "fixed",
-      minWidth: Math.max(rect.width, 300),
-      left: rect.left,
+      minWidth: width,
+      width,
+      left: Math.min(Math.max(8, rect.left), window.innerWidth - width - 8),
       zIndex: 9999,
     }
     if (dropdownPlacement === "bottom") {
@@ -355,7 +357,7 @@ export function ModelSelector({
 
   const buttonClasses =
     buttonClassName ||
-    "h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
+    "flex h-6 max-w-36 items-center gap-1 rounded px-1.5 text-xs text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
 
   const dropdownBase =
     "min-w-[300px] w-max max-w-[500px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden flex flex-col"
@@ -471,10 +473,12 @@ export function ModelSelector({
         title="选择模型"
         data-tip="选择模型"
       >
-        {getCurrentDisplay()}
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="5" y="5" width="14" height="14" rx="2" />
+          <rect x="9" y="9" width="6" height="6" rx="1" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 1v4m6-4v4m-6 14v4m6-4v4M1 9h4m-4 6h4m14-6h4m-4 6h4" />
         </svg>
+        <span className="truncate">{getCurrentDisplay()}</span>
       </button>
 
       {isOpen && (renderInPortal ? createPortal(dropdownContent, document.body) : dropdownContent)}

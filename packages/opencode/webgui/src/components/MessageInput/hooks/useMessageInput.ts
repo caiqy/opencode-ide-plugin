@@ -1,11 +1,11 @@
 import { useState, useCallback, useRef } from "react"
-import { $getRoot, $createParagraphNode, $createTextNode, type LexicalEditor } from "lexical"
+import { $getRoot, $createParagraphNode, type EditorState, type LexicalEditor } from "lexical"
 import { sdk } from "../../../lib/api/sdkClient"
 import { useSession } from "../../../state/SessionContext"
 import { useToast } from "../../../state/ToastContext"
 import { useMessages } from "../../../state/MessagesContext"
 import { createOptimisticUserMessage, removeMessage } from "../../../lib/messagesStore"
-import { loadDraftSession, saveDraftSession } from "../../../state/repo/draftRepo"
+import { loadDraftSession, saveDraftSession, type DraftPart } from "../../../state/repo/draftRepo"
 import { resolveSlashInput } from "./resolveSlashInput"
 
 function errorMessage(input: unknown, fallback: string) {
@@ -28,9 +28,14 @@ interface UseMessageInputOptions {
   selectedModelId: string | undefined
   selectedAgent: string
   selectedVariant: string | undefined
-  extractMessageParts: () => any[]
+  extractMessageParts: (editorState?: EditorState) => DraftPart[]
   onMessageSent?: () => void
   onError?: (error: Error) => void
+}
+
+interface EditorSubmission {
+  state: EditorState
+  parts: DraftPart[]
 }
 
 export function useMessageInput({
@@ -44,15 +49,16 @@ export function useMessageInput({
   onMessageSent,
   onError,
 }: UseMessageInputOptions) {
-  const [failedMap, setFailedMap] = useState<Record<string, string>>({})
+  const [failedMap, setFailedMap] = useState<Record<string, EditorState>>({})
   const { showToast } = useToast()
   const { setSessionIdle } = useSession()
   const { addMessage, setMessages, getQuestionsBySession, rejectQuestion } = useMessages()
   const seq = useRef(0)
+  const submittingEditor = useRef(false)
 
   const lastFailedMessage = sessionID ? (failedMap[sessionID] ?? null) : null
 
-  const setFailed = useCallback((id: string, value: string | null) => {
+  const setFailed = useCallback((id: string, value: EditorState | null) => {
     if (!id) return
     setFailedMap((prev) => {
       if (value === null) {
@@ -66,36 +72,44 @@ export function useMessageInput({
   }, [])
 
   const submitText = useCallback(
-    async (saved: string, source: "editor" | "quick_phrase") => {
+    async (saved: string, source: "editor" | "quick_phrase", submission?: EditorSubmission) => {
       if (!sessionID) return
       const text = saved.trim()
       if (!text) return
-      const resolvedSlash = await resolveSlashInput(text)
-      const slashCommand = resolvedSlash.mode === "command" ? resolvedSlash : null
+      if (source === "editor" && submittingEditor.current) return
+
       const id = ++seq.current
-      const optimistic = !slashCommand && source === "editor" ? createOptimisticUserMessage(sessionID, text) : null
-
-      setSessionIdle(sessionID, false)
-
       if (source === "editor") {
-        editor.update(() => {
-          const root = $getRoot()
-          root.clear()
-          const paragraph = $createParagraphNode()
-          root.append(paragraph)
-        })
-        setFailed(sessionID, null)
-        onMessageSent?.()
-        setTimeout(() => {
-          editor.focus()
-        }, 0)
+        submittingEditor.current = true
+        setSessionIdle(sessionID, false)
       }
-
-      if (optimistic) {
-        addMessage(optimistic)
-      }
+      let optimistic: ReturnType<typeof createOptimisticUserMessage> | null = null
 
       try {
+        const resolvedSlash = await resolveSlashInput(text)
+        const slashCommand = resolvedSlash.mode === "command" ? resolvedSlash : null
+        optimistic = !slashCommand && source === "editor" ? createOptimisticUserMessage(sessionID, text) : null
+
+        if (source === "quick_phrase") setSessionIdle(sessionID, false)
+
+        if (source === "editor") {
+          editor.update(() => {
+            const root = $getRoot()
+            root.clear()
+            const paragraph = $createParagraphNode()
+            root.append(paragraph)
+          })
+          setFailed(sessionID, null)
+          onMessageSent?.()
+          setTimeout(() => {
+            editor.focus()
+          }, 0)
+        }
+
+        if (optimistic) {
+          addMessage(optimistic)
+        }
+
         if (slashCommand) {
           const request: any = {
             command: slashCommand.name,
@@ -119,7 +133,7 @@ export function useMessageInput({
 
         if (!slashCommand) {
           const request: any = {
-            parts: source === "editor" ? extractMessageParts() : [{ type: "text", text }],
+            parts: source === "editor" ? submission?.parts ?? [] : [{ type: "text", text }],
             agent: selectedAgent,
           }
           if (request.parts.length === 0) {
@@ -150,8 +164,9 @@ export function useMessageInput({
           }
         }
       } catch (err) {
-        if (optimistic) {
-          setMessages((prev) => removeMessage(prev, optimistic.info.id))
+        const failedOptimistic = optimistic
+        if (failedOptimistic) {
+          setMessages((prev) => removeMessage(prev, failedOptimistic.info.id))
         }
         if (id !== seq.current) return
         const msg = errorMessage(err, "发送消息失败")
@@ -159,7 +174,7 @@ export function useMessageInput({
         console.error("[MessageInput] Failed to send message:", error)
         setSessionIdle(sessionID, true)
         if (source === "editor") {
-          setFailed(sessionID, saved)
+          if (submission) setFailed(sessionID, submission.state)
         }
         showToast(msg, {
           title: "发送失败",
@@ -167,12 +182,13 @@ export function useMessageInput({
           duration: 8000,
         })
         onError?.(error)
+      } finally {
+        if (source === "editor") submittingEditor.current = false
       }
     },
     [
       addMessage,
       editor,
-      extractMessageParts,
       onError,
       onMessageSent,
       selectedAgent,
@@ -189,13 +205,14 @@ export function useMessageInput({
 
   const handleSubmit = useCallback(async () => {
     if (!sessionID) return
+    const state = editor.getEditorState()
     let saved = ""
-    editor.getEditorState().read(() => {
+    state.read(() => {
       const root = $getRoot()
       saved = root.getTextContent()
     })
-    await submitText(saved, "editor")
-  }, [editor, sessionID, submitText])
+    await submitText(saved, "editor", { state, parts: extractMessageParts(state) })
+  }, [editor, extractMessageParts, sessionID, submitText])
 
   const submitQuickPhrase = useCallback(
     async (body: string) => {
@@ -206,14 +223,7 @@ export function useMessageInput({
 
   const handleRetry = useCallback(() => {
     if (lastFailedMessage && sessionID) {
-      editor.update(() => {
-        const root = $getRoot()
-        root.clear()
-        const paragraph = $createParagraphNode()
-        const text = $createTextNode(lastFailedMessage)
-        paragraph.append(text)
-        root.append(paragraph)
-      })
+      editor.setEditorState(lastFailedMessage)
       setFailed(sessionID, null)
       setTimeout(() => {
         editor.focus()

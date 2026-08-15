@@ -4,19 +4,23 @@ import { EditorToolbar } from "./EditorToolbar"
 
 vi.mock("../AgentSelector", () => {
   return {
-    AgentSelector: () => <div data-testid="agent-selector" />,
+    AgentSelector: () => <div data-testid="agent-selector">Agent</div>,
   }
 })
 
 vi.mock("../ModelSelector", () => {
   return {
-    ModelSelector: () => <div data-testid="model-selector" />,
+    ModelSelector: ({ renderInPortal }: { renderInPortal?: boolean }) => (
+      <div data-testid="model-selector" data-render-in-portal={renderInPortal ? "true" : "false"}>
+        Model
+      </div>
+    ),
   }
 })
 
 vi.mock("../VariantSelector", () => {
   return {
-    VariantSelector: () => <div data-testid="variant-selector" />,
+    VariantSelector: () => <div data-testid="variant-selector">Variant</div>,
   }
 })
 
@@ -27,6 +31,53 @@ vi.mock("./MessageActions", () => {
 })
 
 describe("EditorToolbar", () => {
+  it("按附件、Agent、模型、variant、自动审批的顺序显示左侧控件", () => {
+    const { container } = render(
+      <EditorToolbar
+        selectedProviderId="openai"
+        selectedModelId="gpt-4.1"
+        selectedAgent="build"
+        onModelSelect={vi.fn()}
+        onAgentSelect={vi.fn()}
+        onFileSelect={vi.fn()}
+        isDisabled={false}
+        modelSelectorKey={0}
+        lastFailedMessage={null}
+        onRetry={vi.fn()}
+        fileInputRef={{ current: null } as any}
+        onFileChange={vi.fn()}
+        isIdle={true}
+        isButtonDisabled={false}
+        isCompactDisabled={false}
+        onSubmit={vi.fn()}
+        onAbort={vi.fn()}
+        onCompactClick={vi.fn()}
+        variants={["low"]}
+        selectedVariant={undefined}
+        onVariantSelect={vi.fn()}
+        isReasoningModel={true}
+      />,
+    )
+
+    const controls = container.querySelector('[data-testid="composer-toolbar-controls"]')
+    expect(controls).toBeInTheDocument()
+    expect(controls).toHaveClass("flex-1", "flex-wrap", "sm:flex-nowrap")
+    expect(controls).not.toHaveClass("overflow-x-auto")
+    expect(Array.from(controls!.children).map((element) => element.getAttribute("data-testid"))).toEqual([
+      "add-file",
+      "agent-selector",
+      "model-selector",
+      "variant-selector",
+      "auto-approve",
+      null,
+    ])
+    expect(screen.getByRole("button", { name: "自动审批" })).toBeDisabled()
+    expect(screen.getByTestId("model-selector")).toHaveAttribute("data-render-in-portal", "true")
+    const autoApprove = screen.getByRole("button", { name: "自动审批" })
+    expect(autoApprove).toHaveAttribute("title", "自动审批（暂未启用）")
+    expect(autoApprove.querySelector("path")).toHaveAttribute("d", "M12 3l7 3v5c0 5-3.5 8.4-7 10-3.5-1.6-7-5-7-10V6l7-3z")
+  })
+
   it("重试与添加文件按钮文案为中文", () => {
     render(
       <EditorToolbar
@@ -38,7 +89,7 @@ describe("EditorToolbar", () => {
         onFileSelect={vi.fn()}
         isDisabled={false}
         modelSelectorKey={0}
-        lastFailedMessage="oops"
+        lastFailedMessage={true}
         onRetry={vi.fn()}
         fileInputRef={{ current: null } as any}
         onFileChange={vi.fn()}

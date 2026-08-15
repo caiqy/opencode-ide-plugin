@@ -89,14 +89,14 @@ export function AgentSelector({ selectedAgent, onSelect, disabled }: AgentSelect
       <button
         onClick={toggle}
         disabled={disabled || isLoading}
-        className="h-6 px-1.5 text-xs text-gray-600 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"
+        className="flex h-6 max-w-28 items-center gap-1 rounded px-1.5 text-xs text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
         title="选择智能体"
         data-tip="选择智能体"
       >
-        {getCurrentDisplay()}
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14a4 4 0 100-8 4 4 0 000 8zm-7 6a7 7 0 0114 0" />
         </svg>
+        <span className="truncate">{getCurrentDisplay()}</span>
       </button>
 
       {isOpen && (

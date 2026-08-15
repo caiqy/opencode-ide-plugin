@@ -44,7 +44,7 @@ export class AttachmentNode extends DecoratorNode<JSX.Element> {
 
   override createDOM(config: EditorConfig): HTMLElement {
     const dom = document.createElement("span")
-    dom.className = config.theme.attachment || ""
+    dom.className = `hidden ${config.theme.attachment || ""}`
     return dom
   }
 

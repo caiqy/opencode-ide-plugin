@@ -5,6 +5,7 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin"
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
 import { MentionPlugin } from "../mention/MentionPlugin"
 import { AttachmentPlugin } from "../attachment/AttachmentPlugin"
+import { AttachmentRail } from "../attachment/AttachmentRail"
 import { CommandPlugin } from "../command/CommandPlugin"
 import type { EditorState } from "lexical"
 
@@ -16,8 +17,10 @@ interface EditorContentProps {
 
 export function EditorContent({ contentEditableRef, containerRef, onEditorChange }: EditorContentProps) {
   return (
-    <div className="px-2 pt-1.5 pb-1">
-      <div ref={containerRef} className="relative modern-input bg-white dark:bg-gray-900">
+    <>
+      <AttachmentRail />
+      <div className="px-3 py-1.5">
+        <div ref={containerRef} className="relative">
         <RichTextPlugin
           contentEditable={
             // @ts-expect-error React 19 type compatibility
@@ -42,7 +45,8 @@ export function EditorContent({ contentEditableRef, containerRef, onEditorChange
         <MentionPlugin />
         <CommandPlugin />
         <AttachmentPlugin />
+        </div>
       </div>
-    </div>
+    </>
   )
 }
