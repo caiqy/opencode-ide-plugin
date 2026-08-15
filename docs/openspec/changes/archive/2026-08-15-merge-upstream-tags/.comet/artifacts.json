@@ -3,6 +3,7 @@
   "openspec_design": "docs/openspec/changes/merge-upstream-tags/design.md",
   "openspec_tasks": "docs/openspec/changes/merge-upstream-tags/tasks.md",
   "openspec_delta_spec": "docs/openspec/changes/merge-upstream-tags/specs/upstream-release-integration/spec.md",
-  "handoff_context": "docs/openspec/changes/merge-upstream-tags/.comet/handoff/spec-context.json",
-  "handoff_markdown": "docs/openspec/changes/merge-upstream-tags/.comet/handoff/spec-context.md"
+  "handoff_context": "docs/openspec/changes/archive/2026-08-15-merge-upstream-tags/.comet/handoff/spec-context.json",
+  "handoff_markdown": "docs/openspec/changes/archive/2026-08-15-merge-upstream-tags/.comet/handoff/spec-context.md",
+  "archive_directory": "docs/openspec/changes/archive/2026-08-15-merge-upstream-tags"
 }

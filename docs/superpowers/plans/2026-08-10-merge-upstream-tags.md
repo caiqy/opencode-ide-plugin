@@ -2,6 +2,7 @@
 change: merge-upstream-tags
 design-doc: docs/superpowers/specs/2026-08-10-merge-upstream-tags-design.md
 base-ref: baf0674fd108ac43785cb4f4622c6f58e7c645f6
+archived-with: 2026-08-15-merge-upstream-tags
 ---
 
 # 上游逐 Tag 合并实施计划

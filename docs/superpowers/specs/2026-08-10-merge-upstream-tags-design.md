@@ -2,6 +2,8 @@
 comet_change: merge-upstream-tags
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-08-15-merge-upstream-tags
+status: final
 ---
 
 # 上游逐 Tag 合并技术设计
