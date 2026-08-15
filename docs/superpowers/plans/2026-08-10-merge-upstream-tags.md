@@ -635,7 +635,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 
   随后对每个闭包 package 执行 matrix 指定的 test/typecheck/build 和适用条件门禁；逐命令记录 fail/error/skip/todo。验收：`packages-core-test` 和 `packages-sdk-next-test` 精确使用批准的 `--max-concurrency=1` 命令，其他 gate 不变；任何 fail/error 非 0 或 skip/todo 增加均关闭基线；不从根运行 test。
 
-- [ ] **步骤 2：按报告中的实际 owning path 创建聚焦修复**
+- [x] **步骤 2：按报告中的实际 owning path 创建聚焦修复**
 
   每个根因先把诊断后的真实 owning 路径写入 `baseline` 的下一个报告 fix marker，随后提交；不允许由整个 `git diff` 自动收集路径。
 
