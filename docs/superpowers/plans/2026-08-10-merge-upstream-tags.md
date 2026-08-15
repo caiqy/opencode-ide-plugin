@@ -671,7 +671,7 @@ Invoke-Checked 'VS Code test with pretest' { vfox exec nodejs@22.23.1 -- corepac
 **文件：** 报告诊断的 owning paths、报告、OpenSpec tasks。
 
 - [x] 执行 `$round = Get-TagMergeRecord 'v1.18.7'`，以 `$round.RoundBase..HEAD` 重建闭包并运行完整矩阵；不依赖上一会话临时变量。
-- [ ] 每个失败先写 v1.18.7 的下一个报告 fix marker，再以该 marker 的递增 N 作为第二参数调用 `Commit-FocusedFix`，从头复验本轮矩阵。
+- [x] 每个失败先写 v1.18.7 的下一个报告 fix marker，再以该 marker 的递增 N 作为第二参数调用 `Commit-FocusedFix`，从头复验本轮矩阵。
 - [ ] 零失败后提交报告和勾选 2.1、2.2：`docs(opencode): verify upstream v1.18.7`。
 
 验收：fail/error 为 0，skip/todo 不增，下一 tag 前 index 为空。

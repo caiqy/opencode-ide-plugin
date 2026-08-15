@@ -1,7 +1,7 @@
 # Subagent Progress
 
 - Plan: `docs/superpowers/plans/2026-08-10-merge-upstream-tags.md`
-- Plan task: `执行 $round = Get-TagMergeRecord 'v1.18.7'，以 $round.RoundBase..HEAD 重建闭包并运行完整矩阵；不依赖上一会话临时变量。`
+- Plan task: `每个失败先写 v1.18.7 的下一个报告 fix marker，再以该 marker 的递增 N 作为第二参数调用 Commit-FocusedFix，从头复验本轮矩阵。`
 - OpenSpec task: `2.2 对 v1.18.7 的完整影响闭包执行门禁，修复回归后再推进`
 - Phase: `done`
 - Agent role: `implementer`
@@ -10,7 +10,7 @@
 - TDD mode: `direct`
 - Review/fix round: `0/2`
 - Recovery: 原检查点记录 Task 25-28 已完成，OpenSpec tasks 1.1-6.3 已全部勾选；当前仅恢复计划中 8 个滞后的嵌套复选框。
-- Candidate evidence: v1.18.7 round/round-gates markers、验证提交 `c9e44e0486` 与正式报告；待独立 agent 核对 RoundBase 闭包重建和完整矩阵。
-- Implementer result: `DONE_WITH_CONCERNS`；RoundBase、51 路径/37 package 闭包、66 条 gate 与 17 个数值测试计数均可持久重建，fail/error/skip-todo 回归为 0。
-- Risk signals: 原 WebGUI 记录缺 raw count，后续仅做授权 evidence-only 单门重跑并以 product-tree 等价复用其他结果；marker schema 缺少后续轮次的 canonical 字段。
-- Review result: `PASS`；66 门均已执行，单门补证与 product-tree 等价满足完整矩阵验收，准许勾选。
+- Candidate evidence: v1.18.7 round marker 的 `fixCommits`、失败记录和验证历史；待独立 agent 核对是否存在需要 Commit-FocusedFix 的真实 gate 失败。
+- Implementer result: `DONE`；66/66 gate exit 0、fail/error 0、fixCommits 为空，条件性产品修复循环未触发。
+- Risk signals: WebGUI 仅缺原始计数且已 evidence-only 补证；不存在应生成产品 fix commit 的行为缺陷。
+- Review result: `PASS`；条件性步骤按零产品失败空集完成，准许勾选且不得创建伪造 fix。
