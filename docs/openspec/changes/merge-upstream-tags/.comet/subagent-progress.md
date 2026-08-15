@@ -1,8 +1,8 @@
 # Subagent Progress
 
 - Plan: `docs/superpowers/plans/2026-08-10-merge-upstream-tags.md`
-- Plan task: `步骤 3：记录零失败并关闭 1.1-1.3`
-- OpenSpec task: `1.3 执行全部适用验证并把当前 HEAD 修复到零失败，禁止以历史残余或允许失败代替当前基线`
+- Plan task: `执行 $merge = Start-TagMerge 'v1.18.7'；逐路径调查 $merge.Base 与 tag 的语义、调用方和测试。公共 Protocol/HttpApi 变化同时运行 Client generate 与 legacy SDK build；等价替换暂停用户选择。`
+- OpenSpec task: `2.1 合并 v1.18.7，并保留独立双父 tag merge 边界`
 - Phase: `done`
 - Agent role: `implementer`
 - Model: `general`（当前 harness 不暴露单独 model 参数）
@@ -10,7 +10,7 @@
 - TDD mode: `direct`
 - Review/fix round: `0/2`
 - Recovery: 原检查点记录 Task 25-28 已完成，OpenSpec tasks 1.1-6.3 已全部勾选；当前仅恢复计划中 8 个滞后的嵌套复选框。
-- Candidate evidence: baseline commits `32462740c5`、`4f73bae1da` 及正式报告；待独立 agent 核对零失败 verified state、固定 skip/todo 与 OpenSpec 1.1-1.3 关闭状态。
-- Implementer result: `DONE_WITH_CONCERNS`；首个 tag 前 defaults 67/67、conditionals 2/2、固定 skip/todo 和 OpenSpec 1.1-1.3 均有祖先提交证明。
-- Risk signals: 实际关闭拆为多个 docs 提交且未包含 plan；产品与 OpenSpec 状态无需实现，剩余仅为当前 checkbox 漂移。
-- Review result: `PASS`；无 Critical/Important，提交拆分与标题差异为非阻塞历史偏差，准许定向勾选。
+- Candidate evidence: merge commit `0eb10bf4f6`、正式报告和 tag refs；待独立 agent 核对 Start-TagMerge 边界、冲突调查、公共 API 条件门禁与等价替换约束。
+- Implementer result: `DONE`；merge 第二父精确等于 v1.18.7 peeled commit，差异仅 lockfile 与版本 manifest，publicApi=false，条件生成门禁正确为 N/A，无等价替换候选。
+- Risk signals: 报告缺少单独 merge narrative 且章节顺序较弱，但 round marker 与 Git 对象提供可复算证据。
+- Review result: `PASS`；无 Critical/Important，证据叙述缺陷为非阻塞，准许只勾选当前 merge 步骤。
