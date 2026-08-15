@@ -103,3 +103,13 @@ tsconfig.tsbuildinfo
 /.opencode/rules/comet-workflow-guard.md
 /.opencode/skills/comet*/
 /openspec/changes/**/.comet/
+# >>> Comet managed project state >>>
+!/.comet/
+/.comet/*
+!/.comet/config.yaml
+# <<< Comet managed project state <<<
+
+# Comet workflow artifacts (Classic + Native)
+/docs/comet/
+/docs/openspec/
+/docs/superpowers/
