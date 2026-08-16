@@ -348,6 +348,12 @@ describe("MessageInput compact confirm", () => {
     })
   })
 
+  it("不裁切向上展开的上下文用量弹窗", () => {
+    render(<MessageInput sessionID="s1" />)
+
+    expect(screen.getByTestId("message-composer")).not.toHaveClass("overflow-hidden")
+  })
+
   it("将任务摘要置于 composer 内部", () => {
     render(<MessageInput sessionID="s1" />)
 

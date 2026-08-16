@@ -510,13 +510,13 @@ const MessageInputInner = forwardRef<
     <>
       <footer className="bg-[rgb(243,243,243)] dark:bg-gray-950 flex-shrink-0">
         <div
-          className="ml-4 mr-[22px] mb-2 overflow-hidden rounded-lg bg-white dark:bg-[rgb(30,30,30)]"
+          className="ml-4 mr-[22px] mb-2 rounded-lg bg-white dark:bg-[rgb(30,30,30)]"
           data-testid="message-composer"
         >
           <FooterPanels sessionID={sessionID} />
           <QuickPhraseBar items={phraseItems} disabled={isDisabled} onSend={onSendPhrase} onFill={onFillPhrase} />
           <div
-            className="border border-gray-200 bg-white rounded-b-lg focus-within:border-blue-500 dark:border-gray-800 dark:bg-gray-900 dark:focus-within:border-blue-400"
+            className="first:rounded-t-lg border border-gray-200 bg-white rounded-b-lg focus-within:border-blue-500 dark:border-gray-800 dark:bg-gray-900 dark:focus-within:border-blue-400"
           >
             <EditorContent
               contentEditableRef={contentEditableRef}

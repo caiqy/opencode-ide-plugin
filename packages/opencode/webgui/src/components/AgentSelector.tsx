@@ -94,7 +94,8 @@ export function AgentSelector({ selectedAgent, onSelect, disabled }: AgentSelect
         data-tip="选择智能体"
       >
         <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14a4 4 0 100-8 4 4 0 000 8zm-7 6a7 7 0 0114 0" />
+          <rect x="4" y="8" width="16" height="12" rx="2" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8V4m-4 10h.01M16 14h.01M9 18h6" />
         </svg>
         <span className="truncate">{getCurrentDisplay()}</span>
       </button>

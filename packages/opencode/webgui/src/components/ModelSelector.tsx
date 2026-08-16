@@ -473,10 +473,8 @@ export function ModelSelector({
         title="选择模型"
         data-tip="选择模型"
       >
-        <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="5" y="5" width="14" height="14" rx="2" />
-          <rect x="9" y="9" width="6" height="6" rx="1" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 1v4m6-4v4m-6 14v4m6-4v4M1 9h4m-4 6h4m14-6h4m-4 6h4" />
+        <svg className="h-[13px] w-[13px] shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4m-1 12v4m-2-2h4m5-16 2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
         </svg>
         <span className="truncate">{getCurrentDisplay()}</span>
       </button>

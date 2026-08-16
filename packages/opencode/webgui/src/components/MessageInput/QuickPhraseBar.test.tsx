@@ -30,11 +30,11 @@ describe("QuickPhraseBar", () => {
       "border-gray-200",
       "bg-gray-100",
       "hover:bg-gray-200",
-      "dark:bg-black",
-      "dark:hover:bg-gray-900",
+      "dark:bg-[rgb(26,26,26)]",
+      "dark:hover:bg-gray-700",
       "text-gray-700",
     )
-    expect(container.firstElementChild).toHaveClass("bg-white", "dark:bg-[rgb(30,30,30)]")
+    expect(container.firstElementChild).toHaveClass("first:rounded-t-lg", "bg-white", "dark:bg-[rgb(30,30,30)]")
     expect(container.firstElementChild).not.toHaveClass("border-t", "border-b")
   })
 

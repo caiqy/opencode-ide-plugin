@@ -70,9 +70,7 @@ export function EditorContent({ contentEditableRef, containerRef, onEditorChange
         onPointerCancel={onPointerUp}
         onDoubleClick={() => setHeight(undefined)}
         onKeyDown={onKeyDown}
-      >
-        <span className="h-px w-full bg-gray-100 group-hover:bg-gray-200 dark:bg-gray-800 dark:group-hover:bg-gray-700" />
-      </div>
+      />
       <AttachmentRail />
       <div className="px-3 py-1.5">
         <div ref={containerRef} className="relative">

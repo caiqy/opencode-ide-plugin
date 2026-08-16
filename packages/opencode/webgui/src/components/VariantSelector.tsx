@@ -62,14 +62,13 @@ export function VariantSelector({
         title="选择推理强度"
         data-tip="选择推理强度"
       >
-        {/* Sparkles icon */}
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="h-[17px] w-[17px] shrink-0 translate-y-px" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24" aria-hidden="true">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
-            strokeWidth={2}
-            d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+            d="M9.5 4a3 3 0 0 0-3 3v.2A3.5 3.5 0 0 0 4 10.5a3.5 3.5 0 0 0 2 3.15V14a3 3 0 0 0 5.5 1.65A3 3 0 0 0 17 14v-.35a3.5 3.5 0 0 0 2-3.15 3.5 3.5 0 0 0-2.5-3.3V7a3 3 0 0 0-3-3c-.75 0-1.44.28-2 .75A3 3 0 0 0 9.5 4Z"
           />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 10.5h.01M15 10.5h.01M10.5 14h3M12 7v7" />
         </svg>
         <span className="truncate">{getCurrentDisplay()}</span>
       </button>

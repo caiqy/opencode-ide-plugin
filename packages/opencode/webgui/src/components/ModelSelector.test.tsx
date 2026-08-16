@@ -62,7 +62,7 @@ describe("ModelSelector favorites", () => {
     repo.addRecentModel.mockResolvedValue({ recent: [], favorite: [] })
   })
 
-  it("触发器使用模型语义图标", async () => {
+  it("触发器使用四角星图标", async () => {
     render(
       <ModelSelector
         onSelect={() => {}}
@@ -70,7 +70,10 @@ describe("ModelSelector favorites", () => {
       />,
     )
 
-    expect(screen.getByTitle("选择模型").querySelector("svg rect")).toHaveAttribute("width", "14")
+    expect(screen.getByTitle("选择模型").querySelector("svg path")).toHaveAttribute(
+      "d",
+      "M5 3v4M3 5h4m-1 12v4m-2-2h4m5-16 2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z",
+    )
     await waitFor(() => expect(repo.loadModelPrefs).toHaveBeenCalled())
   })
 

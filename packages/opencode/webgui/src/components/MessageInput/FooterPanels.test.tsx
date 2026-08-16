@@ -50,7 +50,7 @@ describe("FooterPanels", () => {
     const toggle = screen.getByRole("button", { name: /待办事项\s*\(\s*0\s*\/\s*1\s*\)/ })
     const panel = toggle.parentElement
     expect(toggle).toHaveAttribute("aria-expanded", "false")
-    expect(panel).toHaveClass("border-b", "bg-white", "dark:bg-[rgb(30,30,30)]")
+    expect(panel).toHaveClass("first:rounded-t-lg", "border-b", "bg-white", "dark:bg-[rgb(30,30,30)]")
     expect(screen.queryByTestId("files-panel")).not.toBeInTheDocument()
     expect(screen.queryByTestId("todos-panel")).not.toBeInTheDocument()
 

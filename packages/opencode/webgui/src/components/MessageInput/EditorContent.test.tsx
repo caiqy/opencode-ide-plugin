@@ -79,6 +79,18 @@ describe("EditorContent", () => {
     expect(input).toHaveAttribute("aria-label", "输入消息（回车发送）")
   })
 
+  it("高度调节手柄不绘制额外分隔线", () => {
+    render(
+      <EditorContent
+        contentEditableRef={{ current: null } as any}
+        containerRef={{ current: null } as any}
+        onEditorChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole("separator", { name: "调整输入框高度" })).toBeEmptyDOMElement()
+  })
+
   it("向下拖动分隔线会缩小输入框", () => {
     const { container } = render(
       <EditorContent
