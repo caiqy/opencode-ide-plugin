@@ -613,7 +613,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
 
   return (
     <div className="min-h-screen w-full bg-[rgb(243,243,243)] dark:bg-gray-950">
-      <div className="mx-auto flex h-screen w-full max-w-[1200px] flex-col bg-white dark:bg-gray-950">
+      <div className="mx-auto flex h-screen w-full max-w-[860px] flex-col bg-white dark:bg-gray-950">
         {/* Compact Header */}
         <CompactHeader
           ref={compactHeaderRef}

@@ -521,7 +521,7 @@ const MessageInputInner = forwardRef<
 
   return (
     <>
-      <footer className="bg-[rgb(243,243,243)] dark:bg-gray-950 flex-shrink-0">
+      <footer className="flex-shrink-0 bg-[rgb(243,243,243)] pt-2 dark:bg-gray-950">
         <div
           className="ml-4 mr-[22px] mb-2 rounded-lg bg-white dark:bg-[rgb(30,30,30)]"
           data-testid="message-composer"
