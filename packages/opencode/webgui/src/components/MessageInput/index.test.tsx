@@ -1,6 +1,6 @@
 import { createRef } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { act, render, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { prepareSession } from "../../App"
 import { quick_phrase_updated_event } from "../../state/repo/quickPhraseEvent"
 
@@ -119,7 +119,9 @@ vi.mock("./EditorToolbar", () => {
 
 vi.mock("./FooterPanels", () => {
   return {
-    FooterPanels: () => null,
+    FooterPanels: ({ sessionID }: { sessionID: string | null }) => (
+      <div data-testid="composer-tasks" data-session-id={sessionID} />
+    ),
   }
 })
 
@@ -127,7 +129,7 @@ vi.mock("./QuickPhraseBar", () => {
   return {
     QuickPhraseBar: (props: any) => {
       lastQuickPhraseBarProps = props
-      return null
+      return <div data-testid="quick-phrase-bar" />
     },
   }
 })
@@ -320,19 +322,46 @@ describe("MessageInput compact confirm", () => {
   it("深色主题下编辑区使用较浅背景与正文分层", () => {
     const { container } = render(<MessageInput sessionID="s1" />)
 
-    expect(container.querySelector(".mx-2.mb-2 > div")).toHaveClass("dark:bg-gray-900")
+    const editorSurface = container.querySelector('[data-testid="message-composer"] > .border')
+    expect(editorSurface).toHaveClass("dark:bg-gray-900", "focus-within:border-blue-500")
   })
 
-  it("黑色快捷栏保持直角且不包含编辑区焦点边框", async () => {
+  it("composer 与消息内容对齐且不含顶部边框", async () => {
     mocks.loadQuickPhraseState.mockResolvedValue(quick)
     const { container } = render(<MessageInput sessionID="s1" />)
-    const composer = container.querySelector(".mx-2.mb-2")
+    const composer = screen.getByTestId("message-composer")
 
     await waitFor(() => {
-      expect(composer).toHaveClass("bg-black")
+      expect(composer).toHaveClass("ml-4", "mr-[22px]", "mb-2")
+      expect(composer).toHaveClass("bg-white", "dark:bg-[rgb(30,30,30)]")
+      expect(composer).not.toHaveClass("bg-black")
+      expect(composer.parentElement).not.toHaveClass("border-t")
+      expect(composer.parentElement).toHaveClass("bg-[rgb(243,243,243)]")
       expect(composer).not.toHaveClass("focus-within:border-blue-500")
-      expect(composer?.querySelector(":scope > div")).toHaveClass("focus-within:border-blue-500", "rounded-b-lg")
+      expect(container.querySelector('[data-testid="message-composer"] > .border')).toHaveClass(
+        "focus-within:border-blue-500",
+        "rounded-b-lg",
+      )
     })
+  })
+
+  it("将任务摘要置于 composer 内部", () => {
+    render(<MessageInput sessionID="s1" />)
+
+    expect(screen.getByTestId("message-composer")).toContainElement(screen.getByTestId("composer-tasks"))
+    expect(screen.getByTestId("composer-tasks")).toHaveAttribute("data-session-id", "s1")
+    expect(screen.getByTestId("composer-tasks").compareDocumentPosition(screen.getByTestId("quick-phrase-bar"))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+
+  it("任务摘要存在且无快捷短语时，编辑区仅保留底部圆角", () => {
+    render(<MessageInput sessionID="s1" />)
+
+    expect(screen.getByTestId("composer-tasks")).toBeInTheDocument()
+    const editorSurface = screen.getByTestId("message-composer").querySelector(":scope > .border")
+    expect(editorSurface).not.toHaveClass("rounded-lg")
+    expect(editorSurface).toHaveClass("rounded-b-lg")
   })
 
   it("onFill 回调仅回填不发送", async () => {

@@ -18,7 +18,7 @@ describe("QuickPhraseBar", () => {
     vi.useRealTimers()
   })
   it("默认单行横向滚动并显示展开按钮", () => {
-    render(<QuickPhraseBar items={items} disabled={false} onSend={vi.fn()} onFill={vi.fn()} />)
+    const { container } = render(<QuickPhraseBar items={items} disabled={false} onSend={vi.fn()} onFill={vi.fn()} />)
 
     expect(screen.getByText("提交总结")).toBeInTheDocument()
     expect(screen.getByText("风险检查")).toBeInTheDocument()
@@ -26,7 +26,16 @@ describe("QuickPhraseBar", () => {
     expect(screen.getByTestId("quick-phrase-row")).toHaveClass("whitespace-nowrap")
     expect(screen.getByTestId("quick-phrase-row")).toHaveClass("overflow-x-auto")
     expect(screen.getByTestId("quick-phrase-row")).toHaveClass("gap-1.5")
-    expect(screen.getByRole("button", { name: "提交总结" })).toHaveClass("border-gray-200")
+    expect(screen.getByRole("button", { name: "提交总结" })).toHaveClass(
+      "border-gray-200",
+      "bg-gray-100",
+      "hover:bg-gray-200",
+      "dark:bg-black",
+      "dark:hover:bg-gray-900",
+      "text-gray-700",
+    )
+    expect(container.firstElementChild).toHaveClass("bg-white", "dark:bg-[rgb(30,30,30)]")
+    expect(container.firstElementChild).not.toHaveClass("border-t", "border-b")
   })
 
   it("点击展开后显示收起状态", () => {

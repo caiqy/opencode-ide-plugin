@@ -612,59 +612,61 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   }, [selectionRestoreNotice, showToast, clearSelectionRestoreNotice])
 
   return (
-    <div className="flex flex-col h-screen bg-white dark:bg-gray-950">
-      {/* Compact Header */}
-      <CompactHeader
-        ref={compactHeaderRef}
-        connectionState={connectionState}
-        onNewSession={handleNewSession}
-        isCreatingSession={isCreating}
-        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-      />
-
-      <UpdateBanner />
-
-      {/* Offline Banner */}
-      <OfflineBanner connectionState={connectionState} />
-
-      <ChatLoadGuard loading={gate.loading} error={gate.error} onRetry={handleRetrySessionLoad}>
-        {/* Messages Area */}
-        <main className="flex-1 overflow-y-auto px-4 py-3">
-          <MessageList
-            sessionID={currentSession?.id}
-            onUndoToInput={(value) => messageInputRef.current?.insertPlainWithMentions(value)}
-            sendRequestKey={sendRequestKey}
-          />
-        </main>
-
-        {/* Input Area */}
-        <MessageInput
-          ref={messageInputRef}
-          sessionID={currentSession?.id ?? null}
-          blocked={gate.blocked}
-          onMessageSent={() => {
-            console.log("[App] Message sent successfully")
-          }}
-          onSendIntent={() => setSendRequestKey((value) => value + 1)}
-          onError={(error) => {
-            console.error("[App] Message send error:", error)
-          }}
+    <div className="min-h-screen w-full bg-[rgb(243,243,243)] dark:bg-gray-950">
+      <div className="mx-auto flex h-screen w-full max-w-[1200px] flex-col bg-white dark:bg-gray-950">
+        {/* Compact Header */}
+        <CompactHeader
+          ref={compactHeaderRef}
+          connectionState={connectionState}
+          onNewSession={handleNewSession}
+          isCreatingSession={isCreating}
+          onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         />
-      </ChatLoadGuard>
 
-      {/* Command Palette */}
-      <CommandPalette
-        isOpen={isCommandPaletteOpen}
-        onClose={() => setIsCommandPaletteOpen(false)}
-        sessions={sessions}
-        onNewSession={handleNewSession}
-        onSwitchSession={handleSwitchSession}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onShowHelp={() => setIsHelpOpen(true)}
-      />
+        <UpdateBanner />
 
-      {/* Keyboard Shortcuts Help */}
-      <KeyboardShortcutsHelp isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+        {/* Offline Banner */}
+        <OfflineBanner connectionState={connectionState} />
+
+        <ChatLoadGuard loading={gate.loading} error={gate.error} onRetry={handleRetrySessionLoad}>
+          {/* Messages Area */}
+          <main className="flex-1 overflow-y-auto bg-[rgb(243,243,243)] px-4 py-3 dark:bg-gray-950">
+            <MessageList
+              sessionID={currentSession?.id}
+              onUndoToInput={(value) => messageInputRef.current?.insertPlainWithMentions(value)}
+              sendRequestKey={sendRequestKey}
+            />
+          </main>
+
+          {/* Input Area */}
+          <MessageInput
+            ref={messageInputRef}
+            sessionID={currentSession?.id ?? null}
+            blocked={gate.blocked}
+            onMessageSent={() => {
+              console.log("[App] Message sent successfully")
+            }}
+            onSendIntent={() => setSendRequestKey((value) => value + 1)}
+            onError={(error) => {
+              console.error("[App] Message send error:", error)
+            }}
+          />
+        </ChatLoadGuard>
+
+        {/* Command Palette */}
+        <CommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+          sessions={sessions}
+          onNewSession={handleNewSession}
+          onSwitchSession={handleSwitchSession}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onShowHelp={() => setIsHelpOpen(true)}
+        />
+
+        {/* Keyboard Shortcuts Help */}
+        <KeyboardShortcutsHelp isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      </div>
     </div>
   )
 }
