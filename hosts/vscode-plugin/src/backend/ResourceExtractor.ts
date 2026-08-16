@@ -1,7 +1,7 @@
 import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
-import { randomUUID } from "crypto"
+import { createHash, randomUUID } from "crypto"
 
 /**
  * Binary extraction utility - mirrors ResourceExtractor.kt
@@ -18,8 +18,8 @@ export class ResourceExtractor {
 
   /**
    * Extract the appropriate opencode binary for the current platform.
-   * Reuses the stable temp binary when it already matches the bundled
-   * binary size, avoiding unnecessary rewrites and Windows security scans.
+   * Reuses the stable temp binary when it matches the bundled binary,
+   * avoiding unnecessary rewrites and Windows security scans.
    * Subsequent calls return the cached result.
    * @param extensionPath Path to the extension directory
    * @returns Promise resolving to the path of the extracted binary
@@ -41,7 +41,11 @@ export class ResourceExtractor {
     return pending
   }
 
-  private static async doExtract(extensionPath: string, extensionVersion?: string, tempRoot = os.tmpdir()): Promise<string> {
+  private static async doExtract(
+    extensionPath: string,
+    extensionVersion?: string,
+    tempRoot = os.tmpdir(),
+  ): Promise<string> {
     const osType = this.detectOS()
     const arch = this.detectArchitecture()
 
@@ -59,7 +63,9 @@ export class ResourceExtractor {
     const stableDir = path.join(stableRoot, version)
     const destPath = path.join(stableDir, binaryName)
 
-    await fs.promises.mkdir(stableRoot, { recursive: true }).catch((error) => this.logFsError(`create stable root ${stableRoot}`, error))
+    await fs.promises
+      .mkdir(stableRoot, { recursive: true })
+      .catch((error) => this.logFsError(`create stable root ${stableRoot}`, error))
     const lock = await this.acquireRootLock(stableRoot, 2)
     if (!lock) {
       if (await this.isUsableBinary(binaryPath, osType !== "windows")) return binaryPath
@@ -70,8 +76,10 @@ export class ResourceExtractor {
     let result: string
     try {
       await fs.promises.mkdir(stableDir, { recursive: true })
-      await this.cleanupStaleTempFiles(stableDir, binaryName).catch((error) => this.logFsError("cleanup stale temp files", error))
-      if (await this.canReuse(binaryPath, destPath) && (await this.makeExecutable(destPath, osType !== "windows"))) {
+      await this.cleanupStaleTempFiles(stableDir, binaryName).catch((error) =>
+        this.logFsError("cleanup stale temp files", error),
+      )
+      if ((await this.canReuse(binaryPath, destPath)) && (await this.makeExecutable(destPath, osType !== "windows"))) {
         console.log(`[ResourceExtractor] Reusing extracted binary at ${destPath}`)
         await fs.promises.utimes(stableDir, new Date(), new Date())
         result = destPath
@@ -86,7 +94,9 @@ export class ResourceExtractor {
       )
       await this.releaseRootLock(stableRoot, lock)
     }
-    this.cleanupOldVersions(stableRoot, version, tempRoot).catch((error) => this.logFsError("coordinated cleanup", error))
+    this.cleanupOldVersions(stableRoot, version, tempRoot).catch((error) =>
+      this.logFsError("coordinated cleanup", error),
+    )
     return result!
   }
 
@@ -113,7 +123,8 @@ export class ResourceExtractor {
       return destPath
     }
 
-    if (!(await this.isUsableBinary(binaryPath, executable))) throw new Error(`Bundled binary is unusable at ${binaryPath}`)
+    if (!(await this.isUsableBinary(binaryPath, executable)))
+      throw new Error(`Bundled binary is unusable at ${binaryPath}`)
     console.log(`[ResourceExtractor] Continuing with bundled binary at ${binaryPath}`)
     return binaryPath
   }
@@ -124,7 +135,21 @@ export class ResourceExtractor {
       fs.promises.stat(destPath).catch(() => undefined),
     ])
 
-    return Boolean(source?.isFile() && dest?.isFile() && source.size === dest.size)
+    if (!source?.isFile() || !dest?.isFile() || source.size !== dest.size) return false
+    return Promise.all([this.hash(binaryPath), this.hash(destPath)]).then(
+      ([sourceHash, destHash]) => sourceHash === destHash,
+      () => false,
+    )
+  }
+
+  private static hash(filePath: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const hash = createHash("sha256")
+      fs.createReadStream(filePath)
+        .on("error", reject)
+        .on("data", (chunk) => hash.update(chunk))
+        .on("end", () => resolve(hash.digest("hex")))
+    })
   }
 
   private static async resolveVersion(extensionPath: string, extensionVersion?: string): Promise<string> {
@@ -179,7 +204,9 @@ export class ResourceExtractor {
       const entries = await fs.promises.readdir(stableRoot).catch(() => [])
       await Promise.all(
         entries.map(async (entry) => {
-          const version = await Promise.resolve(entry).then((value) => this.sanitizeVersion(value)).catch(() => undefined)
+          const version = await Promise.resolve(entry)
+            .then((value) => this.sanitizeVersion(value))
+            .catch(() => undefined)
           if (!version || version === current) return
           const full = path.join(stableRoot, entry)
           const stat = await fs.promises.stat(full).catch(() => undefined)
@@ -209,7 +236,10 @@ export class ResourceExtractor {
       .catch(() => undefined)
   }
 
-  private static async acquireRootLock(stableRoot: string, retries: number): Promise<{ ownerPath: string; token: string; released: boolean } | undefined> {
+  private static async acquireRootLock(
+    stableRoot: string,
+    retries: number,
+  ): Promise<{ ownerPath: string; token: string; released: boolean } | undefined> {
     const leaseRoot = path.join(stableRoot, this.LEASE_DIR)
     await fs.promises.mkdir(leaseRoot, { recursive: true }).catch(() => {})
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -223,7 +253,12 @@ export class ResourceExtractor {
         await lock.writeFile(JSON.stringify({ pid: process.pid, token }))
         await lock.close()
         for (let selection = 0; selection <= retries; selection++) {
-          if (await fs.promises.link(candidate, shared).then(() => true, () => false)) {
+          if (
+            await fs.promises.link(candidate, shared).then(
+              () => true,
+              () => false,
+            )
+          ) {
             acquired = true
             await fs.promises.rm(candidate, { force: true }).catch(() => {})
             return { ownerPath: shared, token, released: false }
@@ -232,7 +267,12 @@ export class ResourceExtractor {
           if (owner && this.isDeadOwner(owner.pid)) {
             const tombstone = path.join(leaseRoot, `.reclaimed-${owner.token}`)
             // ponytail: tombstones prevent paused reclaimers; GC only if their tiny crash residue is measured.
-            if (await fs.promises.link(shared, tombstone).then(() => true, () => false)) {
+            if (
+              await fs.promises.link(shared, tombstone).then(
+                () => true,
+                () => false,
+              )
+            ) {
               // ponytail: retain tombstone/shared on persistent unlink failure; add measured temp cleanup if residue matters.
               if (await this.unlinkWithRetry(shared)) continue
               return
@@ -251,12 +291,21 @@ export class ResourceExtractor {
     }
   }
 
-  private static async releaseRootLock(stableRoot: string, lease: { ownerPath: string; token: string; released?: boolean }): Promise<void> {
+  private static async releaseRootLock(
+    stableRoot: string,
+    lease: { ownerPath: string; token: string; released?: boolean },
+  ): Promise<void> {
     if (lease.released) return
     lease.released = true
     if ((await this.readLock(lease.ownerPath))?.token !== lease.token) return
     const released = path.join(path.dirname(lease.ownerPath), `.released-${lease.token}-${randomUUID()}`)
-    if (!(await fs.promises.link(lease.ownerPath, released).then(() => true, () => false))) return
+    if (
+      !(await fs.promises.link(lease.ownerPath, released).then(
+        () => true,
+        () => false,
+      ))
+    )
+      return
     if ((await this.readLock(released))?.token !== lease.token) {
       await fs.promises.rm(released, { force: true }).catch(() => {})
       return
@@ -267,10 +316,13 @@ export class ResourceExtractor {
 
   private static async unlinkWithRetry(filePath: string): Promise<boolean> {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const removed = await fs.promises.rm(filePath, { force: true }).then(() => true, (error: NodeJS.ErrnoException) => {
-        if (!["EPERM", "EBUSY", "ENOTEMPTY"].includes(error.code ?? "")) return false
-        return undefined
-      })
+      const removed = await fs.promises.rm(filePath, { force: true }).then(
+        () => true,
+        (error: NodeJS.ErrnoException) => {
+          if (!["EPERM", "EBUSY", "ENOTEMPTY"].includes(error.code ?? "")) return false
+          return undefined
+        },
+      )
       if (removed !== undefined) return removed
       await new Promise((resolve) => setTimeout(resolve, 25))
     }
@@ -357,7 +409,7 @@ export class ResourceExtractor {
     return fs.promises.chmod(filePath, 0o755).then(
       () => true,
       (error) => {
-      this.logFsError(`make ${filePath} executable`, error)
+        this.logFsError(`make ${filePath} executable`, error)
         return false
       },
     )

@@ -24,9 +24,9 @@ describe("TodoTool", () => {
     expect(container.querySelector(".border-gray-200")).not.toBeInTheDocument()
     expect(container.querySelector(".bg-blue-50")).toBeInTheDocument()
 
-    const pendingIcon = container.querySelector("span.rounded-full")
-    expect(pendingIcon).toBeInTheDocument()
-    expect(pendingIcon).toHaveClass("block", "h-3.5", "w-3.5", "border-current")
-    expect(container.querySelectorAll("span.rounded-full")).toHaveLength(1)
+    expect(screen.getByTestId("todo-pending-icon")).toHaveClass("block", "h-4", "w-4", "text-gray-400")
+    expect(screen.getByTestId("todo-pending-dot")).toHaveAttribute("fill", "currentColor")
+    expect(screen.getByTestId("todo-in-progress-icon")).toHaveClass("text-blue-500", "dark:text-blue-400")
+    expect(screen.getByTestId("todo-clock-hand")).toBeInTheDocument()
   })
 })

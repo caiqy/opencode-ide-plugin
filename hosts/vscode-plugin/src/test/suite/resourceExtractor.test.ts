@@ -13,12 +13,26 @@ async function waitForLeasesToSettle(root: string): Promise<void> {
   const deadline = Date.now() + 2000
   while (Date.now() < deadline) {
     const leases = await Promise.all(
-      leaseRoots.map((leaseRoot) => fs.promises.readdir(leaseRoot).then((entries) => entries.filter((entry) => entry.startsWith(".candidate-") || entry === ".opencode-extract-lock")).catch(() => [])),
+      leaseRoots.map((leaseRoot) =>
+        fs.promises
+          .readdir(leaseRoot)
+          .then((entries) =>
+            entries.filter((entry) => entry.startsWith(".candidate-") || entry === ".opencode-extract-lock"),
+          )
+          .catch(() => []),
+      ),
     )
     if (leases.every((entries) => entries.length === 0)) {
       await new Promise<void>((resolve) => setImmediate(resolve))
       const stable = await Promise.all(
-        leaseRoots.map((leaseRoot) => fs.promises.readdir(leaseRoot).then((entries) => entries.filter((entry) => entry.startsWith(".candidate-") || entry === ".opencode-extract-lock")).catch(() => [])),
+        leaseRoots.map((leaseRoot) =>
+          fs.promises
+            .readdir(leaseRoot)
+            .then((entries) =>
+              entries.filter((entry) => entry.startsWith(".candidate-") || entry === ".opencode-extract-lock"),
+            )
+            .catch(() => []),
+        ),
       )
       if (stable.every((entries) => entries.length === 0)) return
     }
@@ -72,6 +86,27 @@ suite("ResourceExtractor Test Suite", () => {
 
     assert.notStrictEqual(first, second)
     assert.strictEqual(firstContent, "old0")
+    assert.strictEqual(await fs.promises.readFile(second, "utf8"), "new0")
+  })
+
+  test("same-version same-size changed binary replaces the cached copy", async () => {
+    const extension = await fs.promises.mkdtemp(path.join(os.tmpdir(), "opencode-extension-test-"))
+    roots.push(extension)
+    const platform = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "macos" : "linux"
+    const arch = process.arch === "arm64" ? "arm64" : "amd64"
+    const name = process.platform === "win32" ? "opencode.exe" : "opencode"
+    const bundled = path.join(extension, "resources", "bin", platform, arch, name)
+    await fs.promises.mkdir(path.dirname(bundled), { recursive: true })
+    await fs.promises.writeFile(bundled, "old0")
+
+    const extractor = ResourceExtractor as unknown as {
+      doExtract(extensionPath: string, extensionVersion?: string, tempRoot?: string): Promise<string>
+    }
+    const first = await extractor.doExtract(extension, "26.8.1601", extension)
+    await fs.promises.writeFile(bundled, "new0")
+    const second = await extractor.doExtract(extension, "26.8.1601", extension)
+
+    assert.strictEqual(first, second)
     assert.strictEqual(await fs.promises.readFile(second, "utf8"), "new0")
   })
 
@@ -428,7 +463,10 @@ suite("ResourceExtractor Test Suite", () => {
     roots.push(root)
     const lockPath = path.join(root, ".opencode-extract-leases", ".opencode-extract-lock")
     await fs.promises.mkdir(path.dirname(lockPath))
-    await fs.promises.writeFile(lockPath, JSON.stringify({ pid: process.pid, token: "11111111-1111-4111-8111-111111111111" }))
+    await fs.promises.writeFile(
+      lockPath,
+      JSON.stringify({ pid: process.pid, token: "11111111-1111-4111-8111-111111111111" }),
+    )
     const old = new Date(Date.now() - 6 * 60 * 1000)
     await fs.promises.utimes(lockPath, old, old)
     const extractor = ResourceExtractor as unknown as {
@@ -444,7 +482,10 @@ suite("ResourceExtractor Test Suite", () => {
     roots.push(root)
     const lockPath = path.join(root, ".opencode-extract-leases", ".opencode-extract-lock")
     await fs.promises.mkdir(path.dirname(lockPath))
-    await fs.promises.writeFile(lockPath, JSON.stringify({ pid: 99999999, token: "22222222-2222-4222-8222-222222222222" }))
+    await fs.promises.writeFile(
+      lockPath,
+      JSON.stringify({ pid: 99999999, token: "22222222-2222-4222-8222-222222222222" }),
+    )
     const old = new Date(Date.now() - 6 * 60 * 1000)
     await fs.promises.utimes(lockPath, old, old)
     const extractor = ResourceExtractor as unknown as {
@@ -463,9 +504,15 @@ suite("ResourceExtractor Test Suite", () => {
     const candidate = path.join(leaseRoot, `.candidate-${process.pid}-test`)
     const shared = path.join(leaseRoot, ".opencode-extract-lock")
     await fs.promises.mkdir(leaseRoot)
-    await fs.promises.writeFile(candidate, JSON.stringify({ pid: process.pid, token: "33333333-3333-4333-8333-333333333333" }))
+    await fs.promises.writeFile(
+      candidate,
+      JSON.stringify({ pid: process.pid, token: "33333333-3333-4333-8333-333333333333" }),
+    )
     await fs.promises.link(candidate, shared)
-    assert.deepStrictEqual(JSON.parse(await fs.promises.readFile(shared, "utf8")), { pid: process.pid, token: "33333333-3333-4333-8333-333333333333" })
+    assert.deepStrictEqual(JSON.parse(await fs.promises.readFile(shared, "utf8")), {
+      pid: process.pid,
+      token: "33333333-3333-4333-8333-333333333333",
+    })
     await fs.promises.rm(shared, { force: true })
     await fs.promises.rm(candidate, { force: true })
   })
@@ -477,7 +524,13 @@ suite("ResourceExtractor Test Suite", () => {
     const extractor = ResourceExtractor as unknown as {
       acquireRootLock(stableRoot: string, retries: number): Promise<{ ownerPath: string; token: string } | undefined>
     }
-    for (const owner of ["", JSON.stringify({ pid: process.pid, token: "" }), JSON.stringify({ pid: 1.5, token: "11111111-1111-4111-8111-111111111111" }), JSON.stringify({ pid: -1, token: "11111111-1111-4111-8111-111111111111" }), JSON.stringify({ pid: process.pid, token: "invalid" })]) {
+    for (const owner of [
+      "",
+      JSON.stringify({ pid: process.pid, token: "" }),
+      JSON.stringify({ pid: 1.5, token: "11111111-1111-4111-8111-111111111111" }),
+      JSON.stringify({ pid: -1, token: "11111111-1111-4111-8111-111111111111" }),
+      JSON.stringify({ pid: process.pid, token: "invalid" }),
+    ]) {
       await fs.promises.mkdir(path.dirname(lockPath), { recursive: true })
       await fs.promises.writeFile(lockPath, owner)
       assert.strictEqual(await extractor.acquireRootLock(root, 0), undefined)
@@ -494,8 +547,13 @@ suite("ResourceExtractor Test Suite", () => {
     const leaseRoot = path.join(root, ".opencode-extract-leases")
     await fs.promises.mkdir(leaseRoot)
     await fs.promises.writeFile(path.join(leaseRoot, ".reclaimed-dead"), "")
-    await fs.promises.writeFile(path.join(leaseRoot, ".opencode-extract-lock"), JSON.stringify({ pid: process.pid, token: "44444444-4444-4444-8444-444444444444" }))
-    const extractor = ResourceExtractor as unknown as { acquireRootLock(root: string, retries: number): Promise<{ ownerPath: string; token: string } | undefined> }
+    await fs.promises.writeFile(
+      path.join(leaseRoot, ".opencode-extract-lock"),
+      JSON.stringify({ pid: process.pid, token: "44444444-4444-4444-8444-444444444444" }),
+    )
+    const extractor = ResourceExtractor as unknown as {
+      acquireRootLock(root: string, retries: number): Promise<{ ownerPath: string; token: string } | undefined>
+    }
     assert.strictEqual(await extractor.acquireRootLock(root, 0), undefined)
     await fs.promises.access(path.join(leaseRoot, ".opencode-extract-lock"))
     await fs.promises.rm(path.join(leaseRoot, ".opencode-extract-lock"), { force: true })
@@ -510,7 +568,11 @@ suite("ResourceExtractor Test Suite", () => {
     }
     const old = await extractor.acquireRootLock(root, 0)
     assert.ok(old)
-    const lockPath = path.join(root, ".opencode-extract-leases", `ticket-0000000000000002-${process.pid}-00000000-0000-0000-0000-000000000005`)
+    const lockPath = path.join(
+      root,
+      ".opencode-extract-leases",
+      `ticket-0000000000000002-${process.pid}-00000000-0000-0000-0000-000000000005`,
+    )
     await fs.promises.writeFile(lockPath, "")
 
     await extractor.releaseRootLock(root, old)
@@ -538,8 +600,19 @@ suite("ResourceExtractor Test Suite", () => {
     try {
       const release = extractor.releaseRootLock(root, old)
       const leaseRoot = path.join(root, ".opencode-extract-leases")
-      while (!(await fs.promises.readdir(leaseRoot).then((entries) => entries.some((entry) => entry.startsWith(`.released-${old.token}-`))))) await new Promise((resolve) => setImmediate(resolve))
-      while (await fs.promises.access(old.ownerPath).then(() => true, () => false)) await new Promise((resolve) => setImmediate(resolve))
+      while (
+        !(await fs.promises
+          .readdir(leaseRoot)
+          .then((entries) => entries.some((entry) => entry.startsWith(`.released-${old.token}-`))))
+      )
+        await new Promise((resolve) => setImmediate(resolve))
+      while (
+        await fs.promises.access(old.ownerPath).then(
+          () => true,
+          () => false,
+        )
+      )
+        await new Promise((resolve) => setImmediate(resolve))
       const next = await extractor.acquireRootLock(root, 0)
       assert.ok(next)
       resume?.()
