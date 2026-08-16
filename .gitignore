@@ -107,7 +107,6 @@ tsconfig.tsbuildinfo
 /.opencode/skills/
 /openspec/changes/**/.comet/
 
-# Comet workflow artifacts (Classic + Native)
-/docs/comet/
+# Native Comet formal artifacts are tracked for cross-device recovery.
 /docs/openspec/
 /docs/superpowers/
