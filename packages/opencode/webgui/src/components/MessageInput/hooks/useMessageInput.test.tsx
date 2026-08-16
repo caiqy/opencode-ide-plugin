@@ -284,6 +284,151 @@ describe("useMessageInput", () => {
     expect(mocks.command).toHaveBeenCalledTimes(1)
   })
 
+  it("异步 slash 解析不会延迟清空切换后的会话编辑器", async () => {
+    mocks.root.getTextContent.mockReturnValue("/status")
+    let resolveCommands!: (value: { data: Array<{ name: string }>; error: null }) => void
+    mocks.commandList.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCommands = resolve
+      }),
+    )
+    const editor = {
+      getEditorState: () => ({ read: (fn: () => void) => fn() }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result, rerender } = renderHook(
+      ({ sessionID }) =>
+        useMessageInput({
+          sessionID,
+          editor,
+          isEmpty: false,
+          selectedProviderId: "openai",
+          selectedModelId: "gpt-4.1",
+          selectedAgent: "build",
+          selectedVariant: undefined,
+          extractMessageParts: vi.fn(() => [{ type: "text", text: "/status" }]),
+        }),
+      { initialProps: { sessionID: "s-a" } },
+    )
+
+    let pending!: Promise<void>
+    await act(async () => {
+      pending = result.current.handleSubmit()
+      await vi.waitFor(() => expect(mocks.commandList).toHaveBeenCalledTimes(1))
+    })
+
+    expect(mocks.root.clear).toHaveBeenCalledTimes(1)
+    rerender({ sessionID: "s-b" })
+
+    await act(async () => {
+      resolveCommands({ data: [{ name: "status" }], error: null })
+      await pending
+    })
+
+    expect(mocks.root.clear).toHaveBeenCalledTimes(1)
+    expect(mocks.command).toHaveBeenCalledWith(expect.objectContaining({ path: { id: "s-a" } }))
+  })
+
+  it("不同会话可各自保留一个进行中的发送", async () => {
+    mocks.root.getTextContent.mockReturnValue("hello")
+    let resolveFirst!: (value: { data: object; error: null }) => void
+    mocks.prompt.mockImplementation((input: unknown) => {
+      if ((input as { path: { id: string } }).path.id !== "s-a") return Promise.resolve({ data: {}, error: null })
+      return new Promise((resolve) => {
+        resolveFirst = resolve
+      })
+    })
+    const editor = {
+      getEditorState: () => ({ read: (fn: () => void) => fn() }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result, rerender } = renderHook(
+      ({ sessionID }) =>
+        useMessageInput({
+          sessionID,
+          editor,
+          isEmpty: false,
+          selectedProviderId: "openai",
+          selectedModelId: "gpt-4.1",
+          selectedAgent: "build",
+          selectedVariant: undefined,
+          extractMessageParts: vi.fn(() => [{ type: "text", text: "hello" }]),
+        }),
+      { initialProps: { sessionID: "s-a" } },
+    )
+
+    let first!: Promise<void>
+    await act(async () => {
+      first = result.current.handleSubmit()
+      await vi.waitFor(() => expect(mocks.prompt).toHaveBeenCalledTimes(1))
+    })
+
+    rerender({ sessionID: "s-b" })
+    await act(async () => {
+      await result.current.handleSubmit()
+    })
+
+    expect(mocks.prompt.mock.calls.map(([input]) => (input as { path: { id: string } }).path.id)).toEqual(["s-a", "s-b"])
+
+    await act(async () => {
+      resolveFirst({ data: {}, error: null })
+      await first
+    })
+  })
+
+  it("另一会话发送完成后仍处理原会话失败", async () => {
+    mocks.root.getTextContent.mockReturnValue("hello")
+    let rejectFirst!: (reason: Error) => void
+    mocks.prompt.mockImplementation((input: unknown) => {
+      if ((input as { path: { id: string } }).path.id !== "s-a") return Promise.resolve({ data: {}, error: null })
+      return new Promise((_resolve, reject) => {
+        rejectFirst = reject
+      })
+    })
+    const editor = {
+      getEditorState: () => ({ read: (fn: () => void) => fn() }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result, rerender } = renderHook(
+      ({ sessionID }) =>
+        useMessageInput({
+          sessionID,
+          editor,
+          isEmpty: false,
+          selectedProviderId: "openai",
+          selectedModelId: "gpt-4.1",
+          selectedAgent: "build",
+          selectedVariant: undefined,
+          extractMessageParts: vi.fn(() => [{ type: "text", text: "hello" }]),
+        }),
+      { initialProps: { sessionID: "s-a" } },
+    )
+
+    let first!: Promise<void>
+    await act(async () => {
+      first = result.current.handleSubmit()
+      await vi.waitFor(() => expect(mocks.prompt).toHaveBeenCalledTimes(1))
+    })
+
+    rerender({ sessionID: "s-b" })
+    await act(async () => {
+      await result.current.handleSubmit()
+    })
+    await act(async () => {
+      rejectFirst(new Error("a failed"))
+      await first
+    })
+
+    expect(mocks.setSessionIdle).toHaveBeenCalledWith("s-a", true)
+    expect(mocks.showToast).toHaveBeenCalledWith("a failed", expect.objectContaining({ variant: "error" }))
+  })
+
   it("summarize 返回错误时显示压缩失败 toast", async () => {
     mocks.summarize.mockResolvedValueOnce({
       data: null,

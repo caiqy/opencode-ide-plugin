@@ -90,7 +90,7 @@ const MessageInputInner = forwardRef<
   const { worktree } = useProject()
   const {
     currentSession,
-    isIdle,
+    isSessionIdle,
     selectedProviderId,
     selectedModelId,
     selectedAgent,
@@ -238,7 +238,8 @@ const MessageInputInner = forwardRef<
     currentSession?.id === sessionID &&
     ((typeof selectionSessionId === "string" && selectionSessionId !== sessionID) || selectionSessionId === null)
 
-  const busy = !isIdle
+  const busy = sessionID ? !isSessionIdle(sessionID) : false
+  const isIdle = !busy
   const locked = busy || blocked || selectionPending
 
   useDragDrop({ contentEditableRef, containerRef, disabled: locked })

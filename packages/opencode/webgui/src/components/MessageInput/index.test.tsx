@@ -11,6 +11,7 @@ let lastEditorContentProps: any
 let lastQuickPhraseBarProps: any
 let rootText = ""
 let sessionIdle = true
+let sessionIdleById: Record<string, boolean> = {}
 let selectionSessionId: string | null = null
 let currentSessionId: string | null = null
 let selectedProviderId = "openai"
@@ -207,6 +208,7 @@ vi.mock("../../state/SessionContext", () => {
   return {
     useSession: () => ({
       isIdle: sessionIdle,
+      isSessionIdle: (sessionID: string) => sessionIdleById[sessionID] ?? sessionIdle,
       currentSession: currentSessionId ? { id: currentSessionId } : null,
       selectedProviderId,
       selectedModelId,
@@ -274,6 +276,7 @@ const quick = {
 describe("MessageInput compact confirm", () => {
   beforeEach(() => {
     sessionIdle = true
+    sessionIdleById = {}
     selectionSessionId = null
     currentSessionId = null
     selectedProviderId = "openai"
@@ -1083,6 +1086,18 @@ describe("MessageInput compact confirm", () => {
       expect(lastEditorToolbarProps.selectionPending).toBe(true)
       expect(lastEditorToolbarProps.isDisabled).toBe(true)
       expect(lastEditorToolbarProps.isButtonDisabled).toBe(true)
+    })
+  })
+
+  it("另一会话生成中不阻断当前会话输入", async () => {
+    sessionIdle = false
+    sessionIdleById = { s1: false, s2: true }
+    currentSessionId = "s1"
+
+    render(<MessageInput sessionID="s2" />)
+
+    await waitFor(() => {
+      expect(lastEditorToolbarProps.isDisabled).toBe(false)
     })
   })
 

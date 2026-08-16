@@ -53,8 +53,8 @@ export function useMessageInput({
   const { showToast } = useToast()
   const { setSessionIdle } = useSession()
   const { addMessage, setMessages, getQuestionsBySession, rejectQuestion } = useMessages()
-  const seq = useRef(0)
-  const submittingEditor = useRef(false)
+  const seq = useRef(new Map<string, number>())
+  const submittingEditor = useRef(new Set<string>())
 
   const lastFailedMessage = sessionID ? (failedMap[sessionID] ?? null) : null
 
@@ -76,22 +76,17 @@ export function useMessageInput({
       if (!sessionID) return
       const text = saved.trim()
       if (!text) return
-      if (source === "editor" && submittingEditor.current) return
+      if (source === "editor" && submittingEditor.current.has(sessionID)) return
 
-      const id = ++seq.current
+      const id = (seq.current.get(sessionID) ?? 0) + 1
+      seq.current.set(sessionID, id)
       if (source === "editor") {
-        submittingEditor.current = true
+        submittingEditor.current.add(sessionID)
         setSessionIdle(sessionID, false)
       }
       let optimistic: ReturnType<typeof createOptimisticUserMessage> | null = null
 
       try {
-        const resolvedSlash = await resolveSlashInput(text)
-        const slashCommand = resolvedSlash.mode === "command" ? resolvedSlash : null
-        optimistic = !slashCommand && source === "editor" ? createOptimisticUserMessage(sessionID, text) : null
-
-        if (source === "quick_phrase") setSessionIdle(sessionID, false)
-
         if (source === "editor") {
           editor.update(() => {
             const root = $getRoot()
@@ -105,6 +100,12 @@ export function useMessageInput({
             editor.focus()
           }, 0)
         }
+
+        const resolvedSlash = await resolveSlashInput(text)
+        const slashCommand = resolvedSlash.mode === "command" ? resolvedSlash : null
+        optimistic = !slashCommand && source === "editor" ? createOptimisticUserMessage(sessionID, text) : null
+
+        if (source === "quick_phrase") setSessionIdle(sessionID, false)
 
         if (optimistic) {
           addMessage(optimistic)
@@ -168,7 +169,7 @@ export function useMessageInput({
         if (failedOptimistic) {
           setMessages((prev) => removeMessage(prev, failedOptimistic.info.id))
         }
-        if (id !== seq.current) return
+        if (id !== seq.current.get(sessionID)) return
         const msg = errorMessage(err, "发送消息失败")
         const error = err instanceof Error ? err : new Error(msg)
         console.error("[MessageInput] Failed to send message:", error)
@@ -183,7 +184,7 @@ export function useMessageInput({
         })
         onError?.(error)
       } finally {
-        if (source === "editor") submittingEditor.current = false
+        if (source === "editor") submittingEditor.current.delete(sessionID)
       }
     },
     [
