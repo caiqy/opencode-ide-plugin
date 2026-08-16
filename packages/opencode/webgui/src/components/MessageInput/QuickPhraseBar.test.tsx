@@ -53,6 +53,26 @@ describe("QuickPhraseBar", () => {
     expect(screen.getByRole("button", { name: "展开快捷短语" })).toBeDisabled()
   })
 
+  it("仅禁用发送时仍允许展开和右键双击回填", () => {
+    const onSend = vi.fn()
+    const onFill = vi.fn()
+    render(<QuickPhraseBar items={items} disabled={false} sendDisabled onSend={onSend} onFill={onFill} />)
+
+    const phrase = screen.getByRole("button", { name: "提交总结" })
+    const expand = screen.getByRole("button", { name: "展开快捷短语" })
+    expect(phrase).toBeEnabled()
+    expect(expand).toBeEnabled()
+
+    fireEvent.click(expand)
+    fireEvent.click(phrase, { detail: 1 })
+    fireEvent.click(phrase, { detail: 1 })
+    fireEvent.contextMenu(phrase)
+    fireEvent.contextMenu(phrase)
+
+    expect(onSend).not.toHaveBeenCalled()
+    expect(onFill).toHaveBeenCalledWith(items[0])
+  })
+
   it("按下短语行时不会立即捕获指针", () => {
     render(<QuickPhraseBar items={items} disabled={false} onSend={vi.fn()} onFill={vi.fn()} />)
 

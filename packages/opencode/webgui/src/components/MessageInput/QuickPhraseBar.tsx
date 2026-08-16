@@ -9,13 +9,14 @@ interface QuickPhraseItem {
 interface QuickPhraseBarProps {
   items: QuickPhraseItem[]
   disabled: boolean
+  sendDisabled?: boolean
   onSend: (item: QuickPhraseItem) => void
   onFill: (item: QuickPhraseItem) => void
 }
 
 const RIGHT_DOUBLE_CLICK_MS = 400
 
-export function QuickPhraseBar({ items, disabled, onSend, onFill }: QuickPhraseBarProps) {
+export function QuickPhraseBar({ items, disabled, sendDisabled = false, onSend, onFill }: QuickPhraseBarProps) {
   const [expanded, setExpanded] = useState(false)
   const row = useRef<HTMLDivElement>(null)
   const drag = useRef<{ id: number; x: number; left: number; moved: boolean } | null>(null)
@@ -63,7 +64,7 @@ export function QuickPhraseBar({ items, disabled, onSend, onFill }: QuickPhraseB
   }, [])
   const handleLeftClick = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>, item: QuickPhraseItem) => {
-      if (disabled || e.detail === 0) return
+      if (disabled || sendDisabled || e.detail === 0) return
       if (suppressLeftClick.current) {
         suppressLeftClick.current = false
         return
@@ -77,7 +78,7 @@ export function QuickPhraseBar({ items, disabled, onSend, onFill }: QuickPhraseB
       }
       lastLeftClick.current = { id: item.id, time: now }
     },
-    [disabled, onSend],
+    [disabled, onSend, sendDisabled],
   )
   const handleContextMenu = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>, item: QuickPhraseItem) => {

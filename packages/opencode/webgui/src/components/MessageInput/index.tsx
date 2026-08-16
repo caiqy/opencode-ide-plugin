@@ -240,11 +240,17 @@ const MessageInputInner = forwardRef<
 
   const busy = sessionID ? !isSessionIdle(sessionID) : false
   const isIdle = !busy
-  const locked = busy || blocked || selectionPending
+  const interactionLocked = blocked || selectionPending
+  const sendLocked = busy || interactionLocked
 
-  useDragDrop({ contentEditableRef, containerRef, disabled: locked })
+  const submit = useCallback(() => {
+    if (sendLocked) return
+    void handleSubmit()
+  }, [handleSubmit, sendLocked])
 
-  useEditorKeyboard({ editor, contentEditableRef, onSubmit: handleSubmit })
+  useDragDrop({ contentEditableRef, containerRef, disabled: interactionLocked })
+
+  useEditorKeyboard({ editor, contentEditableRef, onSubmit: submit })
 
   // Restore session-scoped draft from workspace storage
   useEffect(() => {
@@ -296,7 +302,7 @@ const MessageInputInner = forwardRef<
         editor.focus()
       },
       insertPaths: (paths: string[]) => {
-        if (locked) return
+        if (interactionLocked) return
         if (!paths || paths.length === 0) return
         let tries = 0
         const perform = () => {
@@ -346,7 +352,7 @@ const MessageInputInner = forwardRef<
         perform()
       },
       pastePath: (path: string) => {
-        if (locked) return
+        if (interactionLocked) return
         if (!path) return
         let tries = 0
         const perform = () => {
@@ -370,17 +376,17 @@ const MessageInputInner = forwardRef<
         perform()
       },
       insertPlainWithMentions: (value: string) => {
-        if (locked) return
+        if (interactionLocked) return
         insertPlainWithMentionsImpl(editor, parseWithRange, value, { replace: true })
       },
     }),
-    [editor, locked, worktree, parseWithRange],
+    [editor, interactionLocked, worktree, parseWithRange],
   )
 
-  // Disable/enable editor based on session busy state
+  // Requests and selection restoration lock editing; model execution only locks sending.
   useEffect(() => {
-    editor.setEditable(!locked)
-  }, [editor, locked])
+    editor.setEditable(!interactionLocked)
+  }, [editor, interactionLocked])
 
   // Load providers for variant computation
   useEffect(() => {
@@ -442,17 +448,25 @@ const MessageInputInner = forwardRef<
     }
   }, [providers, selectedProviderId, selectedModelId])
 
-  const isDisabled = locked
-  const isButtonDisabled = locked || isEmpty
-  const isCompactDisabled = locked || isCompacting || !sessionID || !selectedProviderId || !selectedModelId
+  const isButtonDisabled = sendLocked || isEmpty
+  const isCompactDisabled = sendLocked || isCompacting || !sessionID || !selectedProviderId || !selectedModelId
 
   const handleCompactWithModal = useCallback(async () => {
+    if (sendLocked) {
+      setIsCompactConfirmOpen(false)
+      return
+    }
     setIsCompacting(true)
     await handleCompact(() => {
       setIsCompacting(false)
       setIsCompactConfirmOpen(false)
     })
-  }, [handleCompact])
+  }, [handleCompact, sendLocked])
+
+  const openCompactConfirm = useCallback(() => {
+    if (sendLocked) return
+    setIsCompactConfirmOpen(true)
+  }, [sendLocked])
 
   const fillPhrase = useCallback(
     (body: string) => {
@@ -475,27 +489,26 @@ const MessageInputInner = forwardRef<
     (body: string) => {
       if (!body.trim()) return
       if (!sessionID) return
-      if (isDisabled) return
+      if (sendLocked) return
       onSendIntent?.()
       void submitQuickPhrase(body)
     },
-    [isDisabled, onSendIntent, sessionID, submitQuickPhrase],
+    [onSendIntent, sendLocked, sessionID, submitQuickPhrase],
   )
 
   const onSendPhrase = useCallback(
     (item: { id: string; title: string; body: string }) => {
-      if (isDisabled) return
       sendPhrase(item.body)
     },
-    [isDisabled, sendPhrase],
+    [sendPhrase],
   )
 
   const onFillPhrase = useCallback(
     (item: { id: string; title: string; body: string }) => {
-      if (isDisabled) return
+      if (interactionLocked) return
       fillPhrase(item.body)
     },
-    [fillPhrase, isDisabled],
+    [fillPhrase, interactionLocked],
   )
 
   const phraseItems = useMemo(() => {
@@ -514,7 +527,13 @@ const MessageInputInner = forwardRef<
           data-testid="message-composer"
         >
           <FooterPanels sessionID={sessionID} />
-          <QuickPhraseBar items={phraseItems} disabled={isDisabled} onSend={onSendPhrase} onFill={onFillPhrase} />
+          <QuickPhraseBar
+            items={phraseItems}
+            disabled={interactionLocked}
+            sendDisabled={sendLocked}
+            onSend={onSendPhrase}
+            onFill={onFillPhrase}
+          />
           <div
             className="first:rounded-t-lg border border-gray-200 bg-white rounded-b-lg focus-within:border-blue-500 dark:border-gray-800 dark:bg-gray-900 dark:focus-within:border-blue-400"
           >
@@ -530,7 +549,7 @@ const MessageInputInner = forwardRef<
               onModelSelect={setSelectedModel}
               onAgentSelect={setSelectedAgent}
               onFileSelect={handleFileSelect}
-              isDisabled={isDisabled}
+              isDisabled={interactionLocked}
               modelSelectorKey={modelSelectorKey}
               lastFailedMessage={Boolean(lastFailedMessage)}
               onRetry={handleRetry}
@@ -539,9 +558,9 @@ const MessageInputInner = forwardRef<
               isIdle={isIdle}
               isButtonDisabled={isButtonDisabled}
               isCompactDisabled={isCompactDisabled}
-              onSubmit={handleSubmit}
+              onSubmit={submit}
               onAbort={handleAbort}
-              onCompactClick={() => setIsCompactConfirmOpen(true)}
+              onCompactClick={openCompactConfirm}
               variants={currentModelInfo.variants}
               selectedVariant={selectedVariant}
               onVariantSelect={(variant) => setSelectedVariant(variant)}

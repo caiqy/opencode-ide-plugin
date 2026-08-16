@@ -9,6 +9,8 @@ let confirmModalMap: Record<string, any> = {}
 let lastEditorToolbarProps: any
 let lastEditorContentProps: any
 let lastQuickPhraseBarProps: any
+let lastDragDropOptions: any
+let lastEditorKeyboardOptions: any
 let rootText = ""
 let sessionIdle = true
 let sessionIdleById: Record<string, boolean> = {}
@@ -166,13 +168,17 @@ vi.mock("./hooks/useFileAttachment", () => {
 
 vi.mock("./hooks/useDragDrop", () => {
   return {
-    useDragDrop: () => {},
+    useDragDrop: (options: any) => {
+      lastDragDropOptions = options
+    },
   }
 })
 
 vi.mock("./hooks/useEditorKeyboard", () => {
   return {
-    useEditorKeyboard: () => {},
+    useEditorKeyboard: (options: any) => {
+      lastEditorKeyboardOptions = options
+    },
   }
 })
 
@@ -287,6 +293,8 @@ describe("MessageInput compact confirm", () => {
     lastEditorToolbarProps = null
     lastEditorContentProps = null
     lastQuickPhraseBarProps = null
+    lastDragDropOptions = null
+    lastEditorKeyboardOptions = null
     confirmModalMap = {}
     rootText = ""
     vi.clearAllMocks()
@@ -903,22 +911,68 @@ describe("MessageInput compact confirm", () => {
     expect(fail).not.toHaveBeenCalled()
   })
 
-  it("生成中会话应禁用精简按钮，仅保留停止能力", async () => {
+  it("生成中会话仅禁用发送与精简并保留其他交互", async () => {
+    const onSendIntent = vi.fn()
     sessionIdle = false
     mocks.loadQuickPhraseState.mockResolvedValue(quick)
-    render(<MessageInput sessionID="s1" />)
+    render(<MessageInput sessionID="s1" onSendIntent={onSendIntent} />)
 
     await waitFor(() => {
       expect(lastQuickPhraseBarProps).toBeTruthy()
     })
 
+    act(() => {
+      rootText = "执行中的草稿"
+      lastEditorContentProps.onEditorChange({
+        read: (run: () => void) => run(),
+      })
+    })
+
     expect(lastEditorToolbarProps).toBeTruthy()
+    expect(lastEditorToolbarProps.isDisabled).toBe(false)
+    expect(lastEditorToolbarProps.isButtonDisabled).toBe(true)
     expect(lastEditorToolbarProps.isCompactDisabled).toBe(true)
-    expect(lastEditorToolbarProps.isDisabled).toBe(true)
-    expect(lastQuickPhraseBarProps.disabled).toBe(true)
+    expect(lastEditorToolbarProps.isIdle).toBe(false)
+    expect(lastEditorToolbarProps.onAbort).toBe(mocks.handleAbort)
+    expect(lastQuickPhraseBarProps.disabled).toBe(false)
+    expect(lastQuickPhraseBarProps.sendDisabled).toBe(true)
+    expect(lastDragDropOptions.disabled).toBe(false)
+
+    await act(async () => {
+      lastEditorKeyboardOptions.onSubmit()
+      lastEditorToolbarProps.onSubmit()
+      lastEditorToolbarProps.onCompactClick()
+      await lastConfirmModalProps.onConfirm()
+      lastQuickPhraseBarProps.onSend(quick.items["preset:commit"])
+      lastQuickPhraseBarProps.onFill(quick.items["preset:commit"])
+    })
+
+    expect(mocks.handleSubmit).not.toHaveBeenCalled()
+    expect(mocks.handleCompact).not.toHaveBeenCalled()
+    expect(mocks.submitQuickPhrase).not.toHaveBeenCalled()
+    expect(onSendIntent).not.toHaveBeenCalled()
+    expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "请总结改动",
+      { replace: true },
+    )
   })
 
-  it("A 生成中切到 B 空闲时，B 应恢复可交互", async () => {
+  it("请求阻塞时仍锁定完整 composer", async () => {
+    mocks.loadQuickPhraseState.mockResolvedValue(quick)
+    render(<MessageInput sessionID="s1" blocked />)
+
+    await waitFor(() => {
+      expect(lastQuickPhraseBarProps).toBeTruthy()
+    })
+
+    expect(lastEditorToolbarProps.isDisabled).toBe(true)
+    expect(lastQuickPhraseBarProps.disabled).toBe(true)
+    expect(lastDragDropOptions.disabled).toBe(true)
+  })
+
+  it("A 生成中切到 B 空闲时，B 应恢复发送与精简", async () => {
     sessionIdle = false
     mocks.loadQuickPhraseState.mockResolvedValue(quick)
     const { rerender } = render(<MessageInput sessionID="s1" />)
@@ -927,7 +981,10 @@ describe("MessageInput compact confirm", () => {
       expect(lastQuickPhraseBarProps).toBeTruthy()
     })
 
-    expect(lastEditorToolbarProps.isDisabled).toBe(true)
+    expect(lastEditorToolbarProps.isDisabled).toBe(false)
+    expect(lastEditorToolbarProps.isCompactDisabled).toBe(true)
+    expect(lastQuickPhraseBarProps.disabled).toBe(false)
+    expect(lastQuickPhraseBarProps.sendDisabled).toBe(true)
 
     sessionIdle = true
     rerender(<MessageInput sessionID="s2" />)
@@ -936,7 +993,9 @@ describe("MessageInput compact confirm", () => {
       expect(lastEditorToolbarProps.isDisabled).toBe(false)
     })
 
+    expect(lastEditorToolbarProps.isCompactDisabled).toBe(false)
     expect(lastQuickPhraseBarProps.disabled).toBe(false)
+    expect(lastQuickPhraseBarProps.sendDisabled).toBe(false)
   })
 
   it("生成中状态下快捷短语触发应无效", async () => {
