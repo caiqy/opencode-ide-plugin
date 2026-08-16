@@ -39,8 +39,13 @@ describe("getToolDisplayName", () => {
       { content: "b", status: "pending" },
       { content: "c", status: "pending" },
     ])
-    expect(getToolDisplayName("todowrite", undefined, "Update", output)).toBe("更新任务列表：已完成 1/3")
-    expect(getToolDisplayName("todoread", undefined, "Read", output)).toBe("查看任务列表：已完成 1/3")
+    expect(getToolDisplayName("todowrite", undefined, "Update", output)).toBe("待办事项 (1/3)")
+    expect(getToolDisplayName("todoread", undefined, "Read", output)).toBe("待办事项 (1/3)")
+  })
+
+  it("todoread/todowrite 无计数时也使用待办事项名称", () => {
+    expect(getToolDisplayName("todowrite", undefined, undefined, undefined)).toBe("待办事项")
+    expect(getToolDisplayName("todoread", undefined, undefined, undefined)).toBe("待办事项")
   })
 
   it("todoread/todowrite 当无已完成项时展示总数", () => {
@@ -48,7 +53,7 @@ describe("getToolDisplayName", () => {
       { content: "a", status: "pending" },
       { content: "b", status: "pending" },
     ])
-    expect(getToolDisplayName("todowrite", undefined, "Update", output)).toBe("更新任务列表：共 2 项")
+    expect(getToolDisplayName("todowrite", undefined, "Update", output)).toBe("待办事项 (0/2)")
   })
 
   it("task/question 工具调用应展示中文名", () => {

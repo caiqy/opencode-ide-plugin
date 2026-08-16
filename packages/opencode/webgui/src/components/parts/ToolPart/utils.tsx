@@ -20,8 +20,8 @@ const TOOL_LABELS: Record<string, string> = {
   plan_exit: "退出计划模式",
   task: "委派子任务",
   question: "提问",
-  todoread: "查看任务列表",
-  todowrite: "更新任务列表",
+  todoread: "待办事项",
+  todowrite: "待办事项",
   skill: "加载技能",
   invalid: "无效工具调用",
   invalidTool: "无效工具调用",
@@ -165,8 +165,7 @@ export function getToolDisplayName(
         const todos = JSON.parse(output)
         if (Array.isArray(todos)) {
           const completed = todos.filter((t: Todo) => t.status === "completed").length
-          const total = todos.length
-          display = completed === 0 ? `${toolLabel}：共 ${total} 项` : `${toolLabel}：已完成 ${completed}/${total}`
+          display = `${toolLabel} (${completed}/${todos.length})`
         }
       } catch {
         // If parsing fails, keep original title
