@@ -3,9 +3,9 @@ import { useDropdown } from "../hooks/useDropdown"
 import type { ApprovalMode } from "../state/approval"
 
 const modes = [
-  { value: "manual", label: "手动审批", description: "Manual" },
-  { value: "automatic", label: "自动审批", description: "Automatic" },
-  { value: "full", label: "完全访问", description: "Full access" },
+  { value: "manual", label: "手动审批" },
+  { value: "automatic", label: "自动审批" },
+  { value: "full", label: "完全访问" },
 ] as const
 
 interface ApprovalModeSelectorProps {
@@ -78,16 +78,6 @@ export function ApprovalModeSelector({ value, onSelect, disabled }: ApprovalMode
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m9 12 2 2 4-4" />
         </svg>
         <span className="truncate">{current.label}</span>
-        <svg
-          className={`h-3 w-3 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
-        </svg>
       </button>
 
       {isOpen && (
@@ -120,10 +110,7 @@ export function ApprovalModeSelector({ value, onSelect, disabled }: ApprovalMode
                     : "text-gray-900 dark:text-gray-100"
                 }`}
               >
-                <span className="flex items-center gap-2">
-                  <span className="font-medium">{mode.label}</span>
-                  <span className="text-gray-500 dark:text-gray-400">{mode.description}</span>
-                </span>
+                <span className="font-medium">{mode.label}</span>
                 {selected && (
                   <svg className="ms-2 h-4 w-4 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                     <path

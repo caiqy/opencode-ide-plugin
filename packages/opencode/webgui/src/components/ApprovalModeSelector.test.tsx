@@ -12,7 +12,7 @@ describe("ApprovalModeSelector", () => {
 
     await user.click(trigger())
 
-    expect(screen.getByRole("menuitemradio", { name: /自动审批\s*Automatic/ })).toHaveFocus()
+    expect(screen.getByRole("menuitemradio", { name: "自动审批" })).toHaveFocus()
   })
 
   it("ArrowDown/ArrowUp 循环移动焦点", async () => {
@@ -59,7 +59,7 @@ describe("ApprovalModeSelector", () => {
     render(<ApprovalModeSelector value="manual" onSelect={onSelect} />)
     await user.click(trigger())
 
-    await user.click(screen.getByRole("menuitemradio", { name: /完全访问\s*Full access/ }))
+    await user.click(screen.getByRole("menuitemradio", { name: "完全访问" }))
 
     expect(onSelect).toHaveBeenCalledWith("full")
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
