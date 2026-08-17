@@ -34,7 +34,8 @@ const permission = Layer.succeed(
           input.action === denyAction ? Effect.fail(new PermissionV2.BlockedError({ rules: [] })) : Effect.void,
         ),
       ),
-    ask: () => Effect.die("unused"),
+     setApproval: () => Effect.die("unused"),
+     ask: () => Effect.die("unused"),
     reply: () => Effect.die("unused"),
     get: () => Effect.die("unused"),
     forSession: () => Effect.die("unused"),
@@ -121,7 +122,9 @@ describe("WriteTool", () => {
             expect(yield* Effect.promise(() => fs.readFile(path.join(tmp.path, "src", "new.txt"), "utf8"))).toBe(
               "created",
             )
-            expect(assertions).toMatchObject([{ sessionID, action: "edit", resources: ["src/new.txt"], save: ["*"] }])
+            expect(assertions).toMatchObject([
+              { sessionID, action: "edit", resources: ["src/new.txt"], save: ["*"], metadata: { tool: "write" } },
+            ])
             expect(writes).toEqual([path.join(yield* Effect.promise(() => fs.realpath(tmp.path)), "src", "new.txt")])
           }),
         )

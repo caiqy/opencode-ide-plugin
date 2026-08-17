@@ -284,4 +284,26 @@ describe("ApplicationTools", () => {
       expect(applicationContexts).toEqual([])
     }),
   )
+
+  it.effect("keeps the Location builtin read when an application registers read", () =>
+    Effect.gen(function* () {
+      const applications = yield* ApplicationTools.Service
+      const registry = yield* ToolRegistry.Service
+      const locationContexts: Tool.Context[] = []
+      const applicationContexts: Tool.Context[] = []
+      yield* registry.register({ read: contextual(locationContexts) })
+      yield* applications.register({ read: contextual(applicationContexts) })
+
+      expect(
+        yield* settleTool(registry, {
+          sessionID,
+          agent,
+          assistantMessageID,
+          call: { type: "tool-call", id: "call-read", name: "read", input: { query: "location" } },
+        }),
+      ).toMatchObject({ result: { type: "content" } })
+      expect(locationContexts).toEqual([{ sessionID, agent, assistantMessageID, toolCallID: "call-read" }])
+      expect(applicationContexts).toEqual([])
+    }),
+  )
 })

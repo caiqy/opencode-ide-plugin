@@ -200,7 +200,7 @@ const live: Layer.Layer<
                 patterns: uniquePatterns,
                 metadata: { tools: approvalTools },
                 always: uniquePatterns,
-                ruleset: [],
+                ruleset,
               }),
             )
             for (const name of uniqueNames) approvedToolsForSession.add(name)

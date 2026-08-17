@@ -2,6 +2,8 @@ import { ModelSelector } from "../ModelSelector"
 import { AgentSelector } from "../AgentSelector"
 import { VariantSelector } from "../VariantSelector"
 import { MessageActions } from "./MessageActions"
+import type { ApprovalMode } from "../../state/approval"
+import { ApprovalModeSelector } from "../ApprovalModeSelector"
 
 interface EditorToolbarProps {
   selectedProviderId: string | undefined
@@ -26,7 +28,11 @@ interface EditorToolbarProps {
   selectedVariant?: string
   onVariantSelect: (variant: string | undefined) => void
   isReasoningModel?: boolean
-  selectionPending?: boolean
+selectionPending?: boolean
+  approvalMode: ApprovalMode
+  approvalPending: boolean
+  approvalDisabled?: boolean
+  onApprovalSelect: (mode: ApprovalMode) => void
 }
 
 export function EditorToolbar({
@@ -52,7 +58,11 @@ export function EditorToolbar({
   selectedVariant,
   onVariantSelect,
   isReasoningModel,
-  selectionPending = false,
+selectionPending = false,
+  approvalMode,
+  approvalPending,
+  approvalDisabled = false,
+  onApprovalSelect,
 }: EditorToolbarProps) {
   return (
     <div className="flex min-h-9 items-center gap-2 px-3 pb-1.5">
@@ -109,21 +119,11 @@ export function EditorToolbar({
               disabled={isDisabled}
               isReasoningModel={isReasoningModel}
             />
-            <button
-              type="button"
-              disabled
-              className="flex h-6 shrink-0 items-center gap-1 rounded px-1.5 text-xs text-gray-400 opacity-60 dark:text-gray-500"
-              aria-label="自动审批"
-              title="自动审批（暂未启用）"
-              data-tip="自动审批（暂未启用）"
-              data-testid="auto-approve"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7 3v5c0 5-3.5 8.4-7 10-3.5-1.6-7-5-7-10V6l7-3z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m9 12 2 2 4-4" />
-              </svg>
-              自动审批
-            </button>
+<ApprovalModeSelector
+              value={approvalMode}
+              onSelect={onApprovalSelect}
+              disabled={isDisabled || approvalPending || approvalDisabled}
+            />
             <input
               ref={fileInputRef}
               id="opencode-file-input"

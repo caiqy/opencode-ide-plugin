@@ -6,7 +6,7 @@ import { MCP } from "@/mcp"
 import { McpCatalog } from "@/mcp/catalog"
 import { Agent } from "@/agent/agent"
 import { Session } from "@/session/session"
-import { Permission } from "@/permission"
+import { PermissionRules } from "@/permission/rules"
 import { Plugin } from "@/plugin"
 
 export const CODE_MODE_TOOL = "execute"
@@ -206,8 +206,8 @@ export const CodeModeTool = Tool.define(
         }
         const agent = yield* agents.get(ctx.agent)
         const session = yield* sessions.get(ctx.sessionID).pipe(Effect.orDie)
-        const ruleset = Permission.merge(agent.permission, session.permission ?? [])
-        const mcpTools = Permission.visibleTools(yield* mcp.tools(), ruleset)
+        const ruleset = PermissionRules.merge(agent.permission, session.permission ?? [])
+        const mcpTools = PermissionRules.visibleTools(yield* mcp.tools(), ruleset)
         const servers = Object.keys(yield* mcp.clients()).map(McpCatalog.sanitize)
         const catalog = [...groupByServer(mcpTools, servers).values()].flat()
 

@@ -15,6 +15,8 @@ import type {
   SessionsSwitchAgentOutput,
   SessionsSwitchModelInput,
   SessionsSwitchModelOutput,
+  SessionsSetApprovalInput,
+  SessionsSetApprovalOutput,
   SessionsPromptInput,
   SessionsPromptOutput,
   SessionsCompactInput,
@@ -371,6 +373,18 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
+      setApproval: (input: SessionsSetApprovalInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionsSetApprovalOutput }>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/approval`,
+            body: { approval: input["approval"] },
+            successStatus: 200,
+            declaredStatuses: [404, 400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
       prompt: (input: SessionsPromptInput, requestOptions?: RequestOptions) =>
         request<{ readonly data: SessionsPromptOutput }>(
           {

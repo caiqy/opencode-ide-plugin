@@ -7,6 +7,9 @@ import { AgentV2 } from "../agent"
 import { Global } from "../global"
 import { Location } from "../location"
 import { PermissionV2 } from "../permission"
+import { ModelV2 } from "../model"
+import { ProviderV2 } from "../provider"
+import { Approval } from "../approval"
 
 const TRUNCATION_GLOB = path.join(Global.Path.data, "tool-output", "*")
 const BUILD_SYSTEM =
@@ -174,6 +177,20 @@ export const Plugin = define({
             ],
             readonlyExternalDirectory,
           ),
+        )
+      })
+
+      draft.update(AgentV2.ID.make("approval"), (item) => {
+        item.description = "Hidden agent that decides whether a permission request is safe to allow."
+        item.model = { providerID: ProviderV2.ID.openai, id: ModelV2.ID.make("gpt-5.6-luna") }
+        item.system = Approval.policy
+        item.mode = "subagent"
+        item.hidden = true
+        item.permissions.push(
+          { action: "*", resource: "*", effect: "deny" },
+          { action: "read", resource: "*", effect: "allow" },
+          { action: "glob", resource: "*", effect: "allow" },
+          { action: "grep", resource: "*", effect: "allow" },
         )
       })
 

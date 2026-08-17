@@ -33,7 +33,7 @@ let afterEditApproval = (): Effect.Effect<void> => Effect.void
 const permission = Layer.succeed(
   PermissionV2.Service,
   PermissionV2.Service.of({
-    assert: (input) =>
+     assert: (input) =>
       Effect.sync(() => {
         assertions.push(input)
         if (input.action === "edit") editApproved = true
@@ -43,7 +43,8 @@ const permission = Layer.succeed(
           input.action === denyAction ? Effect.fail(new PermissionV2.BlockedError({ rules: [] })) : Effect.void,
         ),
       ),
-    ask: () => Effect.die("unused"),
+     setApproval: () => Effect.die("unused"),
+     ask: () => Effect.die("unused"),
     reply: () => Effect.die("unused"),
     get: () => Effect.die("unused"),
     forSession: () => Effect.die("unused"),

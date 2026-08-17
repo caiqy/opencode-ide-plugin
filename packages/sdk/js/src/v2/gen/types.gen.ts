@@ -3922,6 +3922,7 @@ export type SessionV2Info = {
   projectID: string
   agent?: string
   model?: ModelRef
+  approval?: "manual" | "automatic" | "full"
   cost: number
   tokens: {
     input: number
@@ -11825,6 +11826,45 @@ export type V2SessionSwitchModelResponses = {
 }
 
 export type V2SessionSwitchModelResponse = V2SessionSwitchModelResponses[keyof V2SessionSwitchModelResponses]
+
+export type V2SessionSetApprovalData = {
+  body: {
+    approval: "manual" | "automatic" | "full"
+  }
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/approval"
+}
+
+export type V2SessionSetApprovalErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+}
+
+export type V2SessionSetApprovalError = V2SessionSetApprovalErrors[keyof V2SessionSetApprovalErrors]
+
+export type V2SessionSetApprovalResponses = {
+  /**
+   * Success
+   */
+  200: {
+    data: SessionV2Info
+  }
+}
+
+export type V2SessionSetApprovalResponse = V2SessionSetApprovalResponses[keyof V2SessionSetApprovalResponses]
 
 export type V2SessionPromptData = {
   body: {

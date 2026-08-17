@@ -22,6 +22,8 @@ import { SessionInput } from "@opencode-ai/core/session/input"
 import { SessionInputTable, SessionMessageTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { testEffect } from "./lib/effect"
 import { Snapshot } from "@opencode-ai/core/snapshot"
+import { Approval } from "@opencode-ai/core/approval"
+import { SessionV1 } from "@opencode-ai/core/v1/session"
 
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, EventV2.node, SessionProjector.node])))
 const sessionsLayer = AppNodeBuilder.build(SessionV2.node, [[SessionExecution.node, SessionExecution.noopLayer]])
@@ -44,6 +46,42 @@ const assistantRow = (
 }
 
 describe("SessionProjector", () => {
+  it.effect("clears runtime approval state when deleting a session", () =>
+    Effect.gen(function* () {
+      const { db } = yield* Database.Service
+      const info = {
+        id: sessionID,
+        projectID: Project.ID.global,
+        slug: "test",
+        directory: "/project",
+        title: "test",
+        version: "test",
+        time: { created: 0, updated: 0 },
+      }
+      yield* db
+        .insert(ProjectTable)
+        .values({ id: Project.ID.global, worktree: AbsolutePath.make("/project"), sandboxes: [] })
+        .run()
+      yield* db
+        .insert(SessionTable)
+        .values({
+          id: sessionID,
+          project_id: Project.ID.global,
+          slug: "test",
+          directory: "/project",
+          title: "test",
+          version: "test",
+        })
+        .run()
+        .pipe(Effect.orDie)
+      Approval.runtime.set(sessionID, "full")
+
+      yield* (yield* EventV2.Service).publish(SessionV1.Event.Deleted, { sessionID, info })
+
+      expect(Approval.runtime.get(sessionID)).toBeUndefined()
+    }).pipe(Effect.ensuring(Effect.sync(() => Approval.runtime.clear(sessionID)))),
+  )
+
   it.effect("projects staged, cleared, and committed reverts", () =>
     Effect.gen(function* () {
       const db = (yield* Database.Service).db

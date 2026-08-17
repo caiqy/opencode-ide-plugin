@@ -24,6 +24,7 @@ import { SessionEvent } from "@opencode-ai/core/session/event"
 import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionStore } from "@opencode-ai/core/session/store"
 import { WorkspaceV2 } from "@opencode-ai/core/workspace"
+import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
 import { testEffect } from "./lib/effect"
 import { tmpdir } from "./fixture/tmpdir"
 
@@ -90,6 +91,33 @@ describe("SessionV2.create", () => {
           model,
         }),
       ).toMatchObject({ location: { directory: location.directory, workspaceID }, agent: "build", model })
+    }),
+  )
+
+  it.effect("persists the selected approval mode without changing other session permissions", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionV2.Service
+      const { db } = yield* Database.Service
+      const created = yield* session.create({ location })
+      yield* db
+        .update(SessionTable)
+        .set({ permission: [{ permission: "bash", pattern: "git *", action: "allow" }] })
+        .where(eq(SessionTable.id, created.id))
+        .run()
+        .pipe(Effect.orDie)
+
+      const updated = yield* session.setApproval({ sessionID: created.id, approval: "automatic" })
+
+      expect(updated.approval).toBe("automatic")
+      expect(yield* session.get(created.id)).toMatchObject({ approval: "automatic" })
+      expect(
+        yield* db.select({ permission: SessionTable.permission }).from(SessionTable).where(eq(SessionTable.id, created.id)).get(),
+      ).toEqual({
+        permission: [
+          { permission: "bash", pattern: "git *", action: "allow" },
+          ApprovalV1.rule("automatic"),
+        ],
+      })
     }),
   )
 

@@ -74,6 +74,7 @@ const layer = Layer.effectDiscard(
                     ...LocationMutation.externalDirectoryPermission(external),
                     sessionID: context.sessionID,
                     agent: context.agent,
+                    metadata: { tool: name },
                     source,
                   })
                 yield* permission.assert({
@@ -82,6 +83,7 @@ const layer = Layer.effectDiscard(
                   save: ["*"],
                   sessionID: context.sessionID,
                   agent: context.agent,
+                  metadata: { tool: name },
                   source,
                 })
                 return yield* files.writeTextPreservingBom({ target, content: input.content })

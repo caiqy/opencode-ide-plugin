@@ -16,6 +16,7 @@ let sessionIdle = true
 let sessionIdleById: Record<string, boolean> = {}
 let selectionSessionId: string | null = null
 let currentSessionId: string | null = null
+let currentSessionPermission: Array<{ permission: string; pattern: string; action: string }> | undefined
 let selectedProviderId = "openai"
 let selectedModelId = "gpt-4.1"
 let selectedAgent = "build"
@@ -53,6 +54,9 @@ const mocks = vi.hoisted(() => {
         },
       },
     })),
+    setApproval: vi.fn(),
+    setCurrentSession: vi.fn(),
+    showToast: vi.fn(),
   }
 })
 
@@ -215,7 +219,8 @@ vi.mock("../../state/SessionContext", () => {
     useSession: () => ({
       isIdle: sessionIdle,
       isSessionIdle: (sessionID: string) => sessionIdleById[sessionID] ?? sessionIdle,
-      currentSession: currentSessionId ? { id: currentSessionId } : null,
+      currentSession: currentSessionId ? { id: currentSessionId, permission: currentSessionPermission } : null,
+      setCurrentSession: mocks.setCurrentSession,
       selectedProviderId,
       selectedModelId,
       selectedAgent,
@@ -229,6 +234,10 @@ vi.mock("../../state/SessionContext", () => {
     }),
   }
 })
+
+vi.mock("../../state/ToastContext", () => ({
+  useToast: () => ({ showToast: mocks.showToast }),
+}))
 
 vi.mock("../../state/ProjectContext", () => {
   return {
@@ -256,6 +265,9 @@ vi.mock("../../lib/api/sdkClient", () => {
     sdk: {
       config: {
         providers: vi.fn().mockResolvedValue({ data: null, error: null }),
+      },
+      session: {
+        setApproval: mocks.setApproval,
       },
     },
   }
@@ -285,6 +297,7 @@ describe("MessageInput compact confirm", () => {
     sessionIdleById = {}
     selectionSessionId = null
     currentSessionId = null
+    currentSessionPermission = undefined
     selectedProviderId = "openai"
     selectedModelId = "gpt-4.1"
     selectedAgent = "build"
@@ -312,6 +325,9 @@ describe("MessageInput compact confirm", () => {
     mocks.handleCompact.mockReset()
     mocks.handleCompact.mockImplementation((done: () => void) => done())
     mocks.loadQuickPhraseState.mockImplementation(async () => new Promise(() => {}))
+    mocks.setApproval.mockReset()
+    mocks.setCurrentSession.mockReset()
+    mocks.showToast.mockReset()
   })
 
   it("会在输入框上方渲染快捷短语栏", async () => {
@@ -328,6 +344,125 @@ describe("MessageInput compact confirm", () => {
         body: "请总结改动",
       },
     ])
+  })
+
+  it("从当前 Session 恢复审批模式并持久化切换", async () => {
+    currentSessionId = "s1"
+    currentSessionPermission = [
+      { permission: "opencode_approval_mode", pattern: "automatic", action: "ask" },
+    ]
+    const updated = {
+      id: "s1",
+      permission: [{ permission: "opencode_approval_mode", pattern: "full", action: "ask" }],
+    }
+    mocks.setApproval.mockResolvedValue({ data: updated, error: null })
+
+    render(<MessageInput sessionID="s1" />)
+
+    expect(lastEditorToolbarProps.approvalMode).toBe("automatic")
+    await act(async () => lastEditorToolbarProps.onApprovalSelect("full"))
+    expect(mocks.setApproval).toHaveBeenCalledWith({ sessionID: "s1", approval: "full" })
+    expect(mocks.setCurrentSession).toHaveBeenCalledWith(updated)
+  })
+
+  it("忽略切换 Session 后才返回的旧审批响应", async () => {
+    currentSessionId = "s1"
+    let resolve!: (value: unknown) => void
+    mocks.setApproval.mockReturnValue(new Promise((done) => (resolve = done)))
+    const { rerender } = render(<MessageInput sessionID="s1" />)
+
+    let pending!: Promise<void>
+    act(() => {
+      pending = lastEditorToolbarProps.onApprovalSelect("full")
+    })
+    currentSessionId = "s2"
+    rerender(<MessageInput sessionID="s2" />)
+    await act(async () => resolve({ data: { id: "s1" }, error: null }))
+    await pending
+
+    expect(mocks.setCurrentSession).not.toHaveBeenCalled()
+  })
+
+it("审批切换异常后恢复控件并显示错误", async () => {
+    currentSessionId = "s1"
+    mocks.setApproval.mockRejectedValue(new Error("offline"))
+    render(<MessageInput sessionID="s1" />)
+
+    await act(async () => lastEditorToolbarProps.onApprovalSelect("automatic"))
+
+    expect(lastEditorToolbarProps.approvalPending).toBe(false)
+    expect(mocks.showToast).toHaveBeenCalledWith("切换审批模式失败", { variant: "error" })
+  })
+
+  it("A 审批挂起时切到 B，B 的审批模式选择器不被禁用", async () => {
+    currentSessionId = "s1"
+    mocks.setApproval.mockReturnValue(new Promise(() => {}))
+    const { rerender } = render(<MessageInput sessionID="s1" />)
+
+    act(() => {
+      lastEditorToolbarProps.onApprovalSelect("full")
+    })
+    expect(lastEditorToolbarProps.approvalPending).toBe(true)
+
+    currentSessionId = "s2"
+    rerender(<MessageInput sessionID="s2" />)
+
+    expect(lastEditorToolbarProps.approvalPending).toBe(false)
+  })
+
+  it("A 的旧请求 finally 不清除 B 的 pending", async () => {
+    currentSessionId = "s1"
+    let resolveA!: (value: unknown) => void
+    let resolveB!: (value: unknown) => void
+    mocks.setApproval.mockImplementation(() => {
+      if (!resolveA) return new Promise((done) => (resolveA = done))
+      return new Promise((done) => (resolveB = done))
+    })
+    const { rerender } = render(<MessageInput sessionID="s1" />)
+
+    act(() => {
+      lastEditorToolbarProps.onApprovalSelect("full")
+    })
+    expect(mocks.setApproval).toHaveBeenCalledTimes(1)
+
+    currentSessionId = "s2"
+    rerender(<MessageInput sessionID="s2" />)
+    act(() => {
+      lastEditorToolbarProps.onApprovalSelect("automatic")
+    })
+    expect(mocks.setApproval).toHaveBeenCalledTimes(2)
+
+    await act(async () => resolveA({ data: { id: "s1", permission: [] }, error: null }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(lastEditorToolbarProps.approvalPending).toBe(true)
+
+    await act(async () => resolveB({ data: { id: "s2", permission: [] }, error: null }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(lastEditorToolbarProps.approvalPending).toBe(false)
+  })
+
+  it("没有有效 session 时禁用审批模式选择器", () => {
+    render(<MessageInput sessionID={null} />)
+
+    expect(lastEditorToolbarProps.approvalDisabled).toBe(true)
+  })
+
+  it("currentSession 与 sessionID 不匹配时禁用审批模式选择器", () => {
+    currentSessionId = "s2"
+    render(<MessageInput sessionID="s1" />)
+
+    expect(lastEditorToolbarProps.approvalDisabled).toBe(true)
+  })
+
+  it("有效 session 时审批模式选择器可用", () => {
+    currentSessionId = "s1"
+    render(<MessageInput sessionID="s1" />)
+
+    expect(lastEditorToolbarProps.approvalDisabled).toBe(false)
   })
 
   it("深色主题下编辑区使用较浅背景与正文分层", () => {

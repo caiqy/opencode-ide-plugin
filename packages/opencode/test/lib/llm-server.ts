@@ -96,12 +96,12 @@ function finishLine(reason: string, usage?: Usage) {
   return chunk({ finish: reason, usage })
 }
 
-function toolStartLine(id: string, name: string) {
+function toolStartLine(id: string, name: string, index: number) {
   return chunk({
     delta: {
       tool_calls: [
         {
-          index: 0,
+          index,
           id,
           type: "function",
           function: {
@@ -114,12 +114,12 @@ function toolStartLine(id: string, name: string) {
   })
 }
 
-function toolArgsLine(value: string) {
+function toolArgsLine(value: string, index: number) {
   return chunk({
     delta: {
       tool_calls: [
         {
-          index: 0,
+          index,
           function: {
             arguments: value,
           },
@@ -228,11 +228,11 @@ function responseReasonDone(id: string, seq: number) {
   }
 }
 
-function responseTool(id: string, item: string, name: string, seq: number) {
+function responseTool(id: string, item: string, name: string, seq: number, outputIndex: number) {
   return {
     type: "response.output_item.added",
     sequence_number: seq,
-    output_index: 0,
+    output_index: outputIndex,
     item: {
       type: "function_call",
       id: item,
@@ -244,31 +244,21 @@ function responseTool(id: string, item: string, name: string, seq: number) {
   }
 }
 
-function responseToolArgs(id: string, text: string, seq: number) {
+function responseToolArgs(id: string, text: string, seq: number, outputIndex: number) {
   return {
     type: "response.function_call_arguments.delta",
     sequence_number: seq,
-    output_index: 0,
+    output_index: outputIndex,
     item_id: id,
     delta: text,
   }
 }
 
-function responseToolArgsDone(id: string, args: string, seq: number) {
-  return {
-    type: "response.function_call_arguments.done",
-    sequence_number: seq,
-    output_index: 0,
-    item_id: id,
-    arguments: args,
-  }
-}
-
-function responseToolDone(tool: { id: string; item: string; name: string; args: string }, seq: number) {
+function responseToolDone(tool: { id: string; item: string; name: string; args: string }, seq: number, outputIndex: number) {
   return {
     type: "response.output_item.done",
     sequence_number: seq,
-    output_index: 0,
+    output_index: outputIndex,
     item: {
       type: "function_call",
       id: tool.item,
@@ -335,14 +325,10 @@ function responses(item: Sse, model: string) {
   let reason: string | undefined
   let hasMsg = false
   let hasReason = false
-  let call:
-    | {
-        id: string
-        item: string
-        name: string
-        args: string
-      }
-    | undefined
+  // A round can contain several parallel tool calls (e.g. Guardian decision
+  // mixed with an investigation tool); each call gets its own output item.
+  const calls: { id: string; item: string; name: string; args: string }[] = []
+  let current = -1
   let usage: Usage | undefined
   const lines: unknown[] = [responseCreated(model)]
 
@@ -374,17 +360,18 @@ function responses(item: Sse, model: string) {
     }
 
     if (part.type === "tool-start") {
-      call ||= { id: part.id, item: "fc_1", name: part.name, args: "" }
+      calls.push({ id: part.id, item: `fc_${calls.length + 1}`, name: part.name, args: "" })
+      current = calls.length - 1
       seq += 1
-      lines.push(responseTool(call.id, call.item, call.name, seq))
+      lines.push(responseTool(calls[current]!.id, calls[current]!.item, calls[current]!.name, seq, current))
       continue
     }
 
     if (part.type === "tool-args") {
-      if (!call) continue
-      call.args += part.text
+      if (current === -1) continue
+      calls[current]!.args += part.text
       seq += 1
-      lines.push(responseToolArgs(call.item, part.text, seq))
+      lines.push(responseToolArgs(calls[current]!.item, part.text, seq, current))
       continue
     }
 
@@ -399,11 +386,10 @@ function responses(item: Sse, model: string) {
     seq += 1
     lines.push(responseReasonDone(reason, seq))
   }
-  if (call && !item.hang && !item.error) {
+  for (const [index, call] of calls.entries()) {
+    if (item.hang || item.error) break
     seq += 1
-    lines.push(responseToolArgsDone(call.item, call.args, seq))
-    seq += 1
-    lines.push(responseToolDone(call, seq))
+    lines.push(responseToolDone(call, seq, index))
   }
   if (!item.hang && !item.error) lines.push(responseCompleted({ seq: seq + 1, usage }))
   return { ...item, head: lines, tail: [] } satisfies Sse
@@ -459,10 +445,17 @@ export class Reply {
   #error: unknown
   #reset = false
   #seq = 0
+  #toolIndex = 0
 
   #id() {
     this.#seq += 1
     return `call_${this.#seq}`
+  }
+
+  #index() {
+    const index = this.#toolIndex
+    this.#toolIndex += 1
+    return index
   }
 
   text(value: string) {
@@ -511,16 +504,18 @@ export class Reply {
 
   tool(name: string, input: unknown) {
     const id = this.#id()
+    const index = this.#index()
     const args = JSON.stringify(input)
-    this.#tail = [...this.#tail, toolStartLine(id, name), toolArgsLine(args)]
+    this.#tail = [...this.#tail, toolStartLine(id, name, index), toolArgsLine(args, index)]
     return this.toolCalls()
   }
 
   pendingTool(name: string, input: unknown) {
     const id = this.#id()
+    const index = this.#index()
     const args = JSON.stringify(input)
     const size = Math.max(1, Math.floor(args.length / 2))
-    this.#tail = [...this.#tail, toolStartLine(id, name), toolArgsLine(args.slice(0, size))]
+    this.#tail = [...this.#tail, toolStartLine(id, name, index), toolArgsLine(args.slice(0, size), index)]
     return this
   }
 

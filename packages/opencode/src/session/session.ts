@@ -1,5 +1,6 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
+import { Approval } from "@opencode-ai/core/approval"
 import { Slug } from "@opencode-ai/core/util/slug"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
@@ -640,27 +641,31 @@ const layer: Layer.Layer<
       return rows.map(fromRow)
     })
 
-    const remove: Interface["remove"] = Effect.fnUntraced(function* (sessionID: SessionID) {
-      const session = yield* get(sessionID)
-      try {
-        // `remove` needs to work in all cases, such as broken sessions that
-        // run cleanup without instance state.
-        const hasInstance = yield* InstanceState.directory.pipe(
-          Effect.as(true),
-          Effect.catchCause(() => Effect.succeed(false)),
-        )
+    const remove: Interface["remove"] = Effect.fnUntraced(function* (sessionID) {
+      return yield* Approval.runtime.withUpdate(sessionID)(
+        Effect.gen(function* () {
+          const session = yield* get(sessionID)
+          try {
+            // `remove` needs to work in all cases, such as broken sessions that
+            // run cleanup without instance state.
+            const hasInstance = yield* InstanceState.directory.pipe(
+              Effect.as(true),
+              Effect.catchCause(() => Effect.succeed(false)),
+            )
 
-        if (hasInstance) yield* cancelBackgroundJobs(background, sessionID)
-        const kids = yield* children(sessionID)
-        for (const child of kids) {
-          yield* remove(child.id)
-        }
+            if (hasInstance) yield* cancelBackgroundJobs(background, sessionID)
+            const kids = yield* children(sessionID)
+            for (const child of kids) {
+              yield* remove(child.id)
+            }
 
-        yield* events.publish(SessionV1.Event.Deleted, { sessionID, info: session })
-        yield* events.remove(sessionID)
-      } catch (error) {
-        yield* Effect.logError("failed to remove session", { sessionID, error })
-      }
+            yield* events.publish(SessionV1.Event.Deleted, { sessionID, info: session })
+            yield* events.remove(sessionID)
+          } catch (error) {
+            yield* Effect.logError("failed to remove session", { sessionID, error })
+          }
+        }),
+      )
     })
 
     const updateMessage = <T extends SessionV1.Info>(msg: T): Effect.Effect<T> =>

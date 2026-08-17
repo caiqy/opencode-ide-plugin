@@ -132,6 +132,11 @@ export const TaskTool = Tool.define(
       if (!next) {
         return yield* Effect.fail(new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`))
       }
+      if (next.hidden === true) {
+        return yield* Effect.fail(
+          new Error(`Agent type ${params.subagent_type} is hidden and cannot be spawned as a task`),
+        )
+      }
 
       const session = params.task_id
         ? yield* sessions.get(SessionID.make(params.task_id)).pipe(Effect.catchCause(() => Effect.succeed(undefined)))

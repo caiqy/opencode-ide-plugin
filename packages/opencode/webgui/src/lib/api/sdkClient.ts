@@ -5,6 +5,7 @@
 
 import { createOpencodeClient, type Config, type Part, type Provider, type Session } from "@opencode-ai/sdk/client"
 import type { PermissionRequest, QuestionRequest, UserMessage } from "@opencode-ai/sdk/v2/client"
+import type { ApprovalMode } from "../../state/approval"
 
 // Create a single SDK client instance on current origin
 const baseClient = createOpencodeClient({
@@ -81,6 +82,10 @@ interface PathResponse {
 type ApiResult<T> = {
   data: T | null
   error: { message: string; status?: number } | null
+}
+
+export type SessionWithApproval = Session & {
+  permission?: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>
 }
 
 type SessionListOptions = {
@@ -266,6 +271,28 @@ export async function setSessionPinned(options: {
   }
 }
 
+async function sessionSetApproval(input: {
+  sessionID: string
+  approval: ApprovalMode
+}): Promise<ApiResult<SessionWithApproval>> {
+  try {
+    const response = await fetch(`/session/${encodeURIComponent(input.sessionID)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        permission: [{ permission: "opencode_approval_mode", pattern: input.approval, action: "ask" }],
+      }),
+    })
+    if (!response.ok) return { data: null, error: { message: "Failed to update approval mode", status: response.status } }
+    return { data: (await response.json()) as SessionWithApproval, error: null }
+  } catch (error) {
+    return {
+      data: null,
+      error: { message: error instanceof Error ? error.message : "Failed to update approval mode" },
+    }
+  }
+}
+
 async function sessionRegenerateTitle(options: { path: { sessionID: string } }): Promise<ApiResult<Session>> {
   try {
     const response = await fetch(`/session/${encodeURIComponent(options.path.sessionID)}/title/regenerate`, {
@@ -415,6 +442,7 @@ export const sdk = {
   }),
   session: Object.assign(baseClient.session, {
     list: sessionList,
+    setApproval: sessionSetApproval,
     regenerateTitle: sessionRegenerateTitle,
     syncVisible: sessionSyncVisible,
     retry: async (options: { path: { sessionID: string } }) => {
@@ -488,6 +516,7 @@ export const sdk = {
     },
   }) as typeof baseClient.session & {
     list: (options?: SessionListOptions) => Promise<ApiResult<Session[]>>
+    setApproval: (input: { sessionID: string; approval: ApprovalMode }) => Promise<ApiResult<SessionWithApproval>>
     regenerateTitle: (options: { path: { sessionID: string } }) => Promise<ApiResult<Session>>
     syncVisible: (options: { body: { sessionIDs: string[] } }) => Promise<ApiResult<{ sessionIDs: string[] }>>
     retry: (options: { path: { sessionID: string } }) => Promise<any>

@@ -12,6 +12,9 @@ import {
   UnknownError,
 } from "@opencode-ai/protocol/errors"
 import { AbsolutePath } from "@opencode-ai/core/schema"
+import { PermissionV2 } from "@opencode-ai/core/permission"
+import { LocationServiceMap } from "@opencode-ai/core/location-service-map"
+import { Approval } from "@opencode-ai/core/approval"
 
 const DefaultSessionsLimit = 50
 const DefaultSessionHistoryLimit = 50
@@ -19,6 +22,7 @@ const DefaultSessionHistoryLimit = 50
 export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handlers) =>
   Effect.gen(function* () {
     const session = yield* SessionV2.Service
+    const locations = yield* LocationServiceMap.Service
 
     return handlers
       .handle(
@@ -135,6 +139,35 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
           )
           return HttpApiSchema.NoContent.make()
         }),
+      )
+      .handle(
+        "session.setApproval",
+        Effect.fn((ctx) =>
+          Approval.runtime.withUpdate(ctx.params.sessionID)(
+            Effect.uninterruptible(
+              Effect.gen(function* () {
+                const data = yield* session
+                  .setApproval({ sessionID: ctx.params.sessionID, approval: ctx.payload.approval })
+                  .pipe(
+                    Effect.catchTag("Session.NotFoundError", (error) =>
+                      Effect.fail(
+                        new SessionNotFoundError({
+                          sessionID: error.sessionID,
+                          message: `Session not found: ${error.sessionID}`,
+                        }),
+                      ),
+                    ),
+                  )
+                yield* PermissionV2.Service.use((permission) =>
+                  permission.setApproval({ sessionID: ctx.params.sessionID, approval: ctx.payload.approval }),
+                ).pipe(Effect.provide(locations.get(data.location)))
+                return {
+                  data,
+                }
+              }),
+            ),
+          ),
+        ),
       )
       .handle(
         "session.prompt",

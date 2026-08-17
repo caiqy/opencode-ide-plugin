@@ -15,7 +15,7 @@ import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_REVIEWER from "./prompt/reviewer.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
-import { Permission } from "@/permission"
+import { fromConfig, merge } from "@/permission/rules"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
 import path from "path"
@@ -33,6 +33,7 @@ import { instanceLocationServiceMapLayer } from "@/effect/instance-registry"
 import { Reference } from "@opencode-ai/core/reference"
 import { Location } from "@opencode-ai/core/location"
 import { PluginV2 } from "@opencode-ai/core/plugin"
+import { ApprovalAgent } from "./approval-config"
 
 export const Info = Schema.Struct({
   name: Schema.String,
@@ -63,7 +64,9 @@ const GeneratedAgent = Schema.Struct({
   systemPrompt: Schema.String,
 })
 
-const reviewerPermission = Permission.fromConfig({
+const approvalPermission = fromConfig({ "*": "deny", read: "allow", grep: "allow", glob: "allow" })
+
+const reviewerPermission = fromConfig({
   "*": "deny",
   read: "allow",
   grep: "allow",
@@ -80,15 +83,15 @@ export function canUseTool(agent: Info, tool: string) {
 }
 
 export function finalPermission(agent: Info, sessionPermission: PermissionV1.Ruleset = []) {
-  const ruleset = Permission.merge(agent.permission, sessionPermission)
+  const ruleset = merge(agent.permission, sessionPermission)
   if (!isReviewer(agent)) return ruleset
-  return Permission.merge(ruleset, reviewerPermission)
+  return merge(ruleset, reviewerPermission)
 }
 
 export function toolPermission(agent: Info, sessionPermission: PermissionV1.Ruleset, tool: string) {
   const ruleset = finalPermission(agent, sessionPermission)
   if (canUseTool(agent, tool)) return ruleset
-  return Permission.merge(ruleset, Permission.fromConfig({ "*": "deny" }))
+  return merge(ruleset, fromConfig({ "*": "deny" }))
 }
 
 export interface Interface {
@@ -147,7 +150,7 @@ const layer = Layer.effect(
           ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
         } satisfies Record<string, "allow" | "ask" | "deny">
 
-        const defaults = Permission.fromConfig({
+        const defaults = fromConfig({
           "*": "allow",
           doom_loop: "ask",
           external_directory: {
@@ -166,16 +169,16 @@ const layer = Layer.effect(
           },
         })
 
-        const user = Permission.fromConfig(cfg.permission ?? {})
+        const user = fromConfig(cfg.permission ?? {})
 
         const agents: Record<string, Info> = {
           build: {
             name: "build",
             description: "The default agent. Executes tools based on configured permissions.",
             options: {},
-            permission: Permission.merge(
+            permission: merge(
               defaults,
-              Permission.fromConfig({
+              fromConfig({
                 question: "allow",
                 plan_enter: "allow",
               }),
@@ -188,9 +191,9 @@ const layer = Layer.effect(
             name: "plan",
             description: "Plan mode. Disallows all edit tools.",
             options: {},
-            permission: Permission.merge(
+            permission: merge(
               defaults,
-              Permission.fromConfig({
+              fromConfig({
                 question: "allow",
                 plan_exit: "allow",
                 task: {
@@ -213,9 +216,9 @@ const layer = Layer.effect(
           general: {
             name: "general",
             description: `General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.`,
-            permission: Permission.merge(
+            permission: merge(
               defaults,
-              Permission.fromConfig({
+              fromConfig({
                 todowrite: "deny",
               }),
               user,
@@ -226,9 +229,9 @@ const layer = Layer.effect(
           },
           explore: {
             name: "explore",
-            permission: Permission.merge(
+            permission: merge(
               defaults,
-              Permission.fromConfig({
+              fromConfig({
                 "*": "deny",
                 grep: "allow",
                 glob: "allow",
@@ -249,7 +252,7 @@ const layer = Layer.effect(
           },
           reviewer: {
             name: "reviewer",
-            permission: Permission.merge(defaults, reviewerPermission, user),
+            permission: merge(defaults, reviewerPermission, user),
             description:
               "Read-only review agent for checking task completion, architecture quality, code quality, necessary comments, risks, and test gaps during implementation or after changes are complete.",
             prompt: PROMPT_REVIEWER,
@@ -257,15 +260,26 @@ const layer = Layer.effect(
             mode: "subagent",
             native: true,
           },
+          approval: {
+            name: "approval",
+            description: "Hidden agent that decides whether a permission request is safe to allow.",
+            permission: approvalPermission,
+            prompt: ApprovalAgent.prompt,
+            model: ApprovalAgent.resolve().model,
+            options: {},
+            mode: "subagent",
+            native: true,
+            hidden: true,
+          },
           compaction: {
             name: "compaction",
             mode: "primary",
             native: true,
             hidden: true,
             prompt: PROMPT_COMPACTION,
-            permission: Permission.merge(
+            permission: merge(
               defaults,
-              Permission.fromConfig({
+              fromConfig({
                 "*": "deny",
               }),
               user,
@@ -279,9 +293,9 @@ const layer = Layer.effect(
             native: true,
             hidden: true,
             temperature: 0.5,
-            permission: Permission.merge(
+            permission: merge(
               defaults,
-              Permission.fromConfig({
+              fromConfig({
                 "*": "deny",
               }),
               user,
@@ -294,9 +308,9 @@ const layer = Layer.effect(
             options: {},
             native: true,
             hidden: true,
-            permission: Permission.merge(
+            permission: merge(
               defaults,
-              Permission.fromConfig({
+              fromConfig({
                 "*": "deny",
               }),
               user,
@@ -306,16 +320,23 @@ const layer = Layer.effect(
         }
 
         for (const [key, value] of Object.entries(cfg.agent ?? {})) {
-          if (value.disable) {
+          if (key === "approval") {
+            const resolved = ApprovalAgent.resolve(value)
+            agents.approval.model = resolved.model
+            agents.approval.variant = resolved.variant
+            continue
+          }
+          if (value.disable && key !== "approval") {
             delete agents[key]
             continue
           }
+          if (value.disable) continue
           let item = agents[key]
           if (!item)
             item = agents[key] = {
               name: key,
               mode: "all",
-              permission: Permission.merge(defaults, user),
+              permission: merge(defaults, user),
               options: {},
               native: false,
             }
@@ -331,7 +352,7 @@ const layer = Layer.effect(
           item.name = value.name ?? item.name
           item.steps = value.steps ?? item.steps
           item.options = mergeDeep(item.options, value.options ?? {})
-          item.permission = Permission.merge(item.permission, Permission.fromConfig(value.permission ?? {}))
+          item.permission = merge(item.permission, fromConfig(value.permission ?? {}))
         }
 
         // Ensure Truncate.GLOB is allowed unless explicitly configured
@@ -344,9 +365,9 @@ const layer = Layer.effect(
           })
           if (explicit) continue
 
-          agents[name].permission = Permission.merge(
+          agents[name].permission = merge(
             agents[name].permission,
-            Permission.fromConfig({ external_directory: { [Truncate.GLOB]: "allow" } }),
+            fromConfig({ external_directory: { [Truncate.GLOB]: "allow" } }),
           )
         }
 
@@ -357,6 +378,14 @@ const layer = Layer.effect(
           agents.reviewer.mode = "subagent"
           agents.reviewer.permission = reviewerPermission
         }
+
+        agents.approval.name = "approval"
+        agents.approval.native = true
+        agents.approval.hidden = true
+        agents.approval.mode = "subagent"
+        agents.approval.permission = approvalPermission
+        agents.approval.prompt = ApprovalAgent.prompt
+        agents.approval.options = {}
 
         const get = Effect.fnUntraced(function* (agent: string) {
           return agents[agent]

@@ -19,7 +19,7 @@ import { Config } from "@/config/config"
 import { ConfigMCPV1 } from "@opencode-ai/core/v1/config/mcp"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
-import { Permission } from "@/permission"
+import { PermissionRules } from "@/permission/rules"
 import { withTimeout } from "@/util/timeout"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { McpOAuthPendingProvider, McpOAuthProvider, OAUTH_CALLBACK_PATH } from "./oauth-provider"
@@ -733,9 +733,9 @@ const layer = Layer.effect(
     const toolsByServer = Effect.fn("MCP.toolsByServer")(function* (name: string) {
       const s = yield* InstanceState.get(state)
       const cfg = yield* cfgSvc.get()
-      const disabled = Permission.disabled(
+      const disabled = PermissionRules.disabled(
         (s.defs[name] ?? []).map((def) => McpCatalog.toolName(name, def.name)),
-        Permission.fromConfig(cfg.permission ?? {}),
+        PermissionRules.fromConfig(cfg.permission ?? {}),
       )
       return {
         connected: s.status[name]?.status === "connected",

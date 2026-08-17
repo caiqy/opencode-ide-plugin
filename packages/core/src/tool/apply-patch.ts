@@ -110,6 +110,7 @@ const layer = Layer.effectDiscard(
                     ...LocationMutation.externalDirectoryPermission(external),
                     sessionID: context.sessionID,
                     agent: context.agent,
+                    metadata: { tool: name },
                     source,
                   })
                 }
@@ -119,6 +120,7 @@ const layer = Layer.effectDiscard(
                   save: ["*"],
                   sessionID: context.sessionID,
                   agent: context.agent,
+                  metadata: { tool: name },
                   source,
                 })
 

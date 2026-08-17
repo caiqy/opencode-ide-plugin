@@ -393,6 +393,8 @@ import type {
   V2SessionRevertCommitResponses,
   V2SessionRevertStageErrors,
   V2SessionRevertStageResponses,
+  V2SessionSetApprovalErrors,
+  V2SessionSetApprovalResponses,
   V2SessionSwitchAgentErrors,
   V2SessionSwitchAgentResponses,
   V2SessionSwitchModelErrors,
@@ -5914,6 +5916,45 @@ export class Session3 extends HeyApiClient {
       ThrowOnError
     >({
       url: "/api/session/{sessionID}/model",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Set session approval mode
+   *
+   * Set the tool approval mode for this session.
+   */
+  public setApproval<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      approval: "manual" | "automatic" | "full"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "body", key: "approval" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      V2SessionSetApprovalResponses,
+      V2SessionSetApprovalErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/approval",
       ...options,
       ...params,
       headers: {

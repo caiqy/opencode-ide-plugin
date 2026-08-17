@@ -15,6 +15,9 @@ export type ID = SessionID
 
 export const Event = SessionEvent
 
+export const Approval = Schema.Literals(["manual", "automatic", "full"])
+export type Approval = typeof Approval.Type
+
 export interface Info extends Schema.Schema.Type<typeof Info> {}
 export const Info = Schema.Struct({
   id: ID,
@@ -22,6 +25,7 @@ export const Info = Schema.Struct({
   projectID: Project.ID,
   agent: Agent.ID.pipe(optional),
   model: Model.Ref.pipe(optional),
+  approval: Approval.pipe(optional),
   cost: Schema.Finite,
   tokens: Schema.Struct({
     input: Schema.Finite,

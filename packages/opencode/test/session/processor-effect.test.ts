@@ -1,4 +1,5 @@
 import { SessionV1 } from "@opencode-ai/core/v1/session"
+import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -18,6 +19,7 @@ import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionStatus } from "../../src/session/status"
 import { SessionSummary } from "../../src/session/summary"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
+import { Permission } from "../../src/permission"
 import { provideTmpdirInstance, provideTmpdirServer } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { raw, reply, TestLLMServer } from "../lib/llm-server"
@@ -174,6 +176,7 @@ const root = LayerNode.group([
   EventV2Bridge.node,
   SessionStatus.node,
   CrossSpawnSpawner.node,
+  Permission.node,
 ])
 const replacements = [
   [SessionSummary.node, summary],
@@ -1229,5 +1232,112 @@ itContextOverflow.live("session.processor effect tests compact on classified pro
         expect(handle.message.error).toBeUndefined()
       }),
     { config: cfg },
+  ),
+)
+
+it.live("session.processor doom_loop ask respects the persisted approval mode on a cold start", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+        const permission = yield* Permission.Service
+        const chat = yield* session.create({ permission: [ApprovalV1.rule("full")] })
+        const parent = yield* user(chat.id, "hi")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({ assistantMessage: msg, sessionID: chat.id, model: mdl })
+
+        yield* llm.push(
+          reply().tool("bash", { command: "ls" }).tool("bash", { command: "ls" }).tool("bash", { command: "ls" }),
+        )
+
+        const run = yield* handle
+          .process({
+            user: {
+              id: parent.id,
+              sessionID: chat.id,
+              role: "user",
+              time: parent.time,
+              agent: parent.agent,
+              model: { providerID: ref.providerID, modelID: ref.modelID },
+            } satisfies SessionV1.User,
+            sessionID: chat.id,
+            model: mdl,
+            agent: agent(),
+            system: [],
+            messages: [{ role: "user", content: "hi" }],
+            tools: {
+              bash: tool({
+                description: "run a command",
+                inputSchema: z.object({ command: z.string() }),
+                execute: async () => ({ title: "ok", output: "ran", metadata: {} }),
+              }),
+            },
+          })
+          .pipe(Effect.forkScoped)
+
+        const stop = Date.now() + 3000
+        while (Date.now() < stop) {
+          if (run.pollUnsafe() !== undefined) break
+          const pending = yield* permission.list()
+          if (pending.length > 0) {
+            for (const req of pending) yield* permission.reply({ requestID: req.id, reply: "reject" })
+            throw new Error("doom_loop produced a pending permission request in full access mode")
+          }
+          yield* Effect.sleep("10 millis")
+        }
+        expect(Exit.isSuccess(yield* Fiber.await(run))).toBe(true)
+        expect(yield* permission.list()).toEqual([])
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
+it.live("session.processor doom_loop sends the repeated tool name to Guardian", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+        const chat = yield* session.create({ permission: [ApprovalV1.rule("automatic")] })
+        const parent = yield* user(chat.id, "hi")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({ assistantMessage: msg, sessionID: chat.id, model: mdl })
+        yield* llm.push(
+          reply().tool("bash", { command: "ls" }).tool("bash", { command: "ls" }).tool("bash", { command: "ls" }),
+          reply().tool("guardian_decision", {
+            risk_level: "low",
+            user_authorization: "high",
+            outcome: "allow",
+            rationale: "The repeated command is authorized.",
+          }),
+        )
+
+        yield* handle.process({
+          user: {
+            id: parent.id,
+            sessionID: chat.id,
+            role: "user",
+            time: parent.time,
+            agent: parent.agent,
+            model: { providerID: ref.providerID, modelID: ref.modelID },
+          } satisfies SessionV1.User,
+          sessionID: chat.id,
+          model: mdl,
+          agent: agent(),
+          system: [],
+          messages: [{ role: "user", content: "hi" }],
+          tools: {
+            bash: tool({
+              description: "run a command",
+              inputSchema: z.object({ command: z.string() }),
+              execute: async () => ({ title: "ok", output: "ran", metadata: {} }),
+            }),
+          },
+        })
+
+        expect(JSON.stringify((yield* llm.inputs).at(-1))).toMatch(/\\"tool\\"\s*:\s*\\"bash\\"/)
+      }),
+    { config: (url) => ({ ...providerCfg(url), agent: { approval: { model: "test/test-model" } } }) },
   ),
 )

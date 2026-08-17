@@ -40,6 +40,12 @@ function expectOpenApiSessionVisibility(text: string) {
   })
 }
 
+function expectRequiredSetApproval(text: string) {
+  expect(text).toMatch(
+    /setApproval<ThrowOnError extends boolean = false>\(\s*parameters:\s*\{\s*sessionID:\s*string\s*[,;]?\s*approval:\s*"manual"\s*\|\s*"automatic"\s*\|\s*"full"\s*[,;]?\s*\}\s*,\s*options/,
+  )
+}
+
 describe("generated SDK contract", () => {
   test("v1 types include generated image relativePath", async () => {
     expectRelativePath(await read("./src/gen/types.gen.ts"))
@@ -55,5 +61,10 @@ describe("generated SDK contract", () => {
 
   test("checked-in openapi schema includes required session visibility payload", async () => {
     expectOpenApiSessionVisibility(await read("../openapi.json"))
+  })
+
+  test("v2 setApproval requires an approval payload in source and distribution types", async () => {
+    expectRequiredSetApproval(await read("./src/v2/gen/sdk.gen.ts"))
+    expectRequiredSetApproval(await read("./dist/v2/gen/sdk.gen.d.ts"))
   })
 })

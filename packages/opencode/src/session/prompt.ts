@@ -385,6 +385,8 @@ const layer = Layer.effect(
               .ask({
                 ...req,
                 sessionID,
+                metadata: { ...req.metadata, tool: "task" },
+                toolName: "task",
                 ruleset: Permission.merge(taskAgent.permission, session.permission ?? []),
               })
               .pipe(Effect.orDie),

@@ -1,17 +1,26 @@
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
+import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
 import { test, expect } from "bun:test"
 import os from "os"
+import path from "path"
 import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { Permission } from "../../src/permission"
+import { InstanceRef } from "../../src/effect/instance-ref"
 import { InstanceBootstrap } from "../../src/project/bootstrap"
 import { InstanceStore } from "../../src/project/instance-store"
-import { provideTmpdirInstance, TestInstance, tmpdirScoped } from "../fixture/fixture"
+import { provideTmpdirInstance, provideTmpdirServer, TestInstance, tmpdirScoped } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
-import { MessageID, SessionID } from "../../src/session/schema"
+import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { Approval } from "@opencode-ai/core/approval"
+import { Session } from "../../src/session/session"
+import { SessionProjector } from "@opencode-ai/core/session/projector"
+import { SessionV1 } from "@opencode-ai/core/v1/session"
+import { reply as llmReply, TestLLMServer } from "../lib/llm-server"
+import { testProviderConfig } from "../lib/test-provider"
 
 const noopBootstrap = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
 const env = AppNodeBuilder.build(
@@ -19,6 +28,21 @@ const env = AppNodeBuilder.build(
   [[InstanceStore.bootstrapNode, noopBootstrap]],
 )
 const it = testEffect(env)
+const testLLMServerNode = LayerNode.make({ service: TestLLMServer, layer: TestLLMServer.layer, deps: [] })
+const guardianIt = testEffect(
+  AppNodeBuilder.build(
+    LayerNode.group([
+      Permission.node,
+      EventV2Bridge.node,
+      CrossSpawnSpawner.node,
+      InstanceStore.node,
+      Session.node,
+      SessionProjector.node,
+      testLLMServerNode,
+    ]),
+    [[InstanceStore.bootstrapNode, noopBootstrap]],
+  ),
+)
 
 const rejectAll = (message?: string) =>
   Effect.gen(function* () {
@@ -76,6 +100,15 @@ const list = () =>
     const permission = yield* Permission.Service
     return yield* permission.list()
   })
+
+const createGuardianSession = Effect.fn("Test.createGuardianSession")(function* (title: string) {
+  return yield* (yield* Session.Service).create({ title, permission: [ApprovalV1.rule("automatic")] })
+})
+
+const guardianConfig = (url: string) => ({
+  ...testProviderConfig(url),
+  agent: { approval: { model: "test/test-model" } },
+})
 
 // fromConfig tests
 
@@ -558,6 +591,415 @@ test("disabled - specific allow overrides wildcard deny", () => {
 
 // ask tests
 
+guardianIt.live("automatic Guardian reviews Session transcript with a real read-tool continuation", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        yield* Effect.promise(() => Bun.write(path.join(dir, "README.md"), "guardian evidence"))
+        const sessions = yield* Session.Service
+        const session = yield* sessions.create({ title: "Guardian", permission: [ApprovalV1.rule("automatic")] })
+        const messageID = MessageID.ascending()
+        yield* sessions.updateMessage({
+          id: messageID,
+          sessionID: session.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "build",
+          model: { providerID: "test", modelID: "test-model" },
+          tools: {},
+          mode: "",
+        } as unknown as SessionV1.Info)
+        yield* sessions.updatePart({
+          id: PartID.ascending(),
+          sessionID: session.id,
+          messageID,
+          type: "text",
+          text: "Inspect README.md before approving this edit.",
+        })
+        expect(yield* sessions.messages({ sessionID: session.id, limit: 200 })).toHaveLength(1)
+        yield* llm.push(
+          llmReply().tool("glob", { pattern: "README.md" }),
+          llmReply().tool("guardian_decision", {
+            risk_level: "low",
+            user_authorization: "high",
+            outcome: "allow",
+            rationale: "The requested edit is scoped and reversible.",
+          }),
+        )
+        const permission = yield* Permission.Service
+        const review = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "edit",
+            patterns: ["src/index.ts"],
+            metadata: { tool: "write", reason: "Implement the requested change" },
+            always: [],
+            ruleset: session.permission ?? [],
+            toolName: "write",
+          })
+          .pipe(Effect.forkScoped)
+
+        yield* llm.wait(1)
+        yield* llm.wait(2)
+        yield* Fiber.join(review)
+        expect(yield* permission.list()).toEqual([])
+        const inputs = yield* llm.inputs
+        expect(JSON.stringify(inputs[0])).toContain("Inspect README.md before approving this edit.")
+        expect(
+          (inputs[0]?.messages as Array<{ role?: string; content?: string }>).find((message) => message.role === "user")
+            ?.content,
+        ).toContain(`"cwd": ${JSON.stringify(dir)}`)
+        expect(
+          ((inputs[0]?.tools ?? []) as Array<{ function?: { name?: string } }>)
+            .map((tool) => tool.function?.name)
+            .filter((name): name is string => name !== undefined)
+            .toSorted(),
+        ).toEqual(["glob", "grep", "guardian_decision", "read"])
+        expect(JSON.stringify(inputs[1])).toContain("README.md")
+      }),
+    {
+      git: true,
+      config: guardianConfig,
+    },
+  ),
+)
+
+guardianIt.live("automatic Guardian denies explicit risks and keeps uncertain results pending", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const permission = yield* Permission.Service
+        const denied = yield* createGuardianSession("Guardian deny")
+        yield* llm.tool("guardian_decision", {
+          risk_level: "high",
+          user_authorization: "unknown",
+          outcome: "deny",
+          rationale: "The destructive action was not authorized.",
+        })
+        expect(
+          yield* fail(
+            permission.ask({
+              sessionID: denied.id,
+              permission: "bash",
+              patterns: ["rm -rf important"],
+              metadata: { tool: "bash" },
+              always: [],
+              ruleset: denied.permission ?? [],
+              toolName: "bash",
+            }),
+          ),
+        ).toBeInstanceOf(PermissionV1.RejectedError)
+        expect(yield* permission.list()).toEqual([])
+
+        const uncertain = yield* createGuardianSession("Guardian ask")
+        yield* llm.tool("guardian_decision", {
+          risk_level: "medium",
+          user_authorization: "low",
+          outcome: "ask",
+          rationale: "The target is ambiguous.",
+        })
+        const review = yield* permission
+          .ask({
+            sessionID: uncertain.id,
+            permission: "edit",
+            patterns: ["src/index.ts"],
+            metadata: { tool: "write" },
+            always: [],
+            ruleset: uncertain.permission ?? [],
+            toolName: "write",
+          })
+          .pipe(Effect.forkScoped)
+        const pending = (yield* waitForPending(1))[0]!
+        expect(pending.sessionID).toBe(uncertain.id)
+        yield* permission.reply({ requestID: pending.id, reply: "reject" })
+        expect(Exit.isFailure(yield* Fiber.await(review))).toBe(true)
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
+
+guardianIt.live("automatic Guardian falls back after a failed investigation or the final decision turn", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const permission = yield* Permission.Service
+        const failed = yield* createGuardianSession("Guardian tool failure")
+        yield* llm.tool("glob", { pattern: "*", path: path.dirname(dir) })
+        const failedReview = yield* permission
+          .ask({
+            sessionID: failed.id,
+            permission: "edit",
+            patterns: ["src/index.ts"],
+            metadata: { tool: "write" },
+            always: [],
+            ruleset: failed.permission ?? [],
+            toolName: "write",
+          })
+          .pipe(Effect.forkScoped)
+        const failedPending = (yield* waitForPending(1))[0]!
+        yield* permission.reply({ requestID: failedPending.id, reply: "reject" })
+        expect(Exit.isFailure(yield* Fiber.await(failedReview))).toBe(true)
+
+        const exhausted = yield* createGuardianSession("Guardian exhausted")
+        yield* llm.push(
+          llmReply().tool("glob", { pattern: "README.md" }),
+          llmReply().tool("glob", { pattern: "README.md" }),
+          llmReply().tool("glob", { pattern: "README.md" }),
+          llmReply().tool("glob", { pattern: "README.md" }),
+        )
+        const exhaustedReview = yield* permission
+          .ask({
+            sessionID: exhausted.id,
+            permission: "edit",
+            patterns: ["src/index.ts"],
+            metadata: { tool: "write" },
+            always: [],
+            ruleset: exhausted.permission ?? [],
+            toolName: "write",
+          })
+          .pipe(Effect.forkScoped)
+        const exhaustedPending = (yield* waitForPending(1))[0]!
+        const inputs = yield* llm.inputs
+        expect(
+          ((inputs.at(-1)?.tools ?? []) as Array<{ function?: { name?: string } }>)
+            .map((tool) => tool.function?.name)
+            .filter((name): name is string => name !== undefined),
+        ).toEqual(["guardian_decision"])
+        yield* permission.reply({ requestID: exhaustedPending.id, reply: "reject" })
+        expect(Exit.isFailure(yield* Fiber.await(exhaustedReview))).toBe(true)
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
+
+const guardianFallback = (name: string, build: (dir: string) => ReturnType<typeof llmReply>[]) =>
+  guardianIt.live(name, () =>
+    provideTmpdirServer(
+      ({ dir, llm }) =>
+        Effect.gen(function* () {
+          const permission = yield* Permission.Service
+          const session = yield* createGuardianSession(`Guardian ${name}`)
+          yield* llm.push(...build(dir))
+          const review = yield* permission
+            .ask({
+              sessionID: session.id,
+              permission: "edit",
+              patterns: ["src/index.ts"],
+              metadata: { tool: "write" },
+              always: [],
+              ruleset: session.permission ?? [],
+              toolName: "write",
+            })
+            .pipe(Effect.forkScoped)
+          const pending = (yield* waitForPending(1))[0]!
+          expect(pending.permission).toBe("edit")
+          yield* permission.reply({ requestID: pending.id, reply: "reject" })
+          expect(Exit.isFailure(yield* Fiber.await(review))).toBe(true)
+        }),
+      { git: true, config: guardianConfig },
+    ),
+  )
+
+guardianIt.live(
+  "automatic Guardian binds builtin read/glob/grep over same-named custom tools",
+  () =>
+    provideTmpdirServer(
+      ({ dir, llm }) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() => Bun.write(path.join(dir, "README.md"), "guardian evidence"))
+          const toolDir = path.join(dir, ".opencode", "tool")
+          yield* Effect.promise(() =>
+            Bun.write(
+              path.join(toolDir, "read.ts"),
+              "export default { description: 'custom read', args: {}, execute: async () => 'CUSTOM READ OUTPUT' }",
+            ),
+          )
+          const session = yield* createGuardianSession("Guardian builtin tools")
+          yield* llm.push(
+            llmReply().tool("read", { filePath: path.join(dir, "README.md") }),
+            llmReply().tool("guardian_decision", {
+              risk_level: "low",
+              user_authorization: "high",
+              outcome: "allow",
+              rationale: "scoped and reversible",
+            }),
+          )
+          const permission = yield* Permission.Service
+          const review = yield* permission
+            .ask({
+              sessionID: session.id,
+              permission: "edit",
+              patterns: ["src/index.ts"],
+              metadata: { tool: "write" },
+              always: [],
+              ruleset: session.permission ?? [],
+              toolName: "write",
+            })
+            .pipe(Effect.forkScoped)
+          yield* llm.wait(2)
+          yield* Fiber.join(review)
+          const inputs = yield* llm.inputs
+          expect(JSON.stringify(inputs[1])).toContain("guardian evidence")
+          expect(JSON.stringify(inputs[1])).not.toContain("CUSTOM READ OUTPUT")
+        }),
+      { git: true, config: guardianConfig },
+    ),
+)
+
+guardianIt.live(
+  "automatic Guardian retains the first user request in a long session transcript",
+  () =>
+    provideTmpdirServer(
+      ({ llm }) =>
+        Effect.gen(function* () {
+          const sessions = yield* Session.Service
+          const session = yield* sessions.create({
+            title: "Guardian long transcript",
+            permission: [ApprovalV1.rule("automatic")],
+          })
+          const first = "AUTHORIZE the migration of the payment service to the new ledger."
+          for (let i = 0; i < 201; i++) {
+            const id = MessageID.ascending()
+            yield* sessions.updateMessage({
+              id,
+              sessionID: session.id,
+              role: "user",
+              time: { created: Date.now() + i },
+              agent: "build",
+              model: { providerID: "test", modelID: "test-model" },
+              tools: {},
+              mode: "",
+            } as unknown as SessionV1.Info)
+            yield* sessions.updatePart({
+              id: PartID.ascending(),
+              sessionID: session.id,
+              messageID: id,
+              type: "text",
+              text: i === 0 ? first : `filler ${i} `.repeat(40),
+            })
+          }
+          yield* llm.tool("guardian_decision", {
+            risk_level: "low",
+            user_authorization: "high",
+            outcome: "allow",
+            rationale: "authorized by the first request",
+          })
+          const permission = yield* Permission.Service
+          const review = yield* permission
+            .ask({
+              sessionID: session.id,
+              permission: "edit",
+              patterns: ["src/index.ts"],
+              metadata: { tool: "write" },
+              always: [],
+              ruleset: session.permission ?? [],
+              toolName: "write",
+            })
+            .pipe(Effect.forkScoped)
+          yield* llm.wait(1)
+          yield* Fiber.join(review)
+          const prompt = JSON.stringify((yield* llm.inputs)[0])
+          expect(prompt).toContain(first)
+          expect(prompt).toContain("Some conversation entries were omitted.")
+        }),
+      { git: true, config: guardianConfig },
+    ),
+)
+
+guardianIt.live(
+  "automatic Guardian falls back to ask when a round mixes investigation with a decision",
+  () =>
+    provideTmpdirServer(
+      ({ dir, llm }) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() => Bun.write(path.join(dir, "README.md"), "guardian evidence"))
+          const permission = yield* Permission.Service
+          const session = yield* createGuardianSession("Guardian mixed round")
+          yield* llm.push(
+            llmReply().tool("glob", { pattern: "README.md" }).tool("guardian_decision", {
+              risk_level: "low",
+              user_authorization: "high",
+              outcome: "allow",
+              rationale: "scoped and reversible",
+            }),
+          )
+          const review = yield* permission
+            .ask({
+              sessionID: session.id,
+              permission: "edit",
+              patterns: ["src/index.ts"],
+              metadata: { tool: "write" },
+              always: [],
+              ruleset: session.permission ?? [],
+              toolName: "write",
+            })
+            .pipe(Effect.forkScoped)
+          const pending = (yield* waitForPending(1))[0]!
+          expect(pending.permission).toBe("edit")
+          yield* permission.reply({ requestID: pending.id, reply: "reject" })
+          expect(Exit.isFailure(yield* Fiber.await(review))).toBe(true)
+        }),
+      { git: true, config: guardianConfig },
+    ),
+)
+
+guardianFallback(
+  "automatic Guardian falls back to ask when a round returns multiple decisions",
+  () => [
+    llmReply()
+      .tool("guardian_decision", {
+        risk_level: "high",
+        user_authorization: "unknown",
+        outcome: "deny",
+        rationale: "first decision",
+      })
+      .tool("guardian_decision", {
+        risk_level: "low",
+        user_authorization: "high",
+        outcome: "allow",
+        rationale: "second decision",
+      }),
+  ],
+)
+
+guardianFallback(
+  "automatic Guardian falls back to ask when a decision shares a round with a failed tool",
+  (dir) => [
+    llmReply()
+      .tool("glob", { pattern: "*", path: path.dirname(dir) })
+      .tool("guardian_decision", {
+        risk_level: "low",
+        user_authorization: "high",
+        outcome: "allow",
+        rationale: "scoped and reversible",
+      }),
+  ],
+)
+
+guardianFallback(
+  "automatic Guardian falls back to ask for a critical allow",
+  () => [
+    llmReply().tool("guardian_decision", {
+      risk_level: "critical",
+      user_authorization: "high",
+      outcome: "allow",
+      rationale: "incorrect critical allow",
+    }),
+  ],
+)
+
+guardianFallback(
+  "automatic Guardian falls back to ask for a low-authorization high-risk allow",
+  () => [
+    llmReply().tool("guardian_decision", {
+      risk_level: "high",
+      user_authorization: "low",
+      outcome: "allow",
+      rationale: "insufficient authorization",
+    }),
+  ],
+)
+
 it.instance(
   "ask - resolves immediately when action is allow",
   () =>
@@ -571,6 +1013,430 @@ it.instance(
         ruleset: [{ permission: "bash", pattern: "*", action: "allow" }],
       })
       expect(result).toBeUndefined()
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - full access bypasses permission rules",
+  () =>
+    Effect.gen(function* () {
+      const result = yield* ask({
+        sessionID: SessionID.make("session_full_access"),
+        permission: "bash",
+        patterns: ["rm -rf /"],
+        metadata: {},
+        always: [],
+        ruleset: [{ permission: "bash", pattern: "*", action: "deny" }, ApprovalV1.rule("full")],
+      })
+      expect(result).toBeUndefined()
+      expect(yield* list()).toEqual([])
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - full ruleset rejects when lifecycle changes while loading state",
+  () =>
+    Effect.gen(function* () {
+      const sessionID = SessionID.make("session_full_lifecycle")
+      const instance = yield* InstanceRef
+      if (!instance) throw new Error("InstanceRef not provided")
+      let disposed = false
+
+      const error = yield* fail(
+        ask({
+          sessionID,
+          permission: "bash",
+          patterns: ["rm -rf /"],
+          metadata: {},
+          always: [],
+          ruleset: [ApprovalV1.rule("full")],
+        }).pipe(
+          Effect.provideService(InstanceRef, {
+            ...instance,
+            get directory() {
+              if (!disposed) {
+                disposed = true
+                Effect.runSync(Approval.runtime.dispose(sessionID))
+              }
+              return instance.directory
+            },
+          }),
+        ),
+      )
+
+      expect(error).toBeInstanceOf(PermissionV1.RejectedError)
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - full gate bypasses a stale ruleset",
+  () =>
+    Effect.gen(function* () {
+      const permission = yield* Permission.Service
+      const sessionID = SessionID.make("session_full_gate")
+      yield* permission.setApproval({ sessionID, approval: "full" })
+
+      yield* permission.ask({
+        sessionID,
+        permission: "bash",
+        patterns: ["rm -rf /"],
+        metadata: {},
+        always: [],
+        ruleset: [{ permission: "bash", pattern: "*", action: "deny" }],
+      })
+      expect(yield* permission.list()).toEqual([])
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - manual gate overrides a stale full ruleset",
+  () =>
+    Effect.gen(function* () {
+      const permission = yield* Permission.Service
+      const sessionID = SessionID.make("session_manual_gate")
+      yield* permission.setApproval({ sessionID, approval: "manual" })
+
+      const error = yield* fail(
+        permission.ask({
+          sessionID,
+          permission: "bash",
+          patterns: ["rm -rf /"],
+          metadata: {},
+          always: [],
+          ruleset: [{ permission: "bash", pattern: "*", action: "deny" }, ApprovalV1.rule("full")],
+        }),
+      )
+      expect(error).toBeInstanceOf(PermissionV1.DeniedError)
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - full gate clears pending requests",
+  () =>
+    Effect.gen(function* () {
+      const permission = yield* Permission.Service
+      const sessionID = SessionID.make("session_full_gate_pending")
+      const request = yield* permission
+        .ask({
+          sessionID,
+          permission: "bash",
+          patterns: ["rm -rf /"],
+          metadata: {},
+          always: [],
+          ruleset: [],
+        })
+        .pipe(Effect.forkScoped)
+      yield* waitForPending(1)
+
+      yield* permission.setApproval({ sessionID, approval: "full" })
+      yield* Fiber.join(request)
+      expect(yield* permission.list()).toEqual([])
+    }),
+  { git: true },
+)
+
+guardianIt.instance(
+  "remove - rejects V1 pending requests before removing their Session",
+  () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({ title: "Pending deletion" })
+      const permission = yield* Permission.Service
+      const events = yield* EventV2Bridge.Service
+      const order: string[] = []
+      const unsubscribe = yield* events.listen((event) => {
+        if (
+          event.type === Permission.Event.Asked.type ||
+          event.type === Permission.Event.Replied.type ||
+          event.type === SessionV1.Event.Deleted.type
+        ) {
+          order.push(event.type)
+        }
+        return Effect.void
+      })
+      yield* Effect.addFinalizer(() => unsubscribe)
+      const request = yield* permission
+        .ask({
+          sessionID: session.id,
+          permission: "bash",
+          patterns: ["ls"],
+          metadata: {},
+          always: [],
+          ruleset: session.permission ?? [],
+        })
+        .pipe(Effect.forkScoped)
+      const pending = (yield* waitForPending(1))[0]!
+
+      yield* sessions.remove(session.id)
+
+      expect(yield* permission.list()).toEqual([])
+      expect(Exit.isFailure(yield* Fiber.await(request))).toBe(true)
+      expect(order).toEqual([Permission.Event.Asked.type, Permission.Event.Replied.type, SessionV1.Event.Deleted.type])
+      expect(pending.sessionID).toBe(session.id)
+    }),
+  { git: true },
+)
+
+guardianIt.live(
+  "ask - does not register a V1 evaluator after deletion and same-ID recreation",
+  () =>
+    provideTmpdirServer(
+      ({ llm }) =>
+        Effect.gen(function* () {
+          const sessions = yield* Session.Service
+          const events = yield* EventV2Bridge.Service
+          const permission = yield* Permission.Service
+          const session = yield* sessions.create({ title: "Lifecycle", permission: [ApprovalV1.rule("automatic")] })
+          const release = Promise.withResolvers<void>()
+          const outcome = yield* Deferred.make<"asked" | "failed" | "completed">()
+          const unsubscribe = yield* events.listen((event) =>
+            event.type === Permission.Event.Asked.type ? Deferred.succeed(outcome, "asked").pipe(Effect.asVoid) : Effect.void,
+          )
+          yield* Effect.addFinalizer(() => unsubscribe)
+          yield* llm.hold("waiting", release.promise)
+          const old = yield* permission
+            .ask({
+              sessionID: session.id,
+              permission: "bash",
+              patterns: ["ls"],
+              metadata: {},
+              always: [],
+              ruleset: session.permission ?? [],
+            })
+            .pipe(Effect.forkScoped)
+          yield* Fiber.await(old).pipe(
+            Effect.flatMap((exit) => Deferred.succeed(outcome, Exit.isFailure(exit) ? "failed" : "completed")),
+            Effect.forkScoped,
+          )
+
+          yield* llm.wait(1)
+          yield* sessions.remove(session.id)
+          yield* events.publish(SessionV1.Event.Created, { sessionID: session.id, info: session })
+          release.resolve()
+
+          expect(yield* Deferred.await(outcome)).toBe("failed")
+          expect(yield* Fiber.join(old).pipe(Effect.flip)).toBeInstanceOf(PermissionV1.RejectedError)
+          expect(yield* permission.list()).toEqual([])
+
+          const next = yield* permission
+            .ask({
+              sessionID: session.id,
+              permission: "bash",
+              patterns: ["ls"],
+              metadata: {},
+              always: [],
+              ruleset: [],
+            })
+            .pipe(Effect.forkScoped)
+          const pending = (yield* waitForPending(1))[0]!
+          yield* permission.reply({ requestID: pending.id, reply: "once" })
+          yield* Fiber.join(next)
+        }),
+      { git: true, config: guardianConfig },
+    ),
+)
+
+guardianIt.instance(
+  "remove - serializes deletion after an already queued approval update",
+  () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({ title: "Approval deletion race" })
+      const permission = yield* Permission.Service
+      const [approval, deletion] = yield* Approval.runtime.withUpdate(session.id)(
+        Effect.gen(function* () {
+          const approval = yield* Approval.runtime
+            .withUpdate(session.id)(permission.setApproval({ sessionID: session.id, approval: "full" }))
+            .pipe(Effect.forkScoped)
+          yield* Effect.yieldNow
+          expect(Approval.runtime.get(session.id)).toBeUndefined()
+          const deletion = yield* sessions.remove(session.id).pipe(Effect.forkScoped)
+          yield* Effect.yieldNow
+          return [approval, deletion] as const
+        }),
+      )
+
+      yield* Fiber.join(approval)
+      yield* Fiber.join(deletion)
+
+      expect(Approval.runtime.get(session.id)).toBeUndefined()
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - full gate drains pending requests registered by another permission protocol",
+  () =>
+    Effect.gen(function* () {
+      const permission = yield* Permission.Service
+      const sessionID = SessionID.make("session_cross_protocol_pending")
+      const drained = yield* Deferred.make<void>()
+      const unregister = Approval.runtime.register(sessionID, Deferred.succeed(drained, undefined))
+      yield* Effect.addFinalizer(() => Effect.sync(unregister))
+
+      yield* permission.setApproval({ sessionID, approval: "full" })
+
+      expect(yield* Deferred.isDone(drained)).toBe(true)
+    }),
+  { git: true },
+)
+
+it.instance(
+  "reply - interruption cannot orphan a pending waiter",
+  () =>
+    Effect.gen(function* () {
+      const permission = yield* Permission.Service
+      const events = yield* EventV2Bridge.Service
+      const request = yield* permission
+        .ask({
+          sessionID: SessionID.make("session_interrupt_reply"),
+          permission: "bash",
+          patterns: ["ls"],
+          metadata: {},
+          always: [],
+          ruleset: [],
+        })
+        .pipe(Effect.forkScoped)
+      const pending = (yield* waitForPending(1))[0]!
+      const replying = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const unsubscribe = yield* events.listen((event) =>
+        event.type === Permission.Event.Replied.type &&
+        (event.data as { requestID: PermissionV1.ID }).requestID === pending.id
+          ? Deferred.succeed(replying, undefined).pipe(Effect.andThen(Deferred.await(release)))
+          : Effect.void,
+      )
+      yield* Effect.addFinalizer(() => unsubscribe)
+      const response = yield* permission.reply({ requestID: pending.id, reply: "once" }).pipe(Effect.forkScoped)
+      yield* Deferred.await(replying)
+      const interrupted = yield* Fiber.interrupt(response).pipe(Effect.forkScoped)
+      yield* Effect.yieldNow
+      yield* Deferred.succeed(release, undefined)
+      yield* Fiber.join(interrupted)
+      yield* Effect.yieldNow
+
+      expect(request.pollUnsafe()).toBeDefined()
+    }),
+  { git: true },
+)
+
+it.instance(
+  "reply - manual reply racing full access publishes one terminal event",
+  () =>
+    Effect.gen(function* () {
+      const permission = yield* Permission.Service
+      const events = yield* EventV2Bridge.Service
+      const sessionID = SessionID.make("session_reply_full_race")
+      const request = yield* permission
+        .ask({
+          sessionID,
+          permission: "bash",
+          patterns: ["ls"],
+          metadata: {},
+          always: [],
+          ruleset: [],
+        })
+        .pipe(Effect.forkScoped)
+      const pending = (yield* waitForPending(1))[0]!
+      const replying = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const replies: PermissionV1.ID[] = []
+      const unsubscribe = yield* events.listen((event) => {
+        if (event.type !== Permission.Event.Replied.type) return Effect.void
+        const id = (event.data as { requestID: PermissionV1.ID }).requestID
+        if (id !== pending.id) return Effect.void
+        replies.push(id)
+        return Deferred.succeed(replying, undefined).pipe(Effect.andThen(Deferred.await(release)))
+      })
+      yield* Effect.addFinalizer(() => unsubscribe)
+      const manual = yield* permission.reply({ requestID: pending.id, reply: "once" }).pipe(Effect.forkScoped)
+      yield* Deferred.await(replying)
+      const full = yield* permission.setApproval({ sessionID, approval: "full" }).pipe(Effect.forkScoped)
+      yield* Effect.yieldNow
+      yield* Deferred.succeed(release, undefined)
+      yield* Fiber.join(manual)
+      yield* Fiber.join(full)
+      yield* Fiber.join(request)
+
+      expect(replies).toEqual([pending.id])
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - rejects a duplicate pending request ID without replacing the waiter",
+  () =>
+    Effect.gen(function* () {
+      const permission = yield* Permission.Service
+      const id = PermissionV1.ID.ascending("per_duplicate_pending")
+      const input = {
+        id,
+        sessionID: SessionID.make("session_duplicate_pending"),
+        permission: "bash",
+        patterns: ["ls"],
+        metadata: {},
+        always: [],
+        ruleset: [],
+      }
+      const first = yield* permission.ask(input).pipe(Effect.forkScoped)
+      yield* waitForPending(1)
+
+      const duplicate = yield* permission.ask(input).pipe(Effect.exit)
+
+      expect(Exit.isFailure(duplicate) && Cause.squash(duplicate.cause)).toBeInstanceOf(Error)
+      expect(yield* permission.list()).toHaveLength(1)
+      yield* permission.reply({ requestID: id, reply: "once" })
+      yield* Fiber.join(first)
+    }),
+  { git: true },
+)
+
+it.instance(
+  "reply - stale cleanup cannot delete a new request reusing the same ID",
+  () =>
+    Effect.gen(function* () {
+      const permission = yield* Permission.Service
+      const events = yield* EventV2Bridge.Service
+      const id = PermissionV1.ID.ascending("per_reused_pending")
+      const input = {
+        id,
+        sessionID: SessionID.make("session_reused_pending"),
+        permission: "bash",
+        patterns: ["ls"],
+        metadata: {},
+        always: [],
+        ruleset: [],
+      }
+      const old = yield* permission.ask(input).pipe(Effect.forkScoped)
+      yield* waitForPending(1)
+      const publishing = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      let first = true
+      const unsubscribe = yield* events.listen((event) => {
+        if (event.type !== Permission.Event.Replied.type) return Effect.void
+        if ((event.data as { requestID: PermissionV1.ID }).requestID !== id || !first) return Effect.void
+        first = false
+        return Deferred.succeed(publishing, undefined).pipe(Effect.andThen(Deferred.await(release)))
+      })
+      yield* Effect.addFinalizer(() => unsubscribe)
+      const oldReply = yield* permission.reply({ requestID: id, reply: "once" }).pipe(Effect.forkScoped)
+      yield* Deferred.await(publishing)
+      yield* Fiber.interrupt(old)
+      expect(yield* permission.list()).toEqual([])
+      const next = yield* permission.ask(input).pipe(Effect.forkScoped)
+      yield* waitForPending(1)
+
+      yield* Deferred.succeed(release, undefined)
+      yield* Fiber.join(oldReply)
+
+      expect(yield* permission.list()).toHaveLength(1)
+      yield* permission.reply({ requestID: id, reply: "once" })
+      yield* Fiber.join(next)
     }),
   { git: true },
 )

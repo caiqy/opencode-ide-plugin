@@ -120,3 +120,32 @@ describe("sdkClient mcp tools wrapper", () => {
     })
   })
 })
+
+describe("sdkClient session approval wrapper", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("只发送当前审批模式 marker", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: "s1", permission: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+    const session = sdk.session as typeof sdk.session & {
+      setApproval: (input: { sessionID: string; approval: "manual" | "automatic" | "full" }) => Promise<unknown>
+    }
+
+    expect(session.setApproval).toBeTypeOf("function")
+    await session.setApproval({ sessionID: "s1", approval: "automatic" })
+
+    expect(url(fetch.mock.calls[0][0])).toContain("/session/s1")
+    expect(fetch.mock.calls[0][1]).toMatchObject({
+      method: "PATCH",
+      body: JSON.stringify({
+        permission: [{ permission: "opencode_approval_mode", pattern: "automatic", action: "ask" }],
+      }),
+    })
+  })
+})

@@ -115,6 +115,7 @@ describe("AgentV2", () => {
 
       const agents = yield* agent.all()
       expect(agents.map((item) => String(item.id)).sort()).toEqual([
+        "approval",
         "build",
         "compaction",
         "explore",
@@ -126,6 +127,17 @@ describe("AgentV2", () => {
       for (const item of agents) {
         expect(item.permissions.some((rule) => rule.action === "bash" && rule.effect !== "deny")).toBe(false)
       }
+      expect(yield* agent.get(AgentV2.ID.make("approval"))).toMatchObject({
+        model: { providerID: "openai", id: "gpt-5.6-luna" },
+        mode: "subagent",
+        hidden: true,
+        permissions: [
+          { action: "*", resource: "*", effect: "deny" },
+          { action: "read", resource: "*", effect: "allow" },
+          { action: "glob", resource: "*", effect: "allow" },
+          { action: "grep", resource: "*", effect: "allow" },
+        ],
+      })
     }),
   )
 })

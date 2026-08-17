@@ -1,4 +1,6 @@
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
+import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
+import { Approval } from "@opencode-ai/core/approval"
 import { Agent } from "@/agent/agent"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -208,7 +210,6 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       params: { sessionID: SessionID }
       payload: typeof UpdatePayload.Type
     }) {
-      const current = yield* requireSession(ctx.params.sessionID)
       if (ctx.payload.title !== undefined) {
         yield* session.setTitle({ sessionID: ctx.params.sessionID, title: ctx.payload.title })
       }
@@ -221,10 +222,31 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
         )
       }
       if (ctx.payload.permission !== undefined) {
-        yield* session.setPermission({
-          sessionID: ctx.params.sessionID,
-          permission: Permission.merge(current.permission ?? [], ctx.payload.permission),
-        })
+        const permission = ctx.payload.permission
+        yield* Approval.runtime.withUpdate(ctx.params.sessionID)(
+          Effect.uninterruptible(
+            Effect.gen(function* () {
+              const current = yield* requireSession(ctx.params.sessionID)
+              const hasMarker = permission.some((rule) => rule.permission === ApprovalV1.RulePermission)
+              const ruleset = hasMarker
+                ? ApprovalV1.withRuleset(
+                    permission.every((rule) => rule.permission === ApprovalV1.RulePermission)
+                      ? Permission.merge(current.permission ?? [], permission)
+                      : permission,
+                    ApprovalV1.modeFromRuleset(permission),
+                  )
+                : permission
+              yield* session.setPermission({
+                sessionID: ctx.params.sessionID,
+                permission: ruleset,
+              })
+              yield* permissionSvc.setApproval({
+                sessionID: ctx.params.sessionID,
+                approval: ApprovalV1.modeFromRuleset(ruleset),
+              })
+            }),
+          ),
+        )
       }
       if (ctx.payload.time?.archived !== undefined) {
         yield* session.setArchived({ sessionID: ctx.params.sessionID, time: ctx.payload.time.archived })

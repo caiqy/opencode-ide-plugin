@@ -26,6 +26,7 @@ import { errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Database } from "@opencode-ai/core/database/database"
+import { NotFoundError } from "@/storage/storage"
 import { Usage, type LLMEvent } from "@opencode-ai/llm"
 import { normalizeImageGenerationOutput } from "./generated-image"
 import { persistGeneratedImageAttachments } from "./generated-image-persistence"
@@ -401,13 +402,17 @@ const layer = Layer.effect(
             }
 
             const agent = yield* agents.get(ctx.assistantMessage.agent)
+            const current = yield* session
+              .get(ctx.sessionID)
+              .pipe(Effect.catchIf(NotFoundError.isInstance, () => Effect.succeed(undefined)))
             yield* permission.ask({
               permission: "doom_loop",
               patterns: [value.name],
               sessionID: ctx.assistantMessage.sessionID,
               metadata: { tool: value.name, input },
               always: [value.name],
-              ruleset: agent.permission,
+              ruleset: Agent.toolPermission(agent, current?.permission ?? [], "doom_loop"),
+              toolName: value.name,
             })
             return
           }

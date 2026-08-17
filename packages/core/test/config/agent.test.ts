@@ -5,16 +5,19 @@ import { Effect, Schema } from "effect"
 import { AgentV2 } from "@opencode-ai/core/agent"
 import { Config } from "@opencode-ai/core/config"
 import { ConfigAgentPlugin } from "@opencode-ai/core/config/plugin/agent"
+import { AgentPlugin } from "@opencode-ai/core/plugin/agent"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Global } from "@opencode-ai/core/global"
 import { PermissionV2 } from "@opencode-ai/core/permission"
 import { AbsolutePath } from "@opencode-ai/core/schema"
+import { Location } from "@opencode-ai/core/location"
 import { ConfigMigrateV1 } from "@opencode-ai/core/v1/config/migrate"
 import { tmpdir } from "../fixture/tmpdir"
 import { testEffect } from "../lib/effect"
 import { agentHost, host } from "../plugin/host"
+import { location } from "../fixture/location"
 
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([AgentV2.node, FSUtil.node, Global.node])))
 const decode = Schema.decodeUnknownSync(Config.Info)
@@ -195,6 +198,53 @@ describe("ConfigAgentPlugin.Plugin", () => {
       expect(reviewer.request).toEqual({
         headers: { first: "one", shared: "last", second: "two" },
         body: { enabled: true, profile: "review", retries: 2, effort: "high" },
+      })
+    }),
+  )
+
+  it.effect("allows only model overrides for the hidden approval agent", () =>
+    Effect.gen(function* () {
+      const agents = yield* AgentV2.Service
+      yield* AgentPlugin.Plugin.effect(host({ agent: agentHost(agents) })).pipe(
+        Effect.provideService(
+          Location.Service,
+          Location.Service.of(location({ directory: AbsolutePath.make("/project") })),
+        ),
+      )
+      const config = Config.Service.of({
+        entries: () =>
+          Effect.succeed([
+            new Config.Document({
+              type: "document",
+              info: decode({
+                agents: {
+                  approval: {
+                    model: "anthropic/claude-sonnet",
+                    variant: "high",
+                    hidden: false,
+                    mode: "primary",
+                    permissions: [{ action: "*", resource: "*", effect: "allow" }],
+                  },
+                },
+              }),
+            }),
+          ]),
+      })
+
+      yield* ConfigAgentPlugin.Plugin.effect(host({ agent: agentHost(agents) })).pipe(
+        Effect.provideService(Config.Service, config),
+      )
+
+      expect(yield* agents.get(AgentV2.ID.make("approval"))).toMatchObject({
+        model: { providerID: "anthropic", id: "claude-sonnet", variant: "high" },
+        mode: "subagent",
+        hidden: true,
+        permissions: [
+          { action: "*", resource: "*", effect: "deny" },
+          { action: "read", resource: "*", effect: "allow" },
+          { action: "glob", resource: "*", effect: "allow" },
+          { action: "grep", resource: "*", effect: "allow" },
+        ],
       })
     }),
   )

@@ -4,6 +4,7 @@ import { expect } from "bun:test"
 import { Effect } from "effect"
 import { Agent } from "../../src/agent/agent"
 import { deriveSubagentSessionPermission } from "../../src/agent/subagent-permissions"
+import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
 import { Permission } from "../../src/permission"
 import { testEffect } from "../lib/effect"
 
@@ -156,5 +157,18 @@ it.effect("subagent inherits parent session deny rules as hard runtime ceilings"
     )
 
     expect(Permission.evaluate("bash", "git status", effective).action).toBe("deny")
+  }),
+)
+
+it.effect("subagent does not inherit the parent session approval mode", () =>
+  Effect.sync(() => {
+    const executor = testAgent({ name: "executor", mode: "subagent", permission: { bash: "allow" } })
+
+    expect(
+      deriveSubagentSessionPermission({
+        parentSessionPermission: [ApprovalV1.rule("full")],
+        subagent: executor,
+      }),
+    ).not.toContainEqual(ApprovalV1.rule("full"))
   }),
 )

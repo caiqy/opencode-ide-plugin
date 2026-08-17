@@ -7,7 +7,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { Global } from "@opencode-ai/core/global"
 import { SkillPlugin } from "@opencode-ai/core/plugin/skill"
-import { Permission } from "@/permission"
+import { evaluate, fromConfig } from "@/permission/rules"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Config } from "@/config/config"
 import { FrontmatterError } from "@opencode-ai/core/v1/config/error"
@@ -313,9 +313,9 @@ const layer = Layer.effect(
       if (!agent) return list
       const directory = yield* InstanceState.directory
       const overlay = Config.getSkillPermissionOverlay(directory)
-      const overlayRules = Permission.fromConfig({ skill: overlay })
+      const overlayRules = fromConfig({ skill: overlay })
       return list.filter(
-        (skill) => Permission.evaluate("skill", skill.name, agent.permission, overlayRules).action !== "deny",
+        (skill) => evaluate("skill", skill.name, agent.permission, overlayRules).action !== "deny",
       )
     })
 

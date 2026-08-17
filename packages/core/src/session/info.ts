@@ -10,6 +10,7 @@ import { SessionSchema } from "./schema"
 import { SessionTable } from "./sql"
 import { SessionMessage } from "./message"
 import { Snapshot } from "../snapshot"
+import { ApprovalV1 } from "../v1/approval"
 
 export function fromRow(row: typeof SessionTable.$inferSelect): SessionSchema.Info {
   return SessionSchema.Info.make({
@@ -25,6 +26,7 @@ export function fromRow(row: typeof SessionTable.$inferSelect): SessionSchema.In
           variant: ModelV2.VariantID.make(row.model.variant ?? "default"),
         }
       : undefined,
+    approval: ApprovalV1.modeFromRuleset(row.permission ?? []),
     cost: row.cost,
     tokens: {
       input: row.tokens_input,

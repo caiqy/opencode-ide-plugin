@@ -118,6 +118,45 @@ describe("tool.registry", () => {
     }),
   )
 
+  it.instance("builtin() excludes same-named custom tools", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const customTools = path.join(test.directory, ".opencode", "tools")
+      yield* Effect.promise(() => fs.mkdir(customTools, { recursive: true }))
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(customTools, "read.ts"),
+          "export default { description: 'custom read', args: {}, execute: async () => 'custom output' }",
+        ),
+      )
+
+      const registry = yield* ToolRegistry.Service
+      const all = yield* registry.all()
+      expect(all.filter((tool) => tool.id === "read")).toHaveLength(2)
+      const builtin = yield* registry.builtin()
+      const reads = builtin.filter((tool) => tool.id === "read")
+      expect(reads).toHaveLength(1)
+      expect(reads[0]!.execute).not.toBeUndefined()
+    }),
+  )
+
+  it.instance("task tool description does not list hidden agents like approval", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const agents = yield* Agent.Service
+      const tools = yield* registry.tools({
+        providerID: ProviderV2.ID.opencode,
+        modelID: ModelV2.ID.make("test"),
+        agent: yield* agents.get("build"),
+        permission: [],
+      })
+      const task = tools.find((tool) => tool.id === "task")
+      if (!task) throw new Error("task tool was not returned")
+      expect(task.description).not.toContain("approval")
+      expect(task.description).toContain("explore")
+    }),
+  )
+
   withCodeMode.instance("exposes execute when code mode is enabled", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service

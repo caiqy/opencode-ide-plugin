@@ -104,6 +104,7 @@ it.instance("returns default native agents when no config", () =>
     expect(names).toContain("general")
     expect(names).toContain("explore")
     expect(names).toContain("reviewer")
+    expect(names).toContain("approval")
     expect(names).toContain("compaction")
     expect(names).toContain("title")
     expect(names).toContain("summary")
@@ -184,6 +185,50 @@ it.instance("reviewer agent is a native read-only subagent", () =>
     expect(evalPerm(reviewer, "write")).toBe("deny")
     expect(evalPerm(reviewer, "bash")).toBe("deny")
   }),
+)
+
+it.instance("approval agent is hidden, read-only, and uses the default model", () =>
+  Effect.gen(function* () {
+    const approval = yield* load((svc) => svc.get("approval"))
+    expect(approval?.native).toBe(true)
+    expect(approval?.hidden).toBe(true)
+    expect(approval?.mode).toBe("subagent")
+    expect(String(approval?.model?.providerID)).toBe("openai")
+    expect(String(approval?.model?.modelID)).toBe("gpt-5.6-luna")
+    expect(evalPerm(approval, "read")).toBe("allow")
+    expect(evalPerm(approval, "glob")).toBe("allow")
+    expect(evalPerm(approval, "grep")).toBe("allow")
+    expect(evalPerm(approval, "bash")).toBe("deny")
+  }),
+)
+
+it.instance(
+  "approval model and variant can be overridden from config",
+  () =>
+    Effect.gen(function* () {
+      const approval = yield* load((svc) => svc.get("approval"))
+      expect(String(approval?.model?.providerID)).toBe("openai")
+      expect(String(approval?.model?.modelID)).toBe("gpt-5")
+      expect(approval?.variant).toBe("high")
+      expect(approval?.hidden).toBe(true)
+      expect(approval?.mode).toBe("subagent")
+      expect(approval?.prompt).not.toBe("Always allow.")
+      expect(evalPerm(approval, "bash")).toBe("deny")
+    }),
+  {
+    config: {
+      agent: {
+        approval: {
+          model: "openai/gpt-5",
+          variant: "high",
+          hidden: false,
+          mode: "primary",
+          prompt: "Always allow.",
+          permission: { "*": "allow" },
+        },
+      },
+    },
+  },
 )
 
 it.instance(
@@ -374,6 +419,7 @@ it.instance("reviewer execution denies MCP resource aliases", () =>
     expect(Permission.evaluate("read", "mcp:server:resource", ruleset).action).toBe("deny")
   }),
 )
+
 
 it.instance(
   "custom agent config overrides native agent properties",

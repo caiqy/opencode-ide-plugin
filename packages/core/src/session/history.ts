@@ -87,6 +87,25 @@ export const loadForRunner = Effect.fn("SessionHistory.loadForRunner")(function*
   return (yield* entriesForRunner(db, sessionID, baselineSeq)).map((entry) => entry.message)
 })
 
+export const loadForApproval = Effect.fn("SessionHistory.loadForApproval")(function* (
+  db: DatabaseService,
+  sessionID: SessionSchema.ID,
+) {
+  const first = yield* db
+    .select()
+    .from(SessionMessageTable)
+    .where(and(eq(SessionMessageTable.session_id, sessionID), eq(SessionMessageTable.type, "user")))
+    .orderBy(asc(SessionMessageTable.seq))
+    .limit(1)
+    .get()
+    .pipe(Effect.orDie)
+  const context = yield* load(db, sessionID)
+  if (!first) return context
+  const user = yield* decodeMessageRow(first)
+  if (context.some((message) => message.id === user.id)) return context
+  return [user, ...context]
+})
+
 export const entriesForRunner = Effect.fn("SessionHistory.entriesForRunner")(function* (
   db: DatabaseService,
   sessionID: SessionSchema.ID,

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle, useMemo, type RefObject } from "react"
+import { useState, useRef, useCallback, useEffect, useReducer, forwardRef, useImperativeHandle, useMemo, type RefObject } from "react"
 import { LexicalComposer } from "@lexical/react/LexicalComposer"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import { $getRoot, $getSelection, $isRangeSelection, $createTextNode, type EditorState } from "lexical"
@@ -7,7 +7,7 @@ import { useSession } from "../../state/SessionContext"
 import { useMessages } from "../../state/MessagesContext"
 import { useProject } from "../../state/ProjectContext"
 import { useProviders } from "../../state/ProvidersContext"
-import { sdk } from "../../lib/api/sdkClient"
+import { sdk, type SessionWithApproval } from "../../lib/api/sdkClient"
 import type { Provider } from "@opencode-ai/sdk/client"
 import { toProjectRelative } from "../../utils/path"
 import { ConfirmModal } from "../ConfirmModal"
@@ -25,6 +25,8 @@ import { insertPlainWithMentionsImpl, restoreDraftImpl } from "./utils"
 import { draftText, loadDrafts, saveDraftSession, saveDrafts, type Draft } from "../../state/repo/draftRepo"
 import { loadQuickPhraseState, type QuickPhraseState } from "../../state/repo/quickPhraseRepo"
 import { quick_phrase_updated_event } from "../../state/repo/quickPhraseEvent"
+import { approvalMode, type ApprovalMode } from "../../state/approval"
+import { useToast } from "../../state/ToastContext"
 
 interface MessageInputProps {
   sessionID: string | null
@@ -81,7 +83,11 @@ const MessageInputInner = forwardRef<
 >(({ sessionID, blocked = false, onMessageSent, onSendIntent, onError, draftHydration }, ref) => {
   const [editor] = useLexicalComposerContext()
   const [isEmpty, setIsEmpty] = useState(true)
-  const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
+const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
+  const activeSessionRef = useRef(sessionID)
+  activeSessionRef.current = sessionID
+  const pendingApprovalRef = useRef<Record<string, boolean>>({})
+  const [, forceRender] = useReducer((count: number) => count + 1, 0)
 
   const [isCompacting, setIsCompacting] = useState(false)
   const [modelSelectorKey, setModelSelectorKey] = useState(0)
@@ -90,6 +96,7 @@ const MessageInputInner = forwardRef<
   const { worktree } = useProject()
   const {
     currentSession,
+    setCurrentSession,
     isSessionIdle,
     selectedProviderId,
     selectedModelId,
@@ -103,6 +110,7 @@ const MessageInputInner = forwardRef<
     restoreSelections,
   } = useSession()
   const { providersDirty, clearProvidersDirty } = useProviders()
+  const { showToast } = useToast()
   const { getMessagesBySession, isSessionLoaded } = useMessages()
 
   // Providers state for variants computation
@@ -242,6 +250,34 @@ const MessageInputInner = forwardRef<
   const isIdle = !busy
   const interactionLocked = blocked || selectionPending
   const sendLocked = busy || interactionLocked
+
+const currentApproval = approvalMode(
+    currentSession?.id === sessionID ? (currentSession as SessionWithApproval).permission : undefined,
+  )
+  const approvalDisabled = !sessionID || currentSession?.id !== sessionID
+  const approvalPending = !!sessionID && !!pendingApprovalRef.current[sessionID]
+  const setApproval = useCallback(
+    async (approval: ApprovalMode) => {
+      if (!sessionID || currentSession?.id !== sessionID || pendingApprovalRef.current[sessionID]) return
+      pendingApprovalRef.current[sessionID] = true
+      forceRender()
+      try {
+        const result = await sdk.session.setApproval({ sessionID, approval })
+        if (activeSessionRef.current !== sessionID) return
+        if (result.data) {
+          setCurrentSession(result.data)
+          return
+        }
+        showToast("切换审批模式失败", { variant: "error" })
+      } catch {
+        if (activeSessionRef.current === sessionID) showToast("切换审批模式失败", { variant: "error" })
+      } finally {
+        delete pendingApprovalRef.current[sessionID]
+        forceRender()
+      }
+    },
+    [currentSession?.id, sessionID, setCurrentSession, showToast],
+  )
 
   const submit = useCallback(() => {
     if (sendLocked) return
@@ -565,7 +601,11 @@ const MessageInputInner = forwardRef<
               selectedVariant={selectedVariant}
               onVariantSelect={(variant) => setSelectedVariant(variant)}
               isReasoningModel={currentModelInfo.isReasoning}
-              selectionPending={selectionPending}
+selectionPending={selectionPending}
+              approvalMode={currentApproval}
+              approvalPending={approvalPending}
+              approvalDisabled={approvalDisabled}
+              onApprovalSelect={setApproval}
             />
           </div>
         </div>

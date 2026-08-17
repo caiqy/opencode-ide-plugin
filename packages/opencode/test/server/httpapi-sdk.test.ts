@@ -363,8 +363,34 @@ describe("HttpApi SDK", () => {
     ({ sdk }) =>
       Effect.gen(function* () {
         const file = yield* call(() => sdk.file.read({ path: "hello.txt" }))
-        const session = yield* call(() => sdk.session.create({ title: "sdk" }))
+        const session = yield* call(() =>
+          sdk.session.create({
+            title: "sdk",
+            permission: [{ permission: "read", pattern: "*", action: "allow" }],
+          }),
+        )
         const pinned = yield* call(() => sdk.session.update({ sessionID: session.data!.id, pinned: true }))
+        const permission = yield* call(() =>
+          sdk.session.update({
+            sessionID: session.data!.id,
+            permission: [{ permission: "write", pattern: "*", action: "deny" }],
+          }),
+        )
+        const markerOnly = yield* call(() =>
+          sdk.session.update({
+            sessionID: session.data!.id,
+            permission: [{ permission: "opencode_approval_mode", pattern: "manual", action: "ask" }],
+          }),
+        )
+        const approval = yield* call(() =>
+          sdk.session.update({
+            sessionID: session.data!.id,
+            permission: [
+              { permission: "bash", pattern: "git *", action: "allow" },
+              { permission: "opencode_approval_mode", pattern: "automatic", action: "ask" },
+            ],
+          }),
+        )
         const listed = yield* call(() => sdk.session.list({ roots: true, pinnedFirst: true, limit: 10 }))
 
         expect(file.response.status).toBe(200)
@@ -373,6 +399,17 @@ describe("HttpApi SDK", () => {
         expect(session.data).toMatchObject({ title: "sdk" })
         expect(pinned.response.status).toBe(200)
         expect(pinned.data).toMatchObject({ metadata: { "opencode.session.pinned": true } })
+        expect(permission.data).toMatchObject({
+          permission: [{ permission: "write", pattern: "*", action: "deny" }],
+        })
+        expect(record(markerOnly.data).permission).toEqual([
+          { permission: "write", pattern: "*", action: "deny" },
+          { permission: "opencode_approval_mode", pattern: "manual", action: "ask" },
+        ])
+        expect(record(approval.data).permission).toEqual([
+          { permission: "bash", pattern: "git *", action: "allow" },
+          { permission: "opencode_approval_mode", pattern: "automatic", action: "ask" },
+        ])
         expect(listed.response.status).toBe(200)
         expect(listed.data?.map((item) => item.id)).toContain(session.data?.id)
 

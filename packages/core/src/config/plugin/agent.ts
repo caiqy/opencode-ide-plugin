@@ -80,6 +80,18 @@ export const Plugin = define({
         for (const document of documents) {
           for (const [id, item] of Object.entries(document.info.agents ?? {})) {
             const agentID = AgentV2.ID.make(id)
+            if (id === "approval") {
+              draft.update(agentID, (agent) => {
+                if (item.model !== undefined) {
+                  const model = ModelV2.parse(item.model)
+                  agent.model = { id: model.modelID, providerID: model.providerID, variant: agent.model?.variant }
+                }
+                if (item.variant !== undefined && agent.model !== undefined) {
+                  agent.model.variant = ModelV2.VariantID.make(item.variant)
+                }
+              })
+              continue
+            }
             if (item.disabled) {
               draft.remove(agentID)
               continue
@@ -110,6 +122,19 @@ export const Plugin = define({
               }
             })
           }
+        }
+
+        if (draft.get(AgentV2.ID.make("approval"))) {
+          draft.update(AgentV2.ID.make("approval"), (agent) => {
+            agent.hidden = true
+            agent.mode = "subagent"
+            agent.permissions = [
+              { action: "*", resource: "*", effect: "deny" },
+              { action: "read", resource: "*", effect: "allow" },
+              { action: "glob", resource: "*", effect: "allow" },
+              { action: "grep", resource: "*", effect: "allow" },
+            ]
+          })
         }
       }),
     )
