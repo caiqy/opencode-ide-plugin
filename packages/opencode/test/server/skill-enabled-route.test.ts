@@ -119,6 +119,31 @@ describe("skill enabled route", () => {
     })
   })
 
+  test("enabling a skill refreshes an already loaded agent", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: { formatter: false, lsp: false, permission: { skill: { "route-skill": "deny" } } },
+      init: (dir) => writeSkill(dir),
+    })
+    await using server = app()
+    const headers = { "x-opencode-directory": tmp.path }
+
+    const before = (await (await server.request("/agent", { headers })).json()) as Array<{
+      name: string
+      permission: ReturnType<typeof Permission.fromConfig>
+    }>
+    expect(Permission.evaluate("skill", "route-skill", before.find((item) => item.name === "build")!.permission).action).toBe(
+      "deny",
+    )
+
+    expect((await patchSkill(server, tmp.path, "route-skill", true)).status).toBe(200)
+
+    const after = (await (await server.request("/agent", { headers })).json()) as typeof before
+    expect(Permission.evaluate("skill", "route-skill", after.find((item) => item.name === "build")!.permission).action).toBe(
+      "allow",
+    )
+  })
+
   test("enabling a skill preserves shorthand deny as wildcard fallback", async () => {
     await using tmp = await tmpdir({
       git: true,

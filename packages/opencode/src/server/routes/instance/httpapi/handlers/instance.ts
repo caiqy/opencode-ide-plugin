@@ -115,6 +115,7 @@ export const instanceHandlers = HttpApiBuilder.group(InstanceHttpApi, "instance"
 
       yield* config.patchProjectField(["permission", "skill", ctx.params.name], action)
       ConfigFile.setSkillPermissionOverlay(directory, ctx.params.name, action)
+      yield* agent.reloadModelConfig()
       return true
     })
 
