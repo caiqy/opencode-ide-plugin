@@ -472,6 +472,14 @@ it("审批切换异常后恢复控件并显示错误", async () => {
     expect(editorSurface).toHaveClass("dark:bg-gray-900", "focus-within:border-blue-500")
   })
 
+  it("编辑区默认状态不显示边框", () => {
+    const { container } = render(<MessageInput sessionID="s1" />)
+
+    const editorSurface = container.querySelector('[data-testid="message-composer"] > .rounded-b-lg')
+    expect(editorSurface).toHaveClass("border-transparent")
+    expect(editorSurface).not.toHaveClass("border-gray-200", "dark:border-gray-800")
+  })
+
   it("composer 与消息内容对齐且不含顶部边框", async () => {
     mocks.loadQuickPhraseState.mockResolvedValue(quick)
     const { container } = render(<MessageInput sessionID="s1" />)
