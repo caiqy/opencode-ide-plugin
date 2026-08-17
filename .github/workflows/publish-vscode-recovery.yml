@@ -1,0 +1,44 @@
+name: Publish Missing VSCode Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing GitHub Release tag
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Download missing VSIX packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -n "$VSCE_PAT" || { echo "::error::VSCE_PAT is required"; exit 1; }
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir vscode-marketplace-artifacts \
+            --pattern "opencode-vscode-darwin-x64-$TAG.vsix" \
+            --pattern "opencode-vscode-darwin-arm64-$TAG.vsix" \
+            --pattern "opencode-vscode-linux-x64-$TAG.vsix" \
+            --pattern "opencode-vscode-linux-arm64-$TAG.vsix"
+
+      - name: Publish missing VSCode Marketplace packages
+        run: |
+          for vsix in vscode-marketplace-artifacts/*.vsix; do
+            echo "Publishing $(basename "$vsix")"
+            vsce publish --packagePath "$vsix"
+          done
