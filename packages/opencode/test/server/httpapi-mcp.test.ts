@@ -3,6 +3,7 @@ import { describe, expect } from "bun:test"
 import { Context, Effect, Layer } from "effect"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
 import { McpPaths } from "../../src/server/routes/instance/httpapi/groups/mcp"
+import { Permission } from "../../src/permission"
 import { Server } from "../../src/server/server"
 import { resetDatabase } from "../fixture/db"
 import { TestInstance } from "../fixture/fixture"
@@ -180,6 +181,48 @@ describe("mcp HttpApi", () => {
             enabled: true,
           },
         },
+      },
+    },
+  )
+
+  it.instance(
+    "refreshes an already loaded agent after enabling an MCP tool",
+    () =>
+      Effect.gen(function* () {
+        const tmp = yield* TestInstance
+        const handler = HttpApiApp.webHandler()
+        const headers = { "x-opencode-directory": tmp.directory }
+        const before = (yield* json(
+          yield* request(handler, "/agent", tmp.directory),
+        )) as Array<{ name: string; permission: ReturnType<typeof Permission.fromConfig> }>
+        expect(
+          Permission.evaluate("demo_read", "*", before.find((item) => item.name === "build")!.permission).action,
+        ).toBe("deny")
+
+        const response = yield* request(handler, "/mcp/demo/tools/demo_read", tmp.directory, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ enabled: true }),
+        })
+        expect(response.status).toBe(200)
+
+        const after = (yield* json(
+          yield* request(handler, "/agent", tmp.directory, { headers }),
+        )) as typeof before
+        expect(
+          Permission.evaluate("demo_read", "*", after.find((item) => item.name === "build")!.permission).action,
+        ).toBe("allow")
+      }),
+    {
+      config: {
+        mcp: {
+          demo: {
+            type: "local",
+            command: ["echo", "demo"],
+            enabled: false,
+          },
+        },
+        tools: { demo_read: false },
       },
     },
   )

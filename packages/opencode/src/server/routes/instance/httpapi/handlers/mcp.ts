@@ -1,3 +1,4 @@
+import { Agent } from "@/agent/agent"
 import { MCP } from "@/mcp"
 import { Effect, Schema } from "effect"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
@@ -9,6 +10,7 @@ const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, "_")
 
 export const mcpHandlers = HttpApiBuilder.group(InstanceHttpApi, "mcp", (handlers) =>
   Effect.gen(function* () {
+    const agent = yield* Agent.Service
     const mcp = yield* MCP.Service
 
     const status = Effect.fn("McpHttpApi.status")(function* () {
@@ -53,6 +55,7 @@ export const mcpHandlers = HttpApiBuilder.group(InstanceHttpApi, "mcp", (handler
         return yield* new HttpApiError.BadRequest({})
       }
       yield* mcp.setToolEnabled(toolId, payload.enabled)
+      yield* agent.reloadModelConfig()
       return true
     })
 
