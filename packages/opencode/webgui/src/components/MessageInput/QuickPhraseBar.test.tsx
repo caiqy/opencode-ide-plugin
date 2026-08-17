@@ -27,14 +27,20 @@ describe("QuickPhraseBar", () => {
     expect(screen.getByTestId("quick-phrase-row")).toHaveClass("overflow-x-auto")
     expect(screen.getByTestId("quick-phrase-row")).toHaveClass("gap-1.5")
     expect(screen.getByRole("button", { name: "提交总结" })).toHaveClass(
-      "border-gray-200",
       "bg-gray-100",
       "hover:bg-gray-200",
-      "dark:bg-[rgb(26,26,26)]",
+      "dark:bg-[rgb(50,50,50)]",
       "dark:hover:bg-gray-700",
       "text-gray-700",
     )
-    expect(container.firstElementChild).toHaveClass("first:rounded-t-lg", "bg-white", "dark:bg-[rgb(30,30,30)]")
+    expect(screen.getByRole("button", { name: "提交总结" })).not.toHaveClass(
+      "border",
+      "border-gray-200",
+      "hover:border-gray-300",
+      "dark:border-gray-700",
+      "dark:hover:border-gray-600",
+    )
+    expect(container.firstElementChild).toHaveClass("first:rounded-t-lg", "bg-white", "dark:bg-[rgb(25,25,25)]")
     expect(container.firstElementChild).not.toHaveClass("border-t", "border-b")
   })
 

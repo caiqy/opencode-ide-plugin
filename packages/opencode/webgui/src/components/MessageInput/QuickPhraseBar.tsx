@@ -98,7 +98,7 @@ export function QuickPhraseBar({ items, disabled, sendDisabled = false, onSend, 
   if (list.length === 0) return null
 
   return (
-    <div className="first:rounded-t-lg bg-white px-3 py-1.5 dark:bg-[rgb(30,30,30)]">
+    <div className="first:rounded-t-lg bg-white px-3 py-1.5 dark:bg-[rgb(25,25,25)]">
       <div className="flex items-center gap-1.5">
         <div
           ref={row}
@@ -116,7 +116,7 @@ export function QuickPhraseBar({ items, disabled, sendDisabled = false, onSend, 
               title={`左键双击发送 / 右键双击回填：${item.body}`}
               onClick={(e) => handleLeftClick(e, item)}
               onContextMenu={(e) => handleContextMenu(e, item)}
-              className="inline-flex h-6 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-100 px-2 text-xs text-gray-700 hover:border-gray-300 hover:bg-gray-200 dark:border-gray-700 dark:bg-[rgb(26,26,26)] dark:text-gray-200 dark:hover:border-gray-600 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-6 shrink-0 items-center justify-center rounded bg-gray-100 px-2 text-xs text-gray-700 hover:bg-gray-200 dark:bg-[rgb(50,50,50)] dark:text-gray-200 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {item.title}
             </button>

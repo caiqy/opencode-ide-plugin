@@ -571,7 +571,7 @@ const currentApproval = approvalMode(
             onFill={onFillPhrase}
           />
           <div
-            className="first:rounded-t-lg border border-transparent bg-white rounded-b-lg focus-within:border-blue-500 dark:bg-gray-900 dark:focus-within:border-blue-400"
+            className="first:rounded-t-lg border border-transparent bg-white rounded-b-lg focus-within:border-blue-500 dark:bg-[var(--color-gray-800)] dark:focus-within:border-blue-400"
           >
             <EditorContent
               contentEditableRef={contentEditableRef}

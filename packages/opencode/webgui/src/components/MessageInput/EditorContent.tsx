@@ -80,12 +80,12 @@ export function EditorContent({ contentEditableRef, containerRef, onEditorChange
               <ContentEditable
                 ref={contentEditableRef}
                 id="opencode-message-input"
-                className="px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none min-h-[32px] max-h-[400px] overflow-y-auto"
+                className="px-2 py-1.5 text-[13px] text-gray-900 dark:text-gray-100 focus:outline-none min-h-[32px] max-h-[400px] overflow-y-auto"
                 style={{ caretColor: "auto", height }}
                 aria-label="输入消息（回车发送）"
                 aria-placeholder="输入消息（回车发送）"
                 placeholder={
-                  <div className="absolute top-1.5 left-2 text-sm text-gray-400 dark:text-gray-500 pointer-events-none">
+                  <div className="absolute top-1.5 left-2 text-[13px] text-gray-400 dark:text-gray-500 pointer-events-none">
                     输入消息（回车发送）
                   </div>
                 }

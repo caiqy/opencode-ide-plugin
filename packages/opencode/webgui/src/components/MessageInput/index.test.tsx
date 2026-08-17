@@ -469,7 +469,7 @@ it("审批切换异常后恢复控件并显示错误", async () => {
     const { container } = render(<MessageInput sessionID="s1" />)
 
     const editorSurface = container.querySelector('[data-testid="message-composer"] > .border')
-    expect(editorSurface).toHaveClass("dark:bg-gray-900", "focus-within:border-blue-500")
+    expect(editorSurface).toHaveClass("dark:bg-[var(--color-gray-800)]", "focus-within:border-blue-500")
   })
 
   it("编辑区默认状态不显示边框", () => {

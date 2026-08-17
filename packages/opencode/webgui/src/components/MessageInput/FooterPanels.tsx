@@ -40,7 +40,7 @@ export function FooterPanels({ sessionID }: FooterPanelsProps) {
   const completedTodos = todos.filter((t: any) => t.status === "completed").length
 
   return (
-    <div className="first:rounded-t-lg flex flex-col border-b border-gray-100 bg-white dark:border-gray-800 dark:bg-[rgb(30,30,30)]">
+    <div className="first:rounded-t-lg flex flex-col border-b border-gray-100 bg-white dark:border-gray-800 dark:bg-[rgb(25,25,25)]">
       <button
         onClick={() => {
           if (!sessionID) return

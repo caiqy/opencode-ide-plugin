@@ -63,6 +63,8 @@ describe("EditorContent", () => {
 
     const contentEditable = placeholderNode.parentElement
     expect(contentEditable).toHaveAttribute("aria-placeholder", placeholder)
+    expect(contentEditable).toHaveClass("text-[13px]")
+    expect(placeholderNode).toHaveClass("text-[13px]")
   })
 
   it("输入框提供稳定的表单标识与可访问名称", () => {
