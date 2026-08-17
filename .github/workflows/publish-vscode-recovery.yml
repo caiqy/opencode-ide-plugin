@@ -40,5 +40,15 @@ jobs:
         run: |
           for vsix in vscode-marketplace-artifacts/*.vsix; do
             echo "Publishing $(basename "$vsix")"
-            vsce publish --packagePath "$vsix"
+            status=0
+            output=$(vsce publish --packagePath "$vsix" 2>&1) || status=$?
+            printf '%s\n' "$output"
+            if [ "${status:-0}" -eq 0 ]; then
+              continue
+            fi
+            if grep -q "already exists" <<< "$output"; then
+              echo "Skipping an already published package"
+              continue
+            fi
+            exit "$status"
           done
