@@ -110,3 +110,8 @@ tsconfig.tsbuildinfo
 # Native Comet formal artifacts are tracked for cross-device recovery.
 /docs/openspec/
 /docs/superpowers/
+# >>> Comet managed project state >>>
+!/.comet/
+/.comet/*
+!/.comet/config.yaml
+# <<< Comet managed project state <<<
