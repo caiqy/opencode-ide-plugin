@@ -124,7 +124,7 @@ function hydrate(db: Database.Interface["db"], rows: (typeof MessageTable.$infer
 
 function providerMeta(metadata: Record<string, any> | undefined) {
   if (!metadata) return undefined
-  const { providerExecuted: _, ...rest } = metadata
+  const { providerExecuted: _, source: _source, ...rest } = metadata
   return Object.keys(rest).length > 0 ? rest : undefined
 }
 

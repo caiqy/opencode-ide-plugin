@@ -411,6 +411,76 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
+  test("does not forward local MCP metadata as provider options", async () => {
+    const userID = "m-user-mcp"
+    const assistantID = "m-assistant-mcp"
+
+    const input: SessionV1.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1-mcp"),
+            type: "text",
+            text: "run MCP tool",
+          },
+        ] as SessionV1.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [
+          {
+            ...basePart(assistantID, "a1-mcp"),
+            type: "tool",
+            callID: "call-mcp-1",
+            tool: "codegraph_codegraph_explore",
+            state: {
+              status: "completed",
+              input: { query: "inspect" },
+              output: "ok",
+              title: "MCP tool",
+              metadata: {},
+              time: { start: 0, end: 1 },
+            },
+            metadata: { openai: { tool: "meta" }, source: "mcp" },
+          },
+        ] as SessionV1.Part[],
+      },
+    ]
+
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "run MCP tool" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-mcp-1",
+            toolName: "codegraph_codegraph_explore",
+            input: { query: "inspect" },
+            providerExecuted: undefined,
+            providerOptions: { openai: { tool: "meta" } },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-mcp-1",
+            toolName: "codegraph_codegraph_explore",
+            output: { type: "text", value: "ok" },
+            providerOptions: { openai: { tool: "meta" } },
+          },
+        ],
+      },
+    ])
+  })
+
   test("preserves jpeg tool-result media for anthropic models", async () => {
     const anthropicModel: Provider.Model = {
       ...model,
