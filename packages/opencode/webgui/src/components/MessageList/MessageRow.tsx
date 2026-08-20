@@ -5,7 +5,7 @@ import { MessagePart } from "./MessagePart"
 import { SessionErrorPart } from "./SessionErrorPart"
 import { ActionButtons } from "./ActionButtons"
 import { AssistantMeta } from "./AssistantMeta"
-import { getPartStart, getPartEnd, sortParts } from "./utils"
+import { getPartStart, getPartEnd, mergeReasoningParts, sortParts } from "./utils"
 import { cn } from "../../utils/classNames"
 import { useProviderStore } from "../../hooks/useProviderStore"
 import { getMessageCopyText } from "./messageCopy"
@@ -66,7 +66,8 @@ export function MessageRow({
   )
 
   // Calculate durations for reasoning parts using timestamps when available
-  const partsWithDurations = message.parts.map((part) => {
+  const parts = mergeReasoningParts(message.parts)
+  const partsWithDurations = parts.map((part) => {
     let durationMs: number | undefined
 
     if (part.type === "reasoning") {
@@ -111,7 +112,7 @@ export function MessageRow({
             key={part.id}
             part={part}
             isUser={isUser}
-            allParts={message.parts}
+            allParts={parts}
             durationMs={durationMs}
             sessionID={sessionID}
             messageID={message.info.id}

@@ -47,6 +47,26 @@ describe("ReasoningPart", () => {
     expect(screen.queryByText(/hidden|comment/)).not.toBeInTheDocument()
   })
 
+  it("保留合并思考片段之间的段落换行", () => {
+    render(
+      <PartOpenProvider items={[{ type: "reasoning", id: "r-break", text: "第一段\n\n第二段" }]}>
+        <ReasoningPart
+          part={{
+            id: "r-break",
+            sessionID: "s1",
+            messageID: "m1",
+            type: "reasoning",
+            text: "第一段\n\n第二段",
+            time: { start: 1, end: 2 },
+          }}
+          durationMs={1000}
+        />
+      </PartOpenProvider>,
+    )
+
+    expect(screen.getByText("第一段").closest("p")).not.toBe(screen.getByText("第二段").closest("p"))
+  })
+
   it("流式注释闭合前保持隐藏并在闭合后显示正文", () => {
     const part = {
       id: "r3",

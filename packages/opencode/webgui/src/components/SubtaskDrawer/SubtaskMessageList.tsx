@@ -9,6 +9,7 @@ import { QuestionPart } from "../MessageList/Parts/QuestionPart"
 import { PartOpenProvider, type PartOpenItem } from "../MessageList/PartOpenContext"
 import { ScrollToBottomButton } from "../MessageList/ScrollToBottomButton"
 import { useMessageScroll } from "../MessageList/hooks/useMessageScroll"
+import { mergeReasoningParts } from "../MessageList/utils"
 
 interface SubtaskMessageListProps {
   sessionID?: string | null
@@ -53,7 +54,7 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
   }
 
   const items: PartOpenItem[] = sortedMessages.flatMap((msg): PartOpenItem[] => {
-    return msg.parts.flatMap((part): PartOpenItem[] => {
+    return mergeReasoningParts(msg.parts).flatMap((part): PartOpenItem[] => {
       if (part.type === "reasoning") {
         return [{ type: "reasoning", id: part.id, text: part.text, end: part.time?.end }]
       }

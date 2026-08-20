@@ -15,6 +15,7 @@ import { useTopTrim } from "./hooks/useTopTrim"
 import { useHistoryBlocks } from "./hooks/useHistoryBlocks"
 import { PartOpenProvider, type PartOpenItem } from "./PartOpenContext"
 import { ScrollToBottomButton } from "./ScrollToBottomButton"
+import { mergeReasoningParts } from "./utils"
 
 interface MessageListProps {
   sessionID?: string | null
@@ -195,7 +196,7 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
 
   const items = useMemo(() => {
     return visibleMessages.flatMap((msg): PartOpenItem[] => {
-      return msg.parts.flatMap((part): PartOpenItem[] => {
+      return mergeReasoningParts(msg.parts).flatMap((part): PartOpenItem[] => {
         if (part.type === "reasoning") {
           return [{ type: "reasoning", id: part.id, text: part.text, end: part.time?.end }]
         }

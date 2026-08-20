@@ -96,6 +96,21 @@ describe("MessageRow", () => {
     )
   })
 
+  it("同一条 assistant 消息中的多个思考片段只渲染一个 part", () => {
+    const message = {
+      info: { id: "a-reasoning", sessionID: "s1", role: "assistant", time: { created: 1 } },
+      parts: [
+        { id: "r1", type: "reasoning", text: "先分析", time: { start: 100, end: 200 } },
+        { id: "r2", type: "reasoning", text: "再验证", time: { start: 220, end: 500 } },
+      ],
+    }
+
+    render(<MessageRow message={message as never} />)
+
+    expect(screen.getByTestId("part-r1")).toBeInTheDocument()
+    expect(screen.queryByTestId("part-r2")).not.toBeInTheDocument()
+  })
+
   it("用户消息复制按钮应接收 canonical copyText", () => {
     const message = {
       info: {
