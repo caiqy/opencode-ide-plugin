@@ -43,6 +43,16 @@ export function chatState(input: { loading: boolean; loaded: boolean; error: boo
   return { loading, error: !loading && input.error, blocked: loading || input.error }
 }
 
+export function redirectGutterWheel(
+  input: { target: EventTarget | null; deltaY: number; preventDefault: () => void },
+  center: HTMLElement | null,
+  main: HTMLElement | null,
+) {
+  if (!center || !main || !input.deltaY || !input.target || (input.target instanceof Node && center.contains(input.target))) return
+  main.scrollBy({ top: input.deltaY, behavior: "auto" })
+  input.preventDefault()
+}
+
 export async function retryLoad(input: {
   id: string | null | undefined
   load: (id: string) => Promise<unknown> | unknown
@@ -274,6 +284,8 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   const { getMessagesBySession, isSessionLoading, isSessionLoaded, isSessionLoadError, loadSessionMessages } =
     useMessages()
   const compactHeaderRef = useRef<{ toggleSessionDropdown: () => void }>(null)
+  const centerRef = useRef<HTMLDivElement>(null)
+  const mainRef = useRef<HTMLElement>(null)
   const messageInputRef = useRef<{
     focus: () => void
     insertPaths: (paths: string[]) => void
@@ -612,8 +624,11 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   }, [selectionRestoreNotice, showToast, clearSelectionRestoreNotice])
 
   return (
-    <div className="min-h-screen w-full bg-[rgb(243,243,243)] dark:bg-gray-950">
-      <div className="mx-auto flex h-screen w-full max-w-[860px] flex-col bg-white dark:bg-gray-950">
+    <div
+      className="min-h-screen w-full bg-[rgb(243,243,243)] dark:bg-gray-950"
+      onWheel={(event) => redirectGutterWheel(event, centerRef.current, mainRef.current)}
+    >
+      <div ref={centerRef} className="mx-auto flex h-screen w-full max-w-[860px] flex-col bg-white dark:bg-gray-950">
         {/* Compact Header */}
         <CompactHeader
           ref={compactHeaderRef}
@@ -630,7 +645,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
 
         <ChatLoadGuard loading={gate.loading} error={gate.error} onRetry={handleRetrySessionLoad}>
           {/* Messages Area */}
-          <main className="flex-1 overflow-y-auto bg-[rgb(243,243,243)] px-4 py-3 dark:bg-gray-950">
+          <main ref={mainRef} className="flex-1 overflow-y-auto bg-[rgb(243,243,243)] px-4 py-3 dark:bg-gray-950">
             <MessageList
               sessionID={currentSession?.id}
               onUndoToInput={(value) => messageInputRef.current?.insertPlainWithMentions(value)}

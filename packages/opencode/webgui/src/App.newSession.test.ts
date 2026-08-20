@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { chatState, prepareSession, retryLoad } from "./App"
+import { chatState, prepareSession, redirectGutterWheel, retryLoad } from "./App"
 
 describe("chatState", () => {
   it("最近页首屏已可用时不展示 loading 或 retry", () => {
@@ -37,6 +37,28 @@ describe("chatState", () => {
     expect(activate).toHaveBeenCalledWith("s1")
     expect(activate).toHaveBeenCalledTimes(1)
     expect(load).not.toHaveBeenCalled()
+  })
+})
+
+describe("redirectGutterWheel", () => {
+  it("会把中心容器外侧的滚轮转发到消息滚动容器", () => {
+    const center = document.createElement("div")
+    const main = document.createElement("main")
+    const gutter = document.createElement("div")
+    const content = document.createElement("div")
+    const scrollBy = vi.fn()
+    const preventDefault = vi.fn()
+    center.append(content)
+    Object.defineProperty(main, "scrollBy", { value: scrollBy })
+
+    redirectGutterWheel({ target: gutter, deltaY: 120, preventDefault }, center, main)
+
+    expect(scrollBy).toHaveBeenCalledWith({ top: 120, behavior: "auto" })
+    expect(preventDefault).toHaveBeenCalledTimes(1)
+
+    redirectGutterWheel({ target: content, deltaY: 120, preventDefault }, center, main)
+
+    expect(scrollBy).toHaveBeenCalledTimes(1)
   })
 })
 
