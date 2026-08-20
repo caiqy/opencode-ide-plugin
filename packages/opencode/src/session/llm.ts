@@ -52,6 +52,7 @@ export type StreamInput = {
   messages: ModelMessage[]
   small?: boolean
   tools: Record<string, Tool>
+  mcpToolNames?: ReadonlySet<string>
   retries?: number
   toolChoice?: "auto" | "required" | "none"
 }

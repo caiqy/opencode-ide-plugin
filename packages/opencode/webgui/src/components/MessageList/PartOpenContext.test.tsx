@@ -18,6 +18,9 @@ function View() {
       <div data-testid="task1">{open.isOpen("task1") ? "open" : "closed"}</div>
       <div data-testid="task2">{open.isOpen("task2") ? "open" : "closed"}</div>
       <div data-testid="task3">{open.isOpen("task3") ? "open" : "closed"}</div>
+      <div data-testid="websearch1">{open.isOpen("websearch1") ? "open" : "closed"}</div>
+      <div data-testid="mcp1">{open.isOpen("mcp1") ? "open" : "closed"}</div>
+      <div data-testid="plugin1">{open.isOpen("plugin1") ? "open" : "closed"}</div>
       <button onClick={() => open.setOpen("r1", false)}>close-r1</button>
       <button onClick={() => open.setOpen("r1", true)}>open-r1</button>
       <button onClick={() => open.setOpen("r2", false)}>close-r2</button>
@@ -275,6 +278,68 @@ describe("PartOpenProvider", () => {
       expect(screen.getByTestId("task2")).toHaveTextContent("closed")
       expect(screen.getByTestId("task3")).toHaveTextContent("open")
       expect(screen.getByTestId("t1")).toHaveTextContent("open")
+    })
+  })
+
+  it("websearch 和 MCP 工具默认收起", async () => {
+    render(
+      <PartOpenProvider
+        items={[
+          { type: "tool", id: "websearch1", tool: "websearch", status: "completed" },
+          {
+            type: "tool",
+            id: "mcp1",
+            tool: "github_create_issue",
+            metadata: { source: "mcp" },
+            status: "completed",
+          },
+          {
+            type: "tool",
+            id: "plugin1",
+            tool: "github_create_issue",
+            metadata: { source: "plugin" },
+            status: "completed",
+          },
+        ]}
+      >
+        <View />
+      </PartOpenProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId("websearch1")).toHaveTextContent("closed")
+      expect(screen.getByTestId("mcp1")).toHaveTextContent("closed")
+      expect(screen.getByTestId("plugin1")).toHaveTextContent("open")
+    })
+  })
+
+  it("MCP source 变化时重新计算默认展开状态", async () => {
+    const { rerender } = render(
+      <PartOpenProvider items={[{ type: "tool", id: "mcp1", tool: "github_create_issue", status: "running" }]}>
+        <View />
+      </PartOpenProvider>,
+    )
+
+    expect(screen.getByTestId("mcp1")).toHaveTextContent("open")
+
+    rerender(
+      <PartOpenProvider
+        items={[
+          {
+            type: "tool",
+            id: "mcp1",
+            tool: "github_create_issue",
+            metadata: { source: "mcp" },
+            status: "running",
+          },
+        ]}
+      >
+        <View />
+      </PartOpenProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mcp1")).toHaveTextContent("closed")
     })
   })
 })

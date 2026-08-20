@@ -4,7 +4,7 @@ type ToolStatus = "pending" | "running" | "completed" | "error"
 
 export type PartOpenItem =
   | { type: "reasoning"; id: string; text?: string; end?: number }
-  | { type: "tool"; id: string; tool: string; status?: ToolStatus }
+  | { type: "tool"; id: string; tool: string; status?: ToolStatus; metadata?: Record<string, unknown> }
 
 interface PartOpenValue {
   isOpen: (id: string) => boolean
@@ -18,7 +18,7 @@ const PartOpenContext = createContext<PartOpenValue | undefined>(undefined)
 const AUTO_EXPAND_TOOLS = new Set(["bash", "task"])
 
 // Tools that should be collapsed by default (user can still click to expand)
-const COLLAPSED_BY_DEFAULT_TOOLS = new Set(["skill"])
+const COLLAPSED_BY_DEFAULT_TOOLS = new Set(["skill", "websearch"])
 
 export function PartOpenProvider(props: { items: PartOpenItem[]; children: ReactNode; defaultExpanded?: boolean }) {
   const defaultExpanded = props.defaultExpanded ?? true
@@ -122,7 +122,11 @@ export function PartOpenProvider(props: { items: PartOpenItem[]; children: React
       // Collapsed-by-default tools (skill, invalidTool, etc.)
       const toolItem = props.items.find((item) => item.id === id)
       if (toolItem?.type === "tool") {
-        if (COLLAPSED_BY_DEFAULT_TOOLS.has(toolItem.tool) || toolItem.tool.startsWith("invalid")) {
+        if (
+          COLLAPSED_BY_DEFAULT_TOOLS.has(toolItem.tool) ||
+          toolItem.tool.startsWith("invalid") ||
+          toolItem.metadata?.source === "mcp"
+        ) {
           return false
         }
       }
@@ -130,7 +134,7 @@ export function PartOpenProvider(props: { items: PartOpenItem[]; children: React
       // Other tool items: follow defaultExpanded
       return defaultExpanded
     },
-    [overrides, defaultExpanded, reasoningIds, lastReasoningId, autoExpandToolIds, lastAutoExpandToolId],
+    [overrides, defaultExpanded, reasoningIds, lastReasoningId, autoExpandToolIds, lastAutoExpandToolId, props.items],
   )
 
   const setOpen = useCallback((id: string, open: boolean) => {

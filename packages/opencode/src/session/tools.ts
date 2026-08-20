@@ -63,6 +63,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   promptOps: TaskPromptOps
 }) {
   const tools: Record<string, AITool> = {}
+  const mcpToolNames = new Set<string>()
   const run = yield* EffectBridge.make()
   const plugin = yield* Plugin.Service
   const permission = yield* Permission.Service
@@ -148,6 +149,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     (client) => !!client.getServerCapabilities()?.resources,
   )
   if (hasMcpResourceServer) {
+    mcpToolNames.add(MCP_RESOURCE_TOOLS.list)
+    mcpToolNames.add(MCP_RESOURCE_TOOLS.listTemplates)
+    mcpToolNames.add(MCP_RESOURCE_TOOLS.read)
     tools[MCP_RESOURCE_TOOLS.list] = tool({
       description:
         "Lists resources provided by connected MCP servers. Resources provide context such as files, database schemas, or application-specific information.",
@@ -166,8 +170,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       execute(args, opts) {
         return run.promise(
           Effect.gen(function* () {
-            const parsed = parseListMcpResourcesArgs(args)
             const ctx = context(toRecord(args), opts, MCP_RESOURCE_TOOLS.list)
+            yield* ctx.metadata({ metadata: { source: "mcp" } })
+            const parsed = parseListMcpResourcesArgs(args)
             const clients = yield* mcp.clients()
             const resourceServers = Object.entries(clients)
               .filter((entry) => !!entry[1].getServerCapabilities()?.resources)
@@ -211,6 +216,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 count: filtered.length,
                 servers: resourceServers,
                 ...(parsed.server ? { server: parsed.server } : {}),
+                source: "mcp",
                 truncated: truncated.truncated,
                 ...(truncated.truncated && { outputPath: truncated.outputPath }),
               },
@@ -249,8 +255,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       execute(args, opts) {
         return run.promise(
           Effect.gen(function* () {
-            const parsed = parseListMcpResourcesArgs(args)
             const ctx = context(toRecord(args), opts, MCP_RESOURCE_TOOLS.listTemplates)
+            yield* ctx.metadata({ metadata: { source: "mcp" } })
+            const parsed = parseListMcpResourcesArgs(args)
             const clients = yield* mcp.clients()
             const resourceServers = Object.entries(clients)
               .filter((entry) => !!entry[1].getServerCapabilities()?.resources)
@@ -294,6 +301,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 count: filtered.length,
                 servers: resourceServers,
                 ...(parsed.server ? { server: parsed.server } : {}),
+                source: "mcp",
                 truncated: truncated.truncated,
                 ...(truncated.truncated && { outputPath: truncated.outputPath }),
               },
@@ -336,8 +344,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       execute(args, opts) {
         return run.promise(
           Effect.gen(function* () {
-            const parsed = parseReadMcpResourceArgs(args)
             const ctx = context(toRecord(args), opts, MCP_RESOURCE_TOOLS.read)
+            yield* ctx.metadata({ metadata: { source: "mcp" } })
+            const parsed = parseReadMcpResourceArgs(args)
             const clients = yield* mcp.clients()
             const client = clients[parsed.server]
             if (!client) {
@@ -370,6 +379,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 uri: parsed.uri,
                 contents: formatted.contents,
                 attachments: formatted.attachments.length,
+                source: "mcp",
                 truncated: truncated.truncated,
                 ...(truncated.truncated && { outputPath: truncated.outputPath }),
               },
@@ -396,9 +406,10 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     })
   }
 
-  if (flags.experimentalCodeMode) return tools
+  if (flags.experimentalCodeMode) return { tools, mcpToolNames }
 
   for (const [key, entry] of Object.entries(yield* mcp.tools())) {
+    mcpToolNames.add(key)
     const item = McpCatalog.convertTool(entry.def, entry.client, entry.timeout)
     const execute = item.execute
     if (!execute) continue
@@ -410,6 +421,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       run.promise(
         Effect.gen(function* () {
           const ctx = context(args, opts, key)
+          yield* ctx.metadata({ metadata: { source: "mcp" } })
           yield* plugin.trigger(
             "tool.execute.before",
             { tool: key, sessionID: ctx.sessionID, callID: opts.toolCallId },
@@ -475,6 +487,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           const truncated = yield* truncate.output(textParts.join("\n\n"), {}, input.agent)
           const metadata = {
             ...result.metadata,
+            source: "mcp",
             truncated: truncated.truncated,
             ...(truncated.truncated && { outputPath: truncated.outputPath }),
           }
@@ -500,7 +513,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     tools[key] = item
   }
 
-  return tools
+  return { tools, mcpToolNames }
 })
 
 function toRecord(value: unknown) {

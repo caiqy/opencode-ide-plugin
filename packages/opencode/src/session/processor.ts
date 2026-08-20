@@ -77,6 +77,7 @@ interface ProcessorContext extends Input {
   needsCompaction: boolean
   currentText: SessionV1.TextPart | undefined
   reasoningMap: Record<string, SessionV1.ReasoningPart>
+  mcpToolNames: ReadonlySet<string>
 }
 
 type StreamEvent = LLMEvent
@@ -117,6 +118,7 @@ const layer = Layer.effect(
         needsCompaction: false,
         currentText: undefined,
         reasoningMap: {},
+        mcpToolNames: new Set(),
       }
       let aborted = false
 
@@ -265,7 +267,13 @@ const layer = Layer.effect(
           tool: input.name,
           callID: input.id,
           state: { status: "pending", input: {}, raw: "" },
-          metadata: input.providerExecuted ? { providerExecuted: true } : undefined,
+          metadata:
+            input.providerExecuted || ctx.mcpToolNames.has(input.name)
+              ? {
+                  ...(input.providerExecuted ? { providerExecuted: true } : {}),
+                  ...(ctx.mcpToolNames.has(input.name) ? { source: "mcp" } : {}),
+                }
+              : undefined,
         } satisfies SessionV1.ToolPart)
         ctx.toolcalls[input.id] = {
           done: yield* Deferred.make<void>(),
@@ -378,9 +386,16 @@ const layer = Layer.effect(
                       input,
                       time: { start: Date.now() },
                     },
-              metadata: match.metadata?.providerExecuted
-                ? { ...value.providerMetadata, providerExecuted: true }
-                : value.providerMetadata,
+              metadata:
+                match.metadata?.providerExecuted ||
+                value.providerMetadata ||
+                ctx.mcpToolNames.has(value.name)
+                  ? {
+                      ...value.providerMetadata,
+                      ...(match.metadata?.providerExecuted ? { providerExecuted: true } : {}),
+                      ...(ctx.mcpToolNames.has(value.name) ? { source: "mcp" } : {}),
+                    }
+                  : undefined,
             }))
 
             const parts = yield* MessageV2.parts(ctx.assistantMessage.id).pipe(
@@ -671,6 +686,7 @@ const layer = Layer.effect(
         })
         ctx.needsCompaction = false
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
+        ctx.mcpToolNames = streamInput.mcpToolNames ?? new Set()
 
         return yield* Effect.gen(function* () {
           yield* Effect.gen(function* () {

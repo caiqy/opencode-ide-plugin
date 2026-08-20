@@ -415,7 +415,7 @@ it.live("accumulates tool-input-delta into state.raw for apply_patch tool", () =
   ),
 )
 
-it.live("does not accumulate raw for non-streamable tool", () =>
+it.live("does not accumulate raw and marks MCP source for non-streamable tools", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -443,7 +443,7 @@ it.live("does not accumulate raw for non-streamable tool", () =>
                     index: 1,
                     id: "call_2",
                     type: "function",
-                    function: { name: "read", arguments: "" },
+                    function: { name: "github_create_issue", arguments: "" },
                   },
                 ],
               }),
@@ -477,16 +477,19 @@ it.live("does not accumulate raw for non-streamable tool", () =>
             system: [],
             messages: [{ role: "user", content: "run bash" }],
             tools: {},
+            mcpToolNames: new Set(["github_create_issue"]),
           } satisfies LLM.StreamInput)
           .pipe(Effect.forkChild)
 
         yield* Effect.gen(function* () {
           yield* llm.wait(1)
           // This start follows the bash args event in the same stream, so observing it proves the delta was consumed.
-          yield* pollUntilAnyPendingTool(chat.id, "read")
+          yield* pollUntilAnyPendingTool(chat.id, "github_create_issue")
           const part = yield* pollUntilAnyPendingTool(chat.id, "bash")
+          const mcpPart = yield* pollUntilAnyPendingTool(chat.id, "github_create_issue")
 
           expect(part.state.raw).toBe("")
+          expect(mcpPart.metadata?.source).toBe("mcp")
         }).pipe(Effect.ensuring(Fiber.interrupt(run)))
       }),
     { config: (url) => providerCfg(url) },

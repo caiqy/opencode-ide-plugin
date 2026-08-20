@@ -203,7 +203,17 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
         if (part.type === "tool") {
           const status = part.state?.status
           const safe = status === "pending" || status === "running" || status === "completed" || status === "error"
-          return [{ type: "tool", id: part.id, tool: part.tool, status: safe ? status : undefined }]
+          const stateMetadata = status === "pending" ? undefined : part.state.metadata
+          const metadata = part.metadata || stateMetadata ? { ...part.metadata, ...stateMetadata } : undefined
+          return [
+            {
+              type: "tool",
+              id: part.id,
+              tool: part.tool,
+              status: safe ? status : undefined,
+              metadata,
+            },
+          ]
         }
         return []
       })

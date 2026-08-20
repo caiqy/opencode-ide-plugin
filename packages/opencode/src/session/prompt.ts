@@ -1313,7 +1313,7 @@ const layer = Layer.effect(
             const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
             const promptOps = yield* ops()
 
-            const tools = yield* SessionTools.resolve({
+            const resolvedTools = yield* SessionTools.resolve({
               agent,
               session,
               model,
@@ -1329,6 +1329,7 @@ const layer = Layer.effect(
               Effect.provideService(Truncate.Service, truncate),
               Effect.provideService(RuntimeFlags.Service, flags),
             )
+            const tools = resolvedTools.tools
 
             if (lastUser.format?.type === "json_schema") {
               tools["StructuredOutput"] = createStructuredOutputTool({
@@ -1371,6 +1372,7 @@ const layer = Layer.effect(
                 ...(isLastStep ? [{ role: "assistant" as const, content: MAX_STEPS_PROMPT }] : []),
               ],
               tools,
+              mcpToolNames: resolvedTools.mcpToolNames,
               model,
               toolChoice: format.type === "json_schema" ? "required" : undefined,
             })
