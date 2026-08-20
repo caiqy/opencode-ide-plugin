@@ -1,8 +1,9 @@
 export * as WebSearchTool from "./websearch"
 
-import { ToolFailure } from "@opencode-ai/llm"
-import { Context, Duration, Effect, Layer, Schema } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { LLM, LLMEvent, Message, ToolDefinition, ToolFailure, type Model } from "@opencode-ai/llm"
+import { Auth } from "@opencode-ai/llm/route"
+import { Cause, Context, Duration, Effect, Layer, Schema } from "effect"
+import { Headers, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { makeLocationNode } from "../effect/app-node"
 import { LayerNodePlatform } from "../effect/app-node-platform"
 import { truthy } from "../flag/flag"
@@ -15,6 +16,8 @@ import { Tools } from "./tools"
 import { collectBoundedResponseBody } from "./http-body"
 import { checksum } from "../util/encode"
 import { ToolRegistry } from "./registry"
+import { Config } from "../config"
+import { SessionRunnerModel } from "../session/runner/model"
 
 export const name = "websearch"
 export const NO_RESULTS = "No search results found. Please try a different query."
@@ -30,9 +33,9 @@ export const MAX_RESPONSE_BYTES = 256 * 1024
  * from provider-hosted web search tools, which remain route-owned and execute
  * at the model provider. Ownership of this compromise can be revisited later.
  */
-export const description = `Search the web using the session's local web search provider. Use this for current information beyond knowledge cutoff.
+export const description = `Search the web for current information beyond the model's knowledge cutoff.
 
-This is a provider-independent local tool backed by Exa or Parallel. Provider-hosted web search tools are separate and execute at the model provider.
+When native search models are configured, the search runs on the selected provider/model. Otherwise it uses the configured local search provider.
 
 Optional controls support result count, live crawling ('fallback' or 'preferred'), search type ('auto', 'fast', or 'deep'), and maximum context characters.
 
@@ -59,6 +62,29 @@ export const Input = Schema.Struct({
 
 export const Provider = Schema.Literals(["exa", "parallel"])
 export type Provider = typeof Provider.Type
+
+export function prioritizeNativeSearchModels(models: readonly string[], providerID: string) {
+  const preferred = models.filter((model) => model.split("/", 1)[0] === providerID)
+  return [...preferred, ...models.filter((model) => model.split("/", 1)[0] !== providerID)]
+}
+
+export function executeNativeSearch<A>(
+  models: readonly string[],
+  providerID: string,
+  execute: (model: string) => Effect.Effect<A, unknown>,
+) {
+  return Effect.firstSuccessOf(
+    prioritizeNativeSearchModels(models, providerID).map((model) =>
+      Effect.suspend(() => execute(model)).pipe(
+        Effect.map((result) => ({ model, result })),
+        Effect.catchCause((cause) => {
+          if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause)
+          return Effect.fail(new Error("Native web search route failed"))
+        }),
+      ),
+    ),
+  ).pipe(Effect.mapError(() => new Error("Native web search unavailable")))
+}
 
 export interface Config {
   readonly provider?: Provider
@@ -186,9 +212,86 @@ const callMcp = <F extends Schema.Struct.Fields>(
   })
 
 const Output = Schema.Struct({
-  provider: Provider,
+  provider: Schema.String,
   text: Schema.String,
+  model: Schema.optional(Schema.String),
+  citations: Schema.optional(Schema.Array(Schema.Unknown)),
 })
+
+const AlphaSearchResponse = Schema.Struct({
+  encrypted_output: Schema.optional(Schema.NullOr(Schema.String)),
+  output: Schema.String,
+  results: Schema.optional(Schema.Array(Schema.Unknown)),
+})
+
+export const parseAlphaSearchResponse = Schema.decodeUnknownEffect(AlphaSearchResponse)
+
+export function buildAlphaSearchRequest(input: { id: string; model: string; query: string }) {
+  return {
+    id: input.id,
+    model: input.model,
+    input: [
+      {
+        type: "message" as const,
+        role: "user" as const,
+        content: [{ type: "input_text" as const, text: input.query }],
+      },
+    ],
+    commands: { search_query: [{ q: input.query }] },
+    settings: { allowed_callers: ["direct" as const], external_web_access: true as const },
+    max_output_tokens: 2048,
+  }
+}
+
+export function runAlphaSearchRequest(input: {
+  readonly http: HttpClient.HttpClient
+  readonly model: Model
+  readonly query: string
+  readonly sessionID: string
+}) {
+  const body = buildAlphaSearchRequest({ id: input.sessionID, model: String(input.model.id), query: input.query })
+  const baseURL = input.model.route.endpoint.baseURL
+  if (!baseURL) return Effect.fail(new Error("OpenAI alpha search requires a provider base URL"))
+  if (String(input.model.provider) !== "openai") return Effect.fail(new Error("Alpha search only supports OpenAI"))
+  const url = `${baseURL.replace(/\/+$/, "")}/alpha/search`
+  const bodyText = JSON.stringify(body)
+  return Effect.gen(function* () {
+    const llmRequest = LLM.request({ model: input.model, messages: [Message.user(input.query)] })
+    const headers = yield* Auth.toEffect(input.model.route.auth)({
+      request: llmRequest,
+      method: "POST",
+      url,
+      body: bodyText,
+      headers: Headers.fromInput({
+        "Content-Type": "application/json",
+        "User-Agent": customizeUserAgent(`opencode/${InstallationVersion}`),
+      }),
+    })
+    const request = yield* HttpClientRequest.post(url).pipe(
+      HttpClientRequest.setHeaders(headers),
+      HttpClientRequest.schemaBodyJson(Schema.Unknown)(body),
+    )
+    const response = yield* HttpClient.filterStatusOk(input.http).execute(
+      request,
+    )
+    const parsed = yield* HttpClientResponse.schemaBodyJson(AlphaSearchResponse)(response)
+    return { text: parsed.output, sources: parsed.results }
+  })
+}
+
+export function nativeSearchOutput(output: {
+  readonly provider: string
+  readonly model: string
+  readonly text: string
+  readonly citations?: ReadonlyArray<unknown>
+}) {
+  const text = output.text.replace(/\uE200cite\uE202[^\uE201]*\uE201(?:\s*\[wordlim:\s*\d+\])?/gu, "").trim()
+  const links = output.citations?.flatMap((citation) => {
+    if (!isRecord(citation) || typeof citation.url !== "string") return []
+    return [`- [${typeof citation.title === "string" ? citation.title : citation.url}](${citation.url})`]
+  })
+  return `${text || NO_RESULTS}${links?.length ? `\n\nSources:\n${links.join("\n")}` : ""}\n\nSearch model: ${output.model}`
+}
 
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -196,6 +299,8 @@ const layer = Layer.effectDiscard(
     const http = yield* HttpClient.HttpClient
     const config = yield* ConfigService
     const permission = yield* PermissionV2.Service
+    const configService = yield* Config.Service
+    const models = yield* SessionRunnerModel.Service
 
     yield* tools
       .register({
@@ -203,7 +308,10 @@ const layer = Layer.effectDiscard(
           description,
           input: Input,
           output: Output,
-          toModelOutput: ({ output }) => [{ type: "text", text: output.text }],
+          toModelOutput: ({ output }) =>
+            output.model
+              ? [{ type: "text", text: nativeSearchOutput({ ...output, model: output.model }) }]
+              : [{ type: "text", text: output.text }],
           execute: (input, context) => {
             const provider = selectProvider(context.sessionID, config, config.provider)
             return Effect.gen(function* () {
@@ -216,6 +324,72 @@ const layer = Layer.effectDiscard(
                 agent: context.agent,
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
+
+              const websearch = Config.latest(yield* configService.entries(), "websearch")
+              const routes = websearch?.models ?? []
+              const mode = websearch?.mode ?? "responses"
+              if (routes.length > 0) {
+                if (!context.model || !context.session) return yield* new ToolFailure({ message: "Native web search unavailable" })
+                const selected = yield* executeNativeSearch(routes, String(context.model.provider), (reference) =>
+                  Effect.gen(function* () {
+                    if (!models.resolveReference) return yield* Effect.fail(new Error("Native web search unavailable"))
+                    const model = yield* models.resolveReference(context.session!, reference)
+                    const provider = String(model.provider)
+                    if (provider !== "openai" && provider !== "anthropic" && provider !== "xai")
+                      return yield* Effect.fail(new Error("Native web search route unsupported"))
+                    if (mode === "alpha-search") {
+                      if (provider !== "openai") return yield* Effect.fail(new Error("Alpha search only supports OpenAI"))
+                      const response = yield* runAlphaSearchRequest({
+                        http,
+                        model,
+                        query: input.query,
+                        sessionID: context.sessionID,
+                      })
+                      const citations = response.sources ?? []
+                      const identity = `${provider}/${String(model.id)}`
+                      return { provider, model: identity, text: response.text || NO_RESULTS, citations }
+                    }
+                    const native =
+                      provider === "anthropic"
+                        ? { type: "web_search_20250305", name: "web_search" }
+                        : { type: "web_search" }
+                    const response = yield* LLM.generate(
+                      LLM.request({
+                        model,
+                        messages: [Message.user(input.query)],
+                        tools: [
+                          new ToolDefinition({
+                            name: "web_search",
+                            description: "Search the web",
+                            inputSchema: { type: "object", properties: {} },
+                            native,
+                          }),
+                        ],
+                        toolChoice: "required",
+                          providerOptions:
+                            provider === "openai"
+                              ? { openai: { store: false, include: ["web_search_call.results"] } }
+                              : { openai: { store: false } },
+                        generation: { maxTokens: 2048 },
+                      }),
+                    )
+                      if (
+                        response.events.some(LLMEvent.is.providerError) ||
+                        response.events.some(
+                          (event) =>
+                            event.type === "tool-result" &&
+                            event.providerExecuted === true &&
+                            event.result.type === "error",
+                        )
+                      )
+                        return yield* Effect.fail(new Error("Native web search provider error"))
+                      const citations = response.events.flatMap(collectCitations)
+                    const identity = `${provider}/${String(model.id)}`
+                    return { provider, model: identity, text: response.text || NO_RESULTS, citations }
+                  }),
+                ).pipe(Effect.mapError(() => new ToolFailure({ message: "Native web search unavailable" })))
+                return selected.result
+              }
 
               const text =
                 provider === "exa"
@@ -257,5 +431,24 @@ const layer = Layer.effectDiscard(
 export const node = makeLocationNode({
   name: "tool/websearch",
   layer,
-  deps: [ToolRegistry.node, PermissionV2.node, LayerNodePlatform.httpClient, configNode],
+  deps: [
+    ToolRegistry.node,
+    PermissionV2.node,
+    LayerNodePlatform.httpClient,
+    LayerNodePlatform.llmClient,
+    configNode,
+    Config.node,
+    SessionRunnerModel.node,
+  ],
 })
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function collectCitations(value: unknown): ReadonlyArray<unknown> {
+  if (Array.isArray(value)) return value.flatMap(collectCitations)
+  if (!isRecord(value)) return []
+  const current = typeof value.url === "string" ? [value] : []
+  return [...current, ...Object.values(value).flatMap(collectCitations)]
+}

@@ -22223,6 +22223,22 @@
               "type": "boolean"
             }
           },
+          "websearch": {
+            "type": "object",
+            "properties": {
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(openai|anthropic|xai)\\/.+"
+                },
+                "description": "Ordered provider/model references used for native web search"
+              }
+            },
+            "required": ["models"],
+            "additionalProperties": false,
+            "description": "Cross-provider native web search configuration"
+          },
           "attachment": {
             "$ref": "#/components/schemas/AttachmentConfig"
           },

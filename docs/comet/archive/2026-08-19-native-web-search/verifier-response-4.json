@@ -1,0 +1,43 @@
+{
+  "kind": "verifier-response",
+  "response": {
+    "kind": "final-result",
+    "result": {
+      "iteration": 4,
+      "attempt": 1,
+      "verdict": "fail",
+      "acceptance": [
+        { "id": "A1", "result": "failed", "reason": "schema 允许多 slash model reference，但 resolver 曾截断 model ID。" },
+        { "id": "A2", "result": "passed", "reason": "provider 优先和配置顺序 fallback 正确。" },
+        { "id": "A3", "result": "passed", "reason": "三家 native declaration lowering 存在。" },
+        { "id": "A4", "result": "failed", "reason": "独立 turn 存在，但 Responses citation annotation 仍可能被 parser 丢失。" },
+        { "id": "A5", "result": "passed", "reason": "provider-error 和 hosted tool-result error 都映射为 fallback failure。" },
+        { "id": "A6", "result": "passed", "reason": "native 不调用 Exa/Parallel，关闭后保留旧路径。" },
+        { "id": "A7", "result": "failed", "reason": "缺少 Core native runtime、permission、投影和 citation wire fixture 测试。" },
+        { "id": "A8", "result": "failed", "reason": "多 slash model ID 解析不保持原值。" },
+        { "id": "A9", "result": "failed", "reason": "resolver 未验证 native-search capable API/package。" },
+        { "id": "A10", "result": "passed", "reason": "无 native routes 时 Exa/Parallel 旧行为不变。" },
+        { "id": "A11", "result": "passed", "reason": "权限先于独立请求，本地会话只收到 local websearch。" },
+        { "id": "A12", "result": "passed", "reason": "native ToolDefinition 已接入。" },
+        { "id": "A13", "result": "passed", "reason": "OpenAI web_search 正确。" },
+        { "id": "A14", "result": "passed", "reason": "Anthropic web_search_20250305 正确。" },
+        { "id": "A15", "result": "passed", "reason": "xAI endpoint、Responses web_search 和 include 处理已修复。" },
+        { "id": "A16", "result": "passed", "reason": "配置 search model 与当前会话 provider 解耦。" },
+        { "id": "A17", "result": "passed", "reason": "失败按序 fallback，全部失败稳定脱敏。" },
+        { "id": "A18", "result": "failed", "reason": "identity 已投影，但标准 url_citation 进入 citations 的可靠性不足。" },
+        { "id": "A19", "result": "passed", "reason": "providerExecuted 不进入本地 dispatch。" },
+        { "id": "A20", "result": "passed", "reason": "native 路径隐藏 Exa/Parallel。" },
+        { "id": "A21", "result": "failed", "reason": "annotation event/final annotations 和 route capability validation 仍有缺口。" },
+        { "id": "A22", "result": "passed", "reason": "配置及迁移测试通过。" },
+        { "id": "A23", "result": "passed", "reason": "排序与 helper fallback 确定。" },
+        { "id": "A24", "result": "passed", "reason": "三家声明级 lowering 正确。" },
+        { "id": "A25", "result": "failed", "reason": "citation helper 存在但 parser 可能先丢失标准 annotation。" },
+        { "id": "A26", "result": "blocked", "reason": "无 Core native settlement fixture，无法确认全部失败最终工具结果。" },
+        { "id": "A27", "result": "passed", "reason": "native visibility 和执行分支正确。" },
+        { "id": "A28", "result": "failed", "reason": "缺少 response.done/url_citation、Core native、Catalog、permission、组合 fallback 测试。" }
+      ],
+      "risks": ["真实 provider 请求未运行。", "完整 citation wire fixture 未覆盖。"],
+      "summary": "iteration 4 仍有 reference 解析、Responses annotation、native capability 校验和 Core 集成测试缺口。"
+    }
+  }
+}

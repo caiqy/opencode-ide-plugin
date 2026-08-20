@@ -112,7 +112,13 @@ const OpenAIResponsesTool = Schema.Struct({
   parameters: JsonObject,
   strict: Schema.optional(Schema.Boolean),
 })
-type OpenAIResponsesTool = Schema.Schema.Type<typeof OpenAIResponsesTool>
+const OpenAIResponsesNativeTool = Schema.Struct({
+  type: Schema.Literal("web_search"),
+  search_context_size: Schema.optional(Schema.Literals(["low", "medium", "high"])),
+})
+type OpenAIResponsesTool =
+  | Schema.Schema.Type<typeof OpenAIResponsesTool>
+  | Schema.Schema.Type<typeof OpenAIResponsesNativeTool>
 
 const OpenAIResponsesToolChoice = Schema.Union([
   Schema.Literals(["auto", "none", "required"]),
@@ -127,7 +133,7 @@ const OpenAIResponsesCoreFields = {
   model: Schema.String,
   input: Schema.Array(OpenAIResponsesInputItem),
   instructions: Schema.optional(Schema.String),
-  tools: optionalArray(OpenAIResponsesTool),
+  tools: optionalArray(Schema.Union([OpenAIResponsesTool, OpenAIResponsesNativeTool])),
   tool_choice: Schema.optional(OpenAIResponsesToolChoice),
   store: Schema.optional(Schema.Boolean),
   service_tier: Schema.optional(OpenAIOptions.OpenAIServiceTier),
@@ -188,6 +194,7 @@ const OpenAIResponsesStreamItem = Schema.Struct({
   action: Schema.optional(Schema.Unknown),
   queries: Schema.optional(Schema.Unknown),
   results: Schema.optional(Schema.Unknown),
+  content: Schema.optional(Schema.Unknown),
   code: Schema.optional(Schema.String),
   container_id: Schema.optional(Schema.String),
   outputs: Schema.optional(Schema.Unknown),
@@ -223,6 +230,7 @@ const OpenAIResponsesEvent = Schema.Struct({
         incomplete_details: optionalNull(Schema.Struct({ reason: Schema.String })),
         usage: optionalNull(OpenAIResponsesUsage),
         error: optionalNull(OpenAIResponsesErrorPayload),
+        output: Schema.optional(Schema.Unknown),
       }),
       [Schema.Record(Schema.String, Schema.Unknown)],
     ),
@@ -230,6 +238,7 @@ const OpenAIResponsesEvent = Schema.Struct({
   code: Schema.optional(Schema.String),
   message: Schema.optional(Schema.String),
   param: Schema.optional(Schema.String),
+  annotation: Schema.optional(Schema.Unknown),
 })
 type OpenAIResponsesEvent = Schema.Schema.Type<typeof OpenAIResponsesEvent>
 
@@ -239,6 +248,7 @@ interface ParserState {
   readonly lifecycle: Lifecycle.State
   readonly reasoningItems: Readonly<Record<string, ReasoningStreamItem>>
   readonly store: boolean | undefined
+  readonly citations: ReadonlyArray<Record<string, unknown>>
 }
 
 type ReasoningSummaryStatus = "active" | "can-conclude" | "concluded"
@@ -264,6 +274,19 @@ const lowerTool = (tool: ToolDefinition, inputSchema: JsonSchema): OpenAIRespons
   // TODO: Read this from OpenAI-specific tool options so direct LLM callers can opt into strict schemas.
   strict: false,
 })
+
+const lowerNativeTool = (tool: ToolDefinition) =>
+  tool.native?.type === "web_search"
+    ? OpenAIResponsesNativeTool.make({
+        type: "web_search",
+        search_context_size:
+          tool.native.search_context_size === "low" ||
+          tool.native.search_context_size === "medium" ||
+          tool.native.search_context_size === "high"
+            ? tool.native.search_context_size
+            : undefined,
+      })
+    : undefined
 
 const lowerToolChoice = (toolChoice: NonNullable<LLMRequest["toolChoice"]>) =>
   ProviderShared.matchToolChoice("OpenAI Responses", toolChoice, {
@@ -485,8 +508,10 @@ const fromRequest = Effect.fn("OpenAIResponses.fromRequest")(function* (request:
     tools:
       request.tools.length === 0
         ? undefined
-        : request.tools.map((tool) =>
-            lowerTool(tool, ToolSchemaProjection.modelCompatibility(tool.inputSchema, toolSchemaCompatibility)),
+        : request.tools.map(
+            (tool) =>
+              lowerNativeTool(tool) ??
+              lowerTool(tool, ToolSchemaProjection.modelCompatibility(tool.inputSchema, toolSchemaCompatibility)),
           ),
     tool_choice: request.toolChoice ? yield* lowerToolChoice(request.toolChoice) : undefined,
     stream: true as const,
@@ -608,9 +633,36 @@ const NO_EVENTS: StepResult["1"] = []
 
 // `response.completed` / `response.incomplete` are clean finishes that emit a
 // `finish` event; `response.failed` is a hard failure that emits a
-// `provider-error`. All three end the stream — kept in one set so `step` and
+// `provider-error`. All four end the stream — kept in one set so `step` and
 // the protocol's `terminal` predicate stay in sync.
-const TERMINAL_TYPES = new Set(["response.completed", "response.incomplete", "response.failed"])
+const TERMINAL_TYPES = new Set(["response.completed", "response.incomplete", "response.failed", "response.done"])
+
+const urlCitations = (value: unknown): ReadonlyArray<Record<string, unknown>> => {
+  if (Array.isArray(value)) return value.flatMap(urlCitations)
+  if (!ProviderShared.isRecord(value)) return []
+  const current = value.type === "url_citation" && typeof value.url === "string" ? [value] : []
+  return [...current, ...Object.values(value).flatMap(urlCitations)]
+}
+
+const uniqueCitations = (citations: ReadonlyArray<Record<string, unknown>>) => {
+  const seen = new Set<string>()
+  return citations.filter((citation) => {
+    const url = String(citation.url)
+    if (seen.has(url)) return false
+    seen.add(url)
+    return true
+  })
+}
+
+const citationMetadata = (value: unknown) => {
+  const citations = uniqueCitations(urlCitations(value))
+  return citations.length === 0 ? undefined : openaiMetadata({ citations })
+}
+
+const appendCitations = (state: ParserState, value: unknown) => {
+  const citations = uniqueCitations([...state.citations, ...urlCitations(value)])
+  return citations.length === 0 ? state : { ...state, citations }
+}
 
 const onOutputTextDelta = (state: ParserState, event: OpenAIResponsesEvent): StepResult => {
   if (!event.delta) return [state, NO_EVENTS]
@@ -836,6 +888,10 @@ const onOutputItemDone = Effect.fn("OpenAIResponses.onOutputItemDone")(function*
     ] satisfies StepResult
   }
 
+  if (item.type === "message") {
+    return [appendCitations(state, item.content ?? item.output), NO_EVENTS] satisfies StepResult
+  }
+
   if (isHostedToolItem(item)) {
     const events: LLMEvent[] = []
     const lifecycle = Lifecycle.stepStart(state.lifecycle, events)
@@ -874,7 +930,15 @@ const onOutputItemDone = Effect.fn("OpenAIResponses.onOutputItemDone")(function*
 
 const onResponseFinish = (state: ParserState, event: OpenAIResponsesEvent): StepResult => {
   const events: LLMEvent[] = []
-  const lifecycle = Lifecycle.finish(state.lifecycle, events, {
+  const citations = uniqueCitations([...state.citations, ...urlCitations(event.response?.output)])
+  const metadata = citations.length === 0 ? undefined : openaiMetadata({ citations })
+  const withCitations = metadata
+    ? Array.from(state.lifecycle.text).reduce(
+        (next, id) => Lifecycle.textEnd(next, events, id, metadata),
+        state.lifecycle,
+      )
+    : state.lifecycle
+  const lifecycle = Lifecycle.finish(withCitations, events, {
     reason: mapFinishReason(event, state.hasFunctionCall),
     usage: mapUsage(event.response?.usage),
     providerMetadata:
@@ -922,6 +986,9 @@ const onError = (state: ParserState, event: OpenAIResponsesEvent): StepResult =>
 
 const step = (state: ParserState, event: OpenAIResponsesEvent) => {
   if (event.type === "response.output_text.delta") return Effect.succeed(onOutputTextDelta(state, event))
+  if (event.type === "response.output_text.annotation.added") {
+    return Effect.succeed<StepResult>([appendCitations(state, event.annotation), NO_EVENTS])
+  }
   if (
     event.type === "response.reasoning_text.delta" ||
     event.type === "response.reasoning_summary.delta" ||
@@ -941,7 +1008,7 @@ const step = (state: ParserState, event: OpenAIResponsesEvent) => {
   if (event.type === "response.output_item.added") return Effect.succeed(onOutputItemAdded(state, event))
   if (event.type === "response.function_call_arguments.delta") return onFunctionCallArgumentsDelta(state, event)
   if (event.type === "response.output_item.done") return onOutputItemDone(state, event)
-  if (event.type === "response.completed" || event.type === "response.incomplete")
+  if (event.type === "response.completed" || event.type === "response.incomplete" || event.type === "response.done")
     return Effect.succeed(onResponseFinish(state, event))
   if (event.type === "response.failed") return Effect.succeed(onResponseFailed(state, event))
   if (event.type === "error") return Effect.succeed(onError(state, event))
@@ -970,6 +1037,7 @@ export const protocol = Protocol.make({
       lifecycle: Lifecycle.initial(),
       reasoningItems: {},
       store: OpenAIOptions.store(request),
+      citations: [],
     }),
     step,
     terminal: (event) => TERMINAL_TYPES.has(event.type),

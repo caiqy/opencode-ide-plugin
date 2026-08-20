@@ -1,0 +1,17 @@
+{
+  "kind": "builder-handoff",
+  "summary": "修复 Verifier 指出的 V2 缺口：xAI 搜索模型在缺少自定义 URL 时使用 https://api.x.ai/v1；解析不到 credential 的搜索模型被视为不可用；provider-error event 不再被当作成功，路由会继续 fallback；V2 输出增加 provider/model identity 与递归提取的 citation/source，并投影为 Sources 文本；websearch 描述不再暴露 Exa/Parallel 后端；WebSearchTool 显式声明 LLM client 依赖；新增 deterministic fallback、identity/citation、xAI endpoint 测试。",
+  "addressed_acceptance_ids": ["A3","A4","A5","A6","A7","A9","A15","A16","A17","A18","A20","A21","A23","A25","A26","A27","A28"],
+  "checks": [
+    { "name": "core regression", "result": "passed", "note": "116 tests passed across config, SessionRunner, and WebSearchTool; WebSearchTool 15/15" },
+    { "name": "llm regression", "result": "passed", "note": "86 tests passed across OpenAI Responses, Anthropic Messages, and xAI" },
+    { "name": "legacy regression", "result": "passed", "note": "49 tests passed across legacy websearch and session llm" },
+    { "name": "core typecheck", "result": "passed", "note": "bun typecheck" },
+    { "name": "llm typecheck", "result": "passed", "note": "bun typecheck" },
+    { "name": "git diff check", "result": "passed", "note": "git diff --check" }
+  ],
+  "known_limits": [
+    "未运行真实 provider 网络请求。",
+    "citation 提取依赖 provider 返回的结构化 URL metadata；未用真实响应 fixture 覆盖三家 provider 的完整 source wire shape。"
+  ]
+}

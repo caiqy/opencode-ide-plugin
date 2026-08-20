@@ -1,0 +1,46 @@
+{
+  "kind": "verifier-response",
+  "response": {
+    "kind": "final-result",
+    "result": {
+      "iteration": 6,
+      "attempt": 1,
+      "verdict": "pass",
+      "acceptance": [
+        { "id": "A1", "result": "passed", "reason": "配置支持三家 provider/model 且保留顺序。" },
+        { "id": "A2", "result": "passed", "reason": "当前 provider 优先，fallback 顺序确定。" },
+        { "id": "A3", "result": "passed", "reason": "三家 native declaration 正确。" },
+        { "id": "A4", "result": "passed", "reason": "独立 provider turn；取消保留 Effect.interrupt。" },
+        { "id": "A5", "result": "passed", "reason": "fallback 按序执行，最终错误脱敏。" },
+        { "id": "A6", "result": "passed", "reason": "native 模式隐藏 Exa/Parallel，legacy 路径保留。" },
+        { "id": "A7", "result": "passed", "reason": "协议、路由、runtime、权限和回归证据齐全。" },
+        { "id": "A8", "result": "passed", "reason": "显式 provider/model，不替换默认模型。" },
+        { "id": "A9", "result": "passed", "reason": "resolver 校验 route、SDK capability 和 credential。" },
+        { "id": "A10", "result": "passed", "reason": "无 native route 时 legacy 行为不变。" },
+        { "id": "A11", "result": "passed", "reason": "保留本地 websearch 与权限边界。" },
+        { "id": "A12", "result": "passed", "reason": "使用 provider-native search declaration。" },
+        { "id": "A13", "result": "passed", "reason": "OpenAI Responses web_search。" },
+        { "id": "A14", "result": "passed", "reason": "Anthropic web_search_20250305。" },
+        { "id": "A15", "result": "passed", "reason": "xAI Responses web_search。" },
+        { "id": "A16", "result": "passed", "reason": "active provider 只影响优先级。" },
+        { "id": "A17", "result": "passed", "reason": "provider failure 触发下一路由及稳定失败。" },
+        { "id": "A18", "result": "passed", "reason": "结果包含文本、citation 和 provider/model identity。" },
+        { "id": "A19", "result": "passed", "reason": "provider-executed call 不进入本地 dispatch。" },
+        { "id": "A20", "result": "passed", "reason": "native 模式不暴露 Exa/Parallel 执行。" },
+        { "id": "A21", "result": "passed", "reason": "既有 parsing、权限、边界和 legacy 行为保持兼容。" },
+        { "id": "A22", "result": "passed", "reason": "配置校验覆盖。" },
+        { "id": "A23", "result": "passed", "reason": "路由优先级与 fallback 确定。" },
+        { "id": "A24", "result": "passed", "reason": "三家 declaration lowering 覆盖。" },
+        { "id": "A25", "result": "passed", "reason": "Core settlement 实际执行 native local tool。" },
+        { "id": "A26", "result": "passed", "reason": "fallback 与脱敏错误已接入 Core。" },
+        { "id": "A27", "result": "passed", "reason": "native visibility 和执行分支正确。" },
+        { "id": "A28", "result": "passed", "reason": "聚焦测试及回归检查通过。" }
+      ],
+      "risks": [
+        "未运行真实 provider 网络请求。",
+        "citation 去重保留首个 URL 对应对象，不合并重复事件中的后续 metadata。"
+      ],
+      "summary": "A1-A28 全部通过；abort interruption、citation URL 去重和 Legacy 数值边界修复均已验证。Core 117、LLM 87、Legacy 23 通过，三处 typecheck 与 git diff --check 通过。"
+    }
+  }
+}

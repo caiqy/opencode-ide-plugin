@@ -1,0 +1,12 @@
+{
+  "kind": "dispatch-verifier",
+  "checks": [
+    { "name": "core typecheck", "result": "passed", "note": "packages/core: bun typecheck" },
+    { "name": "llm typecheck", "result": "passed", "note": "packages/llm: bun typecheck" },
+    { "name": "core regression", "result": "passed", "note": "101 tests passed across config and SessionRunner; WebSearchTool 13/13" },
+    { "name": "llm protocol regression", "result": "passed", "note": "85 tests passed across OpenAI Responses and Anthropic Messages" },
+    { "name": "legacy regression", "result": "passed", "note": "49 tests passed across legacy websearch and session llm" },
+    { "name": "generated artifacts", "result": "passed", "note": "packages/client: bun run generate" },
+    { "name": "diff check", "result": "passed", "note": "git diff --check" }
+  ]
+}

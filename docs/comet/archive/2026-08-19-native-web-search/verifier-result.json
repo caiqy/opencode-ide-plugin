@@ -1,0 +1,46 @@
+{
+  "kind": "verifier-response",
+  "response": {
+    "kind": "final-result",
+    "result": {
+      "iteration": 1,
+      "attempt": 2,
+      "verdict": "fail",
+      "acceptance": [
+        { "id": "A1", "result": "passed", "reason": "ConfigV1 支持并保留有序搜索模型；未配置时 legacy 行为不变。" },
+        { "id": "A2", "result": "failed", "reason": "同厂商优先仅在 legacy 实现，V2 尚无模型感知路由。" },
+        { "id": "A3", "result": "failed", "reason": "三家原生声明仅在 legacy 可达，V2 仍使用 Exa/Parallel MCP。" },
+        { "id": "A4", "result": "failed", "reason": "V2 没有独立 native provider turn。" },
+        { "id": "A5", "result": "failed", "reason": "V2 没有 native route fallback。" },
+        { "id": "A6", "result": "failed", "reason": "V2 配置 native routes 后仍执行 Exa/Parallel。" },
+        { "id": "A7", "result": "failed", "reason": "缺少 V2 runtime 与 permission integration 覆盖。" },
+        { "id": "A8", "result": "passed", "reason": "legacy 配置严格校验显式 provider/model，未替换默认模型。" },
+        { "id": "A9", "result": "failed", "reason": "V2 尚未解析可用搜索模型与凭据。" },
+        { "id": "A10", "result": "passed", "reason": "未配置 native routes 时既有 Exa/Parallel 行为不变。" },
+        { "id": "A11", "result": "failed", "reason": "V2 本地 websearch 仍为 MCP-only。" },
+        { "id": "A12", "result": "failed", "reason": "V2 活跃运行时未接入原生声明。" },
+        { "id": "A13", "result": "failed", "reason": "OpenAI web_search 未接入 V2。" },
+        { "id": "A14", "result": "failed", "reason": "Anthropic web_search_20250305 未接入 V2。" },
+        { "id": "A15", "result": "failed", "reason": "xAI web_search 未接入 V2。" },
+        { "id": "A16", "result": "failed", "reason": "V2 缺少跨厂商独立路由。" },
+        { "id": "A17", "result": "failed", "reason": "V2 缺少有序 fallback 与全部失败路径。" },
+        { "id": "A18", "result": "failed", "reason": "V2 无 native 结果、引用和 provider/model 投影。" },
+        { "id": "A19", "result": "failed", "reason": "V2 没有内部 hosted-search turn。" },
+        { "id": "A20", "result": "failed", "reason": "native 模式不能切换 V2 Exa/Parallel 路径。" },
+        { "id": "A21", "result": "failed", "reason": "V2 兼容性和 provider-executed 投影未证明。" },
+        { "id": "A22", "result": "passed", "reason": "配置正反例已有 focused tests。" },
+        { "id": "A23", "result": "failed", "reason": "V2 未实现确定性路由。" },
+        { "id": "A24", "result": "failed", "reason": "三家 provider 声明在 V2 不可用。" },
+        { "id": "A25", "result": "failed", "reason": "V2 无独立 native 结果投影。" },
+        { "id": "A26", "result": "failed", "reason": "V2 无 fallback 与脱敏失败。" },
+        { "id": "A27", "result": "failed", "reason": "native 模式未抑制 V2 Exa/Parallel。" },
+        { "id": "A28", "result": "failed", "reason": "缺少 V2 focused tests 与端到端覆盖。" }
+      ],
+      "risks": [
+        "确认 Spec 没有 legacy-only 限制，但 packages/core/src/tool/websearch.ts 仍仅支持 Exa/Parallel。",
+        "尚未运行真实 provider 网络请求。"
+      ],
+      "summary": "legacy 路径部分完成，但 V2 Core 未实现，无法满足已确认的完整 Spec。"
+    }
+  }
+}

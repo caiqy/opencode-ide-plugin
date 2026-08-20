@@ -142,6 +142,11 @@ const AnthropicTool = Schema.Struct({
   cache_control: Schema.optional(AnthropicCacheControl),
 })
 type AnthropicTool = Schema.Schema.Type<typeof AnthropicTool>
+const AnthropicNativeWebSearchTool = Schema.Struct({
+  type: Schema.Literal("web_search_20250305"),
+  name: Schema.Literal("web_search"),
+})
+type AnthropicToolInput = AnthropicTool | Schema.Schema.Type<typeof AnthropicNativeWebSearchTool>
 
 const AnthropicToolChoice = Schema.Union([
   Schema.Struct({ type: Schema.Literals(["auto", "any"]) }),
@@ -157,7 +162,7 @@ const AnthropicBodyFields = {
   model: Schema.String,
   system: optionalArray(AnthropicTextBlock),
   messages: Schema.Array(AnthropicMessage),
-  tools: optionalArray(AnthropicTool),
+  tools: optionalArray(Schema.Union([AnthropicTool, AnthropicNativeWebSearchTool])),
   tool_choice: Schema.optional(AnthropicToolChoice),
   stream: Schema.Literal(true),
   max_tokens: Schema.Number,
@@ -264,6 +269,11 @@ const lowerTool = (breakpoints: Cache.Breakpoints, tool: ToolDefinition, inputSc
   input_schema: inputSchema,
   cache_control: cacheControl(breakpoints, tool.cache),
 })
+
+const lowerNativeTool = (tool: ToolDefinition): AnthropicToolInput | undefined =>
+  tool.native?.type === "web_search_20250305"
+    ? AnthropicNativeWebSearchTool.make({ type: "web_search_20250305", name: "web_search" })
+    : undefined
 
 const lowerToolChoice = (toolChoice: NonNullable<LLMRequest["toolChoice"]>) =>
   ProviderShared.matchToolChoice("Anthropic Messages", toolChoice, {
@@ -515,12 +525,14 @@ const fromRequest = Effect.fn("AnthropicMessages.fromRequest")(function* (reques
   const tools =
     request.tools.length === 0 || request.toolChoice?.type === "none"
       ? undefined
-      : request.tools.map((tool) =>
-          lowerTool(
-            breakpoints,
-            tool,
-            ToolSchemaProjection.modelCompatibility(tool.inputSchema, toolSchemaCompatibility),
-          ),
+      : request.tools.map(
+          (tool) =>
+            lowerNativeTool(tool) ??
+            lowerTool(
+              breakpoints,
+              tool,
+              ToolSchemaProjection.modelCompatibility(tool.inputSchema, toolSchemaCompatibility),
+            ),
         )
   const system =
     request.system.length === 0

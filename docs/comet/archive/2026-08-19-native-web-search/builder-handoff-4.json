@@ -1,0 +1,17 @@
+{
+  "kind": "builder-handoff",
+  "summary": "完成第三轮修复：native 搜索候选改用 Catalog.model.available 过滤 disabled/provider unavailable 模型并拒绝空 credential；hosted tool-result error 与 provider-error 都会触发下一路由；xAI 不再发送仅 OpenAI 支持的 web_search_call.results include，通用 Responses parser 支持 response.done 和 url_citation annotations；V2 继续投影 provider/model 与 Sources。",
+  "addressed_acceptance_ids": ["A2","A3","A5","A7","A9","A12","A15","A17","A18","A21","A23","A24","A25","A26","A28"],
+  "checks": [
+    { "name": "core regression", "result": "passed", "note": "116 tests passed across config, SessionRunner, and WebSearchTool" },
+    { "name": "llm regression", "result": "passed", "note": "86 tests passed across OpenAI Responses, Anthropic Messages, and xAI" },
+    { "name": "legacy regression", "result": "passed", "note": "49 tests passed across legacy websearch and session llm" },
+    { "name": "core typecheck", "result": "passed", "note": "bun typecheck" },
+    { "name": "llm typecheck", "result": "passed", "note": "bun typecheck" },
+    { "name": "git diff check", "result": "passed", "note": "git diff --check" }
+  ],
+  "known_limits": [
+    "未运行真实 provider 网络请求。",
+    "三家 provider 的完整真实 citation wire fixture 尚未录制；当前使用通用 annotation/source metadata 解析和 focused tests。"
+  ]
+}

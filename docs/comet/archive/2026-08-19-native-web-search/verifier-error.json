@@ -1,0 +1,8 @@
+{
+  "kind": "verifier-execution-error",
+  "summary": "独立只读 Verifier 两次任务均异常结束且未返回任何验收结果；候选实现和已通过检查未变化。",
+  "stateVersion": 4,
+  "iteration": 1,
+  "attempt": 1,
+  "verifierExecutionRef": "skill-coordinated:verifier:988fcbf0-1c48-4481-b517-372e48ae6d45"
+}

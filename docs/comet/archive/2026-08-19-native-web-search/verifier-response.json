@@ -1,0 +1,46 @@
+{
+  "kind": "verifier-response",
+  "response": {
+    "kind": "final-result",
+    "result": {
+      "iteration": 2,
+      "attempt": 1,
+      "verdict": "fail",
+      "acceptance": [
+        { "id": "A1", "result": "passed", "reason": "配置支持三家 provider/model；未配置时保留 Exa/Parallel。" },
+        { "id": "A2", "result": "passed", "reason": "Core 与 legacy 都实现当前 provider 优先及配置顺序。" },
+        { "id": "A3", "result": "failed", "reason": "V2 xAI 缺少默认 endpoint，默认会使用 OpenAI Responses endpoint。" },
+        { "id": "A4", "result": "failed", "reason": "V2 使用独立 LLM.generate，但没有引用投影。" },
+        { "id": "A5", "result": "failed", "reason": "V2 将 provider-error response 当作成功并返回 NO_RESULTS，不会 fallback。" },
+        { "id": "A6", "result": "failed", "reason": "运行时分支隐藏执行路径，但工具描述仍暴露 Exa/Parallel。" },
+        { "id": "A7", "result": "failed", "reason": "缺少 V2 native runtime、权限、跨 provider 和全失败测试。" },
+        { "id": "A8", "result": "passed", "reason": "schema 要求显式 provider/model。" },
+        { "id": "A9", "result": "failed", "reason": "resolveReference 未检查 provider 可用性和 credential。" },
+        { "id": "A10", "result": "passed", "reason": "无 native routes 时行为保持不变。" },
+        { "id": "A11", "result": "passed", "reason": "保留本地 websearch 及权限边界，独立请求在权限后执行。" },
+        { "id": "A12", "result": "passed", "reason": "V2 构造 provider-native ToolDefinition。" },
+        { "id": "A13", "result": "passed", "reason": "OpenAI Responses 使用 web_search。" },
+        { "id": "A14", "result": "passed", "reason": "Anthropic Messages 使用 web_search_20250305。" },
+        { "id": "A15", "result": "failed", "reason": "xAI route 默认 endpoint 错误。" },
+        { "id": "A16", "result": "failed", "reason": "跨 provider 排序存在，但 xAI 配置不能形成有效请求。" },
+        { "id": "A17", "result": "failed", "reason": "provider terminal error 会绕过 fallback，全部失败语义不稳定。" },
+        { "id": "A18", "result": "failed", "reason": "V2 Output 只有 provider/text，缺少完整 provider/model 和 citation/source。" },
+        { "id": "A19", "result": "passed", "reason": "providerExecuted calls 不进入 active session 本地 settlement。" },
+        { "id": "A20", "result": "failed", "reason": "运行时不调用 Exa/Parallel，但描述仍向模型暴露旧后端。" },
+        { "id": "A21", "result": "failed", "reason": "V2 citation 投影缺失且 native 描述过时。" },
+        { "id": "A22", "result": "passed", "reason": "配置 schema 正反例可验证。" },
+        { "id": "A23", "result": "failed", "reason": "V2 fallback 未覆盖 provider-error，也没有真实 route execution test。" },
+        { "id": "A24", "result": "passed", "reason": "三家 native declaration lowering 代码正确。" },
+        { "id": "A25", "result": "failed", "reason": "V2 没有独立响应 citation/source 投影。" },
+        { "id": "A26", "result": "failed", "reason": "provider terminal error 不触发 fallback 和稳定错误。" },
+        { "id": "A27", "result": "failed", "reason": "工具描述仍泄露 Exa/Parallel。" },
+        { "id": "A28", "result": "failed", "reason": "缺少 V2 runtime/fallback/citation/xAI endpoint/permission 集成测试。" }
+      ],
+      "risks": [
+        "真实 provider 网络请求未运行。",
+        "WebSearchTool node 未显式声明 llmClient dependency，当前依赖 Location 组合间接提供。"
+      ],
+      "summary": "V2 主路径已接入，但 xAI endpoint、provider-error fallback、引用与完整身份投影仍不满足 Spec。"
+    }
+  }
+}

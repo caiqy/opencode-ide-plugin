@@ -1,14 +1,20 @@
 import { beforeEach, describe, expect, test } from "bun:test"
-import { Effect, Layer, Schema } from "effect"
+import { DateTime, Effect, Layer, Schema, Stream } from "effect"
+import { LLM, LLMClient, LLMEvent, LLMResponse } from "@opencode-ai/llm"
+import { responses } from "@opencode-ai/llm/providers/openai"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { LayerNodePlatform } from "@opencode-ai/core/effect/app-node-platform"
 import { PermissionV2 } from "@opencode-ai/core/permission"
 import { SessionV2 } from "@opencode-ai/core/session"
+import { ProjectV2 } from "@opencode-ai/core/project"
+import { AbsolutePath } from "@opencode-ai/core/schema"
 import { ToolRegistry } from "@opencode-ai/core/tool/registry"
 import { WebSearchTool } from "@opencode-ai/core/tool/websearch"
 import { ToolOutputStore } from "@opencode-ai/core/tool-output-store"
+import { Config } from "@opencode-ai/core/config"
+import { SessionRunnerModel } from "@opencode-ai/core/session/runner/model"
 import { testEffect } from "./lib/effect"
 import { toolIdentity, executeTool, settleTool, toolDefinitions } from "./lib/tool"
 
@@ -21,6 +27,78 @@ const payload = (text: string) =>
   })
 
 describe("WebSearchTool provider selection", () => {
+  test("accepts an explicit alpha-search mode", () => {
+    const info = Schema.decodeUnknownSync(Config.Info)({
+      websearch: { mode: "alpha-search", models: ["openai/gpt-5"] },
+    })
+    expect(info.websearch?.mode).toBe("alpha-search")
+  })
+
+  test("builds an OpenAI alpha search request", () => {
+    expect(
+      WebSearchTool.buildAlphaSearchRequest({
+        id: sessionID,
+        model: "gpt-5",
+        query: "latest OpenAI news",
+      }),
+    ).toMatchObject({
+      id: sessionID,
+      model: "gpt-5",
+      commands: { search_query: [{ q: "latest OpenAI news" }] },
+      settings: { allowed_callers: ["direct"], external_web_access: true },
+    })
+  })
+
+  test("parses the official alpha search response shape", async () => {
+    const parsed = await Effect.runPromise(
+      WebSearchTool.parseAlphaSearchResponse({
+        encrypted_output: "opaque-token",
+        output: "search result",
+        results: [{ type: "text_result", ref_id: "turn0search0", url: "https://example.com/result" }],
+      }),
+    )
+    expect(parsed.output).toBe("search result")
+    expect(parsed.results?.[0]).toMatchObject({ url: "https://example.com/result" })
+  })
+
+  test("prefers the active provider and keeps configured fallback order", () => {
+    expect(WebSearchTool.prioritizeNativeSearchModels(["xai/grok", "openai/gpt-5", "anthropic/claude"], "openai")).toEqual([
+      "openai/gpt-5",
+      "xai/grok",
+      "anthropic/claude",
+    ])
+  })
+
+  test("projects native identity and citations into model text", () => {
+    expect(
+      WebSearchTool.nativeSearchOutput({
+        provider: "openai",
+        model: "openai/gpt-5",
+        text: "results",
+        citations: [{ title: "Source", url: "https://example.com" }],
+      }),
+    ).toBe("results\n\nSources:\n- [Source](https://example.com)\n\nSearch model: openai/gpt-5")
+  })
+
+  test("removes Alpha Search private citation markers", () => {
+    expect(
+      WebSearchTool.nativeSearchOutput({
+        provider: "openai",
+        model: "openai/gpt-5",
+        text: "Answer\uE200cite\uE202turn0news12\uE201 [wordlim: 100] continued",
+      }),
+    ).toContain("Answer continued")
+  })
+
+  test("falls back after a native provider failure", async () => {
+    const result = await Effect.runPromise(
+      WebSearchTool.executeNativeSearch(["openai/gpt-5", "anthropic/claude"], "openai", (model) =>
+        model.startsWith("openai") ? Effect.fail(new Error("down")) : Effect.succeed("ok"),
+      ),
+    )
+    expect(result).toEqual({ model: "anthropic/claude", result: "ok" })
+  })
+
   test("rejects out-of-range numeric controls", () => {
     const decode = Schema.decodeUnknownSync(WebSearchTool.Input)
     expect(() => decode({ query: "x", numResults: 0 })).toThrow()
@@ -72,10 +150,19 @@ const assertions: PermissionV2.AssertInput[] = []
 let responseBody = payload("search results")
 let makeResponse = () => new Response(responseBody, { status: 200 })
 let config: WebSearchTool.Config = { enableExa: false, enableParallel: false }
+let nativeModels: string[] = []
+const searchModel = responses("gpt-5")
+const nativeResponse = LLMResponse.fromEvents([
+  LLMEvent.textStart({ id: "search-text" }),
+  LLMEvent.textDelta({ id: "search-text", text: "native results" }),
+  LLMEvent.textEnd({ id: "search-text" }),
+  LLMEvent.finish({ reason: "stop" }),
+])!
 
 beforeEach(() => {
   responseBody = payload("search results")
   makeResponse = () => new Response(responseBody, { status: 200 })
+  nativeModels = []
 })
 
 const http = Layer.succeed(
@@ -124,13 +211,48 @@ const websearchConfig = Layer.succeed(
     },
   }),
 )
+const configLayer = Layer.succeed(
+  Config.Service,
+  Config.Service.of({
+    entries: () =>
+      Effect.succeed(
+        nativeModels.length === 0
+          ? []
+          : [new Config.Document({ type: "document", info: new Config.Info({ websearch: { models: nativeModels } }) })],
+      ),
+  }),
+)
+const modelLayer = Layer.succeed(
+  SessionRunnerModel.Service,
+  SessionRunnerModel.Service.of({
+    resolve: () => Effect.succeed(searchModel),
+    resolveReference: () => Effect.succeed(searchModel),
+  }),
+)
+const llm = Layer.succeed(
+  LLMClient.Service,
+  LLMClient.Service.of({
+    prepare: () => Effect.die("unused"),
+    stream: () => Stream.die("unused"),
+    generate: () => Effect.succeed(nativeResponse),
+  }),
+)
 const it = testEffect(
   AppNodeBuilder.build(
-    LayerNode.group([ToolRegistry.node, ToolRegistry.toolsNode, WebSearchTool.configNode, WebSearchTool.node]),
+    LayerNode.group([
+      ToolRegistry.node,
+      ToolRegistry.toolsNode,
+      WebSearchTool.configNode,
+      WebSearchTool.node,
+      LayerNodePlatform.llmClient,
+    ]),
     [
       [PermissionV2.node, permission],
       [LayerNodePlatform.httpClient, http],
+      [LayerNodePlatform.llmClient, llm],
       [WebSearchTool.configNode, websearchConfig],
+      [Config.node, configLayer],
+      [SessionRunnerModel.node, modelLayer],
       [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],
     ],
   ),
@@ -201,6 +323,32 @@ describe("WebSearchTool registration", () => {
           },
         },
       ])
+    }),
+  )
+
+  it.effect("executes configured native search through the local tool", () =>
+    Effect.gen(function* () {
+      nativeModels = ["openai/gpt-5"]
+      const registry = yield* ToolRegistry.Service
+      const client = yield* LLMClient.Service
+      expect(yield* client.generate(LLM.request({ model: searchModel, prompt: "probe" }))).toBe(nativeResponse)
+      const session = SessionV2.Info.make({
+        id: sessionID,
+        projectID: ProjectV2.ID.global,
+        title: "native search",
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
+        location: { directory: AbsolutePath.make("/project") },
+      })
+      const settled = yield* settleTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        model: searchModel,
+        session,
+        call: { type: "tool-call", id: "call-native", name: "websearch", input: { query: "native" } },
+      })
+      expect(settled).toMatchObject({ result: { type: "text", value: expect.stringContaining("native") } })
     }),
   )
 

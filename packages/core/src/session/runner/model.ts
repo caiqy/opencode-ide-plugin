@@ -73,6 +73,7 @@ export type Error =
 
 export interface Interface {
   readonly resolve: (session: SessionSchema.Info) => Effect.Effect<Model, Error>
+  readonly resolveReference?: (session: SessionSchema.Info, reference: string) => Effect.Effect<Model, Error>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/v2/SessionRunnerModel") {}
@@ -153,6 +154,16 @@ export const fromCatalogModel = (
         .model({ id: resolved.api.id }),
     )
   }
+  if (resolved.providerID === "xai" && resolved.api.type === "aisdk" && resolved.api.package === "@ai-sdk/xai")
+    return Effect.succeed(
+      withDefaults(resolved, OpenAIResponses.route)
+        .with({
+          provider: "xai",
+          auth: key === undefined ? Auth.none : Auth.bearer(key),
+          endpoint: { baseURL: resolved.api.url ?? "https://api.x.ai/v1" },
+        })
+        .model({ id: resolved.api.id }),
+    )
   if (resolved.api.type === "aisdk" && resolved.api.package === "@ai-sdk/openai-compatible" && resolved.api.url) {
     return Effect.succeed(
       withDefaults(resolved, OpenAICompatibleChat.route)
@@ -176,7 +187,14 @@ export const supported = (model: ModelV2.Info) =>
   model.api.type === "aisdk" &&
   (model.api.package === "@ai-sdk/openai" ||
     model.api.package === "@ai-sdk/anthropic" ||
+    (model.providerID === "xai" && model.api.package === "@ai-sdk/xai") ||
     (model.api.package === "@ai-sdk/openai-compatible" && model.api.url !== undefined))
+
+const nativeSearchSupported = (model: ModelV2.Info) =>
+  model.api.type === "aisdk" &&
+  ((model.providerID === "openai" && model.api.package === "@ai-sdk/openai") ||
+    (model.providerID === "anthropic" && model.api.package === "@ai-sdk/anthropic") ||
+    (model.providerID === "xai" && model.api.package === "@ai-sdk/xai"))
 
 /** Resolves models from the catalog belonging to the current Location runtime. */
 export const locationLayer = Layer.effect(
@@ -207,6 +225,37 @@ export const locationLayer = Layer.effect(
         )
         return yield* resolve(
           session,
+          selected,
+          connection ? yield* integrations.connection.resolve(connection) : undefined,
+        )
+      }),
+      resolveReference: Effect.fn("SessionRunnerModel.resolveReference")(function* (session, reference) {
+        const separator = reference.indexOf("/")
+        const providerID = separator < 0 ? reference : reference.slice(0, separator)
+        const modelID = separator < 0 ? "" : reference.slice(separator + 1)
+        if (!providerID || !modelID) return yield* new ModelNotSelectedError({ sessionID: session.id })
+        const selected = (yield* catalog.model.available()).find(
+          (model) => model.providerID === providerID && model.id === modelID,
+        )
+        if (!selected) return yield* new ModelUnavailableError({ providerID: ProviderV2.ID.make(providerID), modelID: ModelV2.ID.make(modelID) })
+        if (!nativeSearchSupported(selected))
+          return yield* new UnsupportedApiError({
+            providerID: selected.providerID,
+            modelID: selected.id,
+            api: apiName(selected),
+          })
+        const provider = yield* catalog.provider.get(selected.providerID)
+        const connection = yield* integrations.connection.active(
+          provider?.integrationID ?? Integration.ID.make(selected.providerID),
+        )
+        const configuredKey = selected.request.body.apiKey ?? selected.api.settings?.apiKey
+        const configuredHeader = Object.entries(selected.request.headers).some(
+          ([name, value]) =>
+            /^(authorization|api[-_]?key|x-api-key)$/i.test(name) && typeof value === "string" && value.length > 0,
+        )
+        if (!connection && (typeof configuredKey !== "string" || configuredKey.length === 0) && !configuredHeader)
+          return yield* new ModelUnavailableError({ providerID: selected.providerID, modelID: selected.id })
+        return yield* fromCatalogModel(
           selected,
           connection ? yield* integrations.connection.resolve(connection) : undefined,
         )

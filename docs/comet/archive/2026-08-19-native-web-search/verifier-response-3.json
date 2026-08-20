@@ -1,0 +1,46 @@
+{
+  "kind": "verifier-response",
+  "response": {
+    "kind": "final-result",
+    "result": {
+      "iteration": 3,
+      "attempt": 1,
+      "verdict": "fail",
+      "acceptance": [
+        { "id": "A1", "result": "passed", "reason": "配置与未配置回退行为正确。" },
+        { "id": "A2", "result": "failed", "reason": "resolveReference 未过滤 disabled/provider unavailable 模型。" },
+        { "id": "A3", "result": "failed", "reason": "xAI 复用 Responses route，但 request/stream/citation contract 未完整兼容。" },
+        { "id": "A4", "result": "failed", "reason": "独立 turn 存在，但 xAI citation 与 hosted error 结果未正确投影。" },
+        { "id": "A5", "result": "failed", "reason": "hosted tool-result error 未触发 fallback。" },
+        { "id": "A6", "result": "passed", "reason": "native 分支不调用 Exa/Parallel，描述已更新。" },
+        { "id": "A7", "result": "failed", "reason": "缺少 V2 native runtime、hosted error、跨 provider、全失败集成测试。" },
+        { "id": "A8", "result": "passed", "reason": "显式 provider/model schema 正确。" },
+        { "id": "A9", "result": "failed", "reason": "native reference resolution 绕过 Catalog availability/enabled 过滤。" },
+        { "id": "A10", "result": "passed", "reason": "无 native routes 时旧行为不变。" },
+        { "id": "A11", "result": "passed", "reason": "本地 websearch 和权限边界正确。" },
+        { "id": "A12", "result": "failed", "reason": "xAI 完整 provider-native request contract 未正确处理。" },
+        { "id": "A13", "result": "passed", "reason": "OpenAI web_search lowering 正确。" },
+        { "id": "A14", "result": "passed", "reason": "Anthropic web_search_20250305 lowering 正确。" },
+        { "id": "A15", "result": "failed", "reason": "xAI include、terminal 与 citation parsing 仍有兼容问题。" },
+        { "id": "A16", "result": "passed", "reason": "配置 reference 与优先级排序正确。" },
+        { "id": "A17", "result": "failed", "reason": "hosted tool-result error 不会触发 fallback。" },
+        { "id": "A18", "result": "failed", "reason": "identity 已生成，但 xAI citations 未进入结果。" },
+        { "id": "A19", "result": "passed", "reason": "内部 hosted calls 不进入本地 dispatch。" },
+        { "id": "A20", "result": "passed", "reason": "native 执行路径隐藏 Exa/Parallel。" },
+        { "id": "A21", "result": "failed", "reason": "xAI annotation/terminal 兼容及 V2 runtime coverage 不足。" },
+        { "id": "A22", "result": "passed", "reason": "配置 schema 与公开配置接入正确。" },
+        { "id": "A23", "result": "passed", "reason": "纯排序与异常 fallback helper 确定，但 runtime provider-error coverage 不足。" },
+        { "id": "A24", "result": "passed", "reason": "三家声明级 lowering 存在。" },
+        { "id": "A25", "result": "failed", "reason": "xAI citation source 未被 parser/event 链收集。" },
+        { "id": "A26", "result": "failed", "reason": "hosted tool-result error 不触发按序 fallback。" },
+        { "id": "A27", "result": "passed", "reason": "描述与执行路径不暴露 Exa/Parallel。" },
+        { "id": "A28", "result": "failed", "reason": "缺少 V2 native runtime 和三家真实 wire fixture 覆盖。" }
+      ],
+      "risks": [
+        "真实 provider 网络请求未运行。",
+        "完整 citation wire fixture 未录制。"
+      ],
+      "summary": "Verifier 在第三轮提交前发现 xAI parser/options、hosted error fallback、Catalog availability 和 V2 集成测试缺口；这些问题随后已修复，需重新验收。"
+    }
+  }
+}

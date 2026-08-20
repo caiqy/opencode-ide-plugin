@@ -40,6 +40,22 @@ const expectToolOutput = (body: OpenAIResponses.OpenAIResponsesBody): OpenAITool
 }
 
 describe("OpenAI Responses route", () => {
+  it.effect("lowers native web search tools without function dispatch", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+        LLM.updateRequest(request, {
+          tools: [{
+            name: "web_search",
+            description: "Search the web",
+            inputSchema: { type: "object", properties: {} },
+            native: { type: "web_search" },
+          }],
+        }),
+      )
+      expect(prepared.body.tools).toEqual([{ type: "web_search" }])
+    }),
+  )
+
   it.effect("prepares OpenAI Responses target", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare(request)
@@ -797,6 +813,64 @@ describe("OpenAI Responses route", () => {
         { type: "reasoning", text: "thinking" },
         { type: "text", text: "Hello" },
       ])
+    }),
+  )
+
+  it.effect("keeps response URL citations and response.done terminal events", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents(
+              { type: "response.output_text.delta", item_id: "msg_1", delta: "Hello" },
+              {
+                type: "response.output_item.done",
+                item: {
+                  type: "message",
+                  output: [
+                    {
+                      type: "output_text",
+                      text: "Hello",
+                      annotations: [{ type: "url_citation", url: "https://example.com", title: "Example" }],
+                    },
+                  ],
+                },
+              },
+              {
+                type: "response.done",
+                response: {
+                  id: "resp_done",
+                  output: [
+                    {
+                      type: "message",
+                      content: [
+                        {
+                          type: "output_text",
+                          text: "Hello",
+                          annotations: [{ type: "url_citation", url: "https://example.com", title: "Example" }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            ),
+          ),
+        ),
+      )
+
+      expect(response.text).toBe("Hello")
+      expect(response.events).toContainEqual(
+        expect.objectContaining({
+          type: "text-end",
+          providerMetadata: {
+            openai: {
+              citations: [{ type: "url_citation", url: "https://example.com", title: "Example" }],
+            },
+          },
+        }),
+      )
+      expect(response.events.at(-1)).toMatchObject({ type: "finish", reason: "stop" })
     }),
   )
 

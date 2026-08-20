@@ -1,0 +1,18 @@
+{
+  "kind": "builder-handoff",
+  "summary": "已补齐 V2 Core 原生搜索路径：V1/V2 配置及迁移保留有序 websearch.models；V2 runner 将当前模型和 Session 以兼容的非枚举上下文传入工具；SessionRunnerModel 可解析任意配置的搜索 provider/model，并支持 xAI Responses；V2 websearch 在 native 配置下按当前 provider 优先、配置顺序 fallback，使用一次独立 LLM.generate hosted-search turn，失败后回退到下一路由并隐藏 Exa/Parallel；OpenAI Responses 与 xAI 使用 web_search，Anthropic Messages 使用 web_search_20250305；native ToolDefinition lowering 和协议测试已补齐。",
+  "addressed_acceptance_ids": ["A1","A2","A3","A4","A5","A6","A7","A8","A9","A10","A11","A12","A13","A14","A15","A16","A17","A18","A19","A20","A21","A22","A23","A24","A25","A26","A27","A28"],
+  "checks": [
+    { "name": "core focused tests", "result": "passed", "note": "101 tests passed across config and SessionRunner suites; WebSearchTool 13/13" },
+    { "name": "llm provider tests", "result": "passed", "note": "85 tests passed across OpenAI Responses and Anthropic Messages, including native tool lowering" },
+    { "name": "legacy focused tests", "result": "passed", "note": "49 tests passed across legacy websearch and session llm suites" },
+    { "name": "core typecheck", "result": "passed", "note": "bun typecheck" },
+    { "name": "llm typecheck", "result": "passed", "note": "bun typecheck" },
+    { "name": "client generation", "result": "passed", "note": "bun run generate from packages/client" },
+    { "name": "git diff check", "result": "passed", "note": "git diff --check" }
+  ],
+  "known_limits": [
+    "未运行真实 provider 网络请求；原生协议 lowering、路由排序和 fallback 使用本地测试覆盖。",
+    "LLM route executor 仍使用其全局 retry policy；本次 V2 搜索请求设置 store:false，但没有新增 per-request maxRetries API。"
+  ]
+}

@@ -253,7 +253,9 @@ const layer = Layer.effect(
                   sessionID: session.id,
                   agent: agent.id,
                   assistantMessageID,
-                  call: event,
+                   model,
+                   session,
+                   call: event,
                 }),
               ).pipe(
                 Effect.flatMap((settlement) =>

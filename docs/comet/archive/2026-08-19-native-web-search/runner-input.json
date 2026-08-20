@@ -1,0 +1,21 @@
+{
+  "kind": "builder-handoff",
+  "summary": "已完成配置驱动的跨厂商原生搜索路由：新增严格校验的 websearch.models 有序 provider/model 列表；当前 legacy 会话的 websearch 工具在配置启用时优先当前对话 provider，其余按顺序 fallback，分别使用 OpenAI web_search、Anthropic web_search_20250305、xAI web_search。独立请求强制选择 hosted search、设置 store:false 和 maxRetries:0，保留 prompt cache key；官方 direct SDK route 才可用；失败与 defect fallback 已脱敏，取消不会继续 fallback；引用投影为单一 Sources 区块；native 模式下 registry 对所有 provider 暴露本地 websearch 入口但不执行 Exa/Parallel，关闭时保留既有路径。已同步 packages/sdk/openapi.json 和 legacy SDK types。",
+  "addressed_acceptance_ids": [
+    "A1", "A2", "A3", "A4", "A5", "A6", "A7",
+    "A8", "A9", "A10", "A11", "A12", "A13", "A14", "A15", "A16", "A17", "A18", "A19", "A20", "A21",
+    "A22", "A23", "A24", "A25", "A26", "A27", "A28"
+  ],
+  "checks": [
+    { "name": "opencode focused tests", "result": "passed", "note": "184 tests passed across config, websearch, registry, and session llm tests" },
+    { "name": "llm provider tests", "result": "passed", "note": "83 tests passed for OpenAI Responses and Anthropic Messages" },
+    { "name": "opencode typecheck", "result": "passed", "note": "bun typecheck" },
+    { "name": "core typecheck", "result": "passed", "note": "bun typecheck" },
+    { "name": "llm typecheck", "result": "passed", "note": "bun typecheck" },
+    { "name": "git diff check", "result": "passed", "note": "git diff --check" }
+  ],
+  "known_limits": [
+    "本轮实现覆盖当前实际 legacy packages/opencode 会话运行时；V2 packages/core 的 websearch 工具仍保持既有 Exa/Parallel 路径，因为其 Tool.Context 尚未携带模型/provider。",
+    "未运行真实 provider 网络请求；三家原生 tool identity、请求参数、路由选择和 fallback 使用本地 MockLanguageModelV3 与协议 fixture 验证。"
+  ]
+}

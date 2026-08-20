@@ -2005,6 +2005,15 @@ export type Config = {
   tools?: {
     [key: string]: boolean
   }
+  /**
+   * Cross-provider native web search configuration
+   */
+  websearch?: {
+    /**
+     * Ordered provider/model references used for native web search
+     */
+    models: Array<string>
+  }
   attachment?: AttachmentConfig
   enterprise?: {
     url?: string

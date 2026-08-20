@@ -42,6 +42,22 @@ const expectToolResult = (body: AnthropicMessages.AnthropicMessagesBody): Anthro
 }
 
 describe("Anthropic Messages route", () => {
+  it.effect("lowers the Anthropic native web search server tool", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(
+        LLM.updateRequest(request, {
+          tools: [{
+            name: "web_search",
+            description: "Search the web",
+            inputSchema: { type: "object", properties: {} },
+            native: { type: "web_search_20250305" },
+          }],
+        }),
+      )
+      expect(prepared.body.tools).toEqual([{ type: "web_search_20250305", name: "web_search" }])
+    }),
+  )
+
   it.effect("prepares Anthropic Messages target", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare(request)

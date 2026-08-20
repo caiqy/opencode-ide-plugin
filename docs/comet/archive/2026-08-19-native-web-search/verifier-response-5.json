@@ -1,0 +1,46 @@
+{
+  "kind": "verifier-response",
+  "response": {
+    "kind": "final-result",
+    "result": {
+      "iteration": 5,
+      "attempt": 1,
+      "verdict": "pass",
+      "acceptance": [
+        { "id": "A1", "result": "passed", "reason": "有序 native model 配置已校验并保留。" },
+        { "id": "A2", "result": "passed", "reason": "同 provider 优先并保留 fallback 顺序。" },
+        { "id": "A3", "result": "passed", "reason": "OpenAI、Anthropic、xAI native declaration 均正确。" },
+        { "id": "A4", "result": "passed", "reason": "native search 使用独立 provider turn。" },
+        { "id": "A5", "result": "passed", "reason": "路由失败按序 fallback，最终错误脱敏。" },
+        { "id": "A6", "result": "passed", "reason": "native 模式绕过 Exa/Parallel，legacy 模式保留。" },
+        { "id": "A7", "result": "passed", "reason": "协议、路由、runtime、权限和回归检查通过。" },
+        { "id": "A8", "result": "passed", "reason": "显式 provider/model reference 保留且不替换默认模型。" },
+        { "id": "A9", "result": "passed", "reason": "resolver 检查模型可用性、支持 package 和 credential。" },
+        { "id": "A10", "result": "passed", "reason": "无 native routes 时保持旧行为。" },
+        { "id": "A11", "result": "passed", "reason": "本地 websearch 权限在独立请求前执行。" },
+        { "id": "A12", "result": "passed", "reason": "内部请求使用 provider-native search tool。" },
+        { "id": "A13", "result": "passed", "reason": "OpenAI Responses web_search。" },
+        { "id": "A14", "result": "passed", "reason": "Anthropic Messages web_search_20250305。" },
+        { "id": "A15", "result": "passed", "reason": "xAI Responses web_search。" },
+        { "id": "A16", "result": "passed", "reason": "active provider 只影响优先级，不替换 search model。" },
+        { "id": "A17", "result": "passed", "reason": "顺序 fallback 和全部失败稳定行为已实现。" },
+        { "id": "A18", "result": "passed", "reason": "文本、引用和 provider/model identity 已投影。" },
+        { "id": "A19", "result": "passed", "reason": "provider-executed calls 不会本地 redispatch。" },
+        { "id": "A20", "result": "passed", "reason": "native 模式隐藏 Exa/Parallel 执行路径。" },
+        { "id": "A21", "result": "passed", "reason": "既有 parsing、权限、边界和普通工具路径保持兼容。" },
+        { "id": "A22", "result": "passed", "reason": "配置验收已覆盖。" },
+        { "id": "A23", "result": "passed", "reason": "路由验收已覆盖。" },
+        { "id": "A24", "result": "passed", "reason": "native declaration 验收已覆盖。" },
+        { "id": "A25", "result": "passed", "reason": "Core native settlement 已通过 ToolRegistry.settle 实际执行。" },
+        { "id": "A26", "result": "passed", "reason": "fallback 和脱敏 helper 已覆盖并接入 Core。" },
+        { "id": "A27", "result": "passed", "reason": "native visibility 和执行分支正确。" },
+        { "id": "A28", "result": "passed", "reason": "聚焦测试通过，包含新增 Core native tool execution 测试。" }
+      ],
+      "risks": [
+        "真实 provider 网络请求和 live credential 未运行。",
+        "尚无单一 fixture 同时组合多 annotation、content.annotations 和 response.done.response.output。"
+      ],
+      "summary": "A1-A28 全部通过；Core native execution 已通过 local websearch 和 ToolRegistry.settle 实际验证，剩余为 live provider 与更宽 citation fixture 风险。"
+    }
+  }
+}

@@ -19,6 +19,17 @@ import { ConfigSkillsV1 } from "./skills"
 
 export type Layout = ConfigLayoutV1.Layout
 
+export const WebSearch = Schema.Struct({
+  models: Schema.Array(Schema.String.check(Schema.isPattern(/^(openai|anthropic|xai)\/.+/))).annotate({
+    description: "Ordered provider/model references used for native web search",
+  }),
+  mode: Schema.optional(Schema.Literals(["responses", "alpha-search"])).annotate({
+    description: "Native search transport; alpha-search uses OpenAI's /alpha/search endpoint",
+  }),
+}).annotate({
+  description: "Cross-provider native web search configuration",
+})
+
 export const WellKnown = Schema.Struct({
   config: Schema.optional(Schema.Json),
   remote_config: Schema.optional(Schema.Json),
@@ -130,6 +141,7 @@ export const Info = Schema.Struct({
   layout: Schema.optional(ConfigLayoutV1.Layout).annotate({ description: "@deprecated Always uses stretch layout." }),
   permission: Schema.optional(ConfigPermissionV1.Info),
   tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
+  websearch: Schema.optional(WebSearch),
   attachment: Schema.optional(ConfigAttachmentV1.Info).annotate({
     description: "Attachment processing configuration, including image size limits and resizing behavior",
   }),
