@@ -27,19 +27,9 @@ export const quick_phrase_preset = {
       body: "选3/C",
     },
     {
-      id: "preset:execute-directly",
-      title: "直接执行",
-      body: "本次任务不编写spec和plan文档，直接使用TDD流程执行",
-    },
-    {
-      id: "preset:comprehensive-review",
-      title: "综合评审",
-      body: "使用[子任务]分别执行[规格评审]和[代码评审]",
-    },
-    {
       id: "preset:code-review",
       title: "代码评审",
-      body: "使用[子任务]执行[代码评审]",
+      body: "针对本次任务变动执行独立评审",
     },
     {
       id: "preset:commit",
