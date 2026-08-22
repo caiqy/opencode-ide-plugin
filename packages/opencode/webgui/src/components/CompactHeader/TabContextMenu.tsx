@@ -8,8 +8,6 @@ interface TabContextMenuProps {
   onClose: () => void
   onCloseTab: () => void
   onCloseOtherTabs: () => void
-  onCloseTabsToRight: () => void
-  onRegenerateTitle: () => void
   onRename: () => void
   onDelete: () => void
   onToggleShare: () => void
@@ -24,8 +22,6 @@ export function TabContextMenu({
   onClose,
   onCloseTab,
   onCloseOtherTabs,
-  onCloseTabsToRight,
-  onRegenerateTitle,
   onRename,
   onDelete,
   onToggleShare,
@@ -77,21 +73,8 @@ export function TabContextMenu({
       >
         关闭其他标签
       </button>
-      <button
-        className="w-full px-3 py-1.5 text-xs text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-2"
-        onClick={handle(onCloseTabsToRight)}
-      >
-        关闭右侧标签
-      </button>
-
       <div className="my-1 h-px bg-gray-200 dark:bg-gray-700" />
 
-      <button
-        className="w-full px-3 py-1.5 text-xs text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-2"
-        onClick={handle(onRegenerateTitle)}
-      >
-        重新生成标签名
-      </button>
       <button
         className="w-full px-3 py-1.5 text-xs text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-2"
         onClick={handle(onRename)}

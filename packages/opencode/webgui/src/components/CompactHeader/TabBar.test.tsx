@@ -33,8 +33,6 @@ function props(overrides: Partial<React.ComponentProps<typeof TabBar>> = {}) {
     onClose: vi.fn(),
     onReorder: vi.fn(),
     onCloseOtherTabs: vi.fn(),
-    onCloseTabsToRight: vi.fn(),
-    onRegenerateTitle: vi.fn(),
     onRename: vi.fn(),
     onDelete: vi.fn(),
     onToggleShare: vi.fn(),
@@ -149,16 +147,6 @@ describe("CompactHeader/TabBar", () => {
 
     expect(screen.getByDisplayValue("会话 1")).toBeInTheDocument()
     expect(p.onRename).not.toHaveBeenCalled()
-  })
-
-  it("forwards regenerate title action with current session id", () => {
-    const p = props()
-    render(<TabBar {...p} />)
-
-    fireEvent.contextMenu(screen.getByTitle("会话 2"), { clientX: 24, clientY: 28 })
-    fireEvent.click(screen.getByRole("button", { name: "重新生成标签名" }))
-
-    expect(p.onRegenerateTitle).toHaveBeenCalledWith("s2")
   })
 
   it("scrolls active tab into view when activeTab changes", () => {

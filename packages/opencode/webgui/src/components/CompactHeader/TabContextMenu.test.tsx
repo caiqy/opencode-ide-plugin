@@ -11,8 +11,6 @@ const props = () => ({
   onClose: vi.fn(),
   onCloseTab: vi.fn(),
   onCloseOtherTabs: vi.fn(),
-  onCloseTabsToRight: vi.fn(),
-  onRegenerateTitle: vi.fn(),
   onRename: vi.fn(),
   onDelete: vi.fn(),
   onToggleShare: vi.fn(),
@@ -25,22 +23,12 @@ describe("CompactHeader/TabContextMenu", () => {
 
     expect(screen.getByRole("button", { name: "关闭标签" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "关闭其他标签" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "关闭右侧标签" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "重新生成标签名" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "关闭右侧标签" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "重新生成标签名" })).toBeNull()
     expect(screen.getByRole("button", { name: "重命名" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "删除会话" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "分享会话" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "打开分享链接" })).toBeNull()
-  })
-
-  it("将重新生成标签名放在重命名上方", () => {
-    render(<TabContextMenu {...props()} />)
-
-    const regenerate = screen.getByRole("button", { name: "重新生成标签名" })
-    const rename = screen.getByRole("button", { name: "重命名" })
-
-    const buttons = screen.getAllByRole("button")
-    expect(buttons.indexOf(regenerate)).toBeLessThan(buttons.indexOf(rename))
   })
 
   it("共享会话时显示取消分享与打开分享链接", () => {
@@ -57,16 +45,6 @@ describe("CompactHeader/TabContextMenu", () => {
     fireEvent.click(screen.getByRole("button", { name: "关闭标签" }))
 
     expect(p.onCloseTab).toHaveBeenCalledTimes(1)
-    expect(p.onClose).toHaveBeenCalledTimes(1)
-  })
-
-  it("点击重新生成标签名时先执行动作并关闭菜单", () => {
-    const p = props()
-    render(<TabContextMenu {...p} />)
-
-    fireEvent.click(screen.getByRole("button", { name: "重新生成标签名" }))
-
-    expect(p.onRegenerateTitle).toHaveBeenCalledTimes(1)
     expect(p.onClose).toHaveBeenCalledTimes(1)
   })
 

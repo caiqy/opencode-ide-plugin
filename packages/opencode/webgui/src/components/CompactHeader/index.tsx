@@ -41,7 +41,6 @@ const CompactHeader = forwardRef<
     sessions,
     setSessions,
     switchSession,
-    regenerateSessionTitle,
     updateSessionTitle,
     deleteSession,
     hasMore,
@@ -374,37 +373,11 @@ const CompactHeader = forwardRef<
     [switchWithRollback, tabStore],
   )
 
-  const handleCloseTabsToRight = useCallback(
-    async (sessionId: string) => {
-      const idx = tabStore.openTabs.indexOf(sessionId)
-      if (idx < 0) return
-      const openTabs = tabStore.openTabs.slice(0, idx + 1)
-      const activeTab = openTabs.includes(tabStore.activeTab) ? tabStore.activeTab : sessionId
-
-      if (activeTab !== tabStore.activeTab) {
-        const ok = await switchWithRollback(activeTab)
-        if (!ok) return
-      }
-      tabStore.closeTabsToRight(sessionId)
-    },
-    [switchWithRollback, tabStore],
-  )
-
   const handleTabDelete = useCallback(
     (sessionId: string) => {
       actions.setDeleteConfirm(sessionId)
     },
     [actions],
-  )
-
-  const handleRegenerateTitle = useCallback(
-    async (sessionId: string) => {
-      const ok = await regenerateSessionTitle(sessionId)
-      if (!ok) {
-        toast.showToast("重新生成标签名失败", { variant: "error" })
-      }
-    },
-    [regenerateSessionTitle, toast],
   )
 
   const handleToggleShareTab = useCallback(
@@ -579,12 +552,6 @@ const CompactHeader = forwardRef<
           onReorder={tabStore.reorderTabs}
           onCloseOtherTabs={(id) => {
             void handleCloseOtherTabs(id)
-          }}
-          onCloseTabsToRight={(id) => {
-            void handleCloseTabsToRight(id)
-          }}
-          onRegenerateTitle={(id) => {
-            void handleRegenerateTitle(id)
           }}
           onRename={(id, title) => {
             void updateSessionTitle(id, title)

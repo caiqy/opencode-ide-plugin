@@ -62,8 +62,9 @@ const mocks = vi.hoisted(() => ({
   tabBarProps: null as null | {
     onClose: (id: string) => void
     onCloseOtherTabs: (id: string) => void
-    onCloseTabsToRight: (id: string) => void
-    onRegenerateTitle: (id: string) => void
+    onRename: (id: string, title: string) => void
+    onDelete: (id: string) => void
+    onToggleShare: (id: string) => void
   },
 }))
 
@@ -135,8 +136,9 @@ vi.mock("./TabBar", () => ({
   TabBar: (props: {
     onClose: (id: string) => void
     onCloseOtherTabs: (id: string) => void
-    onCloseTabsToRight: (id: string) => void
-    onRegenerateTitle: (id: string) => void
+    onRename: (id: string, title: string) => void
+    onDelete: (id: string) => void
+    onToggleShare: (id: string) => void
   }) => {
     mocks.tabBarProps = props
     return null
@@ -380,16 +382,15 @@ describe("CompactHeader", () => {
     })
   })
 
-  it("标签菜单触发重新生成标签名时调用会话重生成方法", async () => {
-    const regenerateSessionTitle = vi.fn().mockResolvedValue(true)
+  it("将标签重命名回调接线到会话标题更新", () => {
+    const updateSessionTitle = vi.fn().mockResolvedValue(true)
     mocks.useSession.mockReturnValue({
       currentSession: { id: "s1", title: "测试会话" },
       setCurrentSession: vi.fn(),
       sessions: [],
       setSessions: vi.fn(),
       switchSession: vi.fn(),
-      regenerateSessionTitle,
-      updateSessionTitle: vi.fn(),
+      updateSessionTitle,
       deleteSession: vi.fn(),
       isLoading: false,
     })
@@ -404,22 +405,43 @@ describe("CompactHeader", () => {
     )
 
     if (!mocks.tabBarProps) throw new Error("tab bar props not captured")
-    await mocks.tabBarProps.onRegenerateTitle("s2")
+    mocks.tabBarProps.onRename("s2", "新标题")
 
-    expect(regenerateSessionTitle).toHaveBeenCalledWith("s2")
+    expect(updateSessionTitle).toHaveBeenCalledWith("s2", "新标题")
   })
 
-  it("重新生成标签名失败时显示错误 toast", async () => {
-    const showToast = vi.fn()
-    const regenerateSessionTitle = vi.fn().mockResolvedValue(false)
-    mocks.useToast.mockReturnValue({ showToast })
+  it("将标签删除回调接线到删除确认", () => {
+    const setDeleteConfirm = vi.fn()
+    mocks.useSessionActions.mockReturnValue({ ...createBaseActionsMock(), setDeleteConfirm })
+
+    render(
+      <CompactHeader
+        connectionState={"connected" as ConnectionState}
+        onNewSession={vi.fn()}
+        isCreatingSession={false}
+        onOpenCommandPalette={vi.fn()}
+      />,
+    )
+
+    if (!mocks.tabBarProps) throw new Error("tab bar props not captured")
+    mocks.tabBarProps.onDelete("s2")
+
+    expect(setDeleteConfirm).toHaveBeenCalledWith("s2")
+  })
+
+  it("将标签分享回调接线到会话分享", async () => {
+    const setSessions = vi.fn()
+    const setCurrentSession = vi.fn()
+    const { writeText } = mockClipboard()
+    mocks.sdkShare.mockResolvedValue({
+      data: { id: "s2", title: "会话 2", share: { url: "https://example.com/share" } },
+    })
     mocks.useSession.mockReturnValue({
       currentSession: { id: "s1", title: "测试会话" },
-      setCurrentSession: vi.fn(),
-      sessions: [],
-      setSessions: vi.fn(),
+      setCurrentSession,
+      sessions: [{ id: "s2", title: "会话 2" }],
+      setSessions,
       switchSession: vi.fn(),
-      regenerateSessionTitle,
       updateSessionTitle: vi.fn(),
       deleteSession: vi.fn(),
       isLoading: false,
@@ -435,9 +457,15 @@ describe("CompactHeader", () => {
     )
 
     if (!mocks.tabBarProps) throw new Error("tab bar props not captured")
-    await mocks.tabBarProps.onRegenerateTitle("s2")
+    act(() => {
+      mocks.tabBarProps?.onToggleShare("s2")
+    })
 
-    expect(showToast).toHaveBeenCalledWith("重新生成标签名失败", { variant: "error" })
+    await waitFor(() => {
+      expect(mocks.sdkShare).toHaveBeenCalledWith({ path: { id: "s2" } })
+      expect(writeText).toHaveBeenCalledWith("https://example.com/share")
+    })
+    expect(setSessions).toHaveBeenCalledWith([{ id: "s2", title: "会话 2", share: { url: "https://example.com/share" } }])
   })
 
   it("优先显示 IDE 扩展版本号", async () => {
@@ -1052,52 +1080,6 @@ describe("CompactHeader", () => {
 
     if (!mocks.tabBarProps) throw new Error("tab bar props not captured")
     mocks.tabBarProps.onCloseOtherTabs("s1")
-    await waitFor(() => {
-      expect(showToast).toHaveBeenCalledWith("切换会话失败", { variant: "error" })
-    })
-  })
-
-  it("close tabs to right 切换失败时显示错误 toast 而不是抛错", async () => {
-    const switchSession = vi.fn().mockRejectedValue(new Error("boom"))
-    const showToast = vi.fn()
-
-    mocks.useSession.mockReturnValue({
-      currentSession: { id: "s2", title: "测试会话 2" },
-      setCurrentSession: vi.fn(),
-      sessions: [],
-      setSessions: vi.fn(),
-      switchSession,
-      updateSessionTitle: vi.fn(),
-      deleteSession: vi.fn(),
-      isLoading: false,
-    })
-    mocks.useTabStore.mockReturnValue({
-      openTabs: ["s1", "s2"],
-      activeTab: "s2",
-      loaded: true,
-      openTab: vi.fn(),
-      closeTab: vi.fn(),
-      removeTab: vi.fn(),
-      activateTab: vi.fn(),
-      reorderTabs: vi.fn(),
-      replaceTab: vi.fn(),
-      closeOtherTabs: vi.fn(),
-      closeTabsToRight: vi.fn(),
-      pruneTabs: vi.fn(),
-    })
-    mocks.useToast.mockReturnValue({ showToast })
-
-    render(
-      <CompactHeader
-        connectionState={"connected" as ConnectionState}
-        onNewSession={vi.fn()}
-        isCreatingSession={false}
-        onOpenCommandPalette={vi.fn()}
-      />,
-    )
-
-    if (!mocks.tabBarProps) throw new Error("tab bar props not captured")
-    mocks.tabBarProps.onCloseTabsToRight("s1")
     await waitFor(() => {
       expect(showToast).toHaveBeenCalledWith("切换会话失败", { variant: "error" })
     })
