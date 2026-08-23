@@ -6,6 +6,8 @@ import { SubtaskMessageList } from "./SubtaskMessageList"
 import { getSubtaskStatusLabel, getToolLabel } from "../parts/ToolPart/utils"
 import type { WebguiPart } from "../../types/messages"
 
+const MAIN_CONTENT_MAX_WIDTH = 860
+
 function isToolPart(part: WebguiPart): part is Extract<WebguiPart, { type: "tool" }> {
   return part.type === "tool"
 }
@@ -120,11 +122,16 @@ export function SubtaskDrawer() {
 
   if (!isOpen || !sessionId) return null
 
-  const DEFAULT_WIDTH = Math.floor(window.innerWidth * 0.9)
+  const DEFAULT_WIDTH = Math.min(Math.floor(window.innerWidth * 0.9), MAIN_CONTENT_MAX_WIDTH)
   const MIN_WIDTH = 360
 
   return (
-    <ResizableDrawer defaultWidth={DEFAULT_WIDTH} minWidth={MIN_WIDTH} onBackdropClick={closeSubtaskDrawer}>
+    <ResizableDrawer
+      defaultWidth={DEFAULT_WIDTH}
+      minWidth={MIN_WIDTH}
+      maxWidth={MAIN_CONTENT_MAX_WIDTH}
+      onBackdropClick={closeSubtaskDrawer}
+    >
       <div className="h-10 px-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{headerSummary}</div>
@@ -170,18 +177,23 @@ export function SubtaskDrawer() {
 function ResizableDrawer({
   defaultWidth,
   minWidth,
+  maxWidth,
   onBackdropClick,
   children,
 }: {
   defaultWidth: number
   minWidth: number
+  maxWidth: number
   onBackdropClick: () => void
   children: React.ReactNode
 }) {
   const [width, setWidth] = useState(defaultWidth)
   const drag = useRef<{ x: number; w: number } | null>(null)
 
-  const clamp = useCallback((next: number) => Math.min(window.innerWidth * 0.9, Math.max(minWidth, next)), [minWidth])
+  const clamp = useCallback(
+    (next: number) => Math.min(window.innerWidth * 0.9, maxWidth, Math.max(minWidth, next)),
+    [maxWidth, minWidth],
+  )
 
   const onMove = useCallback(
     (e: PointerEvent) => {
@@ -232,7 +244,7 @@ function ResizableDrawer({
         role="dialog"
         aria-label="子任务"
         className="fixed right-0 top-0 h-full bg-white dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col"
-        style={{ width: `${width}px`, maxWidth: "90vw" }}
+        style={{ width: `${width}px`, maxWidth: `min(90vw, ${maxWidth}px)` }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Resize handle */}

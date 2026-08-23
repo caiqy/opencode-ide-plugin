@@ -201,14 +201,18 @@ describe("SubtaskDrawer", () => {
     expect(screen.queryByTestId("subtask-drawer-backdrop")).not.toBeInTheDocument()
   })
 
-  it("默认宽度应为 90vw", () => {
+  it("默认宽度应限制为主体内容最大宽度", () => {
+    const original = window.innerWidth
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200 })
+
     render(<SubtaskDrawer />)
     const dialog = screen.getByRole("dialog", { name: "子任务" })
-    const expected = Math.floor(window.innerWidth * 0.9)
-    expect(dialog).toHaveStyle({ width: `${expected}px` })
+    expect(dialog).toHaveStyle({ width: "860px" })
+
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: original })
   })
 
-  it("左边缘向左拖拽后应变宽", () => {
+  it("达到最大宽度后左边缘向左拖拽不会继续变宽", () => {
     render(<SubtaskDrawer />)
     const handle = screen.getByTestId("subtask-drawer-resize-handle")
     const dialog = screen.getByRole("dialog", { name: "子任务" }) as HTMLElement
@@ -218,7 +222,7 @@ describe("SubtaskDrawer", () => {
     fireEvent.pointerMove(document, { clientX: 820 })
     fireEvent.pointerUp(document)
 
-    expect(parseFloat(dialog.style.width)).toBeGreaterThan(initial)
+    expect(parseFloat(dialog.style.width)).toBe(initial)
   })
 
   it("左边缘向右拖拽后应变窄", () => {
@@ -246,7 +250,7 @@ describe("SubtaskDrawer", () => {
     expect(parseFloat((dialog as HTMLElement).style.width)).toBe(360)
   })
 
-  it("宽度不应超过 90vw", () => {
+  it("宽度不应超过主体内容最大宽度", () => {
     const original = window.innerWidth
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1000 })
 
@@ -258,7 +262,7 @@ describe("SubtaskDrawer", () => {
     fireEvent.pointerMove(document, { clientX: -2000 })
     fireEvent.pointerUp(document)
 
-    expect(parseFloat((dialog as HTMLElement).style.width)).toBe(900)
+    expect(parseFloat((dialog as HTMLElement).style.width)).toBe(860)
 
     Object.defineProperty(window, "innerWidth", { configurable: true, value: original })
   })
