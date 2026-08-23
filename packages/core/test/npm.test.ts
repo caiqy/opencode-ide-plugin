@@ -5,6 +5,7 @@ import { Effect, Option } from "effect"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { Global } from "@opencode-ai/core/global"
 import { Npm } from "@opencode-ai/core/npm"
+import { NpmConfig } from "@opencode-ai/core/npm-config"
 import { tmpdir } from "./fixture/tmpdir"
 
 const win = process.platform === "win32"
@@ -40,6 +41,20 @@ describe("Npm.sanitize", () => {
   })
 })
 
+describe("NpmConfig.registry", () => {
+  test("resolves a scoped registry for scoped packages", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(
+      path.join(tmp.path, ".npmrc"),
+      "registry=https://registry.example.test/\n@private:registry=https://private.example.test/\n",
+    )
+
+    const registry = await Effect.runPromise(NpmConfig.registry(tmp.path, "@private/fixture"))
+
+    expect(registry).toBe("https://private.example.test")
+  })
+})
+
 describe("Npm.add", () => {
   test("reifies when package cache directory exists without the package installed", async () => {
     await using tmp = await tmpdir()
@@ -59,6 +74,84 @@ describe("Npm.add", () => {
     }).pipe(Effect.scoped, Effect.provide(npmLayer(path.join(tmp.path, "cache"))), Effect.runPromise)
 
     expect(entry.entrypoint).toBeDefined()
+  })
+})
+
+describe("Npm.which", () => {
+  test("resolves the package bin for versioned package specs", async () => {
+    await using tmp = await tmpdir()
+    const spec = "fixture-cli@1.0.0"
+    const binDir = path.join(tmp.path, "cache", "packages", Npm.sanitize(spec), "node_modules", ".bin")
+    const packageDir = path.join(tmp.path, "cache", "packages", Npm.sanitize(spec), "node_modules", "fixture-cli")
+
+    await fs.mkdir(binDir, { recursive: true })
+    await fs.mkdir(packageDir, { recursive: true })
+    await writePackage(packageDir, {
+      name: "fixture-cli",
+      bin: {
+        alias: "alias.js",
+        "fixture-cli": "cli.js",
+      },
+    })
+    await Bun.write(path.join(binDir, "alias"), "")
+    await Bun.write(path.join(binDir, "fixture-cli"), "")
+
+    const bin = await Effect.gen(function* () {
+      const npm = yield* Npm.Service
+      return yield* npm.which(spec)
+    }).pipe(Effect.scoped, Effect.provide(npmLayer(path.join(tmp.path, "cache"))), Effect.runPromise)
+
+    expect(bin).toBe(path.join(binDir, "fixture-cli"))
+  })
+
+  test("keeps package bins separate by registry", async () => {
+    await using tmp = await tmpdir()
+    const spec = "fixture-cli@1.0.0"
+    const registry = "https://registry.example.test"
+    const packageRoot = path.join(
+      tmp.path,
+      "cache",
+      "packages",
+      `${Npm.sanitize(spec)}-${encodeURIComponent(registry)}`,
+    )
+    const binDir = path.join(packageRoot, "node_modules", ".bin")
+    const packageDir = path.join(packageRoot, "node_modules", "fixture-cli")
+
+    await fs.mkdir(binDir, { recursive: true })
+    await fs.mkdir(packageDir, { recursive: true })
+    await writePackage(packageDir, { name: "fixture-cli", bin: "cli.js" })
+    await Bun.write(path.join(binDir, "fixture-cli"), "")
+
+    const bin = await Effect.gen(function* () {
+      const npm = yield* Npm.Service
+      return yield* npm.which(spec, undefined, { registry })
+    }).pipe(Effect.scoped, Effect.provide(npmLayer(path.join(tmp.path, "cache"))), Effect.runPromise)
+
+    expect(bin).toBe(path.join(binDir, "fixture-cli"))
+  })
+
+  test("does not guess when a package exposes unrelated bins", async () => {
+    await using tmp = await tmpdir()
+    const spec = "fixture-multi@1.0.0"
+    const packageRoot = path.join(tmp.path, "cache", "packages", Npm.sanitize(spec))
+    const binDir = path.join(packageRoot, "node_modules", ".bin")
+    const packageDir = path.join(packageRoot, "node_modules", "fixture-multi")
+
+    await fs.mkdir(binDir, { recursive: true })
+    await fs.mkdir(packageDir, { recursive: true })
+    await writePackage(packageDir, {
+      name: "fixture-multi",
+      bin: { first: "first.js", second: "second.js" },
+    })
+    await Bun.write(path.join(binDir, "first"), "")
+    await Bun.write(path.join(binDir, "second"), "")
+
+    const bin = await Effect.gen(function* () {
+      const npm = yield* Npm.Service
+      return yield* npm.which(spec)
+    }).pipe(Effect.scoped, Effect.provide(npmLayer(path.join(tmp.path, "cache"))), Effect.runPromise)
+
+    expect(bin).toBeUndefined()
   })
 })
 

@@ -31,10 +31,17 @@ export const load = (dir: string) =>
     catch: (cause) => cause,
   }).pipe(Effect.orElseSucceed(() => ({}) as Record<string, unknown>))
 
-export const registry = (dir: string) =>
+export const registry = (dir: string, pkg?: string) =>
   load(dir).pipe(
     Effect.map((config) => {
-      const registry = typeof config.registry === "string" ? config.registry : "https://registry.npmjs.org"
+      const scope = pkg?.match(/^(@[^/]+)\//)?.[1]
+      const scopedRegistry = scope ? config[`${scope}:registry`] : undefined
+      const registry =
+        typeof scopedRegistry === "string"
+          ? scopedRegistry
+          : typeof config.registry === "string"
+            ? config.registry
+            : "https://registry.npmjs.org"
       return registry.endsWith("/") ? registry.slice(0, -1) : registry
     }),
   )

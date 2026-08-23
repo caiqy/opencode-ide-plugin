@@ -2,8 +2,9 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import path from "path"
 import { InstanceState } from "@/effect/instance-state"
 import { EffectBridge } from "@/effect/bridge"
+import { EventV2Bridge } from "@/event-v2-bridge"
 import type { InstanceContext } from "@/project/instance-context"
-import { Effect, Layer, Context, Schema } from "effect"
+import { Cause, Effect, Layer, Context, Schema, Scope } from "effect"
 import { Config } from "@/config/config"
 import { MCP } from "../mcp"
 import { Skill } from "../skill"
@@ -61,10 +62,10 @@ const layer = Layer.effect(
     const config = yield* Config.Service
     const mcp = yield* MCP.Service
     const skill = yield* Skill.Service
+    const events = yield* EventV2Bridge.Service
 
-    const init = Effect.fn("Command.state")(function* (ctx: InstanceContext) {
+    const build = Effect.fn("Command.build")(function* (ctx: InstanceContext, bridge: EffectBridge.Shape) {
       const cfg = yield* config.get()
-      const bridge = yield* EffectBridge.make()
       const commands: Record<string, Info> = {}
 
       commands[Default.INIT] = {
@@ -156,7 +157,35 @@ const layer = Layer.effect(
       }
     })
 
-    const state = yield* InstanceState.make<State>((ctx) => init(ctx))
+    const state = yield* InstanceState.make(
+      Effect.fn("Command.state")(function* (ctx: InstanceContext) {
+        const bridge = yield* EffectBridge.make()
+        const scope = yield* Scope.Scope
+        const current: State = { commands: {} }
+        let generation = 0
+        const unsubscribe = yield* events.listen((event) => {
+          if (event.type !== MCP.ToolsChanged.type || event.location?.directory !== ctx.directory) return Effect.void
+          const nextGeneration = ++generation
+          return build(ctx, bridge).pipe(
+            Effect.tap((next) =>
+              Effect.sync(() => {
+                if (generation === nextGeneration) Object.assign(current, next)
+              }),
+            ),
+            Effect.catchCause((cause) =>
+              Cause.hasInterruptsOnly(cause) ? Effect.void : Effect.logWarning("MCP command refresh failed", { cause }),
+            ),
+            Effect.forkIn(scope, { startImmediately: true }),
+            Effect.asVoid,
+          )
+        })
+        yield* Effect.addFinalizer(() => unsubscribe)
+        const initialGeneration = generation
+        const initial = yield* build(ctx, bridge)
+        if (generation === initialGeneration) Object.assign(current, initial)
+        return current
+      }),
+    )
 
     const get = Effect.fn("Command.get")(function* (name: string) {
       const s = yield* InstanceState.get(state)
@@ -172,6 +201,10 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = LayerNode.make({ service: Service, layer: layer, deps: [Config.node, MCP.node, Skill.node] })
+export const node = LayerNode.make({
+  service: Service,
+  layer: layer,
+  deps: [Config.node, MCP.node, Skill.node, EventV2Bridge.node],
+})
 
 export * as Command from "."

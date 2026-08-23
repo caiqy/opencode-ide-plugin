@@ -4,17 +4,55 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
-import { Cause, Effect, Exit, Fiber } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer } from "effect"
 import { bootstrap as cliBootstrap } from "../../src/cli/bootstrap"
 import { InstanceBootstrap } from "../../src/project/bootstrap"
 import { InstanceStore } from "../../src/project/instance-store"
+import { MCP } from "../../src/mcp"
+import { Skill } from "../../src/skill"
 import { disposeAllInstances, tmpdirScoped } from "../fixture/fixture"
-import { testEffect } from "../lib/effect"
+import { pollWithTimeout, testEffect } from "../lib/effect"
 import { waitGlobalBusEvent } from "../server/global-bus"
 
 const it = testEffect(
   LayerNode.compile(LayerNode.group([InstanceStore.node, CrossSpawnSpawner.node]), [
     [InstanceStore.bootstrapNode, InstanceBootstrap.node],
+  ]),
+)
+
+let skillWarmupStarted = false
+let skillWarmupInterrupted = false
+const skillWarmup = Layer.mock(Skill.Service, {
+  all: () =>
+    Effect.sync(() => {
+      skillWarmupStarted = true
+    }).pipe(
+      Effect.andThen(Effect.never),
+      Effect.ensuring(
+        Effect.sync(() => {
+          skillWarmupInterrupted = true
+        }),
+      ),
+    ),
+})
+const warmupIt = testEffect(
+  LayerNode.compile(LayerNode.group([InstanceStore.node, CrossSpawnSpawner.node]), [
+    [InstanceStore.bootstrapNode, InstanceBootstrap.node],
+    [Skill.node, skillWarmup],
+  ]),
+)
+
+let mcpInitStarted = false
+const mcpInit = Layer.mock(MCP.Service, {
+  init: () =>
+    Effect.sync(() => {
+      mcpInitStarted = true
+    }),
+})
+const mcpIt = testEffect(
+  LayerNode.compile(LayerNode.group([InstanceStore.node, CrossSpawnSpawner.node]), [
+    [InstanceStore.bootstrapNode, InstanceBootstrap.node],
+    [MCP.node, mcpInit],
   ]),
 )
 
@@ -75,6 +113,45 @@ it.live("InstanceStore.provide runs InstanceBootstrap before effect", () =>
     yield* store.provide({ directory: tmp.directory }, Effect.succeed("ok"))
 
     expect(existsSync(tmp.marker)).toBe(true)
+  }),
+)
+
+warmupIt.live("starts Skill warmup without delaying instance load", () =>
+  Effect.gen(function* () {
+    skillWarmupStarted = false
+    skillWarmupInterrupted = false
+    const directory = yield* tmpdirScoped({ git: true })
+    const store = yield* InstanceStore.Service
+
+    const ctx = yield* store.load({ directory })
+
+    yield* pollWithTimeout(
+      Effect.sync(() => (skillWarmupStarted ? true : undefined)),
+      "Skill warmup did not start",
+    )
+    expect(skillWarmupInterrupted).toBe(false)
+
+    yield* store.dispose(ctx)
+    yield* pollWithTimeout(
+      Effect.sync(() => (skillWarmupInterrupted ? true : undefined)),
+      "Skill warmup was not interrupted on instance disposal",
+    )
+  }),
+)
+
+mcpIt.live("InstanceBootstrap starts MCP initialization", () =>
+  Effect.gen(function* () {
+    mcpInitStarted = false
+    const directory = yield* tmpdirScoped({ git: true })
+    const store = yield* InstanceStore.Service
+
+    const ctx = yield* store.load({ directory })
+
+    yield* pollWithTimeout(
+      Effect.sync(() => (mcpInitStarted ? true : undefined)),
+      "MCP init did not start",
+    )
+    yield* store.dispose(ctx)
   }),
 )
 

@@ -79,6 +79,47 @@ describe("McpOAuthCallback.ensureRunning", () => {
     expect(McpOAuthCallback.isRunning()).toBe(false)
   })
 
+  test("isolates pending callbacks with the same server name", async () => {
+    const redirectUri = `http://127.0.0.1:${await getFreeLoopbackPort()}/custom/callback`
+    await McpOAuthCallback.ensureRunning(redirectUri)
+    const first = McpOAuthCallback.waitForCallback("state-a", "dir-a\0same")
+    const second = McpOAuthCallback.waitForCallback("state-b", "dir-b\0same")
+
+    const response = await fetch(`${redirectUri}?code=code-b&state=state-b`)
+
+    expect(response.status).toBe(200)
+    expect(await second).toBe("code-b")
+    McpOAuthCallback.cancelPending("dir-a\0same")
+    await expect(first).rejects.toThrow("Authorization cancelled")
+  })
+
+  test("cancels a previous callback when the same key starts again", async () => {
+    const redirectUri = `http://127.0.0.1:${await getFreeLoopbackPort()}/custom/callback`
+    await McpOAuthCallback.ensureRunning(redirectUri)
+    const first = McpOAuthCallback.waitForCallback("state-a", "dir-a\0same")
+    const second = McpOAuthCallback.waitForCallback("state-b", "dir-a\0same")
+
+    await expect(first).rejects.toThrow("Authorization superseded")
+    const response = await fetch(`${redirectUri}?code=code-b&state=state-b`)
+
+    expect(response.status).toBe(200)
+    expect(await second).toBe("code-b")
+  })
+
+  test("supports callback servers with different redirect ports", async () => {
+    const firstUri = `http://127.0.0.1:${await getFreeLoopbackPort()}/first/callback`
+    const secondUri = `http://127.0.0.1:${await getFreeLoopbackPort()}/second/callback`
+    await McpOAuthCallback.ensureRunning(firstUri)
+    await McpOAuthCallback.ensureRunning(secondUri)
+    const first = McpOAuthCallback.waitForCallback("state-a", "dir-a\0first", firstUri)
+    const second = McpOAuthCallback.waitForCallback("state-b", "dir-b\0second", secondUri)
+
+    expect((await fetch(`${firstUri}?code=code-a&state=state-a`)).status).toBe(200)
+    expect((await fetch(`${secondUri}?code=code-b&state=state-b`)).status).toBe(200)
+    expect(await first).toBe("code-a")
+    expect(await second).toBe("code-b")
+  })
+
   test("escapes provider error markup in callback HTML", async () => {
     const redirectUri = `http://127.0.0.1:${await getFreeLoopbackPort()}/custom/callback`
     await McpOAuthCallback.ensureRunning(redirectUri)

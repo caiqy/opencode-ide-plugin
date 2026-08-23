@@ -5,7 +5,7 @@ import { ListResourcesRequestSchema, ListToolsRequestSchema } from "@modelcontex
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { FSUtil } from "@opencode-ai/core/fs-util"
-import { Effect } from "effect"
+import { Effect, Exit } from "effect"
 import { Config } from "../../src/config/config"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { McpAuth } from "../../src/mcp/auth"
@@ -146,6 +146,20 @@ mcpTest.instance("first connect to OAuth server shows needs_auth instead of fail
     const result = yield* mcp.add("test-oauth", remote(server.url))
 
     expect((result.status as Record<string, { status: string }>)["test-oauth"]).toEqual({ status: "needs_auth" })
+  }),
+)
+
+mcpTest.instance("disconnect cancels pending OAuth connection", () =>
+  Effect.gen(function* () {
+    const server = yield* serveOAuthMcp()
+    const mcp = yield* MCP.Service
+    const name = "test-oauth-disconnect"
+
+    expect((yield* mcp.add(name, remote(server.url))).status).toMatchObject({ [name]: { status: "needs_auth" } })
+    yield* mcp.disconnect(name)
+
+    const exit = yield* mcp.finishAuth(name, "valid-code").pipe(Effect.exit)
+    expect(Exit.isFailure(exit)).toBe(true)
   }),
 )
 

@@ -14,15 +14,33 @@ import {
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import { Cause, Effect, Exit } from "effect"
+import { Npm } from "@opencode-ai/core/npm"
+import { Cause, Effect, Exit, Layer } from "effect"
 import type { MCP as MCPNS } from "../../src/mcp/index"
 import { MCP } from "../../src/mcp/index"
+import { Command } from "../../src/command"
 import { McpOAuthCallback } from "../../src/mcp/oauth-callback"
 import { TestInstance } from "../fixture/fixture"
 import { pollWithTimeout, testEffect } from "../lib/effect"
 
 const it = testEffect(LayerNode.compile(MCP.node))
 const stdioFixture = path.join(import.meta.dir, "../fixture/mcp-lifecycle-stdio.ts")
+const npxPackages: string[] = []
+const npxIt = testEffect(
+  LayerNode.compile(LayerNode.group([MCP.node, Npm.node]), [
+    [
+      Npm.node,
+      Layer.mock(Npm.Service, {
+        which: (pkg) =>
+          Effect.sync(() => {
+            npxPackages.push(pkg)
+            return process.execPath
+          }),
+      }),
+    ],
+  ]),
+)
+const commandIt = testEffect(LayerNode.compile(LayerNode.group([Command.node, MCP.node])))
 
 type Page<T> = { items: T[]; nextCursor?: string }
 
@@ -181,6 +199,252 @@ function statusName(status: Record<string, MCPNS.Status> | MCPNS.Status, server:
 }
 
 const remote = (url: string, timeout?: number) => ({ type: "remote" as const, url, oauth: false as const, timeout })
+
+it.instance(
+  "status and tools do not auto-start configured MCP servers",
+  () =>
+    Effect.gen(function* () {
+      const mcp = yield* MCP.Service
+
+      expect(yield* mcp.status()).toEqual({ lazy: { status: "disabled" } })
+      expect(yield* mcp.tools()).toEqual({})
+    }),
+  {
+    config: {
+      mcp: {
+        lazy: {
+          type: "local",
+          command: [process.execPath, stdioFixture],
+        },
+      },
+    },
+  },
+)
+
+it.instance(
+  "explicit connect starts a configured MCP server",
+  () =>
+    Effect.gen(function* () {
+      const mcp = yield* MCP.Service
+
+      yield* mcp.connect("lazy")
+
+      expect((yield* mcp.status()).lazy?.status).toBe("connected")
+      expect(Object.keys(yield* mcp.tools())).toEqual(["lazy_current_directory"])
+    }),
+  {
+    config: {
+      mcp: {
+        lazy: {
+          type: "local",
+          command: [process.execPath, stdioFixture],
+        },
+      },
+    },
+  },
+)
+
+it.instance(
+  "init starts enabled MCP servers without waiting for connection",
+  () =>
+    Effect.gen(function* () {
+      const mcp = yield* MCP.Service
+
+      yield* mcp.init()
+
+      yield* pollWithTimeout(
+        Effect.gen(function* () {
+          return (yield* mcp.status()).lazy?.status === "connected" ? true : undefined
+        }),
+        "default MCP server did not start",
+      )
+    }),
+  {
+    config: {
+      mcp: {
+        lazy: {
+          type: "local",
+          command: [process.execPath, stdioFixture],
+        },
+      },
+    },
+  },
+)
+
+it.instance(
+  "init leaves disabled MCP servers stopped",
+  () =>
+    Effect.gen(function* () {
+      const mcp = yield* MCP.Service
+
+      yield* mcp.init()
+
+      expect(yield* mcp.status()).toEqual({ lazy: { status: "disabled" } })
+      expect(yield* mcp.tools()).toEqual({})
+    }),
+  {
+    config: {
+      mcp: {
+        lazy: {
+          type: "local",
+          command: [process.execPath, stdioFixture],
+          enabled: false,
+        },
+      },
+    },
+  },
+)
+
+it.instance("disconnect wins over a background MCP startup failure", () =>
+  Effect.gen(function* () {
+    const server = yield* hangingLifecycleServer()
+    const test = yield* TestInstance
+    yield* Effect.promise(() =>
+      Bun.write(
+        path.join(test.directory, "opencode.json"),
+        JSON.stringify({ mcp: { race: { type: "remote", url: server.url, oauth: false, timeout: 100 } } }),
+      ),
+    )
+    const mcp = yield* MCP.Service
+
+    yield* mcp.init()
+    yield* pollWithTimeout(
+      Effect.sync(() => (server.requests.length > 0 ? true : undefined)),
+      "MCP startup did not begin",
+    )
+    yield* mcp.disconnect("race")
+    yield* pollWithTimeout(
+      Effect.sync(() => (server.aborted() >= 2 ? true : undefined)),
+      "MCP startup did not finish",
+    )
+
+    expect((yield* mcp.status()).race?.status).toBe("disabled")
+  }),
+)
+
+npxIt.instance("resolves simple npx MCP commands through the package cache", () =>
+  Effect.gen(function* () {
+    npxPackages.length = 0
+    const mcp = yield* MCP.Service
+    const previousRegistry = process.env.NPM_CONFIG_REGISTRY
+    process.env.NPM_CONFIG_REGISTRY = "https://registry.npmjs.org"
+    const result = yield* mcp
+      .add("cached-npx", {
+        type: "local",
+        command: [
+          path.join(import.meta.dir, "missing", process.platform === "win32" ? "npx.cmd" : "npx"),
+          "-y",
+          "fixture-mcp@1.0.0",
+          stdioFixture,
+        ],
+      })
+      .pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (previousRegistry === undefined) delete process.env.NPM_CONFIG_REGISTRY
+            else process.env.NPM_CONFIG_REGISTRY = previousRegistry
+          }),
+        ),
+      )
+
+    expect(statusName(result.status, "cached-npx")).toBe("connected")
+    expect(npxPackages).toEqual(["fixture-mcp@1.0.0"])
+  }),
+)
+
+npxIt.instance("keeps non-registry npx specs on the original command", () =>
+  Effect.gen(function* () {
+    npxPackages.length = 0
+    const mcp = yield* MCP.Service
+    const result = yield* mcp.add("file-npx", {
+      type: "local",
+      command: [
+        path.join(import.meta.dir, "missing", process.platform === "win32" ? "npx.cmd" : "npx"),
+        "-y",
+        "file:./fixture-mcp",
+        stdioFixture,
+      ],
+    })
+
+    expect(statusName(result.status, "file-npx")).toBe("failed")
+    expect(npxPackages).toEqual([])
+  }),
+)
+
+npxIt.instance("uses a separate cache for a custom npm environment", () =>
+  Effect.gen(function* () {
+    npxPackages.length = 0
+    const mcp = yield* MCP.Service
+    const result = yield* mcp.add("custom-npm", {
+      type: "local",
+      command: [
+        path.join(import.meta.dir, "missing", process.platform === "win32" ? "npx.cmd" : "npx"),
+        "-y",
+        "fixture-mcp@1.0.0",
+        stdioFixture,
+      ],
+      environment: { NPM_CONFIG_REGISTRY: "https://registry.example.test" },
+    })
+
+    expect(statusName(result.status, "custom-npm")).toBe("connected")
+    expect(npxPackages).toEqual(["fixture-mcp@1.0.0"])
+  }),
+)
+
+npxIt.instance("uses a separate cache for a custom process registry", () =>
+  Effect.gen(function* () {
+    npxPackages.length = 0
+    const mcp = yield* MCP.Service
+    const previousRegistry = process.env.NPM_CONFIG_REGISTRY
+    process.env.NPM_CONFIG_REGISTRY = "https://registry.example.test"
+    const result = yield* mcp
+      .add("custom-process-npm", {
+        type: "local",
+        command: [
+          path.join(import.meta.dir, "missing", process.platform === "win32" ? "npx.cmd" : "npx"),
+          "-y",
+          "fixture-mcp@1.0.0",
+          stdioFixture,
+        ],
+      })
+      .pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (previousRegistry === undefined) delete process.env.NPM_CONFIG_REGISTRY
+            else process.env.NPM_CONFIG_REGISTRY = previousRegistry
+          }),
+        ),
+      )
+
+    expect(statusName(result.status, "custom-process-npm")).toBe("connected")
+    expect(npxPackages).toEqual(["fixture-mcp@1.0.0"])
+  }),
+)
+
+commandIt.instance("refreshes MCP prompts after an explicit connection", () =>
+  Effect.gen(function* () {
+    const server = yield* lifecycleServer({ capabilities: { prompts: {} } })
+    server.state.prompts = [{ name: "remote_prompt", description: "Remote prompt" }]
+    const mcp = yield* MCP.Service
+    const command = yield* Command.Service
+
+    expect((yield* command.list()).some((item) => item.name === "prompt-only:remote_prompt")).toBe(false)
+    yield* mcp.add("prompt-only", remote(server.url))
+    yield* pollWithTimeout(
+      Effect.gen(function* () {
+        return (yield* command.list()).some((item) => item.name === "prompt-only:remote_prompt") ? true : undefined
+      }),
+      "MCP prompt command was not refreshed",
+    )
+    yield* mcp.disconnect("prompt-only")
+    yield* pollWithTimeout(
+      Effect.gen(function* () {
+        return (yield* command.list()).some((item) => item.name === "prompt-only:remote_prompt") ? undefined : true
+      }),
+      "Disconnected MCP prompt command was not removed",
+    )
+  }),
+)
 
 it.instance("advertises and lists the instance directory as its root", () =>
   Effect.gen(function* () {

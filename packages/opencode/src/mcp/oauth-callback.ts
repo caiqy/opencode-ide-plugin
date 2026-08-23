@@ -5,21 +5,23 @@ import { OAUTH_CALLBACK_PORT, OAUTH_CALLBACK_PATH, parseRedirectUri } from "./oa
 
 const OAUTH_CALLBACK_HOST = "127.0.0.1"
 
-// Current callback server configuration (may differ from defaults if custom redirectUri is used)
-let currentPort = OAUTH_CALLBACK_PORT
-let currentPath = OAUTH_CALLBACK_PATH
-
 interface PendingAuth {
   resolve: (code: string) => void
   reject: (error: Error) => void
   timeout: ReturnType<typeof setTimeout>
+  serverKey?: string
 }
 
-let server: ReturnType<typeof createServer> | undefined
 const pendingAuths = new Map<string, PendingAuth>()
-// Reverse index: mcpName → oauthState, so cancelPending(mcpName) can
+// Reverse index: instance/server key → oauthState, so cancelPending(key) can
 // find the right entry in pendingAuths (which is keyed by oauthState).
 const mcpNameToState = new Map<string, string>()
+
+interface CallbackServer {
+  server: ReturnType<typeof createServer>
+}
+
+const servers = new Map<string, CallbackServer>()
 
 const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -32,17 +34,30 @@ function cleanupStateIndex(oauthState: string) {
   }
 }
 
-function stopIfIdle() {
-  if (pendingAuths.size > 0 || !server) return
-
-  server.close()
-  server = undefined
+function callbackServerKey(redirectUri?: string) {
+  const { port, path } = parseRedirectUri(redirectUri)
+  return `${port}\0${path}`
 }
 
-function handleRequest(req: import("http").IncomingMessage, res: import("http").ServerResponse) {
-  const url = new URL(req.url || "/", `http://localhost:${currentPort}`)
+export function stopIfIdle(serverKey?: string) {
+  const keys = serverKey ? [serverKey] : Array.from(servers.keys())
 
-  if (url.pathname !== currentPath) {
+  for (const key of keys) {
+    if (Array.from(pendingAuths.values()).some((pending) => pending.serverKey === key)) continue
+    servers.get(key)?.server.close()
+    servers.delete(key)
+  }
+}
+
+function handleRequest(
+  callbackPath: string,
+  serverKey: string,
+  req: import("http").IncomingMessage,
+  res: import("http").ServerResponse,
+) {
+  const url = new URL(req.url || "/", "http://localhost")
+
+  if (url.pathname !== callbackPath) {
     res.writeHead(404)
     res.end("Not found")
     return
@@ -72,7 +87,7 @@ function handleRequest(req: import("http").IncomingMessage, res: import("http").
     }
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
     res.end(OauthCallbackPage.error(errorMsg, { provider: "MCP" }))
-    stopIfIdle()
+    stopIfIdle(serverKey)
     return
   }
 
@@ -99,50 +114,62 @@ function handleRequest(req: import("http").IncomingMessage, res: import("http").
 
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
   res.end(OauthCallbackPage.success({ provider: "MCP" }))
-  stopIfIdle()
+  stopIfIdle(pending.serverKey)
 }
 
 export async function ensureRunning(redirectUri?: string): Promise<void> {
   // Parse the redirect URI to get port and path (uses defaults if not provided)
   const { port, path } = parseRedirectUri(redirectUri)
 
-  // If server is running on a different port/path, stop it first
-  if (server && (currentPort !== port || currentPath !== path)) {
-    await stop()
-  }
-
-  if (server) return
+  const key = `${port}\0${path}`
+  if (servers.has(key)) return
 
   const running = await isPortInUse(port)
   if (running) {
     return
   }
 
-  currentPort = port
-  currentPath = path
-
-  server = createServer(handleRequest)
+  const server = createServer((req, res) => handleRequest(path, key, req, res))
   await new Promise<void>((resolve, reject) => {
-    server!.listen(currentPort, OAUTH_CALLBACK_HOST, () => {
+    server.listen(port, OAUTH_CALLBACK_HOST, () => {
       resolve()
     })
-    server!.on("error", reject)
+    server.on("error", reject)
   })
+  servers.set(key, { server })
 }
 
-export function waitForCallback(oauthState: string, mcpName?: string): Promise<string> {
-  if (mcpName) mcpNameToState.set(mcpName, oauthState)
+export function waitForCallback(oauthState: string, mcpName?: string, redirectUri?: string): Promise<string> {
+  if (mcpName) {
+    const previousState = mcpNameToState.get(mcpName)
+    if (previousState && previousState !== oauthState) {
+      const previous = pendingAuths.get(previousState)
+      if (previous) {
+        clearTimeout(previous.timeout)
+        pendingAuths.delete(previousState)
+        cleanupStateIndex(previousState)
+        previous.reject(new Error("Authorization superseded"))
+      }
+    }
+    mcpNameToState.set(mcpName, oauthState)
+  }
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       if (pendingAuths.has(oauthState)) {
+        const pending = pendingAuths.get(oauthState)!
         pendingAuths.delete(oauthState)
         if (mcpName) mcpNameToState.delete(mcpName)
         reject(new Error("OAuth callback timeout - authorization took too long"))
-        stopIfIdle()
+        stopIfIdle(pending.serverKey)
       }
     }, CALLBACK_TIMEOUT_MS)
 
-    pendingAuths.set(oauthState, { resolve, reject, timeout })
+    const serverKey = redirectUri
+      ? callbackServerKey(redirectUri)
+      : servers.size === 1
+        ? servers.keys().next().value
+        : undefined
+    pendingAuths.set(oauthState, { resolve, reject, timeout, serverKey })
   })
 }
 
@@ -156,7 +183,7 @@ export function cancelPending(mcpName: string): void {
     pendingAuths.delete(key)
     mcpNameToState.delete(mcpName)
     pending.reject(new Error("Authorization cancelled"))
-    stopIfIdle()
+    stopIfIdle(pending.serverKey)
   }
 }
 
@@ -174,10 +201,10 @@ export async function isPortInUse(port: number = OAUTH_CALLBACK_PORT): Promise<b
 }
 
 export async function stop(): Promise<void> {
-  if (server) {
-    await new Promise<void>((resolve) => server!.close(() => resolve()))
-    server = undefined
-  }
+  await Promise.all(
+    Array.from(servers.values(), (entry) => new Promise<void>((resolve) => entry.server.close(() => resolve()))),
+  )
+  servers.clear()
 
   for (const [_name, pending] of pendingAuths) {
     clearTimeout(pending.timeout)
@@ -188,7 +215,7 @@ export async function stop(): Promise<void> {
 }
 
 export function isRunning(): boolean {
-  return server !== undefined
+  return servers.size > 0
 }
 
 export * as McpOAuthCallback from "./oauth-callback"
