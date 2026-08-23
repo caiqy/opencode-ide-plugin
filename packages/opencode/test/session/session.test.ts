@@ -16,6 +16,8 @@ import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { InstanceStore } from "@/project/instance-store"
 import { InstanceBootstrap } from "@/project/bootstrap"
+import { Approval } from "@opencode-ai/core/approval"
+import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
 
 const it = testEffect(
   AppNodeBuilder.build(
@@ -45,6 +47,36 @@ const awaitDeferred = <T>(deferred: Deferred.Deferred<T>, message: string) =>
 const remove = (id: SessionID) => SessionNs.use.remove(id)
 
 describe("session.created event", () => {
+  it.instance("keeps a parent runtime-only approval out of the child marker", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const parent = yield* session.create({ title: "Runtime-only parent" })
+      Approval.runtime.set(parent.id, "full")
+
+      const child = yield* session.create({ parentID: parent.id, title: "Child" })
+
+      expect(child.permission?.some((rule) => rule.permission === ApprovalV1.RulePermission)).not.toBe(true)
+      expect(Approval.runtime.get(child.id)).toBe("full")
+    }),
+  )
+
+  it.instance("does not inherit a stale durable mode after the parent runtime is cleared", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const parent = yield* session.create({ title: "Cleared parent", permission: [ApprovalV1.rule("full")] })
+      Approval.runtime.clear(parent.id)
+
+      const child = yield* session.create({
+        parentID: parent.id,
+        title: "Child",
+        permission: [ApprovalV1.rule("full")],
+      })
+
+      expect(child.permission?.some((rule) => rule.permission === ApprovalV1.RulePermission)).not.toBe(true)
+      expect(Approval.runtime.get(child.id)).toBeUndefined()
+    }),
+  )
+
   it.instance("should emit session.created event when session is created", () =>
     Effect.gen(function* () {
       const session = yield* SessionNs.Service

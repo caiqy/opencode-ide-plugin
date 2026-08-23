@@ -1,5 +1,6 @@
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
+import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
 import { Database } from "@opencode-ai/core/database/database"
 import { Global } from "@opencode-ai/core/global"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
@@ -372,7 +373,11 @@ const succeedVoid = (deferred: Deferred.Deferred<void>) => {
   Effect.runSync(Deferred.succeed(deferred, void 0).pipe(Effect.ignore))
 }
 
-const user = Effect.fn("test.user")(function* (sessionID: SessionID, text: string, options?: { system?: string }) {
+const user = Effect.fn("test.user")(function* (
+  sessionID: SessionID,
+  text: string,
+  options?: { system?: string; tools?: Record<string, boolean> },
+) {
   const session = yield* Session.Service
   const msg = yield* session.updateMessage({
     id: MessageID.ascending(),
@@ -382,6 +387,7 @@ const user = Effect.fn("test.user")(function* (sessionID: SessionID, text: strin
     model: ref,
     time: { created: Date.now() },
     system: options?.system,
+    tools: options?.tools,
   })
   yield* session.updatePart({
     id: PartID.ascending(),
@@ -422,7 +428,7 @@ const seed = Effect.fn("test.seed")(function* (sessionID: SessionID, opts?: { fi
   return { user: msg, assistant }
 })
 
-const addSubtask = (sessionID: SessionID, messageID: MessageID, model = ref) =>
+const addSubtask = (sessionID: SessionID, messageID: MessageID, options?: { command?: string }) =>
   Effect.gen(function* () {
     const session = yield* Session.Service
     yield* session.updatePart({
@@ -433,7 +439,8 @@ const addSubtask = (sessionID: SessionID, messageID: MessageID, model = ref) =>
       prompt: "look into the cache key path",
       description: "inspect bug",
       agent: "general",
-      model,
+      model: ref,
+      command: options?.command,
     })
   })
 
@@ -1077,11 +1084,30 @@ it.instance("subtask child inherits parent session external_directory allow", ()
   }),
 )
 
+it.instance("subtask summary continuation preserves disabled tools in full mode", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Full tools", permission: [ApprovalV1.rule("full")] })
+    yield* llm.text("child result")
+    yield* llm.text("summary result")
+    const msg = yield* user(chat.id, "hello", { tools: { bash: false } })
+    yield* addSubtask(chat.id, msg.id, { command: "inspect" })
+
+    yield* prompt.loop({ sessionID: chat.id })
+
+    const inputs = yield* llm.inputs
+    expect(inputs).toHaveLength(2)
+    expect(JSON.stringify(inputs.at(-1)?.tools)).not.toContain('"name":"bash"')
+  }),
+)
+
 noLLMServer.instance("prompt tools replace previous prompt tool rules", () =>
   Effect.gen(function* () {
     const prompt = yield* SessionPrompt.Service
     const sessions = yield* Session.Service
-    const session = yield* sessions.create({ title: "Prompt tools" })
+    const session = yield* sessions.create({ title: "Prompt tools", permission: [ApprovalV1.rule("full")] })
 
     yield* prompt.prompt({
       sessionID: session.id,
@@ -1099,8 +1125,55 @@ noLLMServer.instance("prompt tools replace previous prompt tool rules", () =>
     })
 
     const reloaded = yield* sessions.get(session.id)
-    expect(reloaded.permission).toEqual([{ permission: "read", pattern: "*", action: "allow" }])
+    expect(reloaded.permission).toEqual([
+      { permission: "read", pattern: "*", action: "allow" },
+      ApprovalV1.rule("full"),
+    ])
     expect(Permission.evaluate("bash", "anything", reloaded.permission ?? []).action).toBe("ask")
+  }),
+)
+
+noLLMServer.instance("prompt tool overlay preserves session permission rules", () =>
+  Effect.gen(function* () {
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const permission = [{ permission: "task", pattern: "*", action: "deny" as const }, ApprovalV1.rule("full")]
+    const session = yield* sessions.create({ title: "Prompt tool overlay", permission })
+
+    const message = yield* prompt.prompt(
+      {
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        tools: { bash: false },
+        parts: [{ type: "text", text: "continue" }],
+      },
+      { persistTools: false },
+    )
+
+    expect(message.info.role === "user" ? message.info.tools : undefined).toEqual({ bash: false })
+    expect((yield* sessions.get(session.id)).permission).toEqual(permission)
+  }),
+)
+
+noLLMServer.instance("prompt tools preserve a durable approval transition", () =>
+  Effect.gen(function* () {
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const session = yield* sessions.create({
+      title: "Transition tools",
+      permission: ApprovalV1.withTransition([ApprovalV1.rule("manual")]),
+    })
+
+    yield* prompt.prompt({
+      sessionID: session.id,
+      agent: "build",
+      noReply: true,
+      tools: { bash: false },
+      parts: [{ type: "text", text: "continue" }],
+    })
+
+    expect(ApprovalV1.isTransitioning((yield* sessions.get(session.id)).permission ?? [])).toBe(true)
   }),
 )
 

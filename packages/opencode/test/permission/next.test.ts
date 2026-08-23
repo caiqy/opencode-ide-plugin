@@ -21,6 +21,7 @@ import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { reply as llmReply, TestLLMServer } from "../lib/llm-server"
 import { testProviderConfig } from "../lib/test-provider"
+import { syncApproval } from "../../src/session/approval-sync"
 
 const noopBootstrap = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
 const env = AppNodeBuilder.build(
@@ -490,6 +491,14 @@ test("disabled - returns empty set when all tools allowed", () => {
   expect(result.size).toBe(0)
 })
 
+test("disabled - full access keeps denied tools visible", () => {
+  const result = Permission.disabled(
+    ["bash", "edit", "read"],
+    [{ permission: "*", pattern: "*", action: "deny" }, ApprovalV1.rule("full")],
+  )
+  expect(result).toEqual(new Set())
+})
+
 test("disabled - disables tool when denied", () => {
   const result = Permission.disabled(
     ["bash", "edit", "read"],
@@ -588,6 +597,552 @@ test("disabled - specific allow overrides wildcard deny", () => {
   expect(result.has("edit")).toBe(true)
   expect(result.has("read")).toBe(true)
 })
+
+it.instance("ask - an explicit clear does not reactivate a stale full marker", () =>
+  Effect.gen(function* () {
+    const permission = yield* Permission.Service
+    const sessionID = SessionID.make("session_cleared_stale_full")
+    const ruleset = [ApprovalV1.rule("full")]
+    Approval.runtime.set(sessionID, "full")
+    Approval.runtime.clear(sessionID)
+    const request = yield* permission
+      .ask({
+        sessionID,
+        permission: "bash",
+        patterns: ["git status"],
+        metadata: {},
+        always: [],
+        ruleset,
+      })
+      .pipe(Effect.forkScoped)
+
+    const pending = (yield* waitForPending(1))[0]!
+    yield* permission.reply({ requestID: pending.id, reply: "once" })
+    yield* Fiber.join(request)
+  }),
+)
+
+guardianIt.instance("syncApproval closes full access before publishing a restrictive permission update", () =>
+  Effect.gen(function* () {
+    const permission = yield* Permission.Service
+    const sessions = yield* Session.Service
+    const events = yield* EventV2Bridge.Service
+    const session = yield* sessions.create({ title: "Restrictive transition", permission: [ApprovalV1.rule("full")] })
+    const child = yield* sessions.create({
+      parentID: session.id,
+      title: "Restrictive child",
+      permission: [ApprovalV1.rule("full")],
+    })
+    Approval.runtime.set(session.id, "full")
+    Approval.runtime.set(child.id, "full")
+    const publishing = yield* Deferred.make<void>()
+    const release = yield* Deferred.make<void>()
+    yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined).pipe(Effect.asVoid))
+    const unsubscribe = yield* events.listen((event) => {
+      if (event.type !== SessionV1.Event.Updated.type || (event.data as { info: Session.Info }).info.id !== session.id)
+        return Effect.void
+      return Deferred.succeed(publishing, undefined).pipe(Effect.andThen(Deferred.await(release)))
+    })
+    yield* Effect.addFinalizer(() => unsubscribe)
+    const update = yield* syncApproval({ sessions, sessionID: session.id, approval: "manual" }).pipe(Effect.forkScoped)
+    yield* Deferred.await(publishing)
+
+    const request = yield* permission
+      .ask({
+        sessionID: child.id,
+        permission: "bash",
+        patterns: ["git status"],
+        metadata: {},
+        always: [],
+        ruleset: [ApprovalV1.rule("full")],
+      })
+      .pipe(Effect.forkScoped)
+    yield* Effect.yieldNow
+    yield* Deferred.succeed(release, undefined)
+    yield* Fiber.join(update)
+    const pending = (yield* waitForPending(1))[0]!
+    yield* permission.reply({ requestID: pending.id, reply: "once" })
+    yield* Fiber.join(request)
+  }),
+)
+
+guardianIt.instance("syncApproval fences full access before publishing its durable marker", () =>
+  Effect.gen(function* () {
+    const permission = yield* Permission.Service
+    const sessions = yield* Session.Service
+    const events = yield* EventV2Bridge.Service
+    const parent = yield* sessions.create({ title: "Full activation" })
+    const child = yield* sessions.create({ parentID: parent.id, title: "Full child" })
+    const publishing = yield* Deferred.make<void>()
+    const release = yield* Deferred.make<void>()
+    yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined).pipe(Effect.asVoid))
+    const unsubscribe = yield* events.listen((event) => {
+      if (event.type !== SessionV1.Event.Updated.type || (event.data as { info: Session.Info }).info.id !== parent.id)
+        return Effect.void
+      return Deferred.succeed(publishing, undefined).pipe(Effect.andThen(Deferred.await(release)))
+    })
+    yield* Effect.addFinalizer(() => unsubscribe)
+    const update = yield* syncApproval({ sessions, sessionID: parent.id, approval: "full" }).pipe(Effect.forkScoped)
+    yield* Deferred.await(publishing)
+
+    const request = yield* permission
+      .ask({
+        sessionID: parent.id,
+        permission: "bash",
+        patterns: ["git status"],
+        metadata: {},
+        always: [],
+        ruleset: [ApprovalV1.rule("full")],
+      })
+      .pipe(Effect.forkScoped)
+    const pending = (yield* waitForPending(1))[0]!
+    yield* permission.reply({ requestID: pending.id, reply: "once" })
+    yield* Deferred.succeed(release, undefined)
+    yield* Fiber.join(update)
+    yield* Fiber.join(request)
+  }),
+)
+
+guardianIt.instance("syncApproval drains requests admitted near the end of a full tree update", () =>
+  Effect.gen(function* () {
+    const permission = yield* Permission.Service
+    const sessions = yield* Session.Service
+    const events = yield* EventV2Bridge.Service
+    const parent = yield* sessions.create({ title: "Full tree tail" })
+    const child = yield* sessions.create({ parentID: parent.id, title: "Full tree child" })
+    const grandchild = yield* sessions.create({ parentID: child.id, title: "Full tree grandchild" })
+    const publishing = yield* Deferred.make<void>()
+    const release = yield* Deferred.make<void>()
+    yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined).pipe(Effect.asVoid))
+    const unsubscribe = yield* events.listen((event) => {
+      if (
+        event.type !== SessionV1.Event.Updated.type ||
+        (event.data as { info: Session.Info }).info.id !== grandchild.id
+      )
+        return Effect.void
+      return Deferred.succeed(publishing, undefined).pipe(Effect.andThen(Deferred.await(release)))
+    })
+    yield* Effect.addFinalizer(() => unsubscribe)
+    const update = yield* syncApproval({ sessions, sessionID: parent.id, approval: "full" }).pipe(Effect.forkScoped)
+    yield* Deferred.await(publishing)
+    expect(Approval.runtime.get(child.id)).toBe("full")
+
+    const request = yield* permission
+      .ask({
+        sessionID: child.id,
+        permission: "bash",
+        patterns: ["git status"],
+        metadata: {},
+        always: [],
+        ruleset: [ApprovalV1.rule("full")],
+      })
+      .pipe(Effect.forkScoped)
+    yield* waitForPending(1)
+    yield* Deferred.succeed(release, undefined)
+    yield* Fiber.join(update)
+
+    expect(yield* permission.list()).toEqual([])
+    yield* Fiber.join(request)
+  }),
+)
+
+guardianIt.instance("interrupting a full tree update cannot skip its final drain", () =>
+  Effect.gen(function* () {
+    const permission = yield* Permission.Service
+    const sessions = yield* Session.Service
+    const events = yield* EventV2Bridge.Service
+    const parent = yield* sessions.create({ title: "Interrupted full tree" })
+    const child = yield* sessions.create({ parentID: parent.id, title: "Interrupted full child" })
+    const grandchild = yield* sessions.create({ parentID: child.id, title: "Interrupted full grandchild" })
+    const publishing = yield* Deferred.make<void>()
+    const release = yield* Deferred.make<void>()
+    yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined).pipe(Effect.asVoid))
+    const unsubscribe = yield* events.listen((event) => {
+      if (
+        event.type !== SessionV1.Event.Updated.type ||
+        (event.data as { info: Session.Info }).info.id !== grandchild.id
+      )
+        return Effect.void
+      return Deferred.succeed(publishing, undefined).pipe(Effect.andThen(Deferred.await(release)))
+    })
+    yield* Effect.addFinalizer(() => unsubscribe)
+    const update = yield* syncApproval({ sessions, sessionID: parent.id, approval: "full" }).pipe(Effect.forkScoped)
+    yield* Deferred.await(publishing)
+
+    const request = yield* permission
+      .ask({
+        sessionID: child.id,
+        permission: "bash",
+        patterns: ["git status"],
+        metadata: {},
+        always: [],
+        ruleset: [ApprovalV1.rule("full")],
+      })
+      .pipe(Effect.forkScoped)
+    yield* waitForPending(1)
+    const interrupting = yield* Deferred.make<void>()
+    const interrupt = yield* Effect.gen(function* () {
+      yield* Deferred.succeed(interrupting, undefined)
+      yield* Fiber.interrupt(update)
+    }).pipe(Effect.forkScoped)
+    yield* Deferred.await(interrupting)
+    yield* Effect.yieldNow
+    yield* Deferred.succeed(release, undefined)
+    yield* Fiber.join(interrupt)
+
+    expect(yield* permission.list()).toEqual([])
+    yield* Fiber.join(request)
+  }),
+)
+
+guardianIt.instance("full activation stays fenced until its final drain completes", () =>
+  Effect.gen(function* () {
+    const permission = yield* Permission.Service
+    const sessions = yield* Session.Service
+    const events = yield* EventV2Bridge.Service
+    const parent = yield* sessions.create({ title: "Fenced full finalization" })
+    const child = yield* sessions.create({ parentID: parent.id, title: "Fenced full child" })
+    const grandchild = yield* sessions.create({ parentID: child.id, title: "Fenced full grandchild" })
+    const sibling = yield* sessions.create({ parentID: parent.id, title: "Blocked full sibling" })
+    const treeBlocked = yield* Deferred.make<void>()
+    const drainBlocked = yield* Deferred.make<void>()
+    const releaseTree = yield* Deferred.make<void>()
+    const releaseDrain = yield* Deferred.make<void>()
+    yield* Effect.addFinalizer(() =>
+      Effect.all([Deferred.succeed(releaseTree, undefined), Deferred.succeed(releaseDrain, undefined)]).pipe(
+        Effect.asVoid,
+      ),
+    )
+    const unsubscribe = yield* events.listen((event) => {
+      if (
+        event.type !== SessionV1.Event.Updated.type ||
+        (event.data as { info: Session.Info }).info.id !== grandchild.id
+      )
+        return Effect.void
+      return Deferred.succeed(treeBlocked, undefined).pipe(Effect.andThen(Deferred.await(releaseTree)))
+    })
+    yield* Effect.addFinalizer(() => unsubscribe)
+    const full = yield* syncApproval({ sessions, sessionID: parent.id, approval: "full" }).pipe(Effect.forkScoped)
+    yield* Deferred.await(treeBlocked)
+    const unregister = Approval.runtime.register(
+      sibling.id,
+      Deferred.succeed(drainBlocked, undefined).pipe(Effect.andThen(Deferred.await(releaseDrain))),
+    )
+    yield* Effect.addFinalizer(() => Effect.sync(unregister))
+    yield* Deferred.succeed(releaseTree, undefined)
+    yield* Deferred.await(drainBlocked)
+
+    const late = yield* sessions.create({ parentID: child.id, title: "Late full child" })
+    const finished = yield* Deferred.make<void>()
+    const request = yield* permission
+      .ask({
+        sessionID: late.id,
+        permission: "bash",
+        patterns: ["git status"],
+        metadata: {},
+        always: [],
+        ruleset: [ApprovalV1.rule("full")],
+      })
+      .pipe(Effect.ensuring(Deferred.succeed(finished, undefined)), Effect.forkScoped)
+    const admission = yield* Effect.race(
+      Deferred.await(finished).pipe(Effect.as("full" as const)),
+      waitForPending(1).pipe(Effect.as("pending" as const)),
+    )
+    yield* Deferred.succeed(releaseDrain, undefined)
+    yield* Fiber.join(full)
+    const remaining = yield* permission.list()
+    if (remaining.length > 0) yield* permission.reply({ requestID: remaining[0]!.id, reply: "once" })
+    yield* Fiber.join(request)
+    expect(admission).toBe("pending")
+    expect(remaining).toEqual([])
+  }),
+)
+
+guardianIt.instance("child full does not drain through an ancestor restriction", () =>
+  Effect.gen(function* () {
+    const permission = yield* Permission.Service
+    const sessions = yield* Session.Service
+    const parent = yield* sessions.create({ title: "Restricting full parent" })
+    const child = yield* sessions.create({
+      parentID: parent.id,
+      title: "Restricted full child",
+    })
+    const request = yield* permission
+      .ask({
+        sessionID: child.id,
+        permission: "bash",
+        patterns: ["git status"],
+        metadata: {},
+        always: [],
+        ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
+      })
+      .pipe(Effect.forkScoped)
+    const pending = (yield* waitForPending(1))[0]!
+    yield* sessions.setPermission({ sessionID: parent.id, permission: [ApprovalV1.rule("full")] })
+    yield* sessions.setPermission({ sessionID: child.id, permission: [ApprovalV1.rule("full")] })
+    Approval.runtime.set(parent.id, "full")
+    const publishing = yield* Deferred.make<void>()
+    const release = yield* Deferred.make<void>()
+    let blocked = false
+    yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined).pipe(Effect.asVoid))
+    const restrictedSessions = {
+      ...sessions,
+      setPermission: (input: Parameters<typeof sessions.setPermission>[0]) =>
+        sessions.setPermission(input).pipe(
+          Effect.tap(() => {
+            if (blocked || input.sessionID !== parent.id || !ApprovalV1.isTransitioning(input.permission))
+              return Effect.void
+            blocked = true
+            return Deferred.succeed(publishing, undefined).pipe(Effect.andThen(Deferred.await(release)))
+          }),
+        ),
+    }
+    const restrict = yield* syncApproval({
+      sessions: restrictedSessions,
+      sessionID: parent.id,
+      approval: "manual",
+    }).pipe(Effect.forkScoped)
+    yield* Deferred.await(publishing)
+
+    yield* syncApproval({ sessions, sessionID: child.id, approval: "full" })
+    const remaining = yield* permission.list()
+    yield* Deferred.succeed(release, undefined)
+    yield* Fiber.join(restrict)
+    if (remaining.length > 0) yield* permission.reply({ requestID: pending.id, reply: "once" })
+    yield* Fiber.join(request)
+    expect(remaining).toEqual([pending])
+  }),
+)
+
+guardianIt.instance("syncApproval does not drain a newer child manual request", () =>
+  Effect.gen(function* () {
+    const permission = yield* Permission.Service
+    const sessions = yield* Session.Service
+    const events = yield* EventV2Bridge.Service
+    const parent = yield* sessions.create({ title: "Concurrent full parent" })
+    const child = yield* sessions.create({ parentID: parent.id, title: "Concurrent manual child" })
+    const grandchild = yield* sessions.create({ parentID: child.id, title: "Concurrent grandchild" })
+    const fullBlocked = yield* Deferred.make<void>()
+    const finalDrainBlocked = yield* Deferred.make<void>()
+    const childUpdating = yield* Deferred.make<void>()
+    const releaseTree = yield* Deferred.make<void>()
+    const releaseDrain = yield* Deferred.make<void>()
+    let blocked = false
+    yield* Effect.addFinalizer(() =>
+      Effect.all([Deferred.succeed(releaseTree, undefined), Deferred.succeed(releaseDrain, undefined)]).pipe(
+        Effect.asVoid,
+      ),
+    )
+    const unsubscribe = yield* events.listen((event) => {
+      if (event.type !== SessionV1.Event.Updated.type) return Effect.void
+      const sessionID = (event.data as { info: Session.Info }).info.id
+      if (sessionID === child.id && blocked) return Deferred.succeed(childUpdating, undefined).pipe(Effect.asVoid)
+      if (sessionID !== grandchild.id || blocked) return Effect.void
+      blocked = true
+      return Deferred.succeed(fullBlocked, undefined).pipe(Effect.andThen(Deferred.await(releaseTree)))
+    })
+    yield* Effect.addFinalizer(() => unsubscribe)
+    const full = yield* syncApproval({ sessions, sessionID: parent.id, approval: "full" }).pipe(Effect.forkScoped)
+    yield* Deferred.await(fullBlocked)
+    const unregister = Approval.runtime.register(
+      parent.id,
+      Deferred.succeed(finalDrainBlocked, undefined).pipe(Effect.andThen(Deferred.await(releaseDrain))),
+    )
+    yield* Effect.addFinalizer(() => Effect.sync(unregister))
+    const manual = yield* syncApproval({ sessions, sessionID: child.id, approval: "manual" }).pipe(Effect.forkScoped)
+    yield* Deferred.succeed(releaseTree, undefined)
+    yield* Deferred.await(finalDrainBlocked)
+    yield* Deferred.await(childUpdating)
+    while (Approval.runtime.get(child.id) !== "manual") yield* Effect.yieldNow
+
+    const request = yield* permission
+      .ask({
+        sessionID: child.id,
+        permission: "bash",
+        patterns: ["git status"],
+        metadata: {},
+        always: [],
+        ruleset: [ApprovalV1.rule("full")],
+      })
+      .pipe(Effect.forkScoped)
+    yield* waitForPending(1)
+    yield* Deferred.succeed(releaseDrain, undefined)
+    yield* Fiber.join(full)
+    yield* Fiber.join(manual)
+
+    const pending = (yield* permission.list())[0]!
+    expect(pending).toBeDefined()
+    yield* permission.reply({ requestID: pending.id, reply: "once" })
+    yield* Fiber.join(request)
+  }),
+)
+
+guardianIt.instance("syncApproval keeps a durable fence when descendant persistence fails", () =>
+  Effect.gen(function* () {
+    const permission = yield* Permission.Service
+    const sessions = yield* Session.Service
+    const parent = yield* sessions.create({ title: "Failed tree transition", permission: [ApprovalV1.rule("full")] })
+    const child = yield* sessions.create({
+      parentID: parent.id,
+      title: "Failed child transition",
+      permission: [ApprovalV1.rule("full")],
+    })
+    Approval.runtime.set(parent.id, "full")
+    Approval.runtime.set(child.id, "full")
+    const broken = {
+      ...sessions,
+      setPermission: (input: Parameters<typeof sessions.setPermission>[0]) =>
+        input.sessionID === child.id ? Effect.die("child write failed") : sessions.setPermission(input),
+    }
+
+    const target = [{ permission: "read", pattern: "*", action: "allow" as const }]
+    expect(
+      Exit.isFailure(
+        yield* syncApproval({ sessions: broken, sessionID: parent.id, permission: target }).pipe(Effect.exit),
+      ),
+    ).toBe(true)
+    yield* Approval.runtime.dispose(parent.id)
+    yield* Approval.runtime.dispose(child.id)
+    const request = yield* permission
+      .ask({
+        sessionID: child.id,
+        permission: "bash",
+        patterns: ["git status"],
+        metadata: {},
+        always: [],
+        ruleset: [ApprovalV1.rule("full")],
+      })
+      .pipe(Effect.forkScoped)
+
+    const pending = (yield* waitForPending(1))[0]!
+    yield* permission.reply({ requestID: pending.id, reply: "once" })
+    yield* Fiber.join(request)
+    expect(ApprovalV1.isTransitioning((yield* sessions.get(parent.id)).permission ?? [])).toBe(true)
+
+    yield* syncApproval({ sessions, sessionID: parent.id, permission: target })
+    expect(ApprovalV1.isTransitioning((yield* sessions.get(parent.id)).permission ?? [])).toBe(false)
+    expect((yield* sessions.get(child.id)).permission).not.toContainEqual(
+      expect.objectContaining({ permission: ApprovalV1.RulePermission }),
+    )
+  }),
+)
+
+guardianIt.live("automatic review does not settle while an ancestor transition is active", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const permission = yield* Permission.Service
+        const sessions = yield* Session.Service
+        const parent = yield* sessions.create({ title: "Automatic transition" })
+        const child = yield* sessions.create({
+          parentID: parent.id,
+          title: "Automatic child",
+          permission: [ApprovalV1.rule("manual")],
+        })
+        Approval.runtime.set(child.id, "manual")
+        const request = yield* permission
+          .ask({
+            sessionID: child.id,
+            permission: "bash",
+            patterns: ["git status"],
+            metadata: {},
+            always: [],
+            ruleset: [ApprovalV1.rule("manual")],
+            toolName: "bash",
+          })
+          .pipe(Effect.forkScoped)
+        yield* waitForPending(1)
+        Approval.runtime.set(child.id, "automatic")
+        const releaseReview = Promise.withResolvers<void>()
+        yield* llm.push(
+          llmReply()
+            .wait(releaseReview.promise)
+            .tool("guardian_decision", {
+              risk_level: "low",
+              user_authorization: "high",
+              outcome: "allow",
+              rationale: "The command is read-only.",
+            })
+            .item(),
+        )
+        const review = yield* Approval.runtime.review(child.id).pipe(Effect.forkScoped)
+        yield* llm.wait(1)
+        const releaseFence = yield* Deferred.make<void>()
+        const fenceStarted = yield* Deferred.make<void>()
+        const fence = yield* Approval.runtime
+          .withRestriction(
+            parent.id,
+            Deferred.succeed(fenceStarted, undefined).pipe(Effect.andThen(Deferred.await(releaseFence))),
+          )
+          .pipe(Effect.forkScoped)
+        yield* Deferred.await(fenceStarted)
+        releaseReview.resolve()
+        yield* Fiber.join(review)
+
+        expect(yield* permission.list()).toHaveLength(1)
+        const pending = (yield* permission.list())[0]!
+        yield* permission.reply({ requestID: pending.id, reply: "once" })
+        yield* Deferred.succeed(releaseFence, undefined)
+        yield* Fiber.join(fence)
+        yield* Fiber.join(request)
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
+
+guardianIt.live("direct automatic ask rechecks an ancestor transition after Guardian returns", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const permission = yield* Permission.Service
+        const sessions = yield* Session.Service
+        const parent = yield* sessions.create({ title: "Direct automatic transition" })
+        const child = yield* sessions.create({ parentID: parent.id, title: "Direct automatic child" })
+        Approval.runtime.set(child.id, "automatic")
+        const releaseReview = Promise.withResolvers<void>()
+        yield* llm.push(
+          llmReply()
+            .wait(releaseReview.promise)
+            .tool("guardian_decision", {
+              risk_level: "low",
+              user_authorization: "high",
+              outcome: "allow",
+              rationale: "The command is read-only.",
+            })
+            .item(),
+        )
+        const request = yield* permission
+          .ask({
+            sessionID: child.id,
+            permission: "bash",
+            patterns: ["git status"],
+            metadata: {},
+            always: [],
+            ruleset: [ApprovalV1.rule("automatic")],
+            toolName: "bash",
+          })
+          .pipe(Effect.forkScoped)
+        yield* llm.wait(1)
+        const releaseFence = yield* Deferred.make<void>()
+        const fenceStarted = yield* Deferred.make<void>()
+        const fence = yield* Approval.runtime
+          .withRestriction(
+            parent.id,
+            Deferred.succeed(fenceStarted, undefined).pipe(Effect.andThen(Deferred.await(releaseFence))),
+          )
+          .pipe(Effect.forkScoped)
+        yield* Deferred.await(fenceStarted)
+        releaseReview.resolve()
+
+        const pending = (yield* waitForPending(1))[0]!
+        yield* permission.reply({ requestID: pending.id, reply: "once" })
+        yield* Deferred.succeed(releaseFence, undefined)
+        yield* Fiber.join(fence)
+        yield* Fiber.join(request)
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
 
 // ask tests
 
@@ -800,205 +1355,187 @@ const guardianFallback = (name: string, build: (dir: string) => ReturnType<typeo
     ),
   )
 
-guardianIt.live(
-  "automatic Guardian binds builtin read/glob/grep over same-named custom tools",
-  () =>
-    provideTmpdirServer(
-      ({ dir, llm }) =>
-        Effect.gen(function* () {
-          yield* Effect.promise(() => Bun.write(path.join(dir, "README.md"), "guardian evidence"))
-          const toolDir = path.join(dir, ".opencode", "tool")
-          yield* Effect.promise(() =>
-            Bun.write(
-              path.join(toolDir, "read.ts"),
-              "export default { description: 'custom read', args: {}, execute: async () => 'CUSTOM READ OUTPUT' }",
-            ),
-          )
-          const session = yield* createGuardianSession("Guardian builtin tools")
-          yield* llm.push(
-            llmReply().tool("read", { filePath: path.join(dir, "README.md") }),
-            llmReply().tool("guardian_decision", {
-              risk_level: "low",
-              user_authorization: "high",
-              outcome: "allow",
-              rationale: "scoped and reversible",
-            }),
-          )
-          const permission = yield* Permission.Service
-          const review = yield* permission
-            .ask({
-              sessionID: session.id,
-              permission: "edit",
-              patterns: ["src/index.ts"],
-              metadata: { tool: "write" },
-              always: [],
-              ruleset: session.permission ?? [],
-              toolName: "write",
-            })
-            .pipe(Effect.forkScoped)
-          yield* llm.wait(2)
-          yield* Fiber.join(review)
-          const inputs = yield* llm.inputs
-          expect(JSON.stringify(inputs[1])).toContain("guardian evidence")
-          expect(JSON.stringify(inputs[1])).not.toContain("CUSTOM READ OUTPUT")
-        }),
-      { git: true, config: guardianConfig },
-    ),
-)
-
-guardianIt.live(
-  "automatic Guardian retains the first user request in a long session transcript",
-  () =>
-    provideTmpdirServer(
-      ({ llm }) =>
-        Effect.gen(function* () {
-          const sessions = yield* Session.Service
-          const session = yield* sessions.create({
-            title: "Guardian long transcript",
-            permission: [ApprovalV1.rule("automatic")],
-          })
-          const first = "AUTHORIZE the migration of the payment service to the new ledger."
-          for (let i = 0; i < 201; i++) {
-            const id = MessageID.ascending()
-            yield* sessions.updateMessage({
-              id,
-              sessionID: session.id,
-              role: "user",
-              time: { created: Date.now() + i },
-              agent: "build",
-              model: { providerID: "test", modelID: "test-model" },
-              tools: {},
-              mode: "",
-            } as unknown as SessionV1.Info)
-            yield* sessions.updatePart({
-              id: PartID.ascending(),
-              sessionID: session.id,
-              messageID: id,
-              type: "text",
-              text: i === 0 ? first : `filler ${i} `.repeat(40),
-            })
-          }
-          yield* llm.tool("guardian_decision", {
+guardianIt.live("automatic Guardian binds builtin read/glob/grep over same-named custom tools", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        yield* Effect.promise(() => Bun.write(path.join(dir, "README.md"), "guardian evidence"))
+        const toolDir = path.join(dir, ".opencode", "tool")
+        yield* Effect.promise(() =>
+          Bun.write(
+            path.join(toolDir, "read.ts"),
+            "export default { description: 'custom read', args: {}, execute: async () => 'CUSTOM READ OUTPUT' }",
+          ),
+        )
+        const session = yield* createGuardianSession("Guardian builtin tools")
+        yield* llm.push(
+          llmReply().tool("read", { filePath: path.join(dir, "README.md") }),
+          llmReply().tool("guardian_decision", {
             risk_level: "low",
             user_authorization: "high",
             outcome: "allow",
-            rationale: "authorized by the first request",
+            rationale: "scoped and reversible",
+          }),
+        )
+        const permission = yield* Permission.Service
+        const review = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "edit",
+            patterns: ["src/index.ts"],
+            metadata: { tool: "write" },
+            always: [],
+            ruleset: session.permission ?? [],
+            toolName: "write",
           })
-          const permission = yield* Permission.Service
-          const review = yield* permission
-            .ask({
-              sessionID: session.id,
-              permission: "edit",
-              patterns: ["src/index.ts"],
-              metadata: { tool: "write" },
-              always: [],
-              ruleset: session.permission ?? [],
-              toolName: "write",
-            })
-            .pipe(Effect.forkScoped)
-          yield* llm.wait(1)
-          yield* Fiber.join(review)
-          const prompt = JSON.stringify((yield* llm.inputs)[0])
-          expect(prompt).toContain(first)
-          expect(prompt).toContain("Some conversation entries were omitted.")
-        }),
-      { git: true, config: guardianConfig },
-    ),
-)
-
-guardianIt.live(
-  "automatic Guardian falls back to ask when a round mixes investigation with a decision",
-  () =>
-    provideTmpdirServer(
-      ({ dir, llm }) =>
-        Effect.gen(function* () {
-          yield* Effect.promise(() => Bun.write(path.join(dir, "README.md"), "guardian evidence"))
-          const permission = yield* Permission.Service
-          const session = yield* createGuardianSession("Guardian mixed round")
-          yield* llm.push(
-            llmReply().tool("glob", { pattern: "README.md" }).tool("guardian_decision", {
-              risk_level: "low",
-              user_authorization: "high",
-              outcome: "allow",
-              rationale: "scoped and reversible",
-            }),
-          )
-          const review = yield* permission
-            .ask({
-              sessionID: session.id,
-              permission: "edit",
-              patterns: ["src/index.ts"],
-              metadata: { tool: "write" },
-              always: [],
-              ruleset: session.permission ?? [],
-              toolName: "write",
-            })
-            .pipe(Effect.forkScoped)
-          const pending = (yield* waitForPending(1))[0]!
-          expect(pending.permission).toBe("edit")
-          yield* permission.reply({ requestID: pending.id, reply: "reject" })
-          expect(Exit.isFailure(yield* Fiber.await(review))).toBe(true)
-        }),
-      { git: true, config: guardianConfig },
-    ),
-)
-
-guardianFallback(
-  "automatic Guardian falls back to ask when a round returns multiple decisions",
-  () => [
-    llmReply()
-      .tool("guardian_decision", {
-        risk_level: "high",
-        user_authorization: "unknown",
-        outcome: "deny",
-        rationale: "first decision",
-      })
-      .tool("guardian_decision", {
-        risk_level: "low",
-        user_authorization: "high",
-        outcome: "allow",
-        rationale: "second decision",
+          .pipe(Effect.forkScoped)
+        yield* llm.wait(2)
+        yield* Fiber.join(review)
+        const inputs = yield* llm.inputs
+        expect(JSON.stringify(inputs[1])).toContain("guardian evidence")
+        expect(JSON.stringify(inputs[1])).not.toContain("CUSTOM READ OUTPUT")
       }),
-  ],
+    { git: true, config: guardianConfig },
+  ),
 )
 
-guardianFallback(
-  "automatic Guardian falls back to ask when a decision shares a round with a failed tool",
-  (dir) => [
-    llmReply()
-      .tool("glob", { pattern: "*", path: path.dirname(dir) })
-      .tool("guardian_decision", {
-        risk_level: "low",
-        user_authorization: "high",
-        outcome: "allow",
-        rationale: "scoped and reversible",
+guardianIt.live("automatic Guardian retains the first user request in a long session transcript", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const session = yield* sessions.create({
+          title: "Guardian long transcript",
+          permission: [ApprovalV1.rule("automatic")],
+        })
+        const first = "AUTHORIZE the migration of the payment service to the new ledger."
+        for (let i = 0; i < 201; i++) {
+          const id = MessageID.ascending()
+          yield* sessions.updateMessage({
+            id,
+            sessionID: session.id,
+            role: "user",
+            time: { created: Date.now() + i },
+            agent: "build",
+            model: { providerID: "test", modelID: "test-model" },
+            tools: {},
+            mode: "",
+          } as unknown as SessionV1.Info)
+          yield* sessions.updatePart({
+            id: PartID.ascending(),
+            sessionID: session.id,
+            messageID: id,
+            type: "text",
+            text: i === 0 ? first : `filler ${i} `.repeat(40),
+          })
+        }
+        yield* llm.tool("guardian_decision", {
+          risk_level: "low",
+          user_authorization: "high",
+          outcome: "allow",
+          rationale: "authorized by the first request",
+        })
+        const permission = yield* Permission.Service
+        const review = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "edit",
+            patterns: ["src/index.ts"],
+            metadata: { tool: "write" },
+            always: [],
+            ruleset: session.permission ?? [],
+            toolName: "write",
+          })
+          .pipe(Effect.forkScoped)
+        yield* llm.wait(1)
+        yield* Fiber.join(review)
+        const prompt = JSON.stringify((yield* llm.inputs)[0])
+        expect(prompt).toContain(first)
+        expect(prompt).toContain("Some conversation entries were omitted.")
       }),
-  ],
+    { git: true, config: guardianConfig },
+  ),
 )
 
-guardianFallback(
-  "automatic Guardian falls back to ask for a critical allow",
-  () => [
-    llmReply().tool("guardian_decision", {
-      risk_level: "critical",
+guardianIt.live("automatic Guardian falls back to ask when a round mixes investigation with a decision", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        yield* Effect.promise(() => Bun.write(path.join(dir, "README.md"), "guardian evidence"))
+        const permission = yield* Permission.Service
+        const session = yield* createGuardianSession("Guardian mixed round")
+        yield* llm.push(
+          llmReply().tool("glob", { pattern: "README.md" }).tool("guardian_decision", {
+            risk_level: "low",
+            user_authorization: "high",
+            outcome: "allow",
+            rationale: "scoped and reversible",
+          }),
+        )
+        const review = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "edit",
+            patterns: ["src/index.ts"],
+            metadata: { tool: "write" },
+            always: [],
+            ruleset: session.permission ?? [],
+            toolName: "write",
+          })
+          .pipe(Effect.forkScoped)
+        const pending = (yield* waitForPending(1))[0]!
+        expect(pending.permission).toBe("edit")
+        yield* permission.reply({ requestID: pending.id, reply: "reject" })
+        expect(Exit.isFailure(yield* Fiber.await(review))).toBe(true)
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
+
+guardianFallback("automatic Guardian falls back to ask when a round returns multiple decisions", () => [
+  llmReply()
+    .tool("guardian_decision", {
+      risk_level: "high",
+      user_authorization: "unknown",
+      outcome: "deny",
+      rationale: "first decision",
+    })
+    .tool("guardian_decision", {
+      risk_level: "low",
       user_authorization: "high",
       outcome: "allow",
-      rationale: "incorrect critical allow",
+      rationale: "second decision",
     }),
-  ],
-)
+])
 
-guardianFallback(
-  "automatic Guardian falls back to ask for a low-authorization high-risk allow",
-  () => [
-    llmReply().tool("guardian_decision", {
-      risk_level: "high",
-      user_authorization: "low",
+guardianFallback("automatic Guardian falls back to ask when a decision shares a round with a failed tool", (dir) => [
+  llmReply()
+    .tool("glob", { pattern: "*", path: path.dirname(dir) })
+    .tool("guardian_decision", {
+      risk_level: "low",
+      user_authorization: "high",
       outcome: "allow",
-      rationale: "insufficient authorization",
+      rationale: "scoped and reversible",
     }),
-  ],
-)
+])
+
+guardianFallback("automatic Guardian falls back to ask for a critical allow", () => [
+  llmReply().tool("guardian_decision", {
+    risk_level: "critical",
+    user_authorization: "high",
+    outcome: "allow",
+    rationale: "incorrect critical allow",
+  }),
+])
+
+guardianFallback("automatic Guardian falls back to ask for a low-authorization high-risk allow", () => [
+  llmReply().tool("guardian_decision", {
+    risk_level: "high",
+    user_authorization: "low",
+    outcome: "allow",
+    rationale: "insufficient authorization",
+  }),
+])
 
 it.instance(
   "ask - resolves immediately when action is allow",
@@ -1072,6 +1609,71 @@ it.instance(
 )
 
 it.instance(
+  "ask - full ruleset retries when approval changes while checking ancestors",
+  () =>
+    Effect.gen(function* () {
+      const permission = yield* Permission.Service
+      const sessionID = SessionID.make("session_full_revision")
+      Approval.runtime.set(sessionID, "full")
+      let changed = false
+      const isRestricting = Approval.runtime.isRestricting
+      Approval.runtime.isRestricting = (current) => {
+        if (current === sessionID && !changed) {
+          changed = true
+          Approval.runtime.set(sessionID, "manual")
+        }
+        return isRestricting(current)
+      }
+      yield* Effect.addFinalizer(() => Effect.sync(() => (Approval.runtime.isRestricting = isRestricting)))
+
+      const error = yield* fail(
+        permission.ask({
+          sessionID,
+          permission: "bash",
+          patterns: ["rm -rf /"],
+          metadata: {},
+          always: [],
+          ruleset: [{ permission: "bash", pattern: "*", action: "deny" }, ApprovalV1.rule("full")],
+        }),
+      )
+
+      expect(changed).toBe(true)
+      expect(error).toBeInstanceOf(PermissionV1.DeniedError)
+    }),
+  { git: true },
+)
+
+guardianIt.instance(
+  "ask - full ruleset notices a restriction established while loading the Session",
+  () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const permission = yield* Permission.Service
+      const session = yield* sessions.create({ title: "Restriction lookup" })
+      Approval.runtime.set(session.id, "full")
+      let checks = 0
+      const isRestricting = Approval.runtime.isRestricting
+      Approval.runtime.isRestricting = (sessionID) => sessionID === session.id && ++checks > 1
+      yield* Effect.addFinalizer(() => Effect.sync(() => (Approval.runtime.isRestricting = isRestricting)))
+
+      const error = yield* fail(
+        permission.ask({
+          sessionID: session.id,
+          permission: "bash",
+          patterns: ["rm -rf /"],
+          metadata: {},
+          always: [],
+          ruleset: [{ permission: "bash", pattern: "*", action: "deny" }, ApprovalV1.rule("full")],
+        }),
+      )
+
+      expect(checks).toBeGreaterThan(1)
+      expect(error).toBeInstanceOf(PermissionV1.DeniedError)
+    }),
+  { git: true },
+)
+
+it.instance(
   "ask - full gate bypasses a stale ruleset",
   () =>
     Effect.gen(function* () {
@@ -1140,6 +1742,411 @@ it.instance(
   { git: true },
 )
 
+guardianIt.live("setApproval - automatic reviews an existing pending request", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const permission = yield* Permission.Service
+        const session = yield* sessions.create({ title: "Pending automatic review" })
+        const request = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "bash",
+            patterns: ["git status"],
+            metadata: {},
+            always: [],
+            ruleset: [],
+            toolName: "bash",
+          })
+          .pipe(Effect.forkScoped)
+        yield* waitForPending(1)
+        yield* llm.tool("guardian_decision", {
+          risk_level: "low",
+          user_authorization: "high",
+          outcome: "allow",
+          rationale: "The user authorized this read-only command.",
+        })
+
+        yield* permission.setApproval({ sessionID: session.id, approval: "automatic" })
+
+        yield* Fiber.join(request)
+        expect(yield* permission.list()).toEqual([])
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
+
+guardianIt.live("setApproval - automatic settles each pending request independently", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const permission = yield* Permission.Service
+        const session = yield* sessions.create({ title: "Multiple automatic reviews" })
+        const request = (pattern: string) =>
+          permission
+            .ask({
+              sessionID: session.id,
+              permission: "bash",
+              patterns: [pattern],
+              metadata: {},
+              always: [],
+              ruleset: [],
+              toolName: "bash",
+            })
+            .pipe(Effect.forkScoped)
+        const denied = yield* request("rm important")
+        const allowed = yield* request("git status")
+        yield* waitForPending(2)
+        yield* llm.tool("guardian_decision", {
+          risk_level: "high",
+          user_authorization: "unknown",
+          outcome: "deny",
+          rationale: "The destructive action was not authorized.",
+        })
+        yield* llm.tool("guardian_decision", {
+          risk_level: "low",
+          user_authorization: "high",
+          outcome: "allow",
+          rationale: "The read-only command was authorized.",
+        })
+
+        yield* permission.setApproval({ sessionID: session.id, approval: "automatic" })
+
+        expect(Exit.isFailure(yield* Fiber.await(denied))).toBe(true)
+        expect(Exit.isSuccess(yield* Fiber.await(allowed))).toBe(true)
+        expect(yield* permission.list()).toEqual([])
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
+
+guardianIt.live("setApproval - automatic does not publish Replied before Asked", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const permission = yield* Permission.Service
+        const events = yield* EventV2Bridge.Service
+        const session = yield* sessions.create({ title: "Ordered automatic review" })
+        const asked = yield* Deferred.make<void>()
+        const release = yield* Deferred.make<void>()
+        const order: string[] = []
+        const unsubscribe = yield* events.listen((event) => {
+          if (event.type === Permission.Event.Asked.type) {
+            order.push("asked")
+            return Deferred.succeed(asked, undefined).pipe(Effect.andThen(Deferred.await(release)))
+          }
+          if (event.type === Permission.Event.Replied.type) order.push("replied")
+          return Effect.void
+        })
+        yield* Effect.addFinalizer(() => unsubscribe)
+        const request = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "bash",
+            patterns: ["git status"],
+            metadata: {},
+            always: [],
+            ruleset: [],
+            toolName: "bash",
+          })
+          .pipe(Effect.forkScoped)
+        yield* Deferred.await(asked)
+        yield* llm.tool("guardian_decision", {
+          risk_level: "low",
+          user_authorization: "high",
+          outcome: "allow",
+          rationale: "The read-only command was authorized.",
+        })
+        const update = yield* permission
+          .setApproval({ sessionID: session.id, approval: "automatic" })
+          .pipe(Effect.forkScoped)
+        yield* Effect.yieldNow
+
+        expect(order).toEqual(["asked"])
+        expect(yield* llm.inputs).toEqual([])
+        yield* Deferred.succeed(release, undefined)
+        yield* Fiber.join(update)
+        yield* Fiber.join(request)
+        expect(order).toEqual(["asked", "replied"])
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
+
+guardianIt.live("setApproval - automatic ignores a Guardian result after switching to manual", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const permission = yield* Permission.Service
+        const session = yield* sessions.create({ title: "Stale automatic review" })
+        const release = Promise.withResolvers<void>()
+        const request = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "bash",
+            patterns: ["git status"],
+            metadata: {},
+            always: [],
+            ruleset: [],
+            toolName: "bash",
+          })
+          .pipe(Effect.forkScoped)
+        yield* waitForPending(1)
+        yield* llm.push(
+          llmReply()
+            .wait(release.promise)
+            .tool("guardian_decision", {
+              risk_level: "low",
+              user_authorization: "high",
+              outcome: "allow",
+              rationale: "The read-only command was authorized.",
+            })
+            .item(),
+        )
+        const automatic = yield* permission
+          .setApproval({ sessionID: session.id, approval: "automatic" })
+          .pipe(Effect.forkScoped)
+        yield* llm.wait(1)
+
+        yield* permission.setApproval({ sessionID: session.id, approval: "manual" })
+        release.resolve()
+        yield* Fiber.join(automatic)
+
+        const pending = yield* permission.list()
+        expect(pending).toHaveLength(1)
+        yield* permission.reply({ requestID: pending[0]!.id, reply: "once" })
+        yield* Fiber.join(request)
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
+
+guardianIt.live("runtime review settles pending requests after an external automatic sync", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const permission = yield* Permission.Service
+        const session = yield* sessions.create({ title: "External automatic review" })
+        const request = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "bash",
+            patterns: ["git status"],
+            metadata: {},
+            always: [],
+            ruleset: [],
+            toolName: "bash",
+          })
+          .pipe(Effect.forkScoped)
+        yield* waitForPending(1)
+        yield* llm.tool("guardian_decision", {
+          risk_level: "low",
+          user_authorization: "high",
+          outcome: "allow",
+          rationale: "The read-only command was authorized.",
+        })
+
+        Approval.runtime.set(session.id, "automatic")
+        yield* Approval.runtime.review(session.id)
+
+        expect(yield* permission.list()).toEqual([])
+        yield* Fiber.join(request)
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
+
+guardianIt.live("setApproval coalesces concurrent automatic reviews", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const permission = yield* Permission.Service
+        const session = yield* sessions.create({ title: "Concurrent automatic review" })
+        const release = Promise.withResolvers<void>()
+        const request = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "bash",
+            patterns: ["git status"],
+            metadata: {},
+            always: [],
+            ruleset: [],
+            toolName: "bash",
+          })
+          .pipe(Effect.forkScoped)
+        yield* waitForPending(1)
+        yield* llm.push(
+          llmReply()
+            .wait(release.promise)
+            .tool("guardian_decision", {
+              risk_level: "low",
+              user_authorization: "high",
+              outcome: "allow",
+              rationale: "The read-only command was authorized.",
+            })
+            .item(),
+        )
+        const first = yield* permission
+          .setApproval({ sessionID: session.id, approval: "automatic" })
+          .pipe(Effect.forkScoped)
+        yield* llm.wait(1)
+        const second = yield* permission
+          .setApproval({ sessionID: session.id, approval: "automatic" })
+          .pipe(Effect.forkScoped)
+        yield* Effect.yieldNow
+
+        release.resolve()
+        yield* Fiber.join(first)
+        yield* Fiber.join(second)
+        expect(yield* llm.calls).toBe(1)
+        yield* Fiber.join(request)
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
+
+guardianIt.live("setApproval - claims an automatic result before publishing Replied", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const permission = yield* Permission.Service
+        const events = yield* EventV2Bridge.Service
+        const session = yield* sessions.create({ title: "Automatic terminal claim" })
+        const publishing = yield* Deferred.make<void>()
+        const release = yield* Deferred.make<void>()
+        yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined).pipe(Effect.asVoid))
+        const unsubscribe = yield* events.listen((event) => {
+          if (event.type !== Permission.Event.Replied.type) return Effect.void
+          return Deferred.succeed(publishing, undefined).pipe(Effect.andThen(Deferred.await(release)))
+        })
+        yield* Effect.addFinalizer(() => unsubscribe)
+        const request = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "bash",
+            patterns: ["git status"],
+            metadata: {},
+            always: [],
+            ruleset: [],
+            toolName: "bash",
+          })
+          .pipe(Effect.forkScoped)
+        yield* waitForPending(1)
+        yield* llm.tool("guardian_decision", {
+          risk_level: "low",
+          user_authorization: "high",
+          outcome: "allow",
+          rationale: "The read-only command was authorized.",
+        })
+        const automatic = yield* permission
+          .setApproval({ sessionID: session.id, approval: "automatic" })
+          .pipe(Effect.forkScoped)
+        yield* Deferred.await(publishing)
+
+        expect(yield* permission.list()).toEqual([])
+        const manual = yield* permission
+          .setApproval({ sessionID: session.id, approval: "manual" })
+          .pipe(Effect.forkScoped)
+        yield* Deferred.succeed(release, undefined)
+        yield* Fiber.join(automatic)
+        yield* Fiber.join(request)
+        yield* Fiber.join(manual)
+        expect(Approval.runtime.get(session.id)).toBe("manual")
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
+
+guardianIt.live("setApproval - rejects an automatic result when Replied publication fails", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const permission = yield* Permission.Service
+        const events = yield* EventV2Bridge.Service
+        const session = yield* sessions.create({ title: "Failed automatic publication" })
+        const unsubscribe = yield* events.listen((event) =>
+          event.type === Permission.Event.Replied.type ? Effect.die("listener failed") : Effect.void,
+        )
+        yield* Effect.addFinalizer(() => unsubscribe)
+        const request = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "bash",
+            patterns: ["git status"],
+            metadata: {},
+            always: [],
+            ruleset: [],
+            toolName: "bash",
+          })
+          .pipe(Effect.forkScoped)
+        yield* waitForPending(1)
+        yield* llm.tool("guardian_decision", {
+          risk_level: "low",
+          user_authorization: "high",
+          outcome: "allow",
+          rationale: "The read-only command was authorized.",
+        })
+
+        const automatic = yield* permission
+          .setApproval({ sessionID: session.id, approval: "automatic" })
+          .pipe(Effect.exit)
+
+        expect(Exit.isSuccess(automatic)).toBe(true)
+        expect(yield* permission.list()).toEqual([])
+        expect(yield* Fiber.join(request).pipe(Effect.flip)).toBeInstanceOf(PermissionV1.RejectedError)
+      }),
+    { git: true, config: guardianConfig },
+  ),
+)
+
+guardianIt.instance(
+  "full and remove reject pending requests when Replied publication fails",
+  () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const permission = yield* Permission.Service
+      const events = yield* EventV2Bridge.Service
+      const unsubscribe = yield* events.listen((event) =>
+        event.type === Permission.Event.Replied.type ? Effect.die("listener failed") : Effect.void,
+      )
+      yield* Effect.addFinalizer(() => unsubscribe)
+
+      for (const action of ["full", "remove"] as const) {
+        const session = yield* sessions.create({ title: `Failed ${action} publication` })
+        const request = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "bash",
+            patterns: ["git status"],
+            metadata: {},
+            always: [],
+            ruleset: [],
+          })
+          .pipe(Effect.forkScoped)
+        yield* waitForPending(1)
+
+        const terminal = yield* (
+          action === "full"
+            ? permission.setApproval({ sessionID: session.id, approval: "full" })
+            : sessions.remove(session.id)
+        ).pipe(Effect.exit)
+
+        expect(Exit.isSuccess(terminal)).toBe(true)
+        expect(yield* permission.list()).toEqual([])
+        expect(yield* Fiber.join(request).pipe(Effect.flip)).toBeInstanceOf(PermissionV1.RejectedError)
+      }
+    }),
+  { git: true },
+)
+
 guardianIt.instance(
   "remove - rejects V1 pending requests before removing their Session",
   () =>
@@ -1182,63 +2189,63 @@ guardianIt.instance(
   { git: true },
 )
 
-guardianIt.live(
-  "ask - does not register a V1 evaluator after deletion and same-ID recreation",
-  () =>
-    provideTmpdirServer(
-      ({ llm }) =>
-        Effect.gen(function* () {
-          const sessions = yield* Session.Service
-          const events = yield* EventV2Bridge.Service
-          const permission = yield* Permission.Service
-          const session = yield* sessions.create({ title: "Lifecycle", permission: [ApprovalV1.rule("automatic")] })
-          const release = Promise.withResolvers<void>()
-          const outcome = yield* Deferred.make<"asked" | "failed" | "completed">()
-          const unsubscribe = yield* events.listen((event) =>
-            event.type === Permission.Event.Asked.type ? Deferred.succeed(outcome, "asked").pipe(Effect.asVoid) : Effect.void,
-          )
-          yield* Effect.addFinalizer(() => unsubscribe)
-          yield* llm.hold("waiting", release.promise)
-          const old = yield* permission
-            .ask({
-              sessionID: session.id,
-              permission: "bash",
-              patterns: ["ls"],
-              metadata: {},
-              always: [],
-              ruleset: session.permission ?? [],
-            })
-            .pipe(Effect.forkScoped)
-          yield* Fiber.await(old).pipe(
-            Effect.flatMap((exit) => Deferred.succeed(outcome, Exit.isFailure(exit) ? "failed" : "completed")),
-            Effect.forkScoped,
-          )
+guardianIt.live("ask - does not register a V1 evaluator after deletion and same-ID recreation", () =>
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const events = yield* EventV2Bridge.Service
+        const permission = yield* Permission.Service
+        const session = yield* sessions.create({ title: "Lifecycle", permission: [ApprovalV1.rule("automatic")] })
+        const release = Promise.withResolvers<void>()
+        const outcome = yield* Deferred.make<"asked" | "failed" | "completed">()
+        const unsubscribe = yield* events.listen((event) =>
+          event.type === Permission.Event.Asked.type
+            ? Deferred.succeed(outcome, "asked").pipe(Effect.asVoid)
+            : Effect.void,
+        )
+        yield* Effect.addFinalizer(() => unsubscribe)
+        yield* llm.hold("waiting", release.promise)
+        const old = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "bash",
+            patterns: ["ls"],
+            metadata: {},
+            always: [],
+            ruleset: session.permission ?? [],
+          })
+          .pipe(Effect.forkScoped)
+        yield* Fiber.await(old).pipe(
+          Effect.flatMap((exit) => Deferred.succeed(outcome, Exit.isFailure(exit) ? "failed" : "completed")),
+          Effect.forkScoped,
+        )
 
-          yield* llm.wait(1)
-          yield* sessions.remove(session.id)
-          yield* events.publish(SessionV1.Event.Created, { sessionID: session.id, info: session })
-          release.resolve()
+        yield* llm.wait(1)
+        yield* sessions.remove(session.id)
+        yield* events.publish(SessionV1.Event.Created, { sessionID: session.id, info: session })
+        release.resolve()
 
-          expect(yield* Deferred.await(outcome)).toBe("failed")
-          expect(yield* Fiber.join(old).pipe(Effect.flip)).toBeInstanceOf(PermissionV1.RejectedError)
-          expect(yield* permission.list()).toEqual([])
+        expect(yield* Deferred.await(outcome)).toBe("failed")
+        expect(yield* Fiber.join(old).pipe(Effect.flip)).toBeInstanceOf(PermissionV1.RejectedError)
+        expect(yield* permission.list()).toEqual([])
 
-          const next = yield* permission
-            .ask({
-              sessionID: session.id,
-              permission: "bash",
-              patterns: ["ls"],
-              metadata: {},
-              always: [],
-              ruleset: [],
-            })
-            .pipe(Effect.forkScoped)
-          const pending = (yield* waitForPending(1))[0]!
-          yield* permission.reply({ requestID: pending.id, reply: "once" })
-          yield* Fiber.join(next)
-        }),
-      { git: true, config: guardianConfig },
-    ),
+        const next = yield* permission
+          .ask({
+            sessionID: session.id,
+            permission: "bash",
+            patterns: ["ls"],
+            metadata: {},
+            always: [],
+            ruleset: [],
+          })
+          .pipe(Effect.forkScoped)
+        const pending = (yield* waitForPending(1))[0]!
+        yield* permission.reply({ requestID: pending.id, reply: "once" })
+        yield* Fiber.join(next)
+      }),
+    { git: true, config: guardianConfig },
+  ),
 )
 
 guardianIt.instance(
@@ -1250,8 +2257,8 @@ guardianIt.instance(
       const permission = yield* Permission.Service
       const [approval, deletion] = yield* Approval.runtime.withUpdate(session.id)(
         Effect.gen(function* () {
-          const approval = yield* Approval.runtime
-            .withUpdate(session.id)(permission.setApproval({ sessionID: session.id, approval: "full" }))
+          const approval = yield* permission
+            .setApproval({ sessionID: session.id, approval: "full" })
             .pipe(Effect.forkScoped)
           yield* Effect.yieldNow
           expect(Approval.runtime.get(session.id)).toBeUndefined()
@@ -1276,12 +2283,42 @@ it.instance(
       const permission = yield* Permission.Service
       const sessionID = SessionID.make("session_cross_protocol_pending")
       const drained = yield* Deferred.make<void>()
-      const unregister = Approval.runtime.register(sessionID, Deferred.succeed(drained, undefined))
+      let calls = 0
+      const unregister = Approval.runtime.register(
+        sessionID,
+        Effect.sync(() => calls++).pipe(Effect.andThen(Deferred.succeed(drained, undefined))),
+      )
       yield* Effect.addFinalizer(() => Effect.sync(unregister))
 
       yield* permission.setApproval({ sessionID, approval: "full" })
 
       expect(yield* Deferred.isDone(drained)).toBe(true)
+      expect(calls).toBe(1)
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - full gate is not visible before existing pending requests drain",
+  () =>
+    Effect.gen(function* () {
+      const permission = yield* Permission.Service
+      const sessionID = SessionID.make("session_full_activation_order")
+      const started = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const unregister = Approval.runtime.register(
+        sessionID,
+        Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(release))),
+      )
+      yield* Effect.addFinalizer(() => Effect.sync(unregister))
+
+      const update = yield* permission.setApproval({ sessionID, approval: "full" }).pipe(Effect.forkScoped)
+      yield* Deferred.await(started)
+      expect(Approval.runtime.get(sessionID)).not.toBe("full")
+
+      yield* Deferred.succeed(release, undefined)
+      yield* Fiber.join(update)
+      expect(Approval.runtime.get(sessionID)).toBe("full")
     }),
   { git: true },
 )

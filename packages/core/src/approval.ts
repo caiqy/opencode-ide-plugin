@@ -1,6 +1,6 @@
 export * as Approval from "./approval"
 
-import { Effect, Schema } from "effect"
+import { Deferred, Effect, Exit, Schema } from "effect"
 import { Session } from "@opencode-ai/schema/session"
 import { KeyedMutex } from "./effect/keyed-mutex"
 
@@ -65,10 +65,23 @@ Assess the exact action's intrinsic risk and whether the transcript authorizes i
 Return exactly one structured assessment with risk_level, user_authorization, outcome, and a concise rationale.`
 
 const modes = new Map<string, Session.Approval>()
+const cleared = new Set<string>()
+const restrictions = new Map<string, Set<object>>()
 const revisions = new Map<string, number>()
 const lifecycles = new Map<string, number>()
+const pendingRevisions = new Map<string, number>()
+const topologyRevisions = new Map<string, number>()
 const updates = KeyedMutex.makeUnsafe<string>()
-const drains = new Map<string, Map<object, { drain: Effect.Effect<void>; dispose: Effect.Effect<void> }>>()
+const reviewLocks = KeyedMutex.makeUnsafe<string>()
+type Review = { revision: number; lifecycle: number; done: Deferred.Deferred<Exit.Exit<void>> }
+const reviews = new Map<string, Review>()
+type Restriction = object
+type Pending = {
+  drain: (ignoredRestriction?: Restriction) => Effect.Effect<boolean>
+  dispose: Effect.Effect<void>
+  review?: Effect.Effect<void>
+}
+const drains = new Map<string, Map<object, Pending>>()
 
 function revise(sessionID: string) {
   const revision = (revisions.get(sessionID) ?? 0) + 1
@@ -82,20 +95,44 @@ function advanceLifecycle(sessionID: string) {
   return lifecycle
 }
 
-function register(sessionID: string, drain: Effect.Effect<void>, dispose?: Effect.Effect<void>): () => void
-function register(
+function register<A>(sessionID: string, drain: Effect.Effect<A>, dispose?: Effect.Effect<void>): () => void
+function register<A>(
   sessionID: string,
-  drain: Effect.Effect<void>,
+  drain: Effect.Effect<A>,
   dispose: Effect.Effect<void> | undefined,
   expectedRevision: number,
   expectedLifecycle: number,
+  review?: Effect.Effect<void>,
 ): (() => void) | undefined
 function register(
   sessionID: string,
-  drain: Effect.Effect<void>,
+  drain: Effect.Effect<unknown>,
   dispose = Effect.void,
   expectedRevision?: number,
   expectedLifecycle?: number,
+  review?: Effect.Effect<void>,
+) {
+  return registerPending(sessionID, () => drain, dispose, expectedRevision, expectedLifecycle, review)
+}
+
+function registerDrain<A>(
+  sessionID: string,
+  drain: (ignoredRestriction?: Restriction) => Effect.Effect<A>,
+  dispose: Effect.Effect<void> | undefined,
+  expectedRevision: number,
+  expectedLifecycle: number,
+  review?: Effect.Effect<void>,
+) {
+  return registerPending(sessionID, drain, dispose, expectedRevision, expectedLifecycle, review)
+}
+
+function registerPending(
+  sessionID: string,
+  drain: (ignoredRestriction?: Restriction) => Effect.Effect<unknown>,
+  dispose = Effect.void,
+  expectedRevision?: number,
+  expectedLifecycle?: number,
+  review?: Effect.Effect<void>,
 ) {
   if (
     expectedRevision !== undefined &&
@@ -103,40 +140,163 @@ function register(
   )
     return
   const token = {}
-  const entries = drains.get(sessionID) ?? new Map<object, { drain: Effect.Effect<void>; dispose: Effect.Effect<void> }>()
+  const entries = drains.get(sessionID) ?? new Map<object, Pending>()
   const unregister = () => {
     if (!entries.delete(token)) return
     if (entries.size === 0 && drains.get(sessionID) === entries) drains.delete(sessionID)
   }
-  entries.set(token, { drain, dispose: dispose.pipe(Effect.ensuring(Effect.sync(unregister))) })
+  entries.set(token, {
+    drain: (ignoredRestriction) => drain(ignoredRestriction).pipe(Effect.map((consumed) => consumed !== false)),
+    dispose: dispose.pipe(Effect.ensuring(Effect.sync(unregister))),
+    review,
+  })
+  pendingRevisions.set(sessionID, (pendingRevisions.get(sessionID) ?? 0) + 1)
   drains.set(sessionID, entries)
   return unregister
+}
+
+function drain(sessionID: string): Effect.Effect<void>
+function drain<E, R>(sessionID: string, allowed: Effect.Effect<boolean, E, R>): Effect.Effect<void, E, R>
+function drain<E, R>(
+  sessionID: string,
+  allowed: Effect.Effect<boolean, E, R>,
+  ignoredRestriction: Restriction,
+): Effect.Effect<void, E, R>
+function drain(
+  sessionID: string,
+  allowed: Effect.Effect<boolean, unknown, unknown> = Effect.succeed(true),
+  ignoredRestriction?: Restriction,
+) {
+  const attempted = new Set<object>()
+  const loop = (): Effect.Effect<void> =>
+    Effect.suspend(() => {
+      const entries = drains.get(sessionID)
+      if (!entries) return Effect.void
+      const pending = Array.from(entries.entries()).filter(([token]) => !attempted.has(token))
+      if (pending.length === 0) return Effect.void
+      pending.forEach(([token]) => attempted.add(token))
+      return Effect.forEach(
+        pending,
+        ([token, entry]) =>
+          Effect.gen(function* () {
+            const exit = yield* entry.drain(ignoredRestriction).pipe(Effect.exit)
+            if (Exit.isSuccess(exit) && !exit.value) return
+            entries.delete(token)
+            if (entries.size === 0 && drains.get(sessionID) === entries) drains.delete(sessionID)
+            if (Exit.isFailure(exit)) return yield* Effect.failCause(exit.cause)
+          }),
+        { discard: true },
+      ).pipe(Effect.andThen(loop()))
+    })
+  return allowed.pipe(
+    Effect.flatMap((ok) => {
+      if (!ok) return Effect.void
+      return loop()
+    }),
+  )
+}
+
+function withRestriction<A, E, R>(sessionID: string, effect: Effect.Effect<A, E, R>) {
+  return withRestrictionToken(sessionID, () => effect)
+}
+
+function withRestrictionToken<A, E, R>(
+  sessionID: string,
+  effect: (restriction: Restriction) => Effect.Effect<A, E, R>,
+) {
+  const token = {}
+  const entries = restrictions.get(sessionID) ?? new Set<object>()
+  return Effect.acquireUseRelease(
+    Effect.sync(() => {
+      entries.add(token)
+      restrictions.set(sessionID, entries)
+    }),
+    () => effect(token),
+    () =>
+      Effect.sync(() => {
+        entries.delete(token)
+        if (entries.size === 0 && restrictions.get(sessionID) === entries) restrictions.delete(sessionID)
+      }),
+  )
+}
+
+function continueReview(exit: Exit.Exit<void>) {
+  if (Exit.isSuccess(exit)) return Effect.void
+  return Effect.failCause(exit.cause)
+}
+
+function review(sessionID: string) {
+  return Effect.uninterruptibleMask((restore) =>
+    Effect.gen(function* () {
+      const claim = yield* reviewLocks.withLock(sessionID)(
+        Effect.gen(function* () {
+          const current = reviews.get(sessionID)
+          const revision = revisions.get(sessionID) ?? 0
+          const lifecycle = lifecycles.get(sessionID) ?? 0
+          if (current?.revision === revision && current.lifecycle === lifecycle)
+            return { review: current, owner: false } as const
+          const done = yield* Deferred.make<Exit.Exit<void>>()
+          const review = { revision, lifecycle, done }
+          reviews.set(sessionID, review)
+          return { review, owner: true } as const
+        }),
+      )
+      if (!claim.owner) {
+        const exit = yield* restore(Deferred.await(claim.review.done))
+        return yield* continueReview(exit)
+      }
+      const effect =
+        Array.from(drains.get(sessionID)?.values() ?? []).find((entry) => entry.review)?.review ?? Effect.void
+      const exit = yield* restore(effect).pipe(Effect.exit)
+      yield* reviewLocks.withLock(sessionID)(
+        Effect.gen(function* () {
+          if (reviews.get(sessionID) === claim.review) reviews.delete(sessionID)
+          yield* Deferred.succeed(claim.review.done, exit)
+        }),
+      )
+      return yield* continueReview(exit)
+    }),
+  )
 }
 
 // ponytail: process-local until clustered Session execution owns approval updates.
 export const runtime = {
   get: (sessionID: string) => modes.get(sessionID),
+  isCleared: (sessionID: string) => cleared.has(sessionID),
+  isRestricting: (sessionID: string, ignoredRestriction?: Restriction) =>
+    Array.from(restrictions.get(sessionID) ?? []).some((restriction) => restriction !== ignoredRestriction),
   revision: (sessionID: string) => revisions.get(sessionID) ?? 0,
   lifecycle: (sessionID: string) => lifecycles.get(sessionID) ?? 0,
+  pendingRevision: (sessionID: string) => pendingRevisions.get(sessionID) ?? 0,
+  topologyRevision: (sessionID: string) => topologyRevisions.get(sessionID) ?? 0,
+  touchTopology: (sessionID: string) => topologyRevisions.set(sessionID, (topologyRevisions.get(sessionID) ?? 0) + 1),
   set: (sessionID: string, mode: Session.Approval) => {
     modes.set(sessionID, mode)
+    cleared.delete(sessionID)
     revise(sessionID)
   },
   clear: (sessionID: string) => {
     modes.delete(sessionID)
+    cleared.add(sessionID)
     revise(sessionID)
   },
   register,
-  drain: (sessionID: string) =>
-    Effect.forEach(Array.from(drains.get(sessionID)?.values() ?? [], (entry) => entry.drain), (drain) => drain, {
-      discard: true,
-    }),
+  registerDrain,
+  drain,
+  review,
+  withRestriction,
+  withRestrictionToken,
   dispose: (sessionID: string) =>
     Effect.sync(() => {
       revise(sessionID)
       advanceLifecycle(sessionID)
       modes.delete(sessionID)
-      return Array.from(drains.get(sessionID)?.values() ?? [], (entry) => entry.dispose)
+      cleared.delete(sessionID)
+      restrictions.delete(sessionID)
+      reviews.delete(sessionID)
+      const entries = Array.from(drains.get(sessionID)?.values() ?? [], (entry) => entry.dispose)
+      drains.delete(sessionID)
+      return entries
     }).pipe(Effect.flatMap((entries) => Effect.forEach(entries, (dispose) => dispose, { discard: true }))),
   withUpdate: updates.withLock,
 }
@@ -178,9 +338,7 @@ export function transcript(entries: ReadonlyArray<TranscriptEntry>) {
   }
   const initialMessageChars = addUser(firstUser, 0)
   const anchoredMessageChars = addUser(lastUser, initialMessageChars)
-  const messageChars = users
-    .toReversed()
-    .reduce((used, index) => addUser(index, used), anchoredMessageChars)
+  const messageChars = users.toReversed().reduce((used, index) => addUser(index, used), anchoredMessageChars)
   let remainingMessageChars = messageChars
   let toolChars = 0
   let recentEntries = 0

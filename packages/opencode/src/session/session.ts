@@ -1,6 +1,7 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Approval } from "@opencode-ai/core/approval"
+import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
 import { Slug } from "@opencode-ai/core/util/slug"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
@@ -448,15 +449,21 @@ export type NotFound = NotFoundError
 export interface Interface {
   readonly list: (input?: ListInput) => Effect.Effect<Info[]>
   readonly listGlobal: (input?: GlobalListInput) => Effect.Effect<GlobalInfo[]>
-  readonly create: (input?: {
-    parentID?: SessionID
-    title?: string
-    agent?: string
-    model?: Schema.Schema.Type<typeof Model>
-    metadata?: typeof Metadata.Type
-    permission?: PermissionV1.Ruleset
-    workspaceID?: WorkspaceV2.ID
-  }) => Effect.Effect<Info>
+  readonly create: (
+    input?: {
+      parentID?: SessionID
+      title?: string
+      agent?: string
+      model?: Schema.Schema.Type<typeof Model>
+      metadata?: typeof Metadata.Type
+      permission?: PermissionV1.Ruleset
+      workspaceID?: WorkspaceV2.ID
+    },
+    options?: {
+      parentApproval: ApprovalV1.Mode | undefined
+      durableApproval: ApprovalV1.Mode | undefined
+    },
+  ) => Effect.Effect<Info>
   readonly fork: (input: { sessionID: SessionID; messageID?: MessageID }) => Effect.Effect<Info, NotFound>
   readonly touch: (sessionID: SessionID) => Effect.Effect<void>
   readonly get: (id: SessionID) => Effect.Effect<Info, NotFound>
@@ -706,28 +713,68 @@ const layer: Layer.Layer<
       } as SessionV1.Part
     })
 
-    const create = Effect.fn("Session.create")(function* (input?: {
-      parentID?: SessionID
-      title?: string
-      agent?: string
-      model?: Schema.Schema.Type<typeof Model>
-      metadata?: typeof Metadata.Type
-      permission?: PermissionV1.Ruleset
-      workspaceID?: WorkspaceV2.ID
-    }) {
+    const create = Effect.fn("Session.create")(function* (
+      input?: {
+        parentID?: SessionID
+        title?: string
+        agent?: string
+        model?: Schema.Schema.Type<typeof Model>
+        metadata?: typeof Metadata.Type
+        permission?: PermissionV1.Ruleset
+        workspaceID?: WorkspaceV2.ID
+      },
+      options?: {
+        parentApproval: ApprovalV1.Mode | undefined
+        durableApproval: ApprovalV1.Mode | undefined
+      },
+    ) {
       const ctx = yield* InstanceState.context
       const workspace = yield* InstanceState.workspaceID
-      return yield* createNext({
-        parentID: input?.parentID,
-        directory: ctx.directory,
-        path: sessionPath(ctx.worktree, ctx.directory),
-        title: input?.title,
-        agent: input?.agent,
-        model: input?.model,
-        metadata: input?.metadata,
-        permission: input?.permission,
-        workspaceID: input?.workspaceID ?? workspace,
+      const make = (permission?: PermissionV1.Ruleset) =>
+        createNext({
+          parentID: input?.parentID,
+          directory: ctx.directory,
+          path: sessionPath(ctx.worktree, ctx.directory),
+          title: input?.title,
+          agent: input?.agent,
+          model: input?.model,
+          metadata: input?.metadata,
+          permission,
+          workspaceID: input?.workspaceID ?? workspace,
+        })
+      if (!input?.parentID) return yield* make(input?.permission)
+      // Internal path: caller holds parentID's approval lock and supplies live and durable mode provenance.
+      if (options) {
+        const permission = options.durableApproval
+          ? ApprovalV1.withRuleset(input.permission, options.durableApproval)
+          : input.permission
+        const result = yield* make(permission)
+        Approval.runtime.touchTopology(input.parentID)
+        if (options.parentApproval) Approval.runtime.set(result.id, options.parentApproval)
+        return result
+      }
+      const child = Effect.gen(function* () {
+        const parent = yield* get(input.parentID!).pipe(Effect.orDie)
+        const runtimeApproval = Approval.runtime.get(parent.id)
+        const parentCleared = Approval.runtime.isCleared(parent.id)
+        const durableApproval =
+          !parentCleared && parent.permission?.some((rule) => rule.permission === ApprovalV1.RulePermission)
+            ? ApprovalV1.modeFromRuleset(parent.permission)
+            : undefined
+        const parentApproval = runtimeApproval ?? durableApproval
+        const permission = durableApproval
+          ? ApprovalV1.withRuleset(input.permission ?? [], durableApproval)
+          : parentCleared
+            ? ApprovalV1.withoutTransition(
+                (input.permission ?? []).filter((rule) => rule.permission !== ApprovalV1.RulePermission),
+              )
+            : input.permission
+        const result = yield* make(permission)
+        Approval.runtime.touchTopology(input.parentID!)
+        if (parentApproval) Approval.runtime.set(result.id, parentApproval)
+        return result
       })
+      return yield* Approval.runtime.withUpdate(input.parentID)(Effect.uninterruptible(child))
     })
 
     const fork = Effect.fn("Session.fork")(function* (input: { sessionID: SessionID; messageID?: MessageID }) {

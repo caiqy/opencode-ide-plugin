@@ -19,6 +19,7 @@ import { ToolJsonSchema } from "@/tool/json-schema"
 import { EffectBridge } from "@/effect/bridge"
 import { MessageID } from "@/session/schema"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
+import { setRuntimeApproval } from "@/session/approval-sync"
 import { evaluate } from "./rules"
 export { disabled, evaluate, fromConfig, merge, visibleTools } from "./rules"
 
@@ -32,12 +33,14 @@ export interface Interface {
     sessionID: PermissionV1.AskInput["sessionID"]
     approval: ApprovalV1.Mode
   }) => Effect.Effect<void>
+  readonly reviewPending: (sessionID: PermissionV1.AskInput["sessionID"]) => Effect.Effect<void>
   readonly reply: (input: PermissionV1.ReplyInput) => Effect.Effect<void, PermissionV1.NotFoundError>
   readonly list: () => Effect.Effect<ReadonlyArray<PermissionV1.Request>>
 }
 
 interface PendingEntry {
   info: PermissionV1.Request
+  toolName?: string
   deferred: Deferred.Deferred<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>
   published: Deferred.Deferred<void>
   unregister: () => void
@@ -89,7 +92,7 @@ const layer = Layer.effect(
       const info = ApprovalAgent.resolve(cfg.agent?.approval)
       const resolved = yield* provider.getModel(info.model.providerID, info.model.modelID)
       const language = yield* provider.getLanguage(resolved)
-      const variant = info.variant ? resolved.variants?.[info.variant] ?? {} : {}
+      const variant = info.variant ? (resolved.variants?.[info.variant] ?? {}) : {}
       const approvalAgent = yield* agents.get("approval")
       // Fetch the full message history through the existing pagination path so
       // the bounded transcript never silently drops the first user request;
@@ -206,16 +209,50 @@ const layer = Layer.effect(
       })
     })
 
+    const publishReply = Effect.fn("Permission.publishReply")(function* (input: {
+      sessionID: PermissionV1.Request["sessionID"]
+      requestID: PermissionV1.Request["id"]
+      reply: PermissionV1.ReplyInput["reply"]
+    }) {
+      return yield* events.publish(Event.Replied, input).pipe(
+        Effect.as(true),
+        Effect.catchCause((cause) =>
+          Effect.logError("failed to publish permission reply", { requestID: input.requestID, cause }).pipe(
+            Effect.as(false),
+          ),
+        ),
+      )
+    })
+
+    const isRestricting: (
+      sessionID: PermissionV1.AskInput["sessionID"],
+      ignoredRestriction?: object,
+    ) => Effect.Effect<boolean> = Effect.fnUntraced(function* (sessionID, ignoredRestriction) {
+      if (Approval.runtime.isRestricting(sessionID, ignoredRestriction)) return true
+      const session = yield* sessions
+        .get(sessionID)
+        .pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(undefined)))
+      if (Approval.runtime.isRestricting(sessionID, ignoredRestriction)) return true
+      if (session?.permission && ApprovalV1.isTransitioning(session.permission)) return true
+      if (!session?.parentID) return false
+      if (yield* isRestricting(session.parentID, ignoredRestriction)) return true
+      return Approval.runtime.isRestricting(sessionID, ignoredRestriction)
+    })
+
     const ask = Effect.fn("Permission.ask")(function* (input: PermissionV1.AskInput) {
       const lifecycle = Approval.runtime.lifecycle(input.sessionID)
       while (true) {
         const { approved, pending } = yield* InstanceState.get(state)
         const { ruleset, toolName, ...request } = input
         const revision = Approval.runtime.revision(request.sessionID)
-        const mode = Approval.runtime.get(request.sessionID) ?? ApprovalV1.modeFromRuleset(ruleset)
+        const currentMode =
+          Approval.runtime.get(request.sessionID) ??
+          (Approval.runtime.isCleared(request.sessionID) ? "manual" : ApprovalV1.modeFromRuleset(ruleset))
+        const mode = currentMode !== "manual" && (yield* isRestricting(request.sessionID)) ? "manual" : currentMode
         if (mode === "full") {
           if (Approval.runtime.lifecycle(request.sessionID) !== lifecycle)
             return yield* new PermissionV1.RejectedError()
+          if (Approval.runtime.revision(request.sessionID) !== revision) continue
           return
         }
         let needsAsk = false
@@ -241,8 +278,10 @@ const layer = Layer.effect(
 
         if (mode === "automatic") {
           const result = yield* Approval.decide(approve({ ...request, toolName }).pipe(Effect.timeout("30 seconds")))
-          if (Approval.runtime.lifecycle(request.sessionID) !== lifecycle) return yield* new PermissionV1.RejectedError()
+          if (Approval.runtime.lifecycle(request.sessionID) !== lifecycle)
+            return yield* new PermissionV1.RejectedError()
           if (Approval.runtime.revision(request.sessionID) !== revision) continue
+          if (yield* isRestricting(request.sessionID)) continue
           if (result === "allow") return
           if (result === "deny") return yield* new PermissionV1.RejectedError()
         }
@@ -267,25 +306,32 @@ const layer = Layer.effect(
             const published = yield* Deferred.make<void>()
             if (pending.has(id)) throw new Error(`Duplicate pending permission ID: ${id}`)
             // Replied must not overtake the corresponding Asked event.
-            const unregister = Approval.runtime.register(
+            const unregister = Approval.runtime.registerDrain(
               request.sessionID,
-              Deferred.await(published).pipe(
-                Effect.andThen(reply({ requestID: id, reply: "once" })),
-                Effect.catchTag("Permission.NotFoundError", () => Effect.void),
-              ),
+              (ignoredRestriction) =>
+                Deferred.await(published).pipe(
+                  Effect.andThen(
+                    replyPending(
+                      { requestID: id, reply: "once" },
+                      isRestricting(request.sessionID, ignoredRestriction).pipe(Effect.map((value) => !value)),
+                    ),
+                  ),
+                  Effect.catchTag("Permission.NotFoundError", () => Effect.succeed(true)),
+                ),
               Deferred.await(published).pipe(
                 Effect.andThen(reply({ requestID: id, reply: "reject" })),
                 Effect.catchTag("Permission.NotFoundError", () => Effect.void),
               ),
               revision,
               lifecycle,
+              Effect.suspend(() => reviewPending(request.sessionID)),
             )
             if (!unregister) {
               if (Approval.runtime.lifecycle(request.sessionID) !== lifecycle)
                 return yield* new PermissionV1.RejectedError()
               return "retry" as const
             }
-            const item = { info, deferred, published, unregister, lock: Semaphore.makeUnsafe(1) }
+            const item = { info, toolName, deferred, published, unregister, lock: Semaphore.makeUnsafe(1) }
             pending.set(id, item)
             yield* events.publish(Event.Asked, info).pipe(
               Effect.onError(() =>
@@ -312,97 +358,184 @@ const layer = Layer.effect(
       }
     })
 
-    const reply = Effect.fn("Permission.reply")((input: PermissionV1.ReplyInput) =>
-      Effect.uninterruptible(
-        Effect.gen(function* () {
-          const { approved, pending } = yield* InstanceState.get(state)
-          const item = pending.get(input.requestID)
-          if (!item) return yield* new PermissionV1.NotFoundError({ requestID: input.requestID })
-          return yield* item.lock.withPermit(
-            Effect.gen(function* () {
-              if (pending.get(input.requestID) !== item)
-                return yield* new PermissionV1.NotFoundError({ requestID: input.requestID })
-              yield* events.publish(Event.Replied, {
-                sessionID: item.info.sessionID,
-                requestID: item.info.id,
-                reply: input.reply,
-              })
-              item.unregister()
-              if (pending.get(input.requestID) === item) pending.delete(input.requestID)
+    const replyPending = Effect.fn("Permission.replyPending")(
+      (input: PermissionV1.ReplyInput, allowed: Effect.Effect<boolean> = Effect.succeed(true)) =>
+        Effect.uninterruptible(
+          Effect.gen(function* () {
+            const { approved, pending } = yield* InstanceState.get(state)
+            const item = pending.get(input.requestID)
+            if (!item) return yield* new PermissionV1.NotFoundError({ requestID: input.requestID })
+            yield* Deferred.await(item.published)
+            return yield* item.lock.withPermit(
+              Effect.gen(function* () {
+                if (pending.get(input.requestID) !== item)
+                  return yield* new PermissionV1.NotFoundError({ requestID: input.requestID })
+                if (!(yield* allowed)) return false
+                item.unregister()
+                pending.delete(input.requestID)
+                const published = yield* publishReply({
+                  sessionID: item.info.sessionID,
+                  requestID: item.info.id,
+                  reply: input.reply,
+                })
+                if (!published && input.reply !== "reject") {
+                  yield* Deferred.fail(item.deferred, new PermissionV1.RejectedError())
+                  return true
+                }
 
-              if (input.reply === "reject") {
-                yield* Deferred.fail(
-                  item.deferred,
-                  input.message
-                    ? new PermissionV1.CorrectedError({ feedback: input.message })
-                    : new PermissionV1.RejectedError(),
-                )
+                if (input.reply === "reject") {
+                  yield* Deferred.fail(
+                    item.deferred,
+                    input.message
+                      ? new PermissionV1.CorrectedError({ feedback: input.message })
+                      : new PermissionV1.RejectedError(),
+                  )
 
+                  for (const [id, pendingItem] of pending.entries()) {
+                    if (pendingItem.info.sessionID !== item.info.sessionID) continue
+                    yield* Deferred.await(pendingItem.published)
+                    yield* pendingItem.lock.withPermit(
+                      Effect.gen(function* () {
+                        if (pending.get(id) !== pendingItem) return
+                        yield* publishReply({
+                          sessionID: pendingItem.info.sessionID,
+                          requestID: pendingItem.info.id,
+                          reply: "reject",
+                        })
+                        pendingItem.unregister()
+                        if (pending.get(id) === pendingItem) pending.delete(id)
+                        yield* Deferred.fail(pendingItem.deferred, new PermissionV1.RejectedError())
+                      }),
+                    )
+                  }
+                  return true
+                }
+
+                yield* Deferred.succeed(item.deferred, undefined)
+                if (input.reply === "once") return true
+
+                for (const pattern of item.info.always) {
+                  approved.push({
+                    permission: item.info.permission,
+                    pattern,
+                    action: "allow",
+                  })
+                }
                 for (const [id, pendingItem] of pending.entries()) {
                   if (pendingItem.info.sessionID !== item.info.sessionID) continue
+                  const ok = pendingItem.info.patterns.every(
+                    (pattern) => evaluate(pendingItem.info.permission, pattern, approved).action === "allow",
+                  )
+                  if (!ok) continue
+                  yield* Deferred.await(pendingItem.published)
                   yield* pendingItem.lock.withPermit(
                     Effect.gen(function* () {
                       if (pending.get(id) !== pendingItem) return
-                      yield* events.publish(Event.Replied, {
+                      const published = yield* publishReply({
                         sessionID: pendingItem.info.sessionID,
                         requestID: pendingItem.info.id,
-                        reply: "reject",
+                        reply: "always",
                       })
                       pendingItem.unregister()
                       if (pending.get(id) === pendingItem) pending.delete(id)
+                      if (published) {
+                        yield* Deferred.succeed(pendingItem.deferred, undefined)
+                        return
+                      }
                       yield* Deferred.fail(pendingItem.deferred, new PermissionV1.RejectedError())
                     }),
                   )
                 }
-                return
-              }
+                return true
+              }),
+            )
+          }),
+        ),
+    )
+    const reply = Effect.fn("Permission.reply")((input: PermissionV1.ReplyInput) =>
+      replyPending(input).pipe(Effect.asVoid),
+    )
 
-              yield* Deferred.succeed(item.deferred, undefined)
-              if (input.reply === "once") return
-
-              for (const pattern of item.info.always) {
-                approved.push({
-                  permission: item.info.permission,
-                  pattern,
-                  action: "allow",
-                })
-              }
-
-              for (const [id, pendingItem] of pending.entries()) {
-                if (pendingItem.info.sessionID !== item.info.sessionID) continue
-                const ok = pendingItem.info.patterns.every(
-                  (pattern) => evaluate(pendingItem.info.permission, pattern, approved).action === "allow",
+    const reviewPending = Effect.fn("Permission.reviewPending")(function* (
+      sessionID: PermissionV1.AskInput["sessionID"],
+    ) {
+      const revision = Approval.runtime.revision(sessionID)
+      const lifecycle = Approval.runtime.lifecycle(sessionID)
+      if (Approval.runtime.get(sessionID) !== "automatic") return
+      if (yield* isRestricting(sessionID)) return
+      const pending = (yield* InstanceState.get(state)).pending
+      yield* Effect.forEach(
+        [...pending.values()].filter((item) => item.info.sessionID === sessionID),
+        (item) =>
+          Deferred.await(item.published).pipe(
+            Effect.andThen(
+              Effect.suspend(() => {
+                if (pending.get(item.info.id) !== item) return Effect.void
+                if (
+                  Approval.runtime.get(sessionID) !== "automatic" ||
+                  Approval.runtime.revision(sessionID) !== revision ||
+                  Approval.runtime.lifecycle(sessionID) !== lifecycle
                 )
-                if (!ok) continue
-                yield* pendingItem.lock.withPermit(
-                  Effect.gen(function* () {
-                    if (pending.get(id) !== pendingItem) return
-                    yield* events.publish(Event.Replied, {
-                      sessionID: pendingItem.info.sessionID,
-                      requestID: pendingItem.info.id,
-                      reply: "always",
-                    })
-                    pendingItem.unregister()
-                    if (pending.get(id) === pendingItem) pending.delete(id)
-                    yield* Deferred.succeed(pendingItem.deferred, undefined)
+                  return Effect.void
+                return Approval.decide(
+                  approve({
+                    sessionID: item.info.sessionID,
+                    permission: item.info.permission,
+                    patterns: item.info.patterns,
+                    metadata: item.info.metadata,
+                    always: item.info.always,
+                    tool: item.info.tool,
+                    toolName: item.toolName,
+                  }).pipe(Effect.timeout("30 seconds")),
+                ).pipe(
+                  Effect.flatMap((decision) => {
+                    if (decision === "ask") return Effect.void
+                    const reply = decision === "allow" ? "once" : "reject"
+                    return Effect.uninterruptible(
+                      Approval.runtime.withUpdate(sessionID)(
+                        item.lock.withPermit(
+                          Effect.gen(function* () {
+                            if (pending.get(item.info.id) !== item) return
+                            if (
+                              Approval.runtime.get(sessionID) !== "automatic" ||
+                              Approval.runtime.revision(sessionID) !== revision ||
+                              Approval.runtime.lifecycle(sessionID) !== lifecycle ||
+                              (yield* isRestricting(sessionID))
+                            )
+                              return
+                            item.unregister()
+                            pending.delete(item.info.id)
+                            const published = yield* publishReply({
+                              sessionID: item.info.sessionID,
+                              requestID: item.info.id,
+                              reply,
+                            })
+                            if (decision === "allow" && published) {
+                              yield* Deferred.succeed(item.deferred, undefined)
+                              return
+                            }
+                            yield* Deferred.fail(item.deferred, new PermissionV1.RejectedError())
+                          }),
+                        ),
+                      ),
+                    )
                   }),
                 )
-              }
-            }),
-          )
-        }),
-      ),
-    )
+              }),
+            ),
+          ),
+        { discard: true },
+      )
+    })
 
     const setApproval = Effect.fn("Permission.setApproval")(
       (input: { sessionID: PermissionV1.AskInput["sessionID"]; approval: ApprovalV1.Mode }) =>
-        Effect.uninterruptible(
-          Effect.gen(function* () {
-            Approval.runtime.set(input.sessionID, input.approval)
-            if (input.approval !== "full") return
-            yield* Approval.runtime.drain(input.sessionID)
-          }),
-        ),
+        Effect.gen(function* () {
+          yield* Approval.runtime
+            .withUpdate(input.sessionID)(setRuntimeApproval({ ...input, sessions }))
+            .pipe(Effect.uninterruptible)
+          if (input.approval === "automatic") yield* Approval.runtime.review(input.sessionID)
+        }),
     )
 
     const list = Effect.fn("Permission.list")(function* () {
@@ -410,7 +543,7 @@ const layer = Layer.effect(
       return Array.from(pending.values(), (item) => item.info)
     })
 
-    return Service.of({ ask, setApproval, reply, list })
+    return Service.of({ ask, setApproval, reviewPending, reply, list })
   }),
 )
 

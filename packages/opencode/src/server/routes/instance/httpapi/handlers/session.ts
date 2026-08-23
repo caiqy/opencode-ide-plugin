@@ -44,6 +44,7 @@ import {
 import * as ApiError from "../errors"
 import { PermissionNotFoundError } from "../errors"
 import * as SessionError from "./session-errors"
+import { syncApproval } from "@/session/approval-sync"
 
 const tryParseJson = (text: string) =>
   Effect.try({
@@ -223,30 +224,25 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       }
       if (ctx.payload.permission !== undefined) {
         const permission = ctx.payload.permission
-        yield* Approval.runtime.withUpdate(ctx.params.sessionID)(
-          Effect.uninterruptible(
-            Effect.gen(function* () {
-              const current = yield* requireSession(ctx.params.sessionID)
-              const hasMarker = permission.some((rule) => rule.permission === ApprovalV1.RulePermission)
-              const ruleset = hasMarker
-                ? ApprovalV1.withRuleset(
-                    permission.every((rule) => rule.permission === ApprovalV1.RulePermission)
-                      ? Permission.merge(current.permission ?? [], permission)
-                      : permission,
-                    ApprovalV1.modeFromRuleset(permission),
-                  )
-                : permission
-              yield* session.setPermission({
-                sessionID: ctx.params.sessionID,
-                permission: ruleset,
-              })
-              yield* permissionSvc.setApproval({
-                sessionID: ctx.params.sessionID,
-                approval: ApprovalV1.modeFromRuleset(ruleset),
-              })
-            }),
-          ),
-        )
+        const hasMarker = permission.some((rule) => rule.permission === ApprovalV1.RulePermission)
+        const approval = hasMarker ? ApprovalV1.modeFromRuleset(permission) : undefined
+        const updated = yield* syncApproval({
+          sessions: session,
+          sessionID: ctx.params.sessionID,
+          approval,
+          permission: (current) => {
+            if (!approval) return permission
+            return ApprovalV1.withRuleset(
+              permission.every((rule) => rule.permission === ApprovalV1.RulePermission)
+                ? Permission.merge(current.permission ?? [], permission)
+                : permission,
+              approval,
+            )
+          },
+        })
+        if (approval === "automatic") {
+          yield* Effect.forEach(updated, (sessionID) => Approval.runtime.review(sessionID), { discard: true })
+        }
       }
       if (ctx.payload.time?.archived !== undefined) {
         yield* session.setArchived({ sessionID: ctx.params.sessionID, time: ctx.payload.time.archived })

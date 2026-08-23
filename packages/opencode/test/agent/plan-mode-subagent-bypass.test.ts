@@ -160,15 +160,30 @@ it.effect("subagent inherits parent session deny rules as hard runtime ceilings"
   }),
 )
 
-it.effect("subagent does not inherit the parent session approval mode", () =>
+it.effect("subagent inherits the parent session approval mode", () =>
   Effect.sync(() => {
     const executor = testAgent({ name: "executor", mode: "subagent", permission: { bash: "allow" } })
 
-    expect(
-      deriveSubagentSessionPermission({
-        parentSessionPermission: [ApprovalV1.rule("full")],
-        subagent: executor,
-      }),
-    ).not.toContainEqual(ApprovalV1.rule("full"))
+    for (const mode of ["automatic", "full"] as const) {
+      expect(
+        ApprovalV1.modeFromRuleset(
+          deriveSubagentSessionPermission({
+            parentSessionPermission: [ApprovalV1.rule(mode)],
+            subagent: executor,
+          }),
+        ),
+      ).toBe(mode)
+    }
+  }),
+)
+
+it.effect("nested subagent permissions contain one default deny per tool", () =>
+  Effect.sync(() => {
+    const executor = testAgent({ name: "executor", mode: "subagent", permission: { bash: "allow" } })
+    const first = deriveSubagentSessionPermission({ parentSessionPermission: [], subagent: executor })
+    const nested = deriveSubagentSessionPermission({ parentSessionPermission: first, subagent: executor })
+
+    expect(nested.filter((rule) => rule.permission === "task")).toHaveLength(1)
+    expect(nested.filter((rule) => rule.permission === "todowrite")).toHaveLength(1)
   }),
 )

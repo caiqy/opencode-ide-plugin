@@ -33,6 +33,8 @@ import { NamedError } from "@opencode-ai/core/util/error"
 import { SessionProcessor } from "./processor"
 import { Tool } from "@/tool/tool"
 import { Permission } from "@/permission"
+import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
+import { Approval } from "@opencode-ai/core/approval"
 import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { Shell } from "@opencode-ai/core/shell"
@@ -104,7 +106,7 @@ function isOrphanedInterruptedTool(part: SessionV1.ToolPart) {
 
 export interface Interface {
   readonly cancel: (sessionID: SessionID) => Effect.Effect<void>
-  readonly prompt: (input: PromptInput) => Effect.Effect<SessionV1.WithParts, Image.Error>
+  readonly prompt: (input: PromptInput, options?: PromptOptions) => Effect.Effect<SessionV1.WithParts, Image.Error>
   readonly loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts>
   readonly shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError>
   readonly command: (input: CommandInput) => Effect.Effect<SessionV1.WithParts, Image.Error>
@@ -172,7 +174,7 @@ const layer = Layer.effect(
       return {
         cancel: (sessionID: SessionID) => cancel(sessionID),
         resolvePromptParts: (template: string) => resolvePromptParts(template),
-        prompt: (input: PromptInput) => prompt(input).pipe(Effect.catch(Effect.die)),
+        prompt: (input: PromptInput, options?: PromptOptions) => prompt(input, options).pipe(Effect.catch(Effect.die)),
       } satisfies TaskPromptOps
     })
 
@@ -480,6 +482,7 @@ const layer = Layer.effect(
         time: { created: Date.now() },
         agent: lastUser.agent,
         model: lastUser.model,
+        tools: lastUser.tools,
       }
       yield* sessions.updateMessage(summaryUserMsg)
       yield* sessions.updatePart({
@@ -1139,9 +1142,9 @@ const layer = Layer.effect(
       return { info, parts }
     }, Effect.scoped)
 
-    const prompt: (input: PromptInput) => Effect.Effect<SessionV1.WithParts, Image.Error> = Effect.fn(
+    const prompt: (input: PromptInput, options?: PromptOptions) => Effect.Effect<SessionV1.WithParts, Image.Error> = Effect.fn(
       "SessionPrompt.prompt",
-    )(function* (input: PromptInput) {
+    )(function* (input: PromptInput, options?: PromptOptions) {
       const session = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
       yield* revert.cleanup(session)
       const message = yield* createUserMessage(input)
@@ -1151,9 +1154,24 @@ const layer = Layer.effect(
       for (const [t, enabled] of Object.entries(input.tools ?? {})) {
         permissions.push({ permission: t, action: enabled ? "allow" : "deny", pattern: "*" })
       }
-      if (permissions.length > 0) {
-        session.permission = permissions
-        yield* sessions.setPermission({ sessionID: session.id, permission: permissions })
+      if (permissions.length > 0 && options?.persistTools !== false) {
+        yield* Approval.runtime.withUpdate(session.id)(
+          Effect.uninterruptible(
+            Effect.gen(function* () {
+              const current = yield* sessions.get(session.id).pipe(Effect.orDie)
+              const next = [
+                ...(current.permission?.some((rule) => rule.permission === ApprovalV1.RulePermission)
+                  ? ApprovalV1.withRuleset(permissions, ApprovalV1.modeFromRuleset(current.permission))
+                  : permissions),
+              ]
+              const ruleset = ApprovalV1.isTransitioning(current.permission ?? [])
+                ? [...ApprovalV1.withTransition(next)]
+                : next
+              session.permission = ruleset
+              yield* sessions.setPermission({ sessionID: session.id, permission: ruleset })
+            }),
+          ),
+        )
       }
 
       if (input.noReply === true) return message
@@ -1627,6 +1645,10 @@ export const PromptInput = Schema.Struct({
   ),
 })
 export type PromptInput = Schema.Schema.Type<typeof PromptInput>
+
+export interface PromptOptions {
+  readonly persistTools?: boolean
+}
 
 export class LoopInput extends Schema.Class<LoopInput>("SessionPrompt.LoopInput")({
   sessionID: SessionID,

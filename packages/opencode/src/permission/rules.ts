@@ -1,6 +1,7 @@
 export * as PermissionRules from "./rules"
 
 import { ConfigPermissionV1 } from "@opencode-ai/core/v1/config/permission"
+import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Wildcard } from "@opencode-ai/core/util/wildcard"
 import os from "os"
@@ -44,6 +45,7 @@ export function evaluate(permission: string, pattern: string, ...rulesets: Permi
 }
 
 export function disabled(tools: string[], ruleset: PermissionV1.Ruleset): Set<string> {
+  if (ApprovalV1.modeFromRuleset(ruleset) === "full") return new Set()
   const edits = ["edit", "write", "apply_patch"]
   const reads = ["list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource"]
   return new Set(

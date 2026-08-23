@@ -1,6 +1,9 @@
 import { afterEach, describe, expect } from "bun:test"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
+import { Approval } from "@opencode-ai/core/approval"
+import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
+import type { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Deferred, Effect, Layer } from "effect"
 import type * as Scope from "effect/Scope"
 import { HttpServer } from "effect/unstable/http"
@@ -237,9 +240,8 @@ function withProject<A, E, E2 = never>(
       config: { formatter: false, lsp: false, ...options.config },
     })
     yield* options.setup?.(directory) ?? Effect.void
-    const sdk = yield* Effect.acquireRelease(
-      client(serverPath, directory),
-      (sdk) => call(() => sdk.instance.dispose()).pipe(Effect.ignore),
+    const sdk = yield* Effect.acquireRelease(client(serverPath, directory), (sdk) =>
+      call(() => sdk.instance.dispose()).pipe(Effect.ignore),
     )
     return yield* run({ sdk, directory })
   })
@@ -420,6 +422,84 @@ describe("HttpApi SDK", () => {
           expectStatus(() => sdk.find.files({ query: "hello", limit: 10 }), 200),
         ])
       }),
+  )
+
+  httpapiInstance("synchronizes approval mode through the subagent session tree", { serverPath: "raw" }, ({ sdk }) =>
+    Effect.gen(function* () {
+      const parent = yield* call(() => sdk.session.create({ title: "parent" }))
+      const child = yield* call(() =>
+        sdk.session.create({
+          title: "child",
+          parentID: parent.data!.id,
+          permission: [{ permission: "bash", pattern: "rm *", action: "deny" }, ApprovalV1.rule("manual")],
+        }),
+      )
+      const grandchild = yield* call(() =>
+        sdk.session.create({ title: "grandchild", parentID: child.data!.id, permission: [ApprovalV1.rule("manual")] }),
+      )
+
+      yield* call(() =>
+        sdk.session.update({
+          sessionID: parent.data!.id,
+          permission: [ApprovalV1.rule("automatic")],
+        }),
+      )
+      const automaticChild = yield* call(() => sdk.session.get({ sessionID: child.data!.id }))
+      const automaticGrandchild = yield* call(() => sdk.session.get({ sessionID: grandchild.data!.id }))
+
+      expect(ApprovalV1.modeFromRuleset(record(automaticChild.data).permission as PermissionV1.Ruleset)).toBe(
+        "automatic",
+      )
+      expect(ApprovalV1.modeFromRuleset(record(automaticGrandchild.data).permission as PermissionV1.Ruleset)).toBe(
+        "automatic",
+      )
+      expect(Approval.runtime.get(child.data!.id)).toBe("automatic")
+      expect(Approval.runtime.get(grandchild.data!.id)).toBe("automatic")
+      const lateChild = yield* call(() =>
+        sdk.session.create({
+          title: "late child",
+          parentID: child.data!.id,
+          permission: [ApprovalV1.rule("manual")],
+        }),
+      )
+      expect(ApprovalV1.modeFromRuleset(record(lateChild.data).permission as PermissionV1.Ruleset)).toBe("automatic")
+      expect(Approval.runtime.get(lateChild.data!.id)).toBe("automatic")
+
+      yield* call(() => sdk.session.update({ sessionID: parent.data!.id, permission: [ApprovalV1.rule("manual")] }))
+      expect(Approval.runtime.get(child.data!.id)).toBe("manual")
+      yield* call(() => sdk.session.update({ sessionID: parent.data!.id, permission: [ApprovalV1.rule("full")] }))
+      const updatedChild = yield* call(() => sdk.session.get({ sessionID: child.data!.id }))
+      const updatedGrandchild = yield* call(() => sdk.session.get({ sessionID: grandchild.data!.id }))
+
+      expect(ApprovalV1.modeFromRuleset(record(updatedChild.data).permission as PermissionV1.Ruleset)).toBe("full")
+      expect(ApprovalV1.modeFromRuleset(record(updatedGrandchild.data).permission as PermissionV1.Ruleset)).toBe("full")
+      expect(record(updatedChild.data).permission).toContainEqual({
+        permission: "bash",
+        pattern: "rm *",
+        action: "deny",
+      })
+      expect(Approval.runtime.get(child.data!.id)).toBe("full")
+      expect(Approval.runtime.get(grandchild.data!.id)).toBe("full")
+
+      yield* call(() => sdk.session.update({ sessionID: parent.data!.id, permission: [ApprovalV1.rule("manual")] }))
+      expect(Approval.runtime.get(child.data!.id)).toBe("manual")
+      yield* call(() =>
+        sdk.session.update({
+          sessionID: parent.data!.id,
+          permission: [{ permission: "read", pattern: "*", action: "allow" }],
+        }),
+      )
+      const clearedChild = yield* call(() => sdk.session.get({ sessionID: child.data!.id }))
+      const clearedGrandchild = yield* call(() => sdk.session.get({ sessionID: grandchild.data!.id }))
+      expect(record(clearedChild.data).permission).not.toContainEqual(
+        expect.objectContaining({ permission: ApprovalV1.RulePermission }),
+      )
+      expect(record(clearedGrandchild.data).permission).not.toContainEqual(
+        expect.objectContaining({ permission: ApprovalV1.RulePermission }),
+      )
+      expect(Approval.runtime.get(child.data!.id)).toBeUndefined()
+      expect(Approval.runtime.get(grandchild.data!.id)).toBeUndefined()
+    }),
   )
 
   httpapi(

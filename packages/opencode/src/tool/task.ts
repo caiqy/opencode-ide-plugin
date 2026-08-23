@@ -14,11 +14,14 @@ import { Effect, Exit, Schema, Scope } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Database } from "@opencode-ai/core/database/database"
+import { Approval } from "@opencode-ai/core/approval"
+import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
+import { syncApproval } from "@/session/approval-sync"
 
 export interface TaskPromptOps {
   cancel(sessionID: SessionID): Effect.Effect<void>
   resolvePromptParts(template: string): Effect.Effect<SessionPrompt.PromptInput["parts"]>
-  prompt(input: SessionPrompt.PromptInput): Effect.Effect<SessionV1.WithParts>
+  prompt(input: SessionPrompt.PromptInput, options?: SessionPrompt.PromptOptions): Effect.Effect<SessionV1.WithParts>
 }
 
 const id = "task"
@@ -138,49 +141,121 @@ export const TaskTool = Tool.define(
         )
       }
 
-      const session = params.task_id
-        ? yield* sessions.get(SessionID.make(params.task_id)).pipe(Effect.catchCause(() => Effect.succeed(undefined)))
+      const requested = params.task_id
+        ? yield* sessions
+            .get(SessionID.make(params.task_id))
+            .pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(undefined)))
         : undefined
-      const childPermission = deriveSubagentSessionPermission({
-        parentSessionPermission: parent.permission ?? [],
-        subagent: next,
-      })
+      if (requested && (requested.parentID !== ctx.sessionID || requested.agent !== next.name)) {
+        return yield* Effect.fail(new Error(`Task session ${requested.id} does not belong to this parent and agent`))
+      }
+
       const childToolDenies = [
-        ...(next.permission.some((rule) => rule.permission === "todowrite")
-          ? []
-          : [{ permission: "todowrite" as const, pattern: "*" as const, action: "deny" as const }]),
-        ...(next.permission.some((rule) => rule.permission === id)
-          ? []
-          : [{ permission: id, pattern: "*" as const, action: "deny" as const }]),
         ...(cfg.experimental?.primary_tools?.map((permission) => ({
           permission,
           pattern: "*" as const,
           action: "deny" as const,
         })) ?? []),
       ]
-      const nextSession =
-        session ??
-        (yield* sessions.create({
-          parentID: ctx.sessionID,
-          title: params.description + ` (@${next.name} subagent)`,
-          agent: next.name,
-          permission: [
-            ...childPermission,
-            ...childToolDenies.filter(
-              (deny) =>
-                !childPermission.some(
-                  (rule) =>
-                    rule.permission === deny.permission && rule.pattern === deny.pattern && rule.action === deny.action,
-                ),
-            ),
-          ],
-        }))
+      const admit = Effect.gen(function* () {
+        const latestParent = yield* sessions.get(ctx.sessionID)
+        const runtimeApproval = Approval.runtime.get(latestParent.id)
+        const parentCleared = Approval.runtime.isCleared(latestParent.id)
+        const durableApproval = !parentCleared && latestParent.permission?.some(
+          (rule) => rule.permission === ApprovalV1.RulePermission,
+        )
+          ? ApprovalV1.modeFromRuleset(latestParent.permission)
+          : undefined
+        const parentApproval = runtimeApproval ?? durableApproval
+        const parentPermission = durableApproval
+          ? ApprovalV1.withRuleset(latestParent.permission ?? [], durableApproval)
+          : parentCleared
+            ? ApprovalV1.withoutTransition(
+                (latestParent.permission ?? []).filter((rule) => rule.permission !== ApprovalV1.RulePermission),
+              )
+          : (latestParent.permission ?? [])
+        const childPermission = deriveSubagentSessionPermission({
+          parentSessionPermission: parentPermission,
+          subagent: next,
+        })
+        const create = sessions.create(
+          {
+            parentID: ctx.sessionID,
+            title: params.description + ` (@${next.name} subagent)`,
+            agent: next.name,
+            permission: [
+              ...childPermission,
+              ...childToolDenies.filter(
+                (deny) =>
+                  !childPermission.some(
+                    (rule) =>
+                      rule.permission === deny.permission && rule.pattern === deny.pattern && rule.action === deny.action,
+                  ),
+              ),
+            ],
+          },
+          { parentApproval, durableApproval },
+        )
+        const created = create.pipe(Effect.map((session) => ({ session, review: [] as SessionID[] })))
+        if (!params.task_id) return yield* created
+        const sessionID = SessionID.make(params.task_id)
+        if (!requested) return yield* created
+        return yield* Approval.runtime.withUpdate(sessionID)(
+          Effect.gen(function* () {
+            const session = yield* sessions
+              .get(sessionID)
+              .pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(undefined)))
+            if (!session) return yield* created
+            if (session.parentID !== ctx.sessionID || session.agent !== next.name) {
+              return yield* Effect.fail(
+                new Error(`Task session ${session.id} does not belong to this parent and agent`),
+              )
+            }
+            if (parentCleared) {
+              yield* syncApproval({ sessions, sessionID: session.id, persist: true, locked: true })
+              return { session: yield* sessions.get(session.id), review: [] }
+            }
+            const sessionRuntime = Approval.runtime.get(session.id)
+            const sessionDurable = session.permission?.some(
+              (rule) => rule.permission === ApprovalV1.RulePermission,
+            )
+              ? ApprovalV1.modeFromRuleset(session.permission)
+              : undefined
+            const approval =
+              parentApproval ??
+              sessionRuntime ??
+              (Approval.runtime.isCleared(session.id) ? undefined : sessionDurable)
+            if (!approval) return { session, review: [] }
+            const permissionApproval = durableApproval ?? sessionDurable
+            const updated = yield* syncApproval({
+              sessions,
+              sessionID: session.id,
+              approval,
+              permissionApproval,
+              persist: permissionApproval !== undefined,
+              locked: true,
+            })
+            return {
+              session: yield* sessions.get(session.id),
+              review: approval === "automatic" ? updated : [],
+            }
+          }),
+        )
+      })
+      const admitted = yield* Approval.runtime.withUpdate(ctx.sessionID)(Effect.uninterruptible(admit))
+      yield* Effect.forEach(admitted.review, (sessionID) => Approval.runtime.review(sessionID), { discard: true })
+      const nextSession = admitted.session
 
       const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID }).pipe(
         Effect.provideService(Database.Service, database),
         Effect.orDie,
       )
       if (msg.info.role !== "assistant") return yield* Effect.fail(new Error("Not an assistant message"))
+      const origin = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: msg.info.parentID }).pipe(
+        Effect.provideService(Database.Service, database),
+        Effect.orDie,
+      )
+      const continuationTools = origin.info.role === "user" ? origin.info.tools : undefined
       const variant = msg.info.variant
 
       const model = next.model ?? {
@@ -213,8 +288,9 @@ export const TaskTool = Tool.define(
           },
           variant: next.model ? undefined : variant,
           agent: next.name,
+          tools: continuationTools,
           parts,
-        })
+        }, { persistTools: false })
         return result.parts.findLast((item) => item.type === "text")?.text ?? ""
       })
 
@@ -228,6 +304,7 @@ export const TaskTool = Tool.define(
             sessionID: ctx.sessionID,
             agent: currentParent.agent ?? ctx.agent,
             variant,
+            tools: continuationTools,
             parts: [
               {
                 type: "text",
@@ -243,7 +320,7 @@ export const TaskTool = Tool.define(
                 }),
               },
             ],
-          })
+          }, { persistTools: false })
           .pipe(Effect.ignore, Effect.forkIn(scope, { startImmediately: true }))
       })
 
