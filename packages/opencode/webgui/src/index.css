@@ -167,12 +167,55 @@ body {
   }
 }
 
+@keyframes tool-header-shine {
+  from {
+    background-position: -80px 0;
+  }
+
+  to {
+    background-position: calc(100% + 80px) 0;
+  }
+}
+
+.tool-header-running-text {
+  --tool-header-running-base-color: #374151;
+  --tool-header-running-edge-color: #89919b;
+  display: inline-block;
+  position: relative;
+  color: transparent;
+  background-color: var(--tool-header-running-base-color);
+  background-image: linear-gradient(
+    90deg,
+    var(--tool-header-running-base-color) 0%,
+    var(--tool-header-running-edge-color) 24%,
+    #ffffff 40%,
+    #ffffff 60%,
+    var(--tool-header-running-edge-color) 76%,
+    var(--tool-header-running-base-color) 100%
+  );
+
+  background-repeat: no-repeat;
+  background-size: 80px 100%;
+  background-position: -80px 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: tool-header-shine var(--tool-header-shine-duration, 2.8s) linear infinite;
+}
+
+.dark .tool-header-running-text {
+  --tool-header-running-base-color: #9ca3af;
+  --tool-header-running-edge-color: #e1e3e6;
+}
+
 .model-selection-dot-breathe {
   animation: model-selection-breathe 1.6s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .model-selection-dot-breathe {
+  .model-selection-dot-breathe,
+  .tool-header-running svg.animate-spin,
+  .tool-header-running-text {
     animation: none;
   }
 }

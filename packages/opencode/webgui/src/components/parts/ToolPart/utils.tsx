@@ -72,18 +72,18 @@ export function getStatusIcon(status: "pending" | "running" | "completed" | "err
     case "pending":
       return (
         <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" strokeWidth={2} strokeDasharray="42 15" />
+        </svg>
+      )
+    case "running":
+      return (
+        <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={2}
             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
           />
-        </svg>
-      )
-    case "running":
-      return (
-        <svg className="w-3 h-3 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
       )
     case "completed":
@@ -107,10 +107,14 @@ export function getStatusClasses(status: "pending" | "running" | "completed" | "
   }
 
   if (status === "pending") {
-    return "bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300"
+    return "bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400"
   }
 
-  return "bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-100"
+  if (status === "completed") {
+    return "bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-white"
+  }
+
+  return "bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-400"
 }
 
 export function getBorderColor(
@@ -176,6 +180,10 @@ export function getToolDisplayName(
 
   // If we have a title, use it with the tool name
   if (title) {
+    if (tool === "bash" && typeof input?.command === "string" && input.command.length > 0) {
+      return `${toolLabel}：${input.command}`
+    }
+
     const normalizedTitle =
       tool === "skill"
         ? title
@@ -216,6 +224,8 @@ export function getToolDisplayName(
 
   switch (tool) {
     case "bash": {
+      const command = input.command
+      if (typeof command === "string" && command.length > 0) return `${toolLabel}：${command}`
       const desc = input.description
       return typeof desc === "string" && desc.length > 0 ? `${toolLabel}：${desc}` : toolLabel
     }

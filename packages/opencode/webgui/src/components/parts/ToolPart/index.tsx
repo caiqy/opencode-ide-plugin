@@ -90,7 +90,7 @@ export function ToolPart({ part, sessionID, messageID, associatedPatch, interrup
   }, [getPermissionForCall, sessionID, part.callID])
   const displayPermission = wasInterrupted ? undefined : permission
 
-  const toolName = getToolDisplayName(part.tool, part.state.input, part.state.title, part.state.output)
+  const toolName = getToolDisplayName(part.tool, displayInput, part.state.title, part.state.output)
   const filePath = typeof displayInput.filePath === "string" ? displayInput.filePath : undefined
   const writeContent = typeof displayInput.content === "string" ? displayInput.content : ""
   const editNewString = typeof displayInput.newString === "string" ? displayInput.newString : ""

@@ -1,4 +1,4 @@
-import { useCallback } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import type { ReactNode } from "react"
 import { useOpenFile } from "../../../hooks/useOpenFile"
 import { useProject } from "../../../state/ProjectContext"
@@ -44,8 +44,26 @@ export function ToolHeader({
 }: ToolHeaderProps) {
   const openFile = useOpenFile()
   const { worktree } = useProject()
+  const runningTextRef = useRef<HTMLSpanElement>(null)
   const displayPath = filePath ? toDisplayPath(filePath, worktree) : ""
   const toolLabel = getToolLabel(tool)
+
+  useEffect(() => {
+    if (status !== "running" || blocked) return
+    const element = runningTextRef.current
+    if (!element) return
+
+    const updateDuration = () => {
+      const duration = Math.max(1, (element.getBoundingClientRect().width + 160) / 180)
+      element.style.setProperty("--tool-header-shine-duration", `${duration}s`)
+    }
+
+    updateDuration()
+    if (typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(updateDuration)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [blocked, status, toolName])
 
   const normalizedPatchPaths = patchFilePaths.filter((path, index, list) => !!path && list.indexOf(path) === index)
 
@@ -79,7 +97,6 @@ export function ToolHeader({
   const showFileLink = filePath && (tool === "read" || tool === "write" || tool === "edit")
   const showPatchFileLinks = tool === "apply_patch" && normalizedPatchPaths.length > 0
   const fileName = filePath ? getFileName(filePath) : ""
-
   const durationText = time?.end && time.start ? `${((time.end - time.start) / 1000).toFixed(1)}s` : undefined
 
   const onKeyDown = useCallback(
@@ -101,11 +118,15 @@ export function ToolHeader({
       onClick={blocked && onBlockedClick ? onBlockedClick : isExpandable ? onToggle : undefined}
       title={tool}
       data-tip={tool}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left ${blocked ? getBlockedClasses(blocked) : getStatusClasses(status)} ${isExpandable ? "hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer" : ""} transition-colors`}
+      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left ${blocked ? getBlockedClasses(blocked) : getStatusClasses(status)} ${status === "running" && !blocked ? "tool-header-running" : ""} ${isExpandable ? "hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer" : ""} transition-colors`}
     >
       {blocked ? getBlockedIcon(blocked) : getStatusIcon(status)}
       {showFileLink || showPatchFileLinks ? (
         <span className="text-xs font-medium flex-1 min-w-0 truncate">
+          <span
+            ref={runningTextRef}
+            className={status === "running" && !blocked ? "tool-header-running-text" : ""}
+          >
           {`${toolLabel}：`}
           {showFileLink && filePath ? (
             <>
@@ -144,11 +165,17 @@ export function ToolHeader({
           {showPatchFileLinks && lineRange ? (
             <span className="text-gray-500 dark:text-gray-400 ml-1.5 font-normal">{lineRange}</span>
           ) : null}
+          </span>
         </span>
       ) : (
         <span className="text-xs font-medium flex-1 min-w-0 truncate">
-          {toolName}
-          {lineRange && <span className="text-gray-500 dark:text-gray-400 ml-1.5 font-normal">{lineRange}</span>}
+          <span
+            ref={runningTextRef}
+            className={status === "running" && !blocked ? "tool-header-running-text" : ""}
+          >
+            {toolName}
+            {lineRange && <span className="text-gray-500 dark:text-gray-400 ml-1.5 font-normal">{lineRange}</span>}
+          </span>
         </span>
       )}
       {interrupted && <span className="text-xs font-medium flex-shrink-0">已中断</span>}

@@ -82,7 +82,7 @@ describe("ToolHeader", () => {
         isExpanded={false}
         isExpandable={true}
         onToggle={() => undefined}
-        {...({ patchFilePaths: ["src/a/very/deep/foo.ts", "src/b/bar.ts"] } as any)}
+        patchFilePaths={["src/a/very/deep/foo.ts", "src/b/bar.ts"]}
       />,
     )
 
@@ -121,5 +121,37 @@ describe("ToolHeader", () => {
     fireEvent.click(screen.getByText("查看子任务"))
     expect(onAction).toHaveBeenCalledTimes(1)
     expect(onToggle).toHaveBeenCalledTimes(0)
+  })
+
+  it("运行中的工具头部启用扫光，其他状态不启用", () => {
+    const { container, rerender } = render(
+      <ToolHeader
+        tool="task"
+        status="running"
+        toolName="委派子任务"
+        isExpanded={false}
+        isExpandable={false}
+        onToggle={() => undefined}
+      />,
+    )
+
+    const header = container.firstElementChild
+    expect(header).toHaveClass("tool-header-running")
+    const shimmerText = header?.querySelector(".tool-header-running-text")
+    expect(shimmerText).toBeTruthy()
+    expect(shimmerText).not.toHaveClass("flex-1")
+
+    rerender(
+      <ToolHeader
+        tool="task"
+        status="completed"
+        toolName="委派子任务"
+        isExpanded={false}
+        isExpandable={false}
+        onToggle={() => undefined}
+      />,
+    )
+    expect(container.firstElementChild).not.toHaveClass("tool-header-running")
+    expect(container.firstElementChild?.querySelector(".tool-header-running-text")).toBeNull()
   })
 })
