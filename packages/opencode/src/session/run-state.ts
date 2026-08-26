@@ -56,8 +56,11 @@ const layer = Layer.effect(
       const data = yield* InstanceState.get(state)
       const existing = data.runners.get(sessionID)
       if (existing) return existing
-      const next = Runner.make<SessionV1.WithParts>(data.scope, {
+      let next!: Runner.Runner<SessionV1.WithParts>
+      next = Runner.make<SessionV1.WithParts>(data.scope, {
         onIdle: Effect.gen(function* () {
+          if (data.runners.get(sessionID) !== next) return
+          if (next.busy) return
           data.runners.delete(sessionID)
           yield* status.set(sessionID, { type: "idle" })
         }),
@@ -75,13 +78,15 @@ const layer = Layer.effect(
     })
 
     const cancel = Effect.fn("SessionRunState.cancel")(function* (sessionID: SessionID) {
-      yield* cancelBackgroundJobs(background, sessionID)
       const data = yield* InstanceState.get(state)
       const existing = data.runners.get(sessionID)
+      yield* background.closeAdmissions([sessionID])
       if (!existing) {
         yield* status.set(sessionID, { type: "idle" })
+        yield* cancelBackgroundJobs(background, sessionID)
         return
       }
+      yield* cancelBackgroundJobs(background, sessionID)
       yield* existing.cancel
     })
 
@@ -90,7 +95,8 @@ const layer = Layer.effect(
       onInterrupt: Effect.Effect<SessionV1.WithParts>,
       work: Effect.Effect<SessionV1.WithParts>,
     ) {
-      return yield* (yield* runner(sessionID, onInterrupt)).ensureRunning(work)
+      const existing = yield* runner(sessionID, onInterrupt)
+      return yield* existing.ensureRunning(background.openAdmissions([sessionID]).pipe(Effect.andThen(work)))
     })
 
     const startShell = Effect.fn("SessionRunState.startShell")(function* (
@@ -99,8 +105,9 @@ const layer = Layer.effect(
       work: Effect.Effect<SessionV1.WithParts>,
       ready?: Latch.Latch,
     ) {
-      return yield* (yield* runner(sessionID, onInterrupt))
-        .startShell(work, ready)
+      const existing = yield* runner(sessionID, onInterrupt)
+      return yield* existing
+        .startShell(background.openAdmissions([sessionID]).pipe(Effect.andThen(work)), ready)
         .pipe(Effect.catchTag("RunnerBusy", () => Effect.fail(busyError(sessionID))))
     })
 

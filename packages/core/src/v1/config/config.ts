@@ -98,6 +98,16 @@ export const Info = Schema.Struct({
   subagent_depth: Schema.optional(NonNegativeInt).annotate({
     description: "Maximum subagent nesting depth. Defaults to 1, which prevents subagents from launching subagents.",
   }),
+  parallel_limit: Schema.optional(
+    Schema.Struct({
+      websearch: Schema.optional(PositiveInt).annotate({
+        description: "Maximum number of websearch calls executing at once (default: 3)",
+      }),
+      subagent: Schema.optional(PositiveInt).annotate({
+        description: "Maximum number of subagents executing at once (default: 3)",
+      }),
+    }),
+  ).annotate({ description: "Tool execution queue limits" }),
   username: Schema.optional(Schema.String).annotate({
     description: "Custom username to display in conversations instead of system username",
   }),

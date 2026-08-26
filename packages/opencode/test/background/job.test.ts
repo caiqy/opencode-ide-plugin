@@ -211,7 +211,7 @@ describe("background.job", () => {
       const job = yield* jobs.start({
         type: "test",
         metadata: { parentSessionId: "parent" },
-        onPromote: Deferred.succeed(promoted, undefined).pipe(Effect.asVoid),
+        onPromote: () => Deferred.succeed(promoted, undefined).pipe(Effect.asVoid),
         run: Deferred.await(latch).pipe(Effect.as("done")),
       })
 

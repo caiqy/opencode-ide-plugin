@@ -1,4 +1,4 @@
-import { Cause, Deferred, Effect, Exit, Fiber, Latch, Schema, Scope, SynchronizedRef } from "effect"
+import { Cause, Context, Deferred, Effect, Exit, Fiber, Latch, Schema, Scope, SynchronizedRef } from "effect"
 
 export interface Runner<A, E = never> {
   readonly state: State<A, E>
@@ -10,6 +10,10 @@ export interface Runner<A, E = never> {
 
 export class Cancelled extends Schema.TaggedErrorClass<Cancelled>()("RunnerCancelled", {}) {}
 export class Busy extends Schema.TaggedErrorClass<Busy>()("RunnerBusy", {}) {}
+
+const CurrentRunner = Context.Reference<{ owner: object; id: number } | undefined>("~opencode/Runner/Current", {
+  defaultValue: () => undefined,
+})
 
 interface RunHandle<A, E> {
   id: number
@@ -48,13 +52,24 @@ export const make = <A, E = never>(
   const idle = opts?.onIdle ?? Effect.void
   const onBusy = opts?.onBusy ?? Effect.void
   const onInterrupt = opts?.onInterrupt
+  const owner = {}
   let ids = 0
+  let cancelling: { done: Deferred.Deferred<void>; id: number } | undefined
+  let waiting = 0
 
   const state = () => SynchronizedRef.getUnsafe(ref)
   const next = () => {
     ids += 1
     return ids
   }
+
+  const completeCancellation = (id: number) =>
+    Effect.suspend(() => {
+      if (cancelling?.id !== id) return Effect.void
+      const done = cancelling.done
+      cancelling = undefined
+      return Deferred.succeed(done, undefined).pipe(Effect.andThen(idle), Effect.asVoid)
+    })
 
   const complete = (done: Deferred.Deferred<A, E | Cancelled>, exit: Exit.Exit<A, E>) =>
     Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)
@@ -64,16 +79,13 @@ export const make = <A, E = never>(
   const awaitDone = (done: Deferred.Deferred<A, E | Cancelled>) =>
     Deferred.await(done).pipe(Effect.catchTag("RunnerCancelled", (e) => onInterrupt ?? Effect.die(e)))
 
-  const idleIfCurrent = () =>
-    SynchronizedRef.modify(ref, (st) => [st._tag === "Idle" ? idle : Effect.void, st] as const).pipe(Effect.flatten)
-
   const finishRun = (id: number, done: Deferred.Deferred<A, E | Cancelled>, exit: Exit.Exit<A, E>) =>
     SynchronizedRef.modify(
       ref,
       (st) =>
         [
           Effect.gen(function* () {
-            if (st._tag === "Running" && st.run.id === id) yield* idle
+            if (st._tag === "Running" && st.run.id === id && !cancelling) yield* idle
             yield* complete(done, exit)
           }),
           st._tag === "Running" && st.run.id === id ? ({ _tag: "Idle" } as const) : st,
@@ -84,6 +96,7 @@ export const make = <A, E = never>(
     Effect.gen(function* () {
       const id = next()
       const fiber = yield* work.pipe(
+        Effect.provideService(CurrentRunner, { owner, id }),
         Effect.onExit((exit) => finishRun(id, done, exit)),
         Effect.forkIn(scope),
       )
@@ -95,7 +108,7 @@ export const make = <A, E = never>(
       ref,
       Effect.fnUntraced(function* (st) {
         if (st._tag === "Shell" && st.shell.id === id) {
-          return [idle, { _tag: "Idle" }] as const
+          return [cancelling ? Effect.void : idle, { _tag: "Idle" }] as const
         }
         if (st._tag === "ShellThenRun" && st.shell.id === id) {
           const run = yield* startRun(st.run.work, st.run.done)
@@ -112,10 +125,32 @@ export const make = <A, E = never>(
       yield* Fiber.interrupt(shell.fiber)
     })
 
-  const ensureRunning = (work: Effect.Effect<A, E>) =>
+  const ensureRunning: Runner<A, E>["ensureRunning"] = (work) =>
     SynchronizedRef.modifyEffect(
       ref,
       Effect.fnUntraced(function* (st) {
+        if (cancelling) {
+          const current = yield* CurrentRunner
+          if (current?.owner === owner && current.id === cancelling.id)
+            return [onInterrupt ?? Effect.die(new Cancelled()), st] as const
+          return [
+            Effect.sync(() => {
+              waiting += 1
+            }).pipe(
+              Effect.andThen(Effect.interruptible(Deferred.await(cancelling.done))),
+              Effect.andThen(ensureRunning(work)),
+              Effect.ensuring(
+                Effect.suspend(() =>
+                  Effect.sync(() => {
+                    waiting -= 1
+                    return !cancelling && waiting === 0 && state()._tag === "Idle"
+                  }).pipe(Effect.flatMap((idleNow) => (idleNow ? idle : Effect.void))),
+                ),
+              ),
+            ),
+            st,
+          ] as const
+        }
         switch (st._tag) {
           case "Running":
           case "ShellThenRun":
@@ -137,10 +172,32 @@ export const make = <A, E = never>(
       }),
     ).pipe(Effect.flatten)
 
-  const startShell = (work: Effect.Effect<A, E>, ready?: Latch.Latch): Effect.Effect<A, E | Busy> =>
+  const startShell: Runner<A, E>["startShell"] = (work, ready) =>
     SynchronizedRef.modifyEffect(
       ref,
       Effect.fnUntraced(function* (st) {
+        if (cancelling) {
+          const current = yield* CurrentRunner
+          if (current?.owner === owner && current.id === cancelling.id)
+            return [onInterrupt ?? Effect.die(new Cancelled()), st] as const
+          return [
+            Effect.sync(() => {
+              waiting += 1
+            }).pipe(
+              Effect.andThen(Effect.interruptible(Deferred.await(cancelling.done))),
+              Effect.andThen(startShell(work, ready)),
+              Effect.ensuring(
+                Effect.suspend(() =>
+                  Effect.sync(() => {
+                    waiting -= 1
+                    return !cancelling && waiting === 0 && state()._tag === "Idle"
+                  }).pipe(Effect.flatMap((idleNow) => (idleNow ? idle : Effect.void))),
+                ),
+              ),
+            ),
+            st,
+          ] as const
+        }
         if (st._tag !== "Idle") {
           const reject: Effect.Effect<A, E | Busy> = Effect.fail(new Busy())
           return [reject, st] as const
@@ -148,7 +205,11 @@ export const make = <A, E = never>(
         yield* onBusy
         const id = next()
         const cancelled = yield* Deferred.make<void>()
-        const fiber = yield* work.pipe(Effect.ensuring(finishShell(id)), Effect.forkChild)
+        const fiber = yield* work.pipe(
+          Effect.provideService(CurrentRunner, { owner, id }),
+          Effect.ensuring(finishShell(id)),
+          Effect.forkChild,
+        )
         const shell = { id, cancelled, ready, fiber } satisfies ShellHandle<A, E>
         return [
           Effect.gen(function* () {
@@ -168,45 +229,52 @@ export const make = <A, E = never>(
       }),
     ).pipe(Effect.flatten)
 
-  const cancel = SynchronizedRef.modify(ref, (st) => {
-    switch (st._tag) {
-      case "Idle":
+  const cancel = SynchronizedRef.modifyEffect(
+    ref,
+    Effect.fnUntraced(function* (st) {
+      if (cancelling) {
         return [Effect.void, st] as const
-      case "Running":
-        return [
-          Effect.gen(function* () {
-            yield* Fiber.interrupt(st.run.fiber)
-            yield* Deferred.fail(st.run.done, new Cancelled()).pipe(Effect.asVoid)
-            yield* idleIfCurrent()
-          }),
-          { _tag: "Idle" } as const,
-        ] as const
-      case "Shell":
-        return [
-          Effect.gen(function* () {
-            yield* stopShell(st.shell)
-            yield* idleIfCurrent()
-          }),
-          { _tag: "Idle" } as const,
-        ] as const
-      case "ShellThenRun":
-        return [
-          Effect.gen(function* () {
-            yield* stopShell(st.shell)
-            yield* Deferred.fail(st.run.done, new Cancelled()).pipe(Effect.asVoid)
-            yield* idleIfCurrent()
-          }),
-          { _tag: "Idle" } as const,
-        ] as const
-    }
-  }).pipe(Effect.flatten)
+      }
+      if (st._tag === "Idle") return [Effect.void, st] as const
+      const current = yield* CurrentRunner
+      const id = st._tag === "Running" ? st.run.id : st.shell.id
+      if (current?.owner === owner && current.id === id) return [Effect.void, st] as const
+      const done = yield* Deferred.make<void>()
+      cancelling = { done, id }
+      switch (st._tag) {
+        case "Running":
+          return [
+            Effect.gen(function* () {
+              yield* Fiber.interrupt(st.run.fiber)
+              yield* Deferred.fail(st.run.done, new Cancelled()).pipe(Effect.asVoid)
+            }).pipe(Effect.ensuring(completeCancellation(id))),
+            { _tag: "Idle" } as const,
+          ] as const
+        case "Shell":
+          return [
+            Effect.gen(function* () {
+              yield* stopShell(st.shell)
+            }).pipe(Effect.ensuring(completeCancellation(id))),
+            { _tag: "Idle" } as const,
+          ] as const
+        case "ShellThenRun":
+          return [
+            Effect.gen(function* () {
+              yield* stopShell(st.shell)
+              yield* Deferred.fail(st.run.done, new Cancelled()).pipe(Effect.asVoid)
+            }).pipe(Effect.ensuring(completeCancellation(id))),
+            { _tag: "Idle" } as const,
+          ] as const
+      }
+    }),
+  ).pipe(Effect.flatten, Effect.uninterruptible)
 
   return {
     get state() {
       return state()
     },
     get busy() {
-      return state()._tag !== "Idle"
+      return cancelling !== undefined || waiting > 0 || state()._tag !== "Idle"
     },
     ensureRunning,
     startShell,

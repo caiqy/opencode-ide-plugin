@@ -1935,6 +1935,10 @@ export type Config = {
   image_model?: string
   default_agent?: string
   subagent_depth?: number
+  parallel_limit?: {
+    websearch?: number
+    subagent?: number
+  }
   username?: string
   mode?: {
     build?: AgentConfig
@@ -2013,6 +2017,7 @@ export type Config = {
      * Ordered provider/model references used for native web search
      */
     models: Array<string>
+    mode?: "responses" | "alpha-search"
   }
   attachment?: AttachmentConfig
   enterprise?: {

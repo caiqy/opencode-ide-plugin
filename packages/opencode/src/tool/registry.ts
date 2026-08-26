@@ -293,7 +293,8 @@ const layer = Layer.effect(
     })
 
     const tools: Interface["tools"] = Effect.fn("ToolRegistry.tools")(function* (input) {
-      const nativeSearch = ((yield* config.get()).websearch?.models.length ?? 0) > 0
+      const configured = yield* config.get()
+      const nativeSearch = (configured.websearch?.models.length ?? 0) > 0
       const filtered = (yield* all()).filter((tool) => {
         if (tool.id === WebSearchTool.id) {
           return webSearchEnabled(

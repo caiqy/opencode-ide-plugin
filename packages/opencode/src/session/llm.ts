@@ -17,6 +17,7 @@ import type { Agent } from "@/agent/agent"
 import type { MessageV2 } from "./message-v2"
 import { Plugin } from "@/plugin"
 import { Permission } from "@/permission"
+import { queueToolExecutions } from "@/tool/execution-queue"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { EventV2 } from "@opencode-ai/core/event"
 import { Wildcard } from "@/util/wildcard"
@@ -59,6 +60,24 @@ export type StreamInput = {
 
 export type StreamRequest = StreamInput & {
   abort: AbortSignal
+}
+
+export function cloneWorkflowModel<Model extends { sessionPreapprovedTools: string[] }>(model: Model): Model {
+  // ponytail: preserve per-session workflow reuse while isolating request callbacks.
+  const copy = Object.assign(Object.create(Object.getPrototypeOf(model)), model) as Model & {
+    workflowOptions?: Record<string, unknown>
+    activeClients?: Set<unknown>
+  }
+  if (copy.workflowOptions) copy.workflowOptions = { ...copy.workflowOptions }
+  if (copy.activeClients) copy.activeClients = new Set()
+  copy.sessionPreapprovedTools = []
+  return copy
+}
+
+export function workflowToolOutput(result: unknown) {
+  if (typeof result === "string") return result
+  if (!result || typeof result !== "object" || !("output" in result)) return ""
+  return typeof result.output === "string" ? result.output : ""
 }
 
 export interface Interface {
@@ -121,13 +140,15 @@ const live: Layer.Layer<
         flags,
         isWorkflow,
       })
+      const tools = queueToolExecutions(prepared.tools, cfg.parallel_limit)
 
       // Wire up toolExecutor for DWS workflow models so that tool calls
       // from the workflow service are executed via opencode's tool system
       // and results sent back over the WebSocket.
       const bridge = yield* EffectBridge.make()
-      if (language instanceof GitLabWorkflowLanguageModel) {
-        const workflowModel = language as GitLabWorkflowLanguageModel & {
+      const workflow = isWorkflow ? cloneWorkflowModel(language) : undefined
+      if (workflow) {
+        const workflowModel = workflow as GitLabWorkflowLanguageModel & {
           sessionID?: string
           sessionPreapprovedTools?: string[]
           approvalHandler?: (approvalTools: { name: string; args: string }[]) => Promise<{ approved: boolean }>
@@ -135,7 +156,7 @@ const live: Layer.Layer<
         workflowModel.sessionID = input.sessionID
         workflowModel.systemPrompt = prepared.system.join("\n")
         workflowModel.toolExecutor = async (toolName, argsJson, _requestID) => {
-          const t = prepared.tools[toolName]
+          const t = tools[toolName]
           if (!t || !t.execute) {
             return { result: "", error: `Unknown tool: ${toolName}` }
           }
@@ -145,19 +166,19 @@ const live: Layer.Layer<
               messages: input.messages,
               abortSignal: input.abort,
             })
-            const output = typeof result === "string" ? result : (result?.output ?? JSON.stringify(result))
+            const output = workflowToolOutput(result)
             return {
               result: output,
               metadata: typeof result === "object" ? result?.metadata : undefined,
               title: typeof result === "object" ? result?.title : undefined,
             }
-          } catch (e: any) {
-            return { result: "", error: e.message ?? String(e) }
+          } catch (error) {
+            return { result: "", error: error instanceof Error ? error.message : String(error) }
           }
         }
 
         const ruleset = Permission.merge(input.agent.permission ?? [], input.permission ?? [])
-        workflowModel.sessionPreapprovedTools = Object.keys(prepared.tools).filter((name) => {
+        workflowModel.sessionPreapprovedTools = Object.keys(tools).filter((name) => {
           const match = ruleset.findLast((rule) => Wildcard.match(name, rule.permission))
           return !match || match.action !== "ask"
         })
@@ -240,7 +261,7 @@ const live: Layer.Layer<
           auth: info,
           llmClient,
           messages: prepared.messages,
-          tools: prepared.tools,
+          tools,
           toolChoice: input.toolChoice,
           temperature: prepared.params.temperature,
           topP: prepared.params.topP,
@@ -305,7 +326,7 @@ const live: Layer.Layer<
           includeRawChunks: includeRawChunks(input.model, item),
           async experimental_repairToolCall(failed) {
             const lower = failed.toolCall.toolName.toLowerCase()
-            if (lower !== failed.toolCall.toolName && prepared.tools[lower]) {
+            if (lower !== failed.toolCall.toolName && tools[lower]) {
               return {
                 ...failed.toolCall,
                 toolName: lower,
@@ -324,8 +345,8 @@ const live: Layer.Layer<
           topP: prepared.params.topP,
           topK: prepared.params.topK,
           providerOptions: ProviderTransform.providerOptions(input.model, prepared.params.options),
-          activeTools: Object.keys(prepared.tools).filter((x) => x !== "invalid"),
-          tools: prepared.tools,
+          activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
+          tools,
           toolChoice: input.toolChoice,
           maxOutputTokens: prepared.params.maxOutputTokens,
           abortSignal: input.abort,
@@ -333,7 +354,7 @@ const live: Layer.Layer<
           maxRetries: input.retries ?? 0,
           messages: prepared.messages,
           model: wrapLanguageModel({
-            model: language,
+            model: workflow ?? language,
             middleware: [
               {
                 specificationVersion: "v3" as const,

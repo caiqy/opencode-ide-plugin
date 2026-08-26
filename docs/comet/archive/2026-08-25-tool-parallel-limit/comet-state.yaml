@@ -1,0 +1,314 @@
+schema: comet.native.v4
+name: tool-parallel-limit
+language: zh-CN
+phase: archive
+status: done
+state_version: 7
+brief: brief.md
+spec_changes:
+  - capability: tool-parallel-limit
+    operation: create
+    source: specs/tool-parallel-limit/spec.md
+workspace:
+  isolation: current
+  change_branch: ide-plugin
+  target_branch: ide-plugin
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：`parallel_limit.websearch` 为 5 时，模型收到的 `websearch` 描述明确建议单次并行调用最多 5
+      个；`task` 描述不受影响。
+    result: passed
+    reason:
+      text: websearch 独立读取 parallel_limit.websearch，最终描述正确追加配置值。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：`parallel_limit.subagent` 为 5 时，模型收到的 `task` 描述明确建议同时启动最多 5 个
+      subagent；`websearch` 描述不受影响。
+    result: passed
+    reason:
+      text: task 独立读取 parallel_limit.subagent，最终描述正确追加配置值。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：省略配置项时，两个工具描述均显示默认数量 3。
+    result: passed
+    reason:
+      text: 两字段各自使用默认值 3，定向测试覆盖默认描述。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：配置 Schema 接受正整数并拒绝 0、负数和非整数。
+    result: passed
+    reason:
+      text: 两字段均使用 PositiveInt；测试拒绝 0、负数、小数和字符串。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：包含新增配置的同一份 `opencode.jsonc` 可被上游官方 OpenCode 正常加载；官方忽略 fork 专用字段，本 fork
+      读取并应用字段。
+    result: passed
+    reason:
+      text: fork 解码并应用字段；上游当前 ConfigParse 忽略 excess property，未知扩展不会阻断加载。
+      truncated: false
+  - id: A6
+    source: specs/tool-parallel-limit/spec.md
+    text: 配置可包含顶层 `parallel_limit` 对象：
+    result: passed
+    reason:
+      text: ConfigV1.Info 定义了顶层可选 parallel_limit 对象。
+      truncated: false
+  - id: A7
+    source: specs/tool-parallel-limit/spec.md
+    text: "`websearch` 可选，必须是正整数，控制 `websearch` 工具描述中建议的最大并行调用数。"
+    result: passed
+    reason:
+      text: websearch 为可选 PositiveInt，且仅影响 websearch 描述。
+      truncated: false
+  - id: A8
+    source: specs/tool-parallel-limit/spec.md
+    text: "`subagent` 可选，必须是正整数，控制 `task` 工具描述中建议的最大并行 subagent 数。"
+    result: passed
+    reason:
+      text: subagent 为可选 PositiveInt，且仅影响 task 描述。
+      truncated: false
+  - id: A9
+    source: specs/tool-parallel-limit/spec.md
+    text: 两个值彼此独立；配置一个不得改变另一个工具的描述值。
+    result: passed
+    reason:
+      text: 两个描述分别访问不同字段，没有共享或交叉回退。
+      truncated: false
+  - id: A10
+    source: specs/tool-parallel-limit/spec.md
+    text: fork 的生成配置 Schema 应公开这两个字段及其含义。
+    result: passed
+    reason:
+      text: Schema 脚本直接从 ConfigV1.Info 生成，字段及注释自然纳入。
+      truncated: false
+  - id: A11
+    source: specs/tool-parallel-limit/spec.md
+    text: 省略 `parallel_limit`、省略 `websearch` 或省略 `subagent` 时，对应工具的描述值为 3。
+    result: passed
+    reason:
+      text: 缺少对象或任一字段时，对应描述独立回退为 3。
+      truncated: false
+  - id: A12
+    source: specs/tool-parallel-limit/spec.md
+    text: 默认值只用于生成工具描述，不写回用户配置。
+    result: passed
+    reason:
+      text: 默认值只在 description 插值时计算，未修改或写回配置。
+      truncated: false
+  - id: A13
+    source: specs/tool-parallel-limit/spec.md
+    text: "`websearch` 的模型可见描述必须在原文后追加一句：并行调用时，一次不得超过 `parallel_limit.websearch`
+      指定的数量。"
+    result: passed
+    reason:
+      text: registry 在原 websearch description 后追加正确的并行调用句。
+      truncated: false
+  - id: A14
+    source: specs/tool-parallel-limit/spec.md
+    text: "`task` 的模型可见描述必须在原文后追加一句：并行启动 subagent 时，一次不得超过 `parallel_limit.subagent`
+      指定的数量。"
+    result: passed
+    reason:
+      text: registry 在原 task description 后追加正确的 subagent 并行句。
+      truncated: false
+  - id: A15
+    source: specs/tool-parallel-limit/spec.md
+    text: 原有描述逐字保留，不删除、不替换、不重新措辞。
+    result: passed
+    reason:
+      text: 两个 .txt 原始描述仍原样导入，registry 仅追加内容。
+      truncated: false
+  - id: A16
+    source: specs/tool-parallel-limit/spec.md
+    text: 原有工具说明、权限、参数和执行行为保持不变。
+    result: passed
+    reason:
+      text: 新字段仅在 ToolRegistry 的描述组装处使用，未进入权限、参数或执行路径。
+      truncated: false
+  - id: A17
+    source: specs/tool-parallel-limit/spec.md
+    text: 该配置对象是 fork 专用扩展。
+    result: passed
+    reason:
+      text: parallel_limit 是 fork 顶层配置扩展，未添加到 plugin options。
+      truncated: false
+  - id: A18
+    source: specs/tool-parallel-limit/spec.md
+    text: 上游官方 OpenCode 使用忽略未知属性的运行时解码策略，因此应忽略整个 `parallel_limit` 对象并继续启动。
+    result: passed
+    reason:
+      text: 上游当前 excess-property ignore 行为会丢弃该未知对象并继续运行。
+      truncated: false
+  - id: A19
+    source: specs/tool-parallel-limit/spec.md
+    text: 上游公开 JSON Schema 可能把该对象标记为未知；编辑器告警不改变运行时兼容要求。
+    result: passed
+    reason:
+      text: 上游公开 JSON Schema 的未知字段告警不影响其运行时忽略行为。
+      truncated: false
+  - id: A20
+    source: specs/tool-parallel-limit/spec.md
+    text: 本功能不修改或依赖 plugin options。
+    result: passed
+    reason:
+      text: 新功能直接使用 Config 服务，无 plugin options 依赖。
+      truncated: false
+builder_handoff:
+  candidate_id: 622df10f-36a6-4c65-bb82-49fd383fcbf4
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:b3ea95cf-332f-4812-97f8-8e7d567466a5
+  iteration: 1
+  summary:
+    text: 新增 parallel_limit.websearch 与 parallel_limit.subagent 正整数配置，在 ToolRegistry
+      最终模型可见描述中分别追加限制句，缺省均为 3；原始 websearch.txt 与 task.txt 未修改。更新全局
+      opencode.jsonc 为两个显式值 3，并补充配置边界、独立值、默认值和原文保留测试。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+  checks:
+    - name:
+        text: bun test test/tool/websearch.test.ts test/tool/task.test.ts
+        truncated: false
+      result: passed
+      note:
+        text: 55 pass, 0 fail, 151 assertions
+        truncated: false
+    - name:
+        text: bun typecheck
+        truncated: false
+      result: passed
+      note:
+        text: packages/opencode tsgo --noEmit
+        truncated: false
+    - name:
+        text: bun script/schema.ts <temp>/config.json
+        truncated: false
+      result: passed
+      note:
+        text: 生成 Schema 包含 parallel_limit 及两个字段说明
+        truncated: false
+    - name:
+        text: git diff --check
+        truncated: false
+      result: passed
+      note:
+        text: 无空白错误；仅有 Windows 行尾提示
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 未主动重启用户正在运行的 Desktop 或 VS Code server；全局配置在下次启动时生效。
+      truncated: false
+    - text: 上游运行时兼容性依据上游 ConfigParse 的 onExcessProperty=ignore 及现有未知 websearch
+        字段可启动行为；上游公开 JSON Schema 仍可能显示未知字段告警。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-25T07:03:58.821Z
+blockers: []
+verification:
+  candidate_id: 622df10f-36a6-4c65-bb82-49fd383fcbf4
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:a56b4852-950a-446d-a163-f472e3eab5f0
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: tool-tests
+      name:
+        text: tool parallel limit tests
+        truncated: false
+      argv_display:
+        - text: test
+          truncated: false
+        - text: test/tool/websearch.test.ts
+          truncated: false
+        - text: test/tool/task.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: packages/opencode
+      status: passed
+      exit_code: 0
+      duration_ms: 10649
+    - id: typecheck
+      name:
+        text: opencode typecheck
+        truncated: false
+      argv_display:
+        - text: typecheck
+          truncated: false
+      argv_truncated: false
+      cwd_ref: packages/opencode
+      status: passed
+      exit_code: 0
+      duration_ms: 13465
+  summary:
+    text: 配置、最终模型可见描述、默认值、Schema 生成链路及上游兼容性论据均满足 A1-A20；Runtime 定向测试与 typecheck 已通过。
+    truncated: false
+  risks:
+    - text: 上游公开 JSON Schema 仍可能提示 parallel_limit 为未知字段。
+      truncated: false
+    - text: 该限制仅为模型可见建议，不会强制实际并发数。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-25T07:17:12.239Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 配置、最终模型可见描述、默认值、Schema 生成链路及上游兼容性论据均满足 A1-A20；Runtime 定向测试与 typecheck 已通过。
+      truncated: false
+    completed_at: 2026-08-25T07:17:12.239Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-25T06:05:12.373Z

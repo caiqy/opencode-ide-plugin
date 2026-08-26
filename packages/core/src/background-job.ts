@@ -28,11 +28,12 @@ type Active = {
   output?: { sequence: number; text: string }
   tail: Deferred.Deferred<void>
   promoted: Deferred.Deferred<Info>
-  onPromote?: Effect.Effect<void>
+  onPromote?: (promotion: Promotion) => Effect.Effect<void>
 }
 
 type State = {
   jobs: SynchronizedRef.SynchronizedRef<Map<string, Active>>
+  admissions: SynchronizedRef.SynchronizedRef<Set<string>>
   scope: Scope.Scope
 }
 
@@ -44,11 +45,12 @@ type FinishResult = {
 
 type PromoteResult = {
   info?: Info
+  done?: Deferred.Deferred<Info>
   promoted?: Deferred.Deferred<Info>
-  onPromote?: Effect.Effect<void>
+  onPromote?: (promotion: Promotion) => Effect.Effect<void>
 }
 
-type StartResult = { info: Info } | { info: Info; scope: Scope.Closeable; token: object }
+type StartState = { info: Info } | { info: Info; scope: Scope.Closeable; token: object }
 
 type ExtendResult =
   | { extended: false }
@@ -66,13 +68,34 @@ export type StartInput = {
   type: string
   title?: string
   metadata?: Record<string, unknown>
-  onPromote?: Effect.Effect<void>
+  cancellationKeys?: string[]
+  onPromote?: (promotion: Promotion) => Effect.Effect<void>
   run: Effect.Effect<string, unknown>
+}
+
+export type Promotion = {
+  info: Info
+  wait: Effect.Effect<Info>
+}
+
+export type StartResult = {
+  info: Info
+  started: boolean
+  owner?: object
+}
+
+export type CancelOwnedInput = {
+  id: string
+  owner: object
 }
 
 export type ExtendInput = {
   id: string
   run: Effect.Effect<string, unknown>
+}
+
+export type ExtendIfOpenInput = ExtendInput & {
+  cancellationKeys: string[]
 }
 
 export type WaitInput = {
@@ -89,7 +112,14 @@ export interface Interface {
   readonly list: () => Effect.Effect<Info[]>
   readonly get: (id: string) => Effect.Effect<Info | undefined>
   readonly start: (input: StartInput) => Effect.Effect<Info>
+  readonly startOwned: (input: StartInput) => Effect.Effect<StartResult>
+  readonly startOwnedIfOpen: (input: StartInput) => Effect.Effect<StartResult | undefined>
+  readonly admissionsOpen: (keys: string[]) => Effect.Effect<boolean>
+  readonly closeAdmissions: (keys: string[]) => Effect.Effect<void>
+  readonly openAdmissions: (keys: string[]) => Effect.Effect<void>
+  readonly cancelOwned: (input: CancelOwnedInput) => Effect.Effect<Info | undefined>
   readonly extend: (input: ExtendInput) => Effect.Effect<boolean>
+  readonly extendIfOpen: (input: ExtendIfOpenInput) => Effect.Effect<boolean>
   readonly wait: (input: WaitInput) => Effect.Effect<WaitResult>
   readonly waitForPromotion: (id: string) => Effect.Effect<Info>
   readonly promote: (id: string) => Effect.Effect<Info | undefined>
@@ -120,6 +150,7 @@ function errorText(error: unknown) {
 export const make = Effect.gen(function* () {
   const state: State = {
     jobs: yield* SynchronizedRef.make(new Map()),
+    admissions: yield* SynchronizedRef.make(new Set<string>()),
     scope: yield* Scope.Scope,
   }
 
@@ -199,7 +230,7 @@ export const make = Effect.gen(function* () {
     return snapshot(job)
   })
 
-  const start: Interface["start"] = Effect.fn("BackgroundJob.start")(function* (input) {
+  const startOwned: Interface["startOwned"] = Effect.fn("BackgroundJob.startOwned")(function* (input) {
     return yield* Effect.uninterruptibleMask((restore) =>
       Effect.gen(function* () {
         const id = input.id ?? Identifier.ascending("job")
@@ -212,7 +243,7 @@ export const make = Effect.gen(function* () {
           Effect.fnUntraced(function* (jobs) {
             const existing = jobs.get(id)
             if (existing?.info.status === "running") {
-              return [{ info: snapshot(existing) }, jobs] as readonly [StartResult, Map<string, Active>]
+              return [{ info: snapshot(existing) }, jobs] as readonly [StartState, Map<string, Active>]
             }
             const scope = yield* Scope.fork(state.scope, "parallel")
             const token = {}
@@ -235,7 +266,7 @@ export const make = Effect.gen(function* () {
               onPromote: input.onPromote,
             }
             return [{ info: snapshot(job), scope, token }, new Map(jobs).set(id, job)] as readonly [
-              StartResult,
+              StartState,
               Map<string, Active>,
             ]
           }),
@@ -248,10 +279,34 @@ export const make = Effect.gen(function* () {
             0,
             restore(input.run).pipe(Effect.ensuring(Deferred.succeed(tail, undefined))),
           )
-        return result.info
+        return { info: result.info, started: "scope" in result, ...("token" in result ? { owner: result.token } : {}) }
       }),
     )
   })
+
+  const start: Interface["start"] = (input) => startOwned(input).pipe(Effect.map((result) => result.info))
+
+  const startOwnedIfOpen: Interface["startOwnedIfOpen"] = Effect.fn("BackgroundJob.startOwnedIfOpen")(
+    function* (input) {
+      return yield* SynchronizedRef.modifyEffect(state.admissions, (closed) => {
+        if (input.cancellationKeys?.some((key) => closed.has(key))) return Effect.succeed([undefined, closed] as const)
+        return startOwned(input).pipe(Effect.map((started) => [started, closed] as const))
+      })
+    },
+  )
+
+  const admissionsOpen: Interface["admissionsOpen"] = (keys) =>
+    SynchronizedRef.get(state.admissions).pipe(Effect.map((closed) => !keys.some((key) => closed.has(key))))
+
+  const closeAdmissions: Interface["closeAdmissions"] = (keys) =>
+    SynchronizedRef.update(state.admissions, (closed) => new Set([...closed, ...keys]))
+
+  const openAdmissions: Interface["openAdmissions"] = (keys) =>
+    SynchronizedRef.update(state.admissions, (closed) => {
+      const next = new Set(closed)
+      for (const key of keys) next.delete(key)
+      return next
+    })
 
   const extend: Interface["extend"] = Effect.fn("BackgroundJob.extend")(function* (input) {
     return yield* Effect.uninterruptibleMask((restore) =>
@@ -308,56 +363,95 @@ export const make = Effect.gen(function* () {
   })
 
   const promote: Interface["promote"] = Effect.fn("BackgroundJob.promote")(function* (id) {
-    const result = yield* SynchronizedRef.modifyEffect(
-      state.jobs,
-      Effect.fnUntraced(function* (jobs) {
-        const job = jobs.get(id)
-        if (!job || job.info.status !== "running") return [{}, jobs] as readonly [PromoteResult, Map<string, Active>]
-        if (job.info.metadata?.background === true)
-          return [{ info: snapshot(job) }, jobs] as readonly [PromoteResult, Map<string, Active>]
-        const next = {
-          ...job,
-          onPromote: undefined,
-          info: {
-            ...job.info,
-            metadata: { ...job.info.metadata, background: true },
-          },
-        }
-        return [
-          { info: snapshot(next), onPromote: job.onPromote, promoted: job.promoted },
-          new Map(jobs).set(id, next),
-        ] as readonly [PromoteResult, Map<string, Active>]
+    return yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const result = yield* SynchronizedRef.modifyEffect(
+          state.jobs,
+          Effect.fnUntraced(function* (jobs) {
+            const job = jobs.get(id)
+            if (!job || job.info.status !== "running")
+              return [{}, jobs] as readonly [PromoteResult, Map<string, Active>]
+            if (job.info.metadata?.background === true)
+              return [{ info: snapshot(job) }, jobs] as readonly [PromoteResult, Map<string, Active>]
+            const next = {
+              ...job,
+              onPromote: undefined,
+              info: {
+                ...job.info,
+                metadata: { ...job.info.metadata, background: true },
+              },
+            }
+            return [
+              { info: snapshot(next), done: job.done, onPromote: job.onPromote, promoted: job.promoted },
+              new Map(jobs).set(id, next),
+            ] as readonly [PromoteResult, Map<string, Active>]
+          }),
+        )
+        if (result.info && result.promoted) yield* Deferred.succeed(result.promoted, result.info).pipe(Effect.ignore)
+        if (result.info && result.done && result.onPromote)
+          yield* restore(result.onPromote({ info: result.info, wait: Deferred.await(result.done) })).pipe(Effect.ignore)
+        return result.info
       }),
     )
-    if (result.info && result.promoted) yield* Deferred.succeed(result.promoted, result.info).pipe(Effect.ignore)
-    if (result.onPromote) yield* result.onPromote.pipe(Effect.ignore)
-    return result.info
   })
 
-  const cancel: Interface["cancel"] = Effect.fn("BackgroundJob.cancel")(function* (id) {
-    const completed_at = yield* Clock.currentTimeMillis
-    const result = yield* SynchronizedRef.modify(state.jobs, (jobs): readonly [FinishResult, Map<string, Active>] => {
-      const job = jobs.get(id)
-      if (!job) return [{}, jobs]
-      if (job.info.status !== "running") return [{ info: snapshot(job) }, jobs]
-      const next = {
-        ...job,
-        onPromote: undefined,
-        pending: 0,
-        info: {
-          ...job.info,
-          status: "cancelled" as const,
-          completed_at,
-        },
-      }
-      return [{ info: snapshot(next), done: job.done, scope: job.scope }, new Map(jobs).set(id, next)]
+  const extendIfOpen: Interface["extendIfOpen"] = Effect.fn("BackgroundJob.extendIfOpen")(function* (input) {
+    return yield* SynchronizedRef.modifyEffect(state.admissions, (closed) => {
+      if (input.cancellationKeys.some((key) => closed.has(key))) return Effect.succeed([false, closed] as const)
+      return extend(input).pipe(Effect.map((extended) => [extended, closed] as const))
     })
-    if (result.info && result.done) yield* Deferred.succeed(result.done, result.info).pipe(Effect.ignore)
-    if (result.scope) yield* Scope.close(result.scope, Exit.void)
-    return result.info
   })
 
-  return Service.of({ list, get, start, extend, wait, waitForPromotion, promote, cancel })
+  const cancelWith = Effect.fn("BackgroundJob.cancelWith")(function* (id: string, owner?: object) {
+    return yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const completed_at = yield* Clock.currentTimeMillis
+        const result = yield* SynchronizedRef.modify(
+          state.jobs,
+          (jobs): readonly [FinishResult, Map<string, Active>] => {
+            const job = jobs.get(id)
+            if (!job || (owner && job.token !== owner)) return [{}, jobs]
+            if (job.info.status !== "running") return [{ info: snapshot(job) }, jobs]
+            const next = {
+              ...job,
+              onPromote: undefined,
+              pending: 0,
+              info: {
+                ...job.info,
+                status: "cancelled" as const,
+                completed_at,
+              },
+            }
+            return [{ info: snapshot(next), done: job.done, scope: job.scope }, new Map(jobs).set(id, next)]
+          },
+        )
+        if (result.info && result.done) yield* Deferred.succeed(result.done, result.info).pipe(Effect.ignore)
+        if (result.scope) yield* Scope.close(result.scope, Exit.void)
+        return result.info
+      }),
+    )
+  })
+
+  const cancel: Interface["cancel"] = (id) => cancelWith(id)
+  const cancelOwned: Interface["cancelOwned"] = (input) => cancelWith(input.id, input.owner)
+
+  return Service.of({
+    list,
+    get,
+    start,
+    startOwned,
+    startOwnedIfOpen,
+    admissionsOpen,
+    closeAdmissions,
+    openAdmissions,
+    cancelOwned,
+    extend,
+    extendIfOpen,
+    wait,
+    waitForPromotion,
+    promote,
+    cancel,
+  })
 })
 
 const layer = Layer.effect(Service, make)

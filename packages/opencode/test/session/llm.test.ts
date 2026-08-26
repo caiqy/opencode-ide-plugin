@@ -174,6 +174,34 @@ describe("session.llm.hasToolCalls", () => {
   })
 })
 
+describe("session.llm.workflow model", () => {
+  test("isolates workflow request state", () => {
+    const source = {
+      sessionID: "session-a",
+      sessionPreapprovedTools: ["read"],
+      workflowOptions: { systemPrompt: "first" },
+      activeClients: new Set(["first"]),
+    }
+    const copy = LLM.cloneWorkflowModel(source)
+
+    copy.sessionID = "session-b"
+    copy.sessionPreapprovedTools.push("write")
+    copy.workflowOptions.systemPrompt = "second"
+    copy.activeClients.add("second")
+
+    expect(source.sessionID).toBe("session-a")
+    expect(source.sessionPreapprovedTools).toEqual(["read"])
+    expect(source.workflowOptions.systemPrompt).toBe("first")
+    expect(source.activeClients).toEqual(new Set(["first"]))
+  })
+
+  test("uses an empty string for an empty workflow tool result", () => {
+    expect(LLM.workflowToolOutput(undefined)).toBe("")
+    expect(LLM.workflowToolOutput({})).toBe("")
+    expect(LLM.workflowToolOutput({ output: "done" })).toBe("done")
+  })
+})
+
 describe("session.llm.ai-sdk adapter", () => {
   type AISDKAdapterEvent = Parameters<typeof LLMAISDK.toLLMEvents>[1]
 

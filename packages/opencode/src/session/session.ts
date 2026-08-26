@@ -660,7 +660,10 @@ const layer: Layer.Layer<
               Effect.catchCause(() => Effect.succeed(false)),
             )
 
-            if (hasInstance) yield* cancelBackgroundJobs(background, sessionID)
+            if (hasInstance) {
+              yield* background.closeAdmissions([sessionID])
+              yield* cancelBackgroundJobs(background, sessionID)
+            }
             const kids = yield* children(sessionID)
             for (const child of kids) {
               yield* remove(child.id)

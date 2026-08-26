@@ -22035,6 +22035,20 @@
             "type": "integer",
             "minimum": 0
           },
+          "parallel_limit": {
+            "type": "object",
+            "properties": {
+              "websearch": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "subagent": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
           "username": {
             "type": "string"
           },
@@ -22233,6 +22247,10 @@
                   "pattern": "^(openai|anthropic|xai)\\/.+"
                 },
                 "description": "Ordered provider/model references used for native web search"
+              },
+              "mode": {
+                "type": "string",
+                "enum": ["responses", "alpha-search"]
               }
             },
             "required": ["models"],

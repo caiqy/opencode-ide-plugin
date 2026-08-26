@@ -61,6 +61,65 @@ describe("BackgroundJob", () => {
     }).pipe(Effect.provide(jobsLayer)),
   )
 
+  it.live("reports which concurrent start created the job", () =>
+    Effect.gen(function* () {
+      const jobs = yield* BackgroundJob.Service
+      const id = "job_owned"
+      const [first, second] = yield* Effect.all(
+        [
+          jobs.startOwned({ id, type: "test", run: Effect.never }),
+          jobs.startOwned({ id, type: "test", run: Effect.never }),
+        ],
+        { concurrency: "unbounded" },
+      )
+
+      expect([first, second].filter((item) => item.started)).toHaveLength(1)
+      expect(first.info.id).toBe(id)
+      expect(second.info.id).toBe(id)
+      yield* jobs.cancel(id)
+    }).pipe(Effect.provide(jobsLayer)),
+  )
+
+  it.live("does not cancel a newer job with a stale owner", () =>
+    Effect.gen(function* () {
+      const jobs = yield* BackgroundJob.Service
+      const id = "job_reused"
+      const first = yield* jobs.startOwned({ id, type: "test", run: Effect.never })
+
+      yield* jobs.cancel(id)
+      const second = yield* jobs.startOwned({ id, type: "test", run: Effect.never })
+      yield* jobs.cancelOwned({ id, owner: first.owner! })
+
+      expect(first.started).toBe(true)
+      expect(second.started).toBe(true)
+      expect((yield* jobs.get(id))?.status).toBe("running")
+      yield* jobs.cancel(id)
+    }).pipe(Effect.provide(jobsLayer)),
+  )
+
+  it.live("keeps promotion observation bound to its job generation", () =>
+    Effect.gen(function* () {
+      const jobs = yield* BackgroundJob.Service
+      const id = "job_promoted"
+      const latch = yield* Deferred.make<void>()
+      const promoted = yield* Deferred.make<Effect.Effect<BackgroundJob.Info>>()
+      yield* jobs.start({
+        id,
+        type: "test",
+        run: Deferred.await(latch).pipe(Effect.as("first")),
+        onPromote: ({ wait }) => Deferred.succeed(promoted, wait).pipe(Effect.asVoid),
+      })
+
+      yield* jobs.promote(id)
+      yield* Deferred.succeed(latch, undefined)
+      expect((yield* jobs.wait({ id })).info?.output).toBe("first")
+
+      yield* jobs.start({ id, type: "test", run: Effect.never })
+      expect((yield* yield* Deferred.await(promoted)).output).toBe("first")
+      yield* jobs.cancel(id)
+    }).pipe(Effect.provide(jobsLayer)),
+  )
+
   it.live("increments pending work before starting immediately settling extensions", () =>
     Effect.gen(function* () {
       const jobs = yield* BackgroundJob.Service
@@ -83,6 +142,24 @@ describe("BackgroundJob", () => {
           })
         }),
       )
+    }).pipe(Effect.provide(jobsLayer)),
+  )
+
+  it.live("does not extend jobs after their admission closes", () =>
+    Effect.gen(function* () {
+      const jobs = yield* BackgroundJob.Service
+      const job = yield* jobs.start({ id: "job_closed_admission", type: "test", run: Effect.never })
+
+      yield* jobs.closeAdmissions(["session"])
+
+      expect(
+        yield* jobs.extendIfOpen({
+          id: job.id,
+          cancellationKeys: ["session"],
+          run: Effect.succeed("late"),
+        }),
+      ).toBe(false)
+      yield* jobs.cancel(job.id)
     }).pipe(Effect.provide(jobsLayer)),
   )
 
