@@ -191,7 +191,7 @@ describe("PartOpenProvider", () => {
     })
   })
 
-  it("bash 工具只展开最后一个，新增时自动折叠上一个", async () => {
+  it("bash 工具默认收起且新增时不改变用户手动展开状态", async () => {
     const user = userEvent.setup()
     const { rerender } = render(
       <PartOpenProvider
@@ -207,7 +207,7 @@ describe("PartOpenProvider", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("b1")).toHaveTextContent("closed")
-      expect(screen.getByTestId("b2")).toHaveTextContent("open")
+      expect(screen.getByTestId("b2")).toHaveTextContent("closed")
       expect(screen.getByTestId("t1")).toHaveTextContent("open")
     })
 
@@ -215,7 +215,7 @@ describe("PartOpenProvider", () => {
     await user.click(screen.getByRole("button", { name: "open-b1" }))
     expect(screen.getByTestId("b1")).toHaveTextContent("open")
 
-    // 新 bash b3 出现 → b2 自动折叠，b1 保持用户手动展开
+    // 新 bash b3 出现不应改变既有展开状态
     rerender(
       <PartOpenProvider
         items={[
@@ -232,7 +232,7 @@ describe("PartOpenProvider", () => {
     await waitFor(() => {
       expect(screen.getByTestId("b1")).toHaveTextContent("open")
       expect(screen.getByTestId("b2")).toHaveTextContent("closed")
-      expect(screen.getByTestId("b3")).toHaveTextContent("open")
+      expect(screen.getByTestId("b3")).toHaveTextContent("closed")
       expect(screen.getByTestId("t1")).toHaveTextContent("open")
     })
   })
