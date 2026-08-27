@@ -103,8 +103,12 @@ const AlphaSearchResponse = Schema.Struct({
 })
 
 export function alphaSearchUrl(model: Provider.Model, provider: Provider.Info) {
-  const baseURL = model.api.url || (typeof provider.options.baseURL === "string" ? provider.options.baseURL : undefined)
+  const baseURL = typeof provider.options.baseURL === "string" ? provider.options.baseURL : model.api.url
   return baseURL ? `${baseURL.replace(/\/+$/, "")}/alpha/search` : undefined
+}
+
+export function alphaSearchApiKey(provider: Provider.Info) {
+  return typeof provider.options.apiKey === "string" ? provider.options.apiKey : provider.key
 }
 
 export function nativeSearchTool(providerID: string) {
@@ -177,7 +181,7 @@ function callAlphaSearch(
     if (parsed.providerID !== "openai") return yield* Effect.fail(new Error("Alpha search only supports OpenAI"))
     const model = yield* provider.getModel(parsed.providerID, parsed.modelID)
     const info = yield* provider.getProvider(parsed.providerID)
-    const apiKey = info.key ?? (typeof info.options.apiKey === "string" ? info.options.apiKey : undefined)
+    const apiKey = alphaSearchApiKey(info)
     if (!apiKey) return yield* Effect.fail(new Error("OpenAI alpha search requires credentials"))
     const body = buildAlphaSearchRequest({ id: sessionID, model: model.api.id, query })
     const url = alphaSearchUrl(model, info)

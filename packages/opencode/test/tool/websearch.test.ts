@@ -30,6 +30,23 @@ describe("websearch provider", () => {
     ).toBe("https://sub.200911.xyz/v1/alpha/search")
   })
 
+  test("prefers the provider base URL over the model URL", () => {
+    expect(
+      WebSearch.alphaSearchUrl(
+        ProviderTest.model({ api: { id: "gpt-5.6-luna", url: "https://api.openai.com/v1", npm: "@ai-sdk/openai" } }),
+        ProviderTest.info({ options: { baseURL: "https://sub.200911.xyz/v1" } }),
+      ),
+    ).toBe("https://sub.200911.xyz/v1/alpha/search")
+  })
+
+  test("prefers the configured API key over the provider key", () => {
+    expect(
+      WebSearch.alphaSearchApiKey(
+        ProviderTest.info({ key: "account-key", options: { apiKey: "configured-key" } }),
+      ),
+    ).toBe("configured-key")
+  })
+
   test("selects a stable provider per session", () => {
     expect(WebSearch.selectWebSearchProvider(SESSION_ID)).toBe(WebSearch.selectWebSearchProvider(SESSION_ID))
   })
