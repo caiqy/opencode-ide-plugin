@@ -212,14 +212,6 @@ body {
   animation: model-selection-breathe 1.6s ease-in-out infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .model-selection-dot-breathe,
-  .tool-header-running svg.animate-spin,
-  .tool-header-running-text {
-    animation: none;
-  }
-}
-
 /* Hide scrollbar for tab bar */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
