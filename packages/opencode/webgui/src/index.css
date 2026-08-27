@@ -181,6 +181,11 @@ body {
   --tool-header-running-base-color: #374151;
   --tool-header-running-edge-color: #89919b;
   display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
   position: relative;
   color: transparent;
   background-color: var(--tool-header-running-base-color);
