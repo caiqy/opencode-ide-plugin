@@ -1,4 +1,5 @@
 import { $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isTextNode, type TextNode } from "lexical"
+import { $isAttachmentNode } from "../../attachment/AttachmentNode"
 
 export const TRIGGER_CHAR = "/"
 const WHITESPACE_REGEX = /\s/
@@ -125,6 +126,7 @@ function hasNonWhitespaceBeforeOffset(node: TextNode, offset: number): boolean {
         return text.replace(ZERO_WIDTH_REGEX, "").trim().length > 0
       }
 
+      if ($isAttachmentNode(child)) continue
       const raw = child.getTextContent ? child.getTextContent() : ""
       const normalized = raw.replace(ZERO_WIDTH_REGEX, "")
       if (normalized.trim().length > 0) return true
