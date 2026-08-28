@@ -30,6 +30,12 @@ export const WebSearch = Schema.Struct({
   description: "Cross-provider native web search configuration",
 })
 
+export const ProviderRetry = Schema.Struct({
+  max_retries: NonNegativeInt.annotate({
+    description: "Maximum Session retries after the initial provider request (default: 10; 0 disables retries)",
+  }),
+}).annotate({ description: "Session provider retry configuration" })
+
 export const WellKnown = Schema.Struct({
   config: Schema.optional(Schema.Json),
   remote_config: Schema.optional(Schema.Json),
@@ -108,6 +114,7 @@ export const Info = Schema.Struct({
       }),
     }),
   ).annotate({ description: "Tool execution queue limits" }),
+  provider_retry: Schema.optional(ProviderRetry),
   username: Schema.optional(Schema.String).annotate({
     description: "Custom username to display in conversations instead of system username",
   }),

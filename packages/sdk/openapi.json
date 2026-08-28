@@ -22049,6 +22049,19 @@
             },
             "additionalProperties": false
           },
+          "provider_retry": {
+            "type": "object",
+            "properties": {
+              "max_retries": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Maximum Session retries after the initial provider request (default: 10; 0 disables retries)"
+              }
+            },
+            "required": ["max_retries"],
+            "additionalProperties": false,
+            "description": "Session provider retry configuration"
+          },
           "username": {
             "type": "string"
           },

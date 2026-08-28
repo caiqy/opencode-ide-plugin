@@ -87,6 +87,16 @@ describe("Config", () => {
     }),
   )
 
+  it.effect("validates and migrates provider retry configuration", () =>
+    Effect.sync(() => {
+      const info = Schema.decodeUnknownSync(ConfigV1.Info)({ provider_retry: { max_retries: 10 } })
+      expect(info.provider_retry?.max_retries).toBe(10)
+      expect(ConfigMigrateV1.migrate(info).provider_retry?.max_retries).toBe(10)
+      expect(() => Schema.decodeUnknownSync(ConfigV1.Info)({ provider_retry: { max_retries: -1 } })).toThrow()
+      expect(() => Schema.decodeUnknownSync(ConfigV1.Info)({ provider_retry: { max_retries: 1.5 } })).toThrow()
+    }),
+  )
+
   it.effect("migrates v1 provider setup options into AISDK settings", () =>
     Effect.sync(() => {
       const migrated = ConfigMigrateV1.migrate({

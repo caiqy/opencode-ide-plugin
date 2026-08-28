@@ -220,6 +220,51 @@ describe("tool.task", () => {
     },
   )
 
+  it.instance(
+    "execute exposes provider retry config to the task child session",
+    () =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const config = yield* Config.Service
+        const { chat, assistant } = yield* seed()
+        const tool = yield* TaskTool
+        const def = yield* tool.init()
+        let seen = false
+        const promptOps: TaskPromptOps = {
+          cancel: () => Effect.void,
+          resolvePromptParts: (template) => Effect.succeed([{ type: "text" as const, text: template }]),
+          prompt: (input) =>
+            Effect.gen(function* () {
+              expect((yield* sessions.get(input.sessionID).pipe(Effect.orDie)).parentID).toBe(chat.id)
+              expect((yield* config.get()).provider_retry?.max_retries).toBe(0)
+              seen = true
+              return reply(input, "done")
+            }),
+        }
+
+        yield* def.execute(
+          {
+            description: "inspect retry",
+            prompt: "check retry config",
+            subagent_type: "general",
+          },
+          {
+            sessionID: chat.id,
+            messageID: assistant.id,
+            agent: "build",
+            abort: new AbortController().signal,
+            extra: { promptOps },
+            messages: [],
+            metadata: () => Effect.void,
+            ask: () => Effect.void,
+          },
+        )
+
+        expect(seen).toBe(true)
+      }),
+    { config: { provider_retry: { max_retries: 0 } } },
+  )
+
   it.instance("execute resumes an existing task session from task_id", () =>
     Effect.gen(function* () {
       const sessions = yield* Session.Service

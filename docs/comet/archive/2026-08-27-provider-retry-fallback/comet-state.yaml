@@ -1,0 +1,474 @@
+schema: comet.native.v4
+name: provider-retry-fallback
+language: zh-CN
+phase: archive
+status: done
+state_version: 10
+brief: brief.md
+spec_changes:
+  - capability: provider-retry
+    operation: modify
+    source: specs/provider-retry/spec.md
+workspace:
+  isolation: current
+  change_branch: ide-plugin
+  target_branch: ide-plugin
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 2
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 1
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：普通对话或 task/subagent 子 Session 在原 Session retry 可处理的错误、HTTP 429、明确
+      rate-limit 或明确 concurrency-limit 失败后，均通过同一个 `SessionRetry.policy`
+      重试；adapter、SDK、executor 和 task 不建立额外 retry loop。
+    result: passed
+    reason:
+      text: 普通与 child Session 共用 SessionRetry.policy，TaskTool 无独立 retry loop。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：`provider_retry.max_retries` 是非负整数，表示初始请求之外允许的最大重试次数；未配置默认 10，配置 0
+      不执行重试，配置 10 时最多产生 11 次 provider 请求。
+    result: passed
+    reason:
+      text: 非负整数配置及默认 10、0、自定义预算语义正确。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：无有效 Retry-After 时，第 N 次重试使用 `2 秒 × 2^(N-1)` 的基础指数退避并保留现有 0–25%
+      jitter；本地计算的单次等待封顶 120 秒。
+    result: passed
+    reason:
+      text: 2 秒指数、0-25% jitter 与 120 秒本地封顶正确。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：合法 `retry-after-ms` 或 `Retry-After` 继续优先于本地指数退避，并可要求超过 120 秒的等待；缺失或无效
+      header 继续回退本地退避。
+    result: passed
+    reason:
+      text: 合法数值/HTTP-date hint 优先且可超过 120 秒，ISO/过期/非法值 fallback。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：新增 rate/concurrency/429 分类不得把 insufficient quota、认证、权限、context overflow
+      或其他现有 permanent failure 改为 retryable；现有非目标错误的分类和展示保持兼容。
+    result: passed
+    reason:
+      text: context/quota、401/403 与 auth/permission permanent error 优先否决。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：配置只作用于 `SessionRetry.policy`；V2 RequestExecutor、model-backed search 和
+      MCP websearch 的请求次数、等待与错误处理和 Git 基线一致。
+    result: passed
+    reason:
+      text: Runtime scoped diff 证明 RequestExecutor 和 websearch/MCP 非目标路径零差异。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：上一轮未提交的 HTTP 429 专用实现、V2/search 配置传递、递归 Session 删除中断和相关测试/生成差异被撤回；独立
+      `26.8.2706` release 文件保持不变。
+    result: passed
+    reason:
+      text: 旧专用实现已撤回，26.8.2706 release 保留且检查通过。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: A8：V1/V2 Config schema、V1→V2 迁移、OpenAPI/SDK 类型和全局 JSONC 均接受
+      `provider_retry.max_retries`；描述明确默认 10 且只控制 Session retry。
+    result: passed
+    reason:
+      text: V1/V2 schema、迁移、OpenAPI、SDK 与全局 JSONC 配置贯通。
+      truncated: false
+  - id: A9
+    source: brief.md
+    text: A9：确定性测试覆盖默认/0/自定义次数、次数耗尽、指数退避、jitter、120 秒本地封顶、长
+      Retry-After、rate/concurrency/429、permanent failure 否决和 task 子 Session
+      继承，不调用真实 provider。
+    result: passed
+    reason:
+      text: 确定性测试覆盖预算、退避、分类、否决和 task child 继承。
+      truncated: false
+  - id: A10
+    source: specs/provider-retry/spec.md
+    text: legacy Session 普通对话以及 task/subagent 子 Session 必须通过现有 `SessionRetry.policy`
+      处理 provider retry。现有 retryable error、HTTP 429、明确的 rate-limit 和明确的
+      concurrency-limit 必须进入同一个 retry policy；AI SDK adapter、HTTP transport、V2
+      RequestExecutor、model-backed search 和 task 工具不得为这些错误增加第二个 retry loop
+      或独立预算。
+    result: passed
+    reason:
+      text: Processor 是唯一 Session retry owner，无第二套预算。
+      truncated: false
+  - id: A11
+    source: specs/provider-retry/spec.md
+    text: "`provider_retry.max_retries` 使用非负整数配置 `SessionRetry.policy` 在初始 provider
+      请求之外允许的最大重试次数。未配置时默认 10，配置 0 时不重试，配置 N 时一次 provider turn 最多执行 N+1 次
+      provider 请求。该配置不控制 V2 RequestExecutor、V1/V2 model-backed search 或未配置 model
+      的 Exa/Parallel MCP websearch。"
+    result: passed
+    reason:
+      text: Processor 将共享配置传给 policy，N+1 请求语义与 child 0 配置集成正确。
+      truncated: false
+  - id: A12
+    source: specs/provider-retry/spec.md
+    text: 无有效 provider 等待提示时，第 N 次重试的基础等待为 `2 秒 × 2^(N-1)`，并保留 0–25%
+      jitter。本地计算的单次等待最多 120 秒。合法 `retry-after-ms`、`Retry-After` 十进制秒数或未来
+      HTTP-date 优先于本地指数退避；provider 明确要求的等待可以超过 120 秒。缺失、无效或过期的等待提示回退到本地指数退避。
+    result: passed
+    reason:
+      text: 严格 HTTP-date、ISO fallback、长 hint 与本地退避均有源码和测试证据。
+      truncated: false
+  - id: A13
+    source: specs/provider-retry/spec.md
+    text: rate-limit、concurrency-limit 与 HTTP 429 只补充为原 retryable
+      分类，不建立专用等待、固定最短等待、累计等待上限或特殊重试状态。明确的 `Concurrency limit exceeded for user,
+      please retry later` 与 account 等价形式必须可重试；匹配必须足够具体，不得因普通业务文本包含 concurrency 或
+      limit 就触发重试。
+    result: passed
+    reason:
+      text: 429/rate/精确 concurrency 仅扩充既有分类，反例不匹配。
+      truncated: false
+  - id: A14
+    source: specs/provider-retry/spec.md
+    text: 现有 permanent failure 判定拥有优先级。insufficient quota、认证、权限、context overflow
+      和其他现有不可重试错误不得因同时包含 429、rate 或 concurrency 文本而变为 retryable。现有
+      provider-specific 非目标规则，包括 OpenAI 404、5xx、网络错误、stream timeout、Go usage
+      limit action 和错误展示，除新增配置上限外保持兼容。
+    result: passed
+    reason:
+      text: permanent failure 优先，现有 provider-specific 行为保持通过。
+      truncated: false
+  - id: A15
+    source: specs/provider-retry/spec.md
+    text: Session retry 的状态发布、取消和错误投影继续使用现有流程。配置只改变允许的最大 retry 次数；本 change 不新增 V2
+      Session retry 状态、provider/model failover、部分流回滚、tool 幂等或副作用去重。
+    result: passed
+    reason:
+      text: 状态、取消、投影和 cleanup 沿用原流程。
+      truncated: false
+  - id: A16
+    source: specs/provider-retry/spec.md
+    text: 实现必须将 `provider_retry.max_retries` 加入 V1/V2 Config schema、V1→V2 配置迁移和公开
+      JSON Schema/OpenAPI/SDK 类型。配置描述必须明确默认 10 且只控制 Session retry。不得新增第三方依赖。
+    result: passed
+    reason:
+      text: 公开契约与生成产物完整，无新增依赖。
+      truncated: false
+  - id: A17
+    source: specs/provider-retry/spec.md
+    text: 上一版未提交的 HTTP 429 专用实现不得作为本 capability 的组成部分：V2 executor 专用配置、model-backed
+      search 统一预算、固定 10 秒最短等待、429 累计等待规则、递归 Session 删除中断和相关专用测试必须回到 Git 基线。独立
+      release 版本改动、用户全局 `opencode.jsonc` 与 Comet 历史产物不属于回退范围。
+    result: passed
+    reason:
+      text: 五个非目标源文件 scoped diff 为零，release 内容同步。
+      truncated: false
+  - id: A18
+    source: specs/provider-retry/spec.md
+    text: 验收必须使用确定性 fake error/provider 和 TestClock 覆盖：默认 10、配置 0、自定义次数、N+1
+      请求上限、次数耗尽、2 秒指数退避、0–25% jitter、120 秒本地单次封顶、超过 120 秒的合法 Retry-After、无效
+      Retry-After fallback、HTTP 429、rate-limit、user/account
+      concurrency-limit、quota/auth/context/permanent 否决，以及 task/subagent 只继承子
+      Session 预算。还必须通过差异检查和定向测试证明 V2 RequestExecutor、model-backed search、MCP
+      websearch、Session 删除和独立 release 文件未被本 capability 改写。真实 provider 调用不作为验收前提。
+    result: passed
+    reason:
+      text: Runtime 测试、TestClock、真实 TaskTool child、Processor child 与基线检查全部通过。
+      truncated: false
+builder_handoff:
+  candidate_id: d7d85157-ce6f-4aa6-b36f-3d544d138b11
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:e827a579-9a66-4a0d-88e0-10704c40e1c2
+  iteration: 2
+  summary:
+    text: 修复 iteration 1 验收问题：Retry-After 日期仅接受规范 HTTP-date；401/403 及结构化
+      authentication/permission code 在 rate/concurrency/429 fallback
+      前永久否决。将预算策略测试切到 TestClock，并新增真实 TaskTool 创建 child Session 后继承
+      provider_retry 配置的测试。补充 scoped git diff 基线证据，确认 V2
+      RequestExecutor、core/opencode/MCP websearch 和 Session 删除源文件零差异。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+  checks:
+    - name:
+        text: retry/provider error tests
+        truncated: false
+      result: passed
+      note:
+        text: 100 passed; includes TestClock policy, ISO date fallback, 401/403 and
+          auth/permission+429 veto
+        truncated: false
+    - name:
+        text: TaskTool tests
+        truncated: false
+      result: passed
+      note:
+        text: 36 passed; actual TaskTool child creation exposes
+          provider_retry.max_retries
+        truncated: false
+    - name:
+        text: SessionProcessor tests
+        truncated: false
+      result: passed
+      note:
+        text: 22 passed; child Session max_retries 0 and concurrency integration
+          included
+        truncated: false
+    - name:
+        text: opencode typecheck
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: non-target baseline scoped diff
+        truncated: false
+      result: passed
+      note:
+        text: zero diff for RequestExecutor, core/opencode/MCP websearch, and session.ts
+          deletion path
+        truncated: false
+    - name:
+        text: git diff --check
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: previous Runtime checks
+        truncated: false
+      result: passed
+      note:
+        text: Core config test/typecheck, SDK typecheck, client generated check,
+          release-content check all passed in iteration 1 and related files were
+          unchanged in repair
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  submitted_at: 2026-08-27T17:11:00.444Z
+blockers: []
+verification:
+  candidate_id: d7d85157-ce6f-4aa6-b36f-3d544d138b11
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:27b344ff-87cf-48a4-87e6-bbfa1a146600
+  iteration: 2
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: opencode-tests
+      name:
+        text: Provider retry, Processor, and TaskTool tests
+        truncated: false
+      argv_display:
+        - text: test
+          truncated: false
+        - text: test/session/retry.test.ts
+          truncated: false
+        - text: test/provider/error.test.ts
+          truncated: false
+        - text: test/session/processor-effect.test.ts
+          truncated: false
+        - text: test/tool/task.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: packages/opencode
+      status: passed
+      exit_code: 0
+      duration_ms: 36700
+    - id: core-config-tests
+      name:
+        text: Core config tests
+        truncated: false
+      argv_display:
+        - text: test
+          truncated: false
+        - text: test/config/config.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: packages/core
+      status: passed
+      exit_code: 0
+      duration_ms: 2073
+    - id: opencode-typecheck
+      name:
+        text: opencode typecheck
+        truncated: false
+      argv_display:
+        - text: typecheck
+          truncated: false
+      argv_truncated: false
+      cwd_ref: packages/opencode
+      status: passed
+      exit_code: 0
+      duration_ms: 11627
+    - id: core-typecheck
+      name:
+        text: Core typecheck
+        truncated: false
+      argv_display:
+        - text: typecheck
+          truncated: false
+      argv_truncated: false
+      cwd_ref: packages/core
+      status: passed
+      exit_code: 0
+      duration_ms: 5038
+    - id: sdk-typecheck
+      name:
+        text: Legacy JavaScript SDK typecheck
+        truncated: false
+      argv_display:
+        - text: typecheck
+          truncated: false
+      argv_truncated: false
+      cwd_ref: packages/sdk/js
+      status: passed
+      exit_code: 0
+      duration_ms: 402
+    - id: client-generated
+      name:
+        text: Client generated files are current
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: check:generated
+          truncated: false
+      argv_truncated: false
+      cwd_ref: packages/client
+      status: passed
+      exit_code: 0
+      duration_ms: 2056
+    - id: non-target-diff
+      name:
+        text: Non-target retry paths match Git baseline
+        truncated: false
+      argv_display:
+        - text: diff
+          truncated: false
+        - text: --exit-code
+          truncated: false
+        - text: --
+          truncated: false
+        - text: packages/llm/src/route/executor.ts
+          truncated: false
+        - text: packages/core/src/tool/websearch.ts
+          truncated: false
+        - text: packages/opencode/src/tool/websearch.ts
+          truncated: false
+        - text: packages/opencode/src/tool/mcp-websearch.ts
+          truncated: false
+        - text: packages/opencode/src/session/session.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 124
+    - id: release-content
+      name:
+        text: Release content is in sync
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: release-content:check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 256
+    - id: diff-check
+      name:
+        text: Git diff whitespace check
+        truncated: false
+      argv_display:
+        - text: diff
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 209
+  summary:
+    text: candidate d7d85157-ce6f-4aa6-b36f-3d544d138b11 满足 A1-A18，可通过 iteration 2
+      attempt 1。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-08-27T17:17:56.249Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A4
+      - A5
+      - A6
+      - A7
+      - A9
+      - A12
+      - A14
+      - A17
+      - A18
+    summary:
+      text: 配置 owner、预算、退避上限、schema/SDK 主体正确；需修复严格 Retry-After、认证/权限永久失败优先级，并补足强制验收证据。
+      truncated: false
+    completed_at: 2026-08-27T17:06:17.295Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: candidate d7d85157-ce6f-4aa6-b36f-3d544d138b11 满足 A1-A18，可通过 iteration 2
+        attempt 1。
+      truncated: false
+    completed_at: 2026-08-27T17:17:56.249Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-27T15:49:42.474Z

@@ -95,6 +95,26 @@ describe("ProviderError.parseStreamError", () => {
     })
   })
 
+  test("recognizes permanent errors without a top-level error event type", () => {
+    for (const error of [
+      { error: { type: "insufficient_quota" } },
+      { error: "insufficient_quota" },
+      { code: "insufficient_quota" },
+    ]) {
+      expect(ProviderError.parseStreamError(error)).toMatchObject({ type: "api_error", isRetryable: false })
+    }
+  })
+
+  test.each(["authentication_error", "permission_denied", "unauthorized", "forbidden"])(
+    "recognizes permanent auth and permission code %s",
+    (code) => {
+      expect(ProviderError.parseStreamError({ type: "error", error: { code } })).toMatchObject({
+        type: "api_error",
+        isRetryable: false,
+      })
+    },
+  )
+
   test("retries transient upstream errors", () => {
     expect(
       ProviderError.parseStreamError({

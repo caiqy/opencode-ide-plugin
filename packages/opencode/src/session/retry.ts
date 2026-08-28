@@ -29,9 +29,9 @@ type RetryableSignal = Retryable | "stream_timeout"
 export const RETRY_INITIAL_DELAY = 2000
 export const RETRY_BACKOFF_FACTOR = 2
 export const RETRY_JITTER_FACTOR = 0.25
-export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
+export const RETRY_MAX_DELAY_NO_HEADERS = 120_000 // 2 minutes
 export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
-export const RETRY_MAX_RETRIES = 5
+export const RETRY_MAX_RETRIES = 10
 
 const RETRYABLE_MESSAGE_PATTERNS = [
   /(?:\b(?:http(?: status)?|status(?: code)?|error(?: code)?)\s*[:=]?\s*(?:429|500|502|503|504|524)\b|^(?:429|500|502|503|504|524)(?:\s|$))/i,
@@ -40,6 +40,7 @@ const RETRYABLE_MESSAGE_PATTERNS = [
   /terminated|fetch failed|failed to fetch|network error|upstream connect|connection error|connection refused|connection lost|socket connection was closed|socket hang up|reset before headers|getaddrinfo|enotfound|eai_again|econnrefused|econnreset|etimedout/i,
   /^timeout$|\b(?:request|response|connection|network|stream|read) (?:timeout|timed out|time out)\b/i,
   /try your request again|retry your request|resource exhausted|resource_exhausted/i,
+  /(?:\bconcurrency limit exceeded for (?:user|account)(?:,? please retry later)?\b|concurrency[_-]limit[_-]exceeded)/i,
 ]
 
 function cap(ms: number) {
@@ -52,31 +53,31 @@ export function delay(attempt: number, error?: SessionV1.APIError, random = Math
     if (headers) {
       const retryAfterMs = headers["retry-after-ms"]
       if (retryAfterMs) {
-        const parsedMs = Number.parseFloat(retryAfterMs)
-        if (!Number.isNaN(parsedMs)) {
-          return cap(parsedMs)
+        const value = retryAfterMs.trim()
+        if (/^\d+(?:\.\d+)?$/.test(value)) {
+          const parsedMs = Number(value)
+          if (Number.isFinite(parsedMs)) return cap(Math.ceil(parsedMs))
         }
       }
 
       const retryAfter = headers["retry-after"]
       if (retryAfter) {
-        const parsedSeconds = Number.parseFloat(retryAfter)
-        if (!Number.isNaN(parsedSeconds)) {
-          // convert seconds to milliseconds
-          return cap(Math.ceil(parsedSeconds * 1000))
+        const value = retryAfter.trim()
+        if (/^\d+$/.test(value)) {
+          const parsedSeconds = Number(value)
+          if (Number.isFinite(parsedSeconds)) return cap(parsedSeconds * 1000)
         }
         // Try parsing as HTTP date format
-        const parsed = Date.parse(retryAfter) - Date.now()
-        if (!Number.isNaN(parsed) && parsed > 0) {
+        const date = Date.parse(value)
+        const parsed = date - Date.now()
+        if (!Number.isNaN(date) && new Date(date).toUTCString() === value && parsed > 0) {
           return cap(Math.ceil(parsed))
         }
       }
-
-      return cap(exponential(attempt, random))
     }
   }
 
-  return cap(Math.min(exponential(attempt, random), RETRY_MAX_DELAY_NO_HEADERS))
+  return Math.min(exponential(attempt, random), RETRY_MAX_DELAY_NO_HEADERS)
 }
 
 function exponential(attempt: number, random: number) {
@@ -89,6 +90,13 @@ export function retryable(error: Err, provider: string) {
   if (SessionV1.ContextOverflowError.isInstance(error)) return undefined
   if (SessionV1.APIError.isInstance(error)) {
     if (
+      [error.data.responseBody, error.data.message].some(
+        (item) => typeof item === "string" && /\binsufficient_quota\b/i.test(item),
+      )
+    )
+      return undefined
+    if (error.data.statusCode === 401 || error.data.statusCode === 403) return undefined
+    if (
       [error.data.responseBody, error.data.message]
         .map(ProviderError.parseStreamError)
         .some((item) => item?.type === "context_overflow" || (item?.type === "api_error" && !item.isRetryable))
@@ -100,6 +108,7 @@ export function retryable(error: Err, provider: string) {
     // even when the provider SDK doesn't explicitly mark them as retryable.
     if (
       !error.data.isRetryable &&
+      status !== 429 &&
       !(status !== undefined && status >= 500) &&
       !matchesRetryableMessage(error.data.message) &&
       !matchesRetryableMessage(error.data.responseBody)
@@ -219,6 +228,7 @@ function parseJSON(value: unknown) {
 
 export function policy(opts: {
   provider: string
+  maxRetries?: number
   parse: (error: unknown) => Err
   set: (input: { attempt: number; message: string; action?: Retryable["action"]; next: number }) => Effect.Effect<void>
 }) {
@@ -227,7 +237,7 @@ export function policy(opts: {
       const error = opts.parse(meta.input)
       const retry: RetryableSignal | undefined = retryable(error, opts.provider)
       if (!retry) return Cause.done(meta.attempt)
-      if (meta.attempt > RETRY_MAX_RETRIES) return Cause.done(meta.attempt)
+      if (meta.attempt > (opts.maxRetries ?? RETRY_MAX_RETRIES)) return Cause.done(meta.attempt)
       return Effect.gen(function* () {
         const wait = delay(meta.attempt, SessionV1.APIError.isInstance(error) ? error : undefined)
         const now = yield* Clock.currentTimeMillis

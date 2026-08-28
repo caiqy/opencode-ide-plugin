@@ -648,6 +648,86 @@ it.live("session.processor effect tests retry recognized structured json errors"
   ),
 )
 
+it.live("session.processor effect tests retry concurrency limit errors through the existing policy", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+
+        yield* llm.error(400, { error: { message: "Concurrency limit exceeded for user, please retry later" } })
+        yield* llm.text("after")
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "retry concurrency")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({ assistantMessage: msg, sessionID: chat.id, model: mdl })
+
+        const value = yield* handle.process({
+          user: {
+            id: parent.id,
+            sessionID: chat.id,
+            role: "user",
+            time: parent.time,
+            agent: parent.agent,
+            model: { providerID: ref.providerID, modelID: ref.modelID },
+          } satisfies SessionV1.User,
+          sessionID: chat.id,
+          model: mdl,
+          agent: agent(),
+          system: [],
+          messages: [{ role: "user", content: "retry concurrency" }],
+          tools: {},
+        })
+
+        expect(value).toBe("continue")
+        expect(yield* llm.calls).toBe(2)
+        expect(handle.message.error).toBeUndefined()
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
+it.live("session.processor effect tests honor max_retries zero for child sessions", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+
+        yield* llm.error(429, { type: "error", error: { type: "too_many_requests" } })
+        yield* llm.text("should not run")
+
+        const root = yield* session.create({})
+        const chat = yield* session.create({ parentID: root.id, title: "Child", agent: "general" })
+        const parent = yield* user(chat.id, "no retry")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({ assistantMessage: msg, sessionID: chat.id, model: mdl })
+
+        const value = yield* handle.process({
+          user: {
+            id: parent.id,
+            sessionID: chat.id,
+            role: "user",
+            time: parent.time,
+            agent: parent.agent,
+            model: { providerID: ref.providerID, modelID: ref.modelID },
+          } satisfies SessionV1.User,
+          sessionID: chat.id,
+          model: mdl,
+          agent: agent(),
+          system: [],
+          messages: [{ role: "user", content: "no retry" }],
+          tools: {},
+        })
+
+        expect(value).toBe("stop")
+        expect(yield* llm.calls).toBe(1)
+      }),
+    { config: (url) => ({ ...providerCfg(url), provider_retry: { max_retries: 0 } }) },
+  ),
+)
+
 it.live("session.processor effect tests retry OpenAI-compatible midstream server errors", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>

@@ -1939,6 +1939,15 @@ export type Config = {
     websearch?: number
     subagent?: number
   }
+  /**
+   * Session provider retry configuration
+   */
+  provider_retry?: {
+    /**
+     * Maximum Session retries after the initial provider request (default: 10; 0 disables retries)
+     */
+    max_retries: number
+  }
   username?: string
   mode?: {
     build?: AgentConfig

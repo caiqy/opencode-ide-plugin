@@ -122,17 +122,34 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
   if (!body) return
 
   const responseBody = JSON.stringify(body)
-  if (body.type !== "error") {
-    if (typeof body.error !== "string" || !isTransientStreamErrorCode(body.error)) return
+  const code =
+    typeof body.error?.code === "string"
+      ? body.error.code
+      : typeof body.error?.type === "string"
+        ? body.error.type
+        : typeof body.error === "string"
+          ? body.error
+          : typeof body.code === "string"
+            ? body.code
+            : undefined
+  if (body.type !== "error" && (typeof body.error !== "object" || body.error === null)) {
+    if (!isTransientStreamErrorCode(code) && code !== "insufficient_quota") return
+    if (code === "insufficient_quota") {
+      return {
+        type: "api_error",
+        message: "Quota exceeded. Check your plan and billing details.",
+        isRetryable: false,
+        responseBody,
+      }
+    }
     return {
       type: "api_error",
-      message: typeof body.message === "string" ? body.message : body.error,
+      message: typeof body.message === "string" ? body.message : code,
       isRetryable: true,
       responseBody,
     }
   }
 
-  const code = typeof body.error?.code === "string" ? body.error.code : typeof body.code === "string" ? body.code : undefined
   const detail =
     typeof body.error?.message === "string"
       ? body.error.message
@@ -171,6 +188,10 @@ export function parseStreamError(input: unknown): ParsedStreamError | undefined 
         isRetryable: false,
         responseBody,
       }
+    case "authentication_error":
+    case "permission_denied":
+    case "unauthorized":
+    case "forbidden":
     case "invalid_prompt":
     case "invalid_api_key":
       return {

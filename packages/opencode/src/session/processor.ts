@@ -103,6 +103,7 @@ const layer = Layer.effect(
     const fs = yield* FSUtil.Service
 
     const create = Effect.fn("SessionProcessor.create")(function* (input: Input) {
+      const maxRetries = (yield* config.get()).provider_retry?.max_retries
       // Pre-capture snapshot before the LLM stream starts. The AI SDK
       // may execute tools internally before emitting start-step events,
       // so capturing inside the event handler can be too late.
@@ -716,6 +717,7 @@ const layer = Layer.effect(
             Effect.retry(
               SessionRetry.policy({
                 provider: input.model.providerID,
+                maxRetries,
                 parse,
                 set: (info) => {
                   return status.set(ctx.sessionID, {

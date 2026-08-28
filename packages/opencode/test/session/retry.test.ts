@@ -33,10 +33,10 @@ function wrap(message: unknown): ReturnType<NamedError["toObject"]> {
 }
 
 describe("session.retry.delay", () => {
-  test("caps delay at 30 seconds when headers missing", () => {
+  test("caps local backoff at 120 seconds when headers are missing", () => {
     const error = apiError()
     const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error, 0))
-    expect(delays).toStrictEqual([2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000, 30000, 30000])
+    expect(delays).toStrictEqual([2000, 4000, 8000, 16000, 32000, 64000, 120000, 120000, 120000, 120000])
   })
 
   test("adds jitter to exponential delays", () => {
@@ -44,7 +44,8 @@ describe("session.retry.delay", () => {
     expect(SessionRetry.delay(1, error, 0)).toBe(2000)
     expect(SessionRetry.delay(1, error, 1)).toBe(2500)
     expect(SessionRetry.delay(4, error, 1)).toBe(20000)
-    expect(SessionRetry.delay(5, error, 1)).toBe(30000)
+    expect(SessionRetry.delay(6, error, 1)).toBe(80000)
+    expect(SessionRetry.delay(7, error, 1)).toBe(120000)
   })
 
   test("prefers retry-after-ms when shorter than exponential", () => {
@@ -81,12 +82,35 @@ describe("session.retry.delay", () => {
     expect(SessionRetry.delay(1, error, 0)).toBe(2000)
   })
 
+  test("ignores dates that are not HTTP-date values", () => {
+    const error = apiError({ "retry-after": new Date(Date.now() + 20000).toISOString() })
+    expect(SessionRetry.delay(1, error, 0)).toBe(2000)
+  })
+
+  test.each([
+    ["retry-after-ms", "-1"],
+    ["retry-after-ms", "Infinity"],
+    ["retry-after-ms", "120junk"],
+    ["retry-after", "-1"],
+    ["retry-after", "Infinity"],
+    ["retry-after", "120junk"],
+  ])("ignores invalid %s value %s", (header, value) => {
+    expect(SessionRetry.delay(1, apiError({ [header]: value }), 0)).toBe(2000)
+  })
+
+  test("caps local backoff when response headers have no retry hint", () => {
+    expect(SessionRetry.delay(10, apiError({ "content-type": "application/json" }), 0)).toBe(120000)
+  })
+
   test("uses retry-after values even when exceeding 10 minutes with headers", () => {
     const error = apiError({ "retry-after": "50" })
     expect(SessionRetry.delay(1, error)).toBe(50000)
 
     const longError = apiError({ "retry-after-ms": "700000" })
     expect(SessionRetry.delay(1, longError)).toBe(700000)
+
+    const standardLongError = apiError({ "retry-after": "121" })
+    expect(SessionRetry.delay(1, standardLongError)).toBe(121000)
   })
 
   test("caps oversized header delays to the runtime timer limit", () => {
@@ -124,7 +148,7 @@ describe("session.retry.delay", () => {
     }),
   )
 
-  it.instance("policy stops after five retries", () =>
+  it.effect("policy stops after ten retries by default", () =>
     Effect.gen(function* () {
       const attempts: number[] = []
       const error = apiError({ "retry-after-ms": "0" })
@@ -143,7 +167,31 @@ describe("session.retry.delay", () => {
         Effect.ignore(step(error)),
       )
 
-      expect(attempts).toStrictEqual([1, 2, 3, 4, 5])
+      expect(attempts).toStrictEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    }),
+  )
+
+  it.effect("policy honors configured retry limits including zero", () =>
+    Effect.gen(function* () {
+      for (const [maxRetries, expected] of [
+        [0, []],
+        [2, [1, 2]],
+      ] as const) {
+        const attempts: number[] = []
+        const step = yield* Schedule.toStepWithMetadata(
+          SessionRetry.policy({
+            provider: "test",
+            maxRetries,
+            parse: Schema.decodeUnknownSync(SessionV1.APIError.Schema),
+            set: (info) => Effect.sync(() => attempts.push(info.attempt)),
+          }),
+        )
+
+        yield* Effect.forEach(Array.from({ length: 4 }), () =>
+          Effect.ignore(step(apiError({ "retry-after-ms": "0" }))),
+        )
+        expect(attempts).toStrictEqual([...expected])
+      }
     }),
   )
 })
@@ -225,6 +273,74 @@ describe("session.retry.retryable", () => {
     const error = wrap(msg)
     expect(SessionRetry.retryable(error, retryProvider)).toEqual({ message: msg })
   })
+
+  test.each([
+    "Concurrency limit exceeded for user, please retry later",
+    "Concurrency limit exceeded for account, please retry later",
+    "concurrency_limit_exceeded",
+  ])("retries explicit concurrency limit errors: %s", (message) => {
+    expect(SessionRetry.retryable(wrap(message), retryProvider)).toEqual({ message })
+  })
+
+  test("does not retry unrelated concurrency text", () => {
+    expect(SessionRetry.retryable(wrap("Set the concurrency limit for user jobs"), retryProvider)).toBeUndefined()
+  })
+
+  test("retries HTTP 429 even when the SDK omitted its retryable marker", () => {
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({ message: "Too Many Requests", statusCode: 429, isRetryable: false }).toObject(),
+    )
+    expect(SessionRetry.retryable(error, retryProvider)).toEqual({ message: "Too Many Requests" })
+  })
+
+  test("does not retry HTTP 429 quota errors", () => {
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({
+        message: "Too Many Requests",
+        statusCode: 429,
+        isRetryable: true,
+        responseBody: JSON.stringify({ error: { type: "insufficient_quota" } }),
+      }).toObject(),
+    )
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+  })
+
+  test("does not retry plain insufficient quota responses", () => {
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({
+        message: "Too Many Requests",
+        statusCode: 429,
+        isRetryable: true,
+        responseBody: "insufficient_quota",
+      }).toObject(),
+    )
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+  })
+
+  test.each([
+    [401, "Rate limit exceeded"],
+    [403, "Concurrency limit exceeded for user, please retry later"],
+  ])("does not retry permanent HTTP %s errors with retryable text", (statusCode, message) => {
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({ message, statusCode, isRetryable: true }).toObject(),
+    )
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+  })
+
+  test.each(["authentication_error", "permission_denied"])(
+    "does not retry HTTP 429 permanent provider code %s",
+    (code) => {
+      const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+        new SessionV1.APIError({
+          message: "Rate limit exceeded",
+          statusCode: 429,
+          isRetryable: true,
+          responseBody: JSON.stringify({ type: "error", error: { code, message: "Rate limit exceeded" } }),
+        }).toObject(),
+      )
+      expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+    },
+  )
 
   test.each([
     "Internal server error",
