@@ -48,6 +48,12 @@ export function formatTimestamp(timestamp: number): string {
   return `${year}-${month}-${day} ${hours}:${minutes}`
 }
 
+export function formatMessageDateTime(timestamp: number): string {
+  const date = new Date(timestamp)
+  if (!Number.isFinite(date.getTime())) return ""
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 function pad(value: number): string {
   return String(value).padStart(2, "0")
 }

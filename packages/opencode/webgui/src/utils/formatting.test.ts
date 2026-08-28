@@ -4,6 +4,7 @@ import {
   formatKM,
   formatCost,
   formatTimestamp,
+  formatMessageDateTime,
   formatFileSize,
   formatDate,
   formatDateTime,
@@ -63,6 +64,17 @@ describe("formatTimestamp", () => {
     const timestamp = new Date("2023-12-31T23:59:00").getTime()
     const result = formatTimestamp(timestamp)
     expect(result).toMatch(/2023-12-31 23:59/)
+  })
+})
+
+describe("formatMessageDateTime", () => {
+  it("formats the local month, day, and minute", () => {
+    const timestamp = new Date(2026, 7, 20, 21, 8).getTime()
+    expect(formatMessageDateTime(timestamp)).toBe("8月20日 21:08")
+  })
+
+  it("returns an empty label for an invalid timestamp", () => {
+    expect(formatMessageDateTime(Number.NaN)).toBe("")
   })
 })
 

@@ -17,6 +17,8 @@ interface ModalProps {
   closeOnEscape?: boolean
   /** Allow backdrop click to close (default: true) */
   closeOnBackdropClick?: boolean
+  /** ID of the heading that names the dialog */
+  ariaLabelledBy?: string
 }
 
 const sizeClasses: Record<string, string> = {
@@ -52,6 +54,7 @@ export function Modal({
   size = "md",
   closeOnEscape = true,
   closeOnBackdropClick = true,
+  ariaLabelledBy,
 }: ModalProps) {
   useEffect(() => {
     if (!isOpen || !closeOnEscape) return
@@ -77,6 +80,9 @@ export function Modal({
     >
       <div
         className={`modern-card ${sizeClass} w-full mx-4 overflow-hidden transform transition-all scale-100`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={ariaLabelledBy}
         onClick={(e) => e.stopPropagation()}
       >
         {children}

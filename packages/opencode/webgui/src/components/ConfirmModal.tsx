@@ -1,3 +1,4 @@
+import { useId } from "react"
 import { Modal, ModalHeader, ModalBody, ModalFooter, Button } from "./common"
 
 interface ConfirmModalProps {
@@ -23,6 +24,7 @@ export function ConfirmModal({
   variant = "danger",
   isLoading = false,
 }: ConfirmModalProps) {
+  const titleID = useId()
   const variantStyles = {
     danger: {
       buttonVariant: "danger" as const,
@@ -44,9 +46,11 @@ export function ConfirmModal({
   const styles = variantStyles[variant]
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="md" closeOnEscape={!isLoading}>
+    <Modal isOpen={isOpen} onClose={onClose} size="md" closeOnEscape={!isLoading} ariaLabelledBy={titleID}>
       <ModalHeader>
-        <h3 className={`text-lg font-semibold ${styles.text}`}>{title}</h3>
+        <h3 id={titleID} className={`text-lg font-semibold ${styles.text}`}>
+          {title}
+        </h3>
       </ModalHeader>
 
       <ModalBody>

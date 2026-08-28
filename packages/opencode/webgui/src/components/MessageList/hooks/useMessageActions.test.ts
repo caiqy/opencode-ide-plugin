@@ -3,6 +3,7 @@ import { act, renderHook } from "@testing-library/react"
 
 const mocks = vi.hoisted(() => ({
   forkSession: vi.fn(),
+  prompt: vi.fn(),
   revertToMessage: vi.fn(),
   unrevertSession: vi.fn(),
   redoNext: vi.fn(),
@@ -12,17 +13,27 @@ const mocks = vi.hoisted(() => ({
   loadDrafts: vi.fn(),
   saveDrafts: vi.fn(),
   showToast: vi.fn(),
+  setSessionIdle: vi.fn(),
 }))
 let currentSessionID = "s1"
+let currentIsIdle = true
+let currentSessionStatusReady = true
 
 vi.mock("../../../state/SessionContext", () => ({
   useSession: () => ({
     currentSession: { id: currentSessionID },
+    isIdle: currentIsIdle,
+    sessionStatusReady: currentSessionStatusReady,
+    setSessionIdle: mocks.setSessionIdle,
     forkSession: mocks.forkSession,
     revertToMessage: mocks.revertToMessage,
     unrevertSession: mocks.unrevertSession,
     redoNext: mocks.redoNext,
   }),
+}))
+
+vi.mock("../../../lib/api/sdkClient", () => ({
+  sdk: { session: { prompt: mocks.prompt } },
 }))
 
 vi.mock("../../../state/MessagesContext", () => ({
@@ -54,9 +65,12 @@ describe("useMessageActions", () => {
   beforeEach(() => {
     vi.resetAllMocks()
     currentSessionID = "s1"
+    currentIsIdle = true
+    currentSessionStatusReady = true
     mocks.forkSession.mockResolvedValue({ id: "forked" })
     mocks.loadDrafts.mockResolvedValue({})
     mocks.saveDrafts.mockResolvedValue({ ok: true })
+    mocks.prompt.mockResolvedValue({ data: {}, error: null })
   })
 
   it("分叉成功后打开并激活新会话标签", async () => {
@@ -182,7 +196,9 @@ describe("useMessageActions", () => {
       { info: { id: "m1", role: "user", agent: "build" }, parts: [{ type: "text", text: "branch prompt" }] },
     ])
     mocks.saveDrafts.mockResolvedValueOnce({ ok: false })
-    const { result, rerender } = renderHook(({ sessionID }) => useMessageActions(sessionID), { initialProps: { sessionID: "s1" } })
+    const { result, rerender } = renderHook(({ sessionID }) => useMessageActions(sessionID), {
+      initialProps: { sessionID: "s1" },
+    })
 
     act(() => result.current.handleForkStart("m1"))
     await act(async () => {
@@ -261,5 +277,99 @@ describe("useMessageActions", () => {
 
     expect(result.current.revertAction).toEqual({ type: "restore" })
     expect(result.current.isRevertBusy).toBe(false)
+  })
+
+  it("重试指定用户消息并保留文本、附件和模型", async () => {
+    mocks.getMessagesBySession.mockReturnValue([
+      {
+        info: {
+          id: "m1",
+          role: "user",
+          agent: "review",
+          model: { providerID: "openai", modelID: "gpt-5", variant: "high" },
+        },
+        parts: [
+          { type: "text", text: "请检查" },
+          { type: "text", text: "synthetic", synthetic: true },
+          { type: "file", mime: "image/png", filename: "shot.png", url: "data:image/png;base64,AA==" },
+        ],
+      },
+    ])
+    const { result } = renderHook(() => useMessageActions("s1"))
+
+    act(() => result.current.handleRetry("m1"))
+    expect(result.current.retryMessageID).toBe("m1")
+    expect(mocks.prompt).not.toHaveBeenCalled()
+    await act(async () => result.current.handleRetryConfirm())
+
+    expect(mocks.prompt).toHaveBeenCalledWith({
+      path: { id: "s1" },
+      body: {
+        parts: [
+          { type: "text", text: "请检查" },
+          { type: "file", mime: "image/png", filename: "shot.png", url: "data:image/png;base64,AA==" },
+        ],
+        agent: "review",
+        model: { providerID: "openai", modelID: "gpt-5" },
+        variant: "high",
+      },
+    })
+    expect(mocks.setSessionIdle).toHaveBeenCalledWith("s1", false)
+  })
+
+  it("对话未停止时不发送重试请求", async () => {
+    currentIsIdle = false
+    mocks.getMessagesBySession.mockReturnValue([
+      { info: { id: "m1", role: "user", agent: "build" }, parts: [{ type: "text", text: "retry" }] },
+    ])
+    const { result } = renderHook(() => useMessageActions("s1"))
+
+    await act(async () => result.current.handleRetry("m1"))
+
+    expect(mocks.prompt).not.toHaveBeenCalled()
+    expect(mocks.setSessionIdle).not.toHaveBeenCalled()
+  })
+
+  it("取消重试确认时不发送请求", () => {
+    mocks.getMessagesBySession.mockReturnValue([
+      { info: { id: "m1", role: "user", agent: "build" }, parts: [{ type: "text", text: "retry" }] },
+    ])
+    const { result } = renderHook(() => useMessageActions("s1"))
+
+    act(() => result.current.handleRetry("m1"))
+    act(() => result.current.handleRetryCancel())
+
+    expect(result.current.retryMessageID).toBeNull()
+    expect(mocks.prompt).not.toHaveBeenCalled()
+  })
+
+  it("重试请求进行中时阻止重复调用", async () => {
+    let resolvePrompt: ((value: { data: object; error: null }) => void) | undefined
+    mocks.prompt.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePrompt = resolve
+      }),
+    )
+    mocks.getMessagesBySession.mockReturnValue([
+      { info: { id: "m1", role: "user", agent: "build" }, parts: [{ type: "text", text: "retry" }] },
+    ])
+    const { result } = renderHook(() => useMessageActions("s1"))
+
+    let first: Promise<void> | undefined
+    act(() => result.current.handleRetry("m1"))
+    await act(async () => {
+      first = result.current.handleRetryConfirm()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      result.current.handleRetry("m1")
+      await result.current.handleRetryConfirm()
+    })
+
+    expect(mocks.prompt).toHaveBeenCalledTimes(1)
+    resolvePrompt?.({ data: {}, error: null })
+    await act(async () => {
+      await first
+    })
   })
 })

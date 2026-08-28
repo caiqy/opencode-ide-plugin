@@ -105,6 +105,11 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
     handleForkStart,
     handleForkConfirm,
     handleRevert,
+    handleRetry,
+    handleRetryCancel,
+    handleRetryConfirm,
+    isRetrying,
+    retryMessageID,
     handleRevertConfirm,
     handleRevertCancel,
     handleRedoClick,
@@ -121,7 +126,8 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
     ? sortedMessages.findIndex((message) => message.info.id === revertBoundaryID)
     : -1
   const cursor = sessionID ? getSessionCursor(sessionID) : undefined
-  const automaticCursorKey = sessionID && revertBoundaryID && cursor ? `${sessionID}:${revertBoundaryID}:${cursor}` : null
+  const automaticCursorKey =
+    sessionID && revertBoundaryID && cursor ? `${sessionID}:${revertBoundaryID}:${cursor}` : null
 
   useEffect(() => {
     if (!sessionID || !revertBoundaryID || revertBoundaryIndex >= 0) return
@@ -247,7 +253,9 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
             message={message}
             onFork={handleForkStart}
             onRevert={handleRevert}
+            onRetry={handleRetry}
             revertBusy={isRevertBusy}
+            retryDisabled={!sessionStatusReady || !isIdle}
             sessionID={sessionID || undefined}
             isLast={message.info.id === lastMessageID}
             showMeta={!!turnMetas.get(message.info.id)}
@@ -257,7 +265,19 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
         </div>
       )
     },
-    [handleForkStart, handleRevert, isRevertBusy, lastMessageID, revertBoundaryID, sessionID, sessionInterrupted, turnMetas],
+    [
+      handleForkStart,
+      handleRevert,
+      handleRetry,
+      isIdle,
+      isRevertBusy,
+      lastMessageID,
+      revertBoundaryID,
+      sessionID,
+      sessionInterrupted,
+      sessionStatusReady,
+      turnMetas,
+    ],
   )
 
   const rows = useMemo(() => {
@@ -360,6 +380,18 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
         cancelText="取消"
         variant="info"
         isLoading={isForking}
+      />
+
+      <ConfirmModal
+        isOpen={!!retryMessageID}
+        onClose={handleRetryCancel}
+        onConfirm={handleRetryConfirm}
+        title="重试消息"
+        message="要重新发送这条消息吗？"
+        confirmText="重试"
+        cancelText="取消"
+        variant="info"
+        isLoading={isRetrying}
       />
 
       {/* Revert / Redo / Restore confirmation modal */}

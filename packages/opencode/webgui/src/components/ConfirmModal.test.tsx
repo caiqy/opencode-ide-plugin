@@ -11,6 +11,8 @@ describe("ConfirmModal", () => {
 
     render(<ConfirmModal isOpen={true} onClose={onClose} onConfirm={onConfirm} title="标题" message="内容" />)
 
+    expect(screen.getByRole("dialog", { name: "标题" })).toHaveAttribute("aria-modal", "true")
+
     await user.click(screen.getByRole("button", { name: "取消" }))
     expect(onClose).toHaveBeenCalledTimes(1)
 

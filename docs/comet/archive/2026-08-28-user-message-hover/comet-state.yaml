@@ -1,0 +1,485 @@
+schema: comet.native.v4
+name: user-message-hover
+language: zh-CN
+phase: archive
+status: done
+state_version: 39
+brief: brief.md
+spec_changes:
+  - capability: user-message-hover
+    operation: create
+    source: specs/user-message-hover/spec.md
+workspace:
+  isolation: current
+  change_branch: ide-plugin
+  target_branch: ide-plugin
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 4
+  iteration: 2
+  attempt: 2
+  retry_epoch: 1
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "A1: 主会话支持 hover 的设备上，鼠标移入用户消息后，时间和五个操作图标显示在气泡下方，而不是气泡上方。"
+    result: passed
+    reason:
+      text: 主会话用户元信息在消息气泡下方按 hover 显示。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: "A2: 主会话元信息行右对齐，顺序为本地时间、复制、分叉、回退、重试，且不使用外层灰色工具栏背景。"
+    result: passed
+    reason:
+      text: 右对齐且顺序为时间、复制、分叉、回退、重试，无灰色工具栏。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: "A3: 时间取用户消息的 `time.created`，使用浏览器本地时区并按 `M月D日 HH:mm` 格式显示。"
+    result: passed
+    reason:
+      text: 使用 time.created、本地时区和 M月D日 HH:mm。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: "A4: 复制、分叉、回退按钮及其 tooltip 继续执行现有功能，操作逻辑不变。"
+    result: passed
+    reason:
+      text: 复制、分叉、回退的既有功能和 tooltip 保持。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: "A5: 主会话所有用户消息都显示重试按钮；点击后先打开确认弹窗，确认后才将该消息的原文本和附件作为新的 prompt 追加到当前会话末尾。"
+    result: passed
+    reason:
+      text: 重试先确认，确认后发送原文本和附件。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: "A6: 对话未停止时重试按钮保留但禁用；对话停止后可点击重试。"
+    result: passed
+    reason:
+      text: 运行中重试显示但禁用，停止后可用。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: "A7: 重试确认弹窗支持确认、取消和关闭；取消或关闭不得发送新的 prompt，确认期间显示加载状态并阻止重复确认。"
+    result: passed
+    reason:
+      text: 取消、关闭和 Escape 不发送，确认期间 loading 且防重复。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: "A8: assistant 消息 hover 时不再显示任何操作控件，包括复制和令牌用量控件。"
+    result: passed
+    reason:
+      text: assistant 不显示操作控件。
+      truncated: false
+  - id: A9
+    source: brief.md
+    text: "A9: 主会话无 hover 的触摸设备上，用户消息时间和五个操作图标可见且可访问；键盘 focus 时元信息可见。"
+    result: passed
+    reason:
+      text: 打包验证确认触摸、键盘 focus 和操作可访问性。
+      truncated: false
+  - id: A10
+    source: brief.md
+    text: "A10: 主会话用户消息元信息处于正常文档流，不遮挡文本或附件；窄屏下可换行且图标点击区域不收缩。"
+    result: passed
+    reason:
+      text: 元信息处于正常流，窄屏可换行且按钮不收缩。
+      truncated: false
+  - id: A11
+    source: brief.md
+    text: "A11: 子任务抽屉用户消息在气泡下方显示本地时间和复制按钮，不显示分叉、回退或重试按钮。"
+    result: passed
+    reason:
+      text: 子任务只显示时间和复制。
+      truncated: false
+  - id: A12
+    source: brief.md
+    text: "A12: 子任务抽屉用户消息复制按钮继续可用，并遵循支持 hover、键盘 focus 和触摸设备的可访问显示规则。"
+    result: passed
+    reason:
+      text: 子任务复制支持 hover、focus 和触摸显示规则。
+      truncated: false
+  - id: A13
+    source: specs/user-message-hover/spec.md
+    text: WebGUI
+      主会话用户消息在用户可查看或操作消息时，必须在消息气泡下方提供时间、复制、分叉、回退和重试入口。子任务抽屉用户消息在气泡下方提供时间和复制入口。assistant
+      消息 hover 时不得显示操作控件。
+    result: passed
+    reason:
+      text: 主会话、子任务和 assistant 功能边界符合规格。
+      truncated: false
+  - id: A14
+    source: specs/user-message-hover/spec.md
+    text: 主会话用户消息的元信息必须位于对应消息气泡下方，并与气泡右侧对齐。元信息从左到右依次显示消息时间、复制按钮、分叉按钮、回退按钮和重试按钮。子任务抽屉用户消息的元信息必须位于气泡下方并右对齐，只显示消息时间和复制按钮。操作区域不得绝对定位在消息气泡上方，也不得使用包裹全部按钮的灰色工具栏背景。
+    result: passed
+    reason:
+      text: 打包验证确认气泡下方布局、对齐和窄屏几何。
+      truncated: false
+  - id: A15
+    source: specs/user-message-hover/spec.md
+    text: 主会话和子任务抽屉的元信息行必须处于正常文档流，不得遮挡用户消息文本或附件。消息气泡内容、换行、附件和现有右侧消息布局必须保持不变。窄屏下元信息允许换行，操作容器和图标按钮不得收缩到不可用尺寸。
+    result: passed
+    reason:
+      text: 元信息在正常文档流且不遮挡内容或附件。
+      truncated: false
+  - id: A16
+    source: specs/user-message-hover/spec.md
+    text: 在支持 hover 的设备上，用户将鼠标移入对应用户消息时显示元信息；鼠标移出后隐藏。元信息获得键盘 focus 时必须显示，以便 Tab
+      用户看到当前操作。元信息中的单个图标按钮必须提供 tooltip、可访问名称和稳定点击区域。
+    result: passed
+    reason:
+      text: hover、focus-within、tooltip、可访问名称和点击区域均符合。
+      truncated: false
+  - id: A17
+    source: specs/user-message-hover/spec.md
+    text: 在不支持 hover 的触摸设备上，主会话元信息必须常驻显示，使五个用户消息操作无需 hover 即可访问；子任务抽屉元信息必须常驻显示，使复制无需
+      hover 即可访问。
+    result: passed
+    reason:
+      text: hover:none 下元信息常驻。
+      truncated: false
+  - id: A18
+    source: specs/user-message-hover/spec.md
+    text: assistant 消息 hover 时不得显示复制、令牌用量或其他操作控件。
+    result: passed
+    reason:
+      text: assistant 无复制、令牌用量或其他 hover 控件。
+      truncated: false
+  - id: A19
+    source: specs/user-message-hover/spec.md
+    text: 子任务抽屉用户消息不得显示分叉、回退或重试按钮。
+    result: passed
+    reason:
+      text: 子任务无分叉、回退或重试。
+      truncated: false
+  - id: A20
+    source: specs/user-message-hover/spec.md
+    text: 时间必须使用用户消息 `time.created`。显示时使用浏览器本地时区和 `M月D日 HH:mm` 格式，例如 `8月20日
+      21:08`。时间只属于用户消息元信息行，不得修改消息时间或其他消息排序逻辑。
+    result: passed
+    reason:
+      text: 时间使用用户消息 time.created，不改变排序。
+      truncated: false
+  - id: A21
+    source: specs/user-message-hover/spec.md
+    text: 复制、分叉和回退按钮必须保留现有图标、tooltip、点击行为、确认流程、忙碌状态和副作用。三个操作的相对顺序不得改变。
+    result: passed
+    reason:
+      text: 复制、分叉、回退的顺序和既有副作用保持。
+      truncated: false
+  - id: A22
+    source: specs/user-message-hover/spec.md
+    text: 每条主会话用户消息都必须显示重试按钮，且重试位于回退按钮之后。点击重试首先打开确认弹窗，不得立即发送；用户确认后，才将该用户消息的原文本和附件作为新的
+      prompt 追加到当前会话末尾，复用现有会话 prompt
+      发送流程，不修改原消息或历史排序。用户取消或关闭弹窗不得发送。子任务抽屉用户消息不提供重试。
+    result: passed
+    reason:
+      text: 主会话重试先确认后发送，子任务不提供重试。
+      truncated: false
+  - id: A23
+    source: specs/user-message-hover/spec.md
+    text: 当当前会话未停止时，重试按钮必须保持显示但处于禁用状态，不得打开确认弹窗或触发新的发送；会话停止后按钮恢复可用。确认弹窗在发送期间必须显示加载状态并阻止重复确认。重试按钮和确认弹窗必须提供清晰的可访问名称和
+      tooltip。
+    result: passed
+    reason:
+      text: 运行中禁用、确认 loading、防重复和可访问名称均符合。
+      truncated: false
+  - id: A24
+    source: specs/user-message-hover/spec.md
+    text: 用户消息的复制、分叉和回退逻辑、确认流程、忙碌状态和副作用保持不变。此能力不新增编辑操作，不改变服务端协议、消息数据结构或已有会话撤销流程。
+    result: passed
+    reason:
+      text: 未改变协议、消息结构或撤销流程。
+      truncated: false
+builder_handoff:
+  candidate_id: f8a5e261-7149-4af6-8ac8-ba598adee5a6
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:fdb355dd-b5ce-4dab-8e5c-f35fd4132754
+  iteration: 2
+  summary:
+    text: 修复确认弹窗无障碍语义：共享 Modal 增加 role=dialog、aria-modal，ConfirmModal 将标题通过
+      aria-labelledby 关联。重试确认行为、主会话五项操作、子任务时间+复制、assistant 无操作、运行中禁用和本地防重复均保持。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+    - A23
+    - A24
+  checks:
+    - name:
+        text: 消息与重试定向测试
+        truncated: false
+      result: passed
+      note:
+        text: 相关 MessageRow、ActionButtons、useMessageActions、ConfirmModal、formatting
+          测试通过。
+        truncated: false
+    - name:
+        text: 子任务复制模式测试
+        truncated: false
+      result: passed
+      note:
+        text: SubtaskMessageList copy 模式测试通过。
+        truncated: false
+    - name:
+        text: WebGUI 构建
+        truncated: false
+      result: passed
+      note:
+        text: tsc -b 和 vite build 通过。
+        truncated: false
+    - name:
+        text: opencode typecheck
+        truncated: false
+      result: passed
+      note:
+        text: packages/opencode bun run typecheck 通过。
+        truncated: false
+    - name:
+        text: 本次业务代码 lint
+        truncated: false
+      result: passed
+      note:
+        text: 本轮业务实现文件 lint 通过。
+        truncated: false
+    - name:
+        text: WebGUI 全量测试
+        truncated: false
+      result: failed
+      note:
+        text: SubtaskMessageList 有 1 个既有中断状态失败，与本 change 无关。
+        truncated: false
+    - name:
+        text: WebGUI 全量 lint
+        truncated: false
+      result: failed
+      note:
+        text: 仓库存在既有 lint 基线错误。
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 当前环境无法启动可连接的 Vite 服务，未完成真实浏览器窄屏和触摸几何验证。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-28T05:08:04.693Z
+blockers: []
+verification:
+  candidate_id: f8a5e261-7149-4af6-8ac8-ba598adee5a6
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:9c46f19c-99b5-4cab-89a5-a01cf0766d31
+  iteration: 2
+  attempt: 2
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  summary:
+    text: A1-A24 全部通过。用户已完成打包后的窄屏、触摸和焦点验证；本 change 无剩余功能问题。
+    truncated: false
+  risks:
+    - text: 全量 WebGUI 测试仍有一个既有 Subtask 中断状态失败。
+      truncated: false
+    - text: 全量 WebGUI lint 仍有既有基线错误。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-28T05:45:09.533Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A13
+    summary:
+      text: 实现范围正确，A1-A12 通过；A13 因桌面键盘焦点可见性缺陷未通过。下一轮应增加 focus-within
+        显示规则，并确保窄屏操作按钮不收缩或重叠。
+      truncated: false
+    completed_at: 2026-08-28T02:40:22.612Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 13 项验收全部通过。上一轮的键盘焦点可见性、窄屏换行和按钮不收缩问题已修复。
+      truncated: false
+    completed_at: 2026-08-28T02:49:03.903Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 用户补充需求：新增 assistant 消息的重试按钮；assistant 消息 hover 时不再显示现有的两个 hover
+        控件。保留此前用户消息时间、复制、分叉、回退布局与功能。需回到 Shape 更新完整需求和验收项后再实现。
+      truncated: false
+    completed_at: 2026-08-28T02:54:44.176Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A1
+      - A2
+      - A5
+      - A6
+      - A8
+      - A10
+      - A11
+      - A14
+      - A18
+      - A19
+    summary:
+      text: 主会话路径基本满足需求，但当前“所有用户消息”包含子任务抽屉时无法通过验收；需要明确是否将子任务抽屉纳入本次范围。
+      truncated: false
+    completed_at: 2026-08-28T03:20:08.014Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-28T03:24:32.680Z
+  - goal_cycle: 3
+    iteration: 1
+    attempt: 1
+    outcome: blocked
+    unresolved_ids:
+      - A9
+      - A14
+    summary:
+      text: 主会话和子任务功能范围均符合规格，21 项通过；A9/A14 因缺少真实窄屏浏览器验证暂时 blocked。
+      truncated: false
+    completed_at: 2026-08-28T03:39:32.300Z
+  - goal_cycle: 3
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 根据 Verifier 风险修订实现：为重试增加本地 in-flight 防重复调用保护，并补充子任务用户消息实际 DOM
+        的时间/复制显示和其他按钮缺失断言；保留已确认的主会话与子任务范围。
+      truncated: false
+    completed_at: 2026-08-28T03:39:53.675Z
+  - goal_cycle: 3
+    iteration: 2
+    attempt: 1
+    outcome: blocked
+    unresolved_ids:
+      - A9
+      - A14
+    summary:
+      text: 主会话和子任务功能边界正确，21 项通过；A9/A14 等待真实窄屏浏览器验证。
+      truncated: false
+    completed_at: 2026-08-28T03:50:55.936Z
+  - goal_cycle: 3
+    iteration: 2
+    attempt: 2
+    outcome: blocked
+    unresolved_ids:
+      - A9
+      - A14
+    summary:
+      text: 功能实现和范围均符合规格，21 项通过；A9/A14 因环境无法建立浏览器验证服务而 blocked。
+      truncated: false
+    completed_at: 2026-08-28T04:04:31.758Z
+  - goal_cycle: 3
+    iteration: 2
+    attempt: 2
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 用户补充确认：主会话用户消息的重试按钮点击后必须先打开确认弹窗，确认后才发送；取消或关闭不发送；确认期间显示加载并阻止重复确认；对话运行中按钮禁用且不打开弹窗。已更新
+        brief 和完整 Spec。
+      truncated: false
+    completed_at: 2026-08-28T04:51:25.033Z
+  - goal_cycle: 4
+    iteration: 1
+    attempt: 1
+    outcome: blocked
+    unresolved_ids:
+      - A7
+      - A9
+      - A14
+      - A23
+    summary:
+      text: 功能范围整体正确；Modal 无障碍问题已在审查后修复，A9/A14 仍因浏览器环境不可用而 blocked。
+      truncated: false
+    completed_at: 2026-08-28T05:07:11.624Z
+  - goal_cycle: 4
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: ConfirmModal 已补齐 role=dialog、aria-modal 和 aria-labelledby，相关测试与构建已通过；旧
+        Verifier 结果引用修复前候选，需重新验收。窄屏真实浏览器验证仍受当前环境限制。
+      truncated: false
+    completed_at: 2026-08-28T05:07:33.134Z
+  - goal_cycle: 4
+    iteration: 2
+    attempt: 1
+    outcome: blocked
+    unresolved_ids:
+      - A9
+      - A14
+    summary:
+      text: 重试确认流程、主会话五项操作、子任务时间+复制、assistant 无操作和无障碍语义均通过；仅 A9/A14 因浏览器环境不可用而
+        blocked。
+      truncated: false
+    completed_at: 2026-08-28T05:33:27.067Z
+  - goal_cycle: 4
+    iteration: 2
+    attempt: 2
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: A1-A24 全部通过。用户已完成打包后的窄屏、触摸和焦点验证；本 change 无剩余功能问题。
+      truncated: false
+    completed_at: 2026-08-28T05:45:09.533Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-28T02:18:39.962Z

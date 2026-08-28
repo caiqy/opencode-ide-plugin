@@ -29,13 +29,22 @@ vi.mock("../MessageList/MessageRow", async () => {
   )
 
   return {
-    MessageRow: ({ message, sessionInterrupted }: { message: any; sessionInterrupted?: boolean }) => {
+    MessageRow: ({
+      message,
+      sessionInterrupted,
+      userActionMode,
+    }: {
+      message: any
+      sessionInterrupted?: boolean
+      userActionMode?: string
+    }) => {
       const open = actual.usePartOpen()
       const toolParts = message.parts.filter((part: any) => part.type === "tool")
       const reasoningParts = message.parts.filter((part: any) => part.type === "reasoning")
 
       return (
         <div data-testid={`message-row-${message.info.id}`}>
+          {message.info.role === "user" && <div data-testid="user-action-mode">{userActionMode}</div>}
           {toolParts.length === 0 ? <div data-testid="message-row" /> : null}
           {reasoningParts.map((part: any) => (
             <div key={part.id} data-testid={`part-${part.id}`}>
@@ -138,6 +147,22 @@ describe("SubtaskMessageList", () => {
     expect(sorted.map((m: any) => m.info.id)).toEqual(["m1", "m2"])
     expect(isIdle).toBe(false)
     expect(isReasoning).toBe(true)
+  })
+
+  it("子任务用户消息只传入复制操作模式", () => {
+    mocks.useMessages.mockReturnValue({
+      getMessagesBySession: () => [
+        {
+          info: { id: "u-child", sessionID: "s-child", role: "user", time: { created: 1 } },
+          parts: [{ id: "p1", type: "text", text: "hello" }],
+        },
+      ],
+      getQuestionsBySession: () => [],
+    })
+
+    render(<SubtaskMessageList sessionID="s-child" />)
+
+    expect(screen.getByTestId("user-action-mode")).toHaveTextContent("copy")
   })
 
   it("只在状态恢复完成且子会话 idle 时将未完成部分显示为中断", () => {

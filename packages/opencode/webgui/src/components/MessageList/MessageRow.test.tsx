@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 
-const assistantMetaSpy = vi.fn((_props: Record<string, unknown>) => <div data-testid="assistant-meta" />)
-const actionButtonsSpy = vi.fn((_props: Record<string, unknown>) => <div data-testid="action-buttons" />)
+const assistantMetaSpy = vi.fn(() => <div data-testid="assistant-meta" />)
+const actionButtonsSpy = vi.fn(() => <div data-testid="action-buttons" />)
 
 vi.mock("./MessagePart", () => ({
   MessagePart: ({ part }: { part: { id: string } }) => <div data-testid={`part-${part.id}`} />,
@@ -130,5 +130,40 @@ describe("MessageRow", () => {
     fireEvent.mouseEnter(container.firstElementChild!)
 
     expect(actionButtonsSpy).toHaveBeenCalledWith(expect.objectContaining({ copyText: "第一段\n第二段" }))
+  })
+
+  it("用户消息 hover 时在气泡下方显示本地时间和 inline 操作栏", () => {
+    const message = {
+      info: {
+        id: "u-meta",
+        sessionID: "s1",
+        role: "user",
+        time: { created: new Date(2026, 7, 20, 21, 8).getTime() },
+      },
+      parts: [{ id: "p1", type: "text", text: "hello" }],
+    }
+
+    const { container } = render(<MessageRow message={message as never} onFork={vi.fn()} onRevert={vi.fn()} />)
+
+    const meta = screen.getByTestId("user-message-meta")
+    expect(meta).toHaveClass("opacity-0", "pointer-events-none")
+    expect(screen.getByTestId("user-message-time")).toHaveTextContent("8月20日 21:08")
+    expect(actionButtonsSpy).toHaveBeenCalledWith(expect.objectContaining({ inline: true }))
+
+    fireEvent.mouseEnter(container.firstElementChild!)
+    expect(meta).toHaveClass("opacity-100", "pointer-events-auto")
+  })
+
+  it("assistant 消息 hover 时不显示操作控件", () => {
+    actionButtonsSpy.mockClear()
+    const message = {
+      info: { id: "a-actions", sessionID: "s1", role: "assistant", time: { created: 1 } },
+      parts: [{ id: "p1", type: "text", text: "done" }],
+    }
+    const { container } = render(<MessageRow message={message as never} />)
+
+    fireEvent.mouseEnter(container.firstElementChild!)
+
+    expect(actionButtonsSpy).not.toHaveBeenCalled()
   })
 })

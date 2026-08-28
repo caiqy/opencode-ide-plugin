@@ -1,6 +1,6 @@
 import { useState } from "react"
 import type { Message } from "../../state/MessagesContext"
-import { isAssistantMessage, type AssistantMessage } from "../../types/messages"
+import { isAssistantMessage, isUserMessage, type AssistantMessage } from "../../types/messages"
 import { MessagePart } from "./MessagePart"
 import { SessionErrorPart } from "./SessionErrorPart"
 import { ActionButtons } from "./ActionButtons"
@@ -9,12 +9,16 @@ import { getPartStart, getPartEnd, mergeReasoningParts, sortParts } from "./util
 import { cn } from "../../utils/classNames"
 import { useProviderStore } from "../../hooks/useProviderStore"
 import { getMessageCopyText } from "./messageCopy"
+import { formatMessageDateTime } from "../../utils/formatting"
 
 interface MessageRowProps {
   message: Message
   onFork?: (messageId: string) => void
   onRevert?: (messageId: string) => void
+  onRetry?: (messageId: string) => void
+  userActionMode?: "full" | "copy"
   revertBusy?: boolean
+  retryDisabled?: boolean
   sessionID?: string
   isLast?: boolean
   showMeta?: boolean
@@ -26,7 +30,10 @@ export function MessageRow({
   message,
   onFork,
   onRevert,
+  onRetry,
+  userActionMode = "full",
   revertBusy,
+  retryDisabled,
   sessionID,
   isLast,
   showMeta,
@@ -34,7 +41,8 @@ export function MessageRow({
   sessionInterrupted,
 }: MessageRowProps) {
   const [isHovered, setIsHovered] = useState(false)
-  const isUser = message.info.role === "user"
+  const userMessage = isUserMessage(message.info) ? message.info : undefined
+  const isUser = !!userMessage
   const isAssistant = isAssistantMessage(message.info)
   const skipPartIds = new Set<string>()
   const { resolveModelName } = useProviderStore()
@@ -44,16 +52,7 @@ export function MessageRow({
   const canCopy = copyText.length > 0
 
   const assistantInfo = isAssistant ? (message.info as AssistantMessage) : null
-  const tokens = assistantInfo?.tokens
-  const cost = assistantInfo?.cost
-
-  const hasTokens =
-    tokens &&
-    (tokens.input > 0 || tokens.output > 0 || tokens.reasoning > 0 || tokens.cache.read > 0 || tokens.cache.write > 0)
-
-  const error = (message.info as any)?.error as
-    | { name?: string; data?: { message?: string }; message?: string }
-    | undefined
+  const error = assistantInfo?.error as { name?: string; data?: { message?: string }; message?: string } | undefined
   const errorMessage =
     typeof error?.data?.message === "string"
       ? error.data.message
@@ -91,19 +90,6 @@ export function MessageRow({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Action buttons (visible on hover) */}
-      {isHovered && (isUser || hasTokens || canCopy) && (
-        <ActionButtons
-          onFork={onFork ? () => onFork(message.info.id) : undefined}
-          onRevert={onRevert ? () => onRevert(message.info.id) : undefined}
-          revertBusy={revertBusy}
-          tokens={tokens}
-          cost={cost}
-          isUser={isUser}
-          copyText={copyText}
-        />
-      )}
-
       {/* Render all parts (sorted: reasoning → tool → text) */}
       <div className={cn("flex flex-col gap-3", isUser && "min-w-0")}>
         {isUser && <div className="text-right text-xs text-gray-500 dark:text-gray-400">你</div>}
@@ -120,6 +106,33 @@ export function MessageRow({
             sessionInterrupted={sessionInterrupted}
           />
         ))}
+
+        {isUser && (
+          <div
+            data-testid="user-message-meta"
+            className={cn(
+              "flex flex-wrap items-center justify-end gap-1 text-xs text-gray-500 transition-opacity dark:text-gray-400",
+              isHovered ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
+              "focus-within:pointer-events-auto focus-within:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+            )}
+          >
+            <span data-testid="user-message-time">
+              {userMessage ? formatMessageDateTime(userMessage.time.created) : ""}
+            </span>
+            {(canCopy || onFork || onRevert || onRetry) && (
+              <ActionButtons
+                onFork={userActionMode === "full" && onFork ? () => onFork(message.info.id) : undefined}
+                onRevert={userActionMode === "full" && onRevert ? () => onRevert(message.info.id) : undefined}
+                onRetry={userActionMode === "full" && onRetry ? () => onRetry(message.info.id) : undefined}
+                revertBusy={revertBusy}
+                retryDisabled={retryDisabled}
+                isUser
+                copyText={copyText}
+                inline
+              />
+            )}
+          </div>
+        )}
 
         {/* Message-level errors (e.g. MessageAbortedError) */}
         {showMessageLevelError && (

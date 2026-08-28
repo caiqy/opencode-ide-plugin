@@ -88,6 +88,7 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
               <MessageRow
                 key={message.info.id}
                 message={message}
+                userActionMode="copy"
                 sessionID={sessionID}
                 isLast={message.info.id === lastMessageID}
                 showMeta={!!turnMetas.get(message.info.id)}

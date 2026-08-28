@@ -6,14 +6,25 @@ import { useTabStore } from "../../../state/tabStore"
 import { draftFromMessage, loadDrafts, saveDrafts } from "../../../state/repo/draftRepo"
 import { useToast } from "../../../state/ToastContext"
 import { getUserMessagePlainText } from "../utils"
+import { sdk } from "../../../lib/api/sdkClient"
 
 export function useMessageActions(sessionID: string | null | undefined, onUndoToInput?: (value: string) => void) {
-  const { currentSession, forkSession, revertToMessage, unrevertSession, redoNext } = useSession()
+  const {
+    currentSession,
+    isIdle,
+    sessionStatusReady,
+    setSessionIdle,
+    forkSession,
+    revertToMessage,
+    unrevertSession,
+    redoNext,
+  } = useSession()
   const { getMessagesBySession, removeSessionErrors } = useMessages()
   const tabStore = useTabStore()
   const { showToast } = useToast()
   const pendingFork = useRef<{ sourceSessionID: string; messageID: string; fork: Session } | null>(null)
   const forkBoundary = useRef<{ sourceSessionID: string; messageID: string } | null>(null)
+  const retrying = useRef(new Set<string>())
 
   const [forkConfirm, setForkConfirm] = useState<string | null>(null)
   const [isForking, setIsForking] = useState(false)
@@ -21,12 +32,17 @@ export function useMessageActions(sessionID: string | null | undefined, onUndoTo
     null,
   )
   const [isRevertBusy, setIsRevertBusy] = useState(false)
+  const [retryMessageID, setRetryMessageID] = useState<string | null>(null)
+  const [isRetrying, setIsRetrying] = useState(false)
 
-  const handleForkStart = useCallback((messageId: string) => {
-    pendingFork.current = null
-    forkBoundary.current = currentSession ? { sourceSessionID: currentSession.id, messageID: messageId } : null
-    setForkConfirm(messageId)
-  }, [currentSession])
+  const handleForkStart = useCallback(
+    (messageId: string) => {
+      pendingFork.current = null
+      forkBoundary.current = currentSession ? { sourceSessionID: currentSession.id, messageID: messageId } : null
+      setForkConfirm(messageId)
+    },
+    [currentSession],
+  )
 
   const handleForkConfirm = useCallback(async () => {
     if (!forkConfirm || !currentSession) return
@@ -76,6 +92,80 @@ export function useMessageActions(sessionID: string | null | undefined, onUndoTo
     },
     [currentSession, isRevertBusy],
   )
+
+  const handleRetry = useCallback(
+    (messageId: string) => {
+      if (!sessionID || !currentSession?.id || !sessionStatusReady || !isIdle) return
+      if (retrying.current.has(sessionID)) return
+      setRetryMessageID(messageId)
+    },
+    [currentSession, isIdle, sessionID, sessionStatusReady],
+  )
+
+  const handleRetryConfirm = useCallback(async () => {
+    if (!retryMessageID || !sessionID || !currentSession?.id) return
+    if (!sessionStatusReady || !isIdle || retrying.current.has(sessionID)) {
+      setRetryMessageID(null)
+      return
+    }
+
+    const message = getMessagesBySession(sessionID).find((item) => item.info.id === retryMessageID)
+    if (!message || message.info.role !== "user") {
+      setRetryMessageID(null)
+      return
+    }
+    const draft = draftFromMessage(message)
+    if (!draft) {
+      setRetryMessageID(null)
+      return
+    }
+
+    retrying.current.add(sessionID)
+    setIsRetrying(true)
+    setSessionIdle(sessionID, false)
+    try {
+      const response = await sdk.session.prompt({
+        path: { id: sessionID },
+        body: {
+          // v1 and v2 SDKs share the wire shape but generate incompatible source types.
+          parts: draft.parts as unknown as NonNullable<Parameters<typeof sdk.session.prompt>[0]["body"]>["parts"],
+          agent: draft.agent,
+          ...(draft.model
+            ? {
+                model: { providerID: draft.model.providerID, modelID: draft.model.modelID },
+                variant: draft.model.variant,
+              }
+            : {}),
+          ...(message.info.format ? { format: message.info.format } : {}),
+          ...(message.info.system ? { system: message.info.system } : {}),
+          ...(message.info.tools ? { tools: message.info.tools } : {}),
+        },
+      })
+      if (!response.error) return
+      setSessionIdle(sessionID, true)
+      showToast("重试消息失败", { title: "重试失败", variant: "error", duration: 8000 })
+    } catch {
+      setSessionIdle(sessionID, true)
+      showToast("重试消息失败", { title: "重试失败", variant: "error", duration: 8000 })
+    } finally {
+      retrying.current.delete(sessionID)
+      setIsRetrying(false)
+      setRetryMessageID(null)
+    }
+  }, [
+    currentSession,
+    getMessagesBySession,
+    isIdle,
+    retryMessageID,
+    sessionID,
+    sessionStatusReady,
+    setSessionIdle,
+    showToast,
+  ])
+
+  const handleRetryCancel = useCallback(() => {
+    if (!isRetrying) setRetryMessageID(null)
+  }, [isRetrying])
 
   const handleRevertConfirm = useCallback(async () => {
     if (!currentSession?.id) return
@@ -147,6 +237,11 @@ export function useMessageActions(sessionID: string | null | undefined, onUndoTo
     handleForkStart,
     handleForkConfirm,
     handleRevert,
+    handleRetry,
+    handleRetryConfirm,
+    handleRetryCancel,
+    isRetrying,
+    retryMessageID,
     handleRevertConfirm,
     handleRevertCancel,
     handleRedoClick,
