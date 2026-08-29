@@ -121,14 +121,15 @@ export function useMessageActions(sessionID: string | null | undefined, onUndoTo
     }
 
     retrying.current.add(sessionID)
+    setRetryMessageID(null)
     setIsRetrying(true)
     setSessionIdle(sessionID, false)
     try {
-      const response = await sdk.session.prompt({
+      const response = await sdk.session.promptAsync({
         path: { id: sessionID },
         body: {
           // v1 and v2 SDKs share the wire shape but generate incompatible source types.
-          parts: draft.parts as unknown as NonNullable<Parameters<typeof sdk.session.prompt>[0]["body"]>["parts"],
+          parts: draft.parts as unknown as NonNullable<Parameters<typeof sdk.session.promptAsync>[0]["body"]>["parts"],
           agent: draft.agent,
           ...(draft.model
             ? {
@@ -150,7 +151,6 @@ export function useMessageActions(sessionID: string | null | undefined, onUndoTo
     } finally {
       retrying.current.delete(sessionID)
       setIsRetrying(false)
-      setRetryMessageID(null)
     }
   }, [
     currentSession,

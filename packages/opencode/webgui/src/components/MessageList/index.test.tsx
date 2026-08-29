@@ -86,7 +86,8 @@ vi.mock("./Parts/QuestionPart", () => ({
 }))
 
 vi.mock("../TypingIndicator", () => ({
-  TypingIndicator: ({ visible }: { visible: boolean }) => (visible ? <div data-testid="typing-indicator" /> : null),
+  TypingIndicator: ({ visible, startedAt }: { visible: boolean; startedAt?: number }) =>
+    visible ? <div data-testid="typing-indicator" data-started-at={startedAt} /> : null,
 }))
 
 import { MessageList } from "./index"
@@ -262,6 +263,21 @@ describe("MessageList", () => {
     const root = screen.getByTestId("message-scroll-root")
     expect(root).toHaveClass("flex", "flex-col", "gap-4")
     expect(root).not.toHaveClass("space-y-4")
+  })
+
+  it("reasoning 阶段继续显示从当前轮次开始计时的生成状态", () => {
+    mocks.useMessages.mockReturnValue({
+      getMessagesBySession: () => [msg2("u1", "s1", 1_000), msg("m1", 2_000)],
+      getQuestionsBySession: () => [],
+      getSessionPagination: () => page(),
+      loadOlder: vi.fn(async () => []),
+      permissions: [],
+    })
+    mocks.useSession.mockReturnValue({ isIdle: false, isReasoning: true, currentSession: null })
+
+    render(<MessageList sessionID="s1" onUndoToInput={vi.fn()} />)
+
+    expect(screen.getByTestId("typing-indicator")).toHaveAttribute("data-started-at", "1000")
   })
 
   it("showScrollToBottom=false 时不渲染 sticky layer 与按钮", () => {

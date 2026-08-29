@@ -10,6 +10,7 @@ import { cn } from "../../utils/classNames"
 import { useProviderStore } from "../../hooks/useProviderStore"
 import { getMessageCopyText } from "./messageCopy"
 import { formatMessageDateTime } from "../../utils/formatting"
+import { getMessageLastActivityAt } from "./turnMeta"
 
 interface MessageRowProps {
   message: Message
@@ -53,6 +54,31 @@ export function MessageRow({
 
   const assistantInfo = isAssistant ? (message.info as AssistantMessage) : null
   const error = assistantInfo?.error as { name?: string; data?: { message?: string }; message?: string } | undefined
+  const toolContinues = message.parts.some(
+    (part) =>
+      part.type === "tool" &&
+      part.metadata?.providerExecuted !== true &&
+      !(part.state.status === "error" && part.state.metadata?.interrupted === true),
+  )
+  const activeTool = message.parts.some(
+    (part) => part.type === "tool" && (part.state.status === "pending" || part.state.status === "running"),
+  )
+  const continues = Boolean(
+    assistantInfo &&
+    !error &&
+    assistantInfo.structured === undefined &&
+    (assistantInfo.finish === "tool-calls" ||
+      assistantInfo.finish === "unknown" ||
+      (assistantInfo.finish !== undefined && toolContinues)),
+  )
+  const interrupted = Boolean(
+    error?.name === "MessageAbortedError" ||
+    (sessionInterrupted &&
+      assistantInfo &&
+      !error &&
+      (continues || assistantInfo.time.completed === undefined || activeTool)),
+  )
+  const completedAt = assistantInfo?.time.completed ?? (interrupted ? getMessageLastActivityAt(message) : undefined)
   const errorMessage =
     typeof error?.data?.message === "string"
       ? error.data.message
@@ -148,14 +174,17 @@ export function MessageRow({
         )}
 
         {/* Assistant turn meta (model, duration, etc.) */}
-        {showMeta && isAssistant && (assistantInfo?.time?.completed || error?.name === "MessageAbortedError") && (
+        {showMeta &&
+          isAssistant &&
+          (!continues || interrupted) &&
+          completedAt !== undefined && (
           <AssistantMeta
             agent={assistantInfo?.agent ?? ""}
             modelName={resolveModelName(assistantInfo?.providerID ?? "", assistantInfo?.modelID ?? "")}
             variant={assistantInfo?.variant || undefined}
             durationMs={turnDurationMs}
-            completedAt={assistantInfo?.time?.completed}
-            interrupted={error?.name === "MessageAbortedError"}
+            completedAt={completedAt}
+            interrupted={interrupted}
           />
         )}
 

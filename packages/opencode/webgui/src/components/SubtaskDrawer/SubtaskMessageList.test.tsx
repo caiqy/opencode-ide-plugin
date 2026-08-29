@@ -67,7 +67,8 @@ vi.mock("../MessageList/Parts/QuestionPart", () => ({
 }))
 
 vi.mock("../TypingIndicator", () => ({
-  TypingIndicator: () => null,
+  TypingIndicator: ({ visible, startedAt }: { visible: boolean; startedAt?: number }) =>
+    visible ? <div data-testid="typing-indicator" data-started-at={startedAt} /> : null,
 }))
 
 vi.mock("../MessageList/ScrollToBottomButton", () => ({
@@ -163,6 +164,26 @@ describe("SubtaskMessageList", () => {
     render(<SubtaskMessageList sessionID="s-child" />)
 
     expect(screen.getByTestId("user-action-mode")).toHaveTextContent("copy")
+  })
+
+  it("reasoning 阶段继续显示从子任务当前轮次开始计时的生成状态", () => {
+    mocks.useMessages.mockReturnValue({
+      getMessagesBySession: () => [
+        {
+          info: { id: "u-child", sessionID: "s-child", role: "user", time: { created: 1_000 } },
+          parts: [],
+        },
+        {
+          info: { id: "a-child", sessionID: "s-child", role: "assistant", time: { created: 2_000 } },
+          parts: [],
+        },
+      ],
+      getQuestionsBySession: () => [],
+    })
+
+    render(<SubtaskMessageList sessionID="s-child" />)
+
+    expect(screen.getByTestId("typing-indicator")).toHaveAttribute("data-started-at", "1000")
   })
 
   it("只在状态恢复完成且子会话 idle 时将未完成部分显示为中断", () => {

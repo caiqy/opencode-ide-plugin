@@ -203,24 +203,26 @@ describe("formatRelativeTime", () => {
 })
 
 describe("formatDuration", () => {
-  it("formats milliseconds", () => {
-    expect(formatDuration(500)).toBe("500ms")
-    expect(formatDuration(999)).toBe("999ms")
+  it("秒数使用中文单位并四舍五入", () => {
+    expect(formatDuration(0)).toBe("0 秒")
+    expect(formatDuration(23_400)).toBe("23 秒")
+    expect(formatDuration(23_600)).toBe("24 秒")
   })
 
-  it("formats seconds", () => {
-    expect(formatDuration(1000)).toBe("1s")
-    expect(formatDuration(5000)).toBe("5s")
+  it("分钟显示补零后的秒数", () => {
+    expect(formatDuration(60_000)).toBe("1 分 00 秒")
+    expect(formatDuration(65_000)).toBe("1 分 05 秒")
+    expect(formatDuration(3_599_000)).toBe("59 分 59 秒")
   })
 
-  it("formats minutes and seconds", () => {
-    expect(formatDuration(65000)).toBe("1m 5s")
-    expect(formatDuration(125000)).toBe("2m 5s")
+  it("小时显示补零后的分秒", () => {
+    expect(formatDuration(3_600_000)).toBe("1 小时 00 分 00 秒")
+    expect(formatDuration(3_665_000)).toBe("1 小时 01 分 05 秒")
+    expect(formatDuration(7_265_000)).toBe("2 小时 01 分 05 秒")
   })
 
-  it("formats hours and minutes", () => {
-    expect(formatDuration(3665000)).toBe("1h 1m")
-    expect(formatDuration(7265000)).toBe("2h 1m")
+  it("负数返回空字符串", () => {
+    expect(formatDuration(-1)).toBe("")
   })
 })
 

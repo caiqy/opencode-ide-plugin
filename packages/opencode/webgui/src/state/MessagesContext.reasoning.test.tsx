@@ -34,11 +34,20 @@ vi.mock("./SessionContext", () => ({
   }),
 }))
 
-import { MessagesProvider } from "./MessagesContext"
+import { MessagesProvider, useMessages } from "./MessagesContext"
+import { sdk } from "../lib/api/sdkClient"
+
+let api: ReturnType<typeof useMessages> | null = null
+
+function Capture() {
+  api = useMessages()
+  return null
+}
 
 function mountProvider(emitter: EventEmitter) {
   render(
     <MessagesProvider emitter={emitter}>
+      <Capture />
       <div data-testid="messages-provider" />
     </MessagesProvider>,
   )
@@ -48,6 +57,41 @@ describe("MessagesContext reasoning tracking", () => {
   beforeEach(() => {
     mocks.setReasoning.mockReset()
     mocks.setSessionIdle.mockReset()
+    vi.mocked(sdk.session.messages).mockReset()
+    api = null
+  })
+
+  it("加载历史时忽略已完成 assistant 中缺少 end 的 reasoning", async () => {
+    vi.mocked(sdk.session.messages).mockResolvedValue({
+      data: [
+        {
+          info: {
+            id: "m1",
+            sessionID: "s1",
+            role: "assistant",
+            time: { created: 1, completed: 3 },
+          },
+          parts: [
+            {
+              id: "r1",
+              type: "reasoning",
+              sessionID: "s1",
+              messageID: "m1",
+              text: "stale",
+              time: { start: 1 },
+            },
+          ],
+        },
+      ],
+      error: null,
+    } as never)
+    mountProvider(new EventEmitter())
+
+    await act(async () => {
+      await api?.loadLatest("s1")
+    })
+
+    expect(mocks.setReasoning).toHaveBeenLastCalledWith("s1", false)
   })
 
   it("reasoning 进行中收到非 reasoning part 更新，不应误清空 reasoning 状态", async () => {
@@ -125,6 +169,44 @@ describe("MessagesContext reasoning tracking", () => {
             text: "thinking",
             time: { start: 1, end: 3 },
           },
+        },
+      } as ServerEvent)
+    })
+
+    expect(mocks.setReasoning).toHaveBeenLastCalledWith("s1", false)
+  })
+
+  it("assistant 完成事件晚于 reasoning part 时应清空 reasoning 状态", async () => {
+    const emitter = new EventEmitter()
+    mountProvider(emitter)
+
+    await act(async () => {
+      emitter.emit({
+        type: "message.updated",
+        properties: {
+          info: { id: "m1", sessionID: "s1", role: "assistant", time: { created: 1 } },
+        },
+      } as ServerEvent)
+      emitter.emit({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "r1",
+            type: "reasoning",
+            sessionID: "s1",
+            messageID: "m1",
+            text: "thinking",
+            time: { start: 1 },
+          },
+        },
+      } as ServerEvent)
+    })
+
+    await act(async () => {
+      emitter.emit({
+        type: "message.updated",
+        properties: {
+          info: { id: "m1", sessionID: "s1", role: "assistant", time: { created: 1, completed: 3 } },
         },
       } as ServerEvent)
     })

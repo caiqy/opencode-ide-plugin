@@ -50,6 +50,21 @@ describe("computeAllTurnMetas", () => {
     expect(meta?.lastAssistantID).toBe("a1")
   })
 
+  it("中断恢复时用最后可见 part 时间补齐 turn duration", () => {
+    const messages = [msg("user", "u1", 1000), msg("assistant", "a1", 1100, undefined)]
+    messages[1].parts = [
+      {
+        id: "p1",
+        type: "tool",
+        tool: "bash",
+        time: { start: 8000, end: 9000 },
+        state: { status: "running", input: {}, time: { start: 7000 } },
+      } as never,
+    ]
+
+    expect(computeAllTurnMetas(messages, true).get("a1")?.turnDurationMs).toBe(8000)
+  })
+
   it("多轮对话每个 turn 都有独立 meta", () => {
     const map = computeAllTurnMetas([
       msg("user", "u1", 1000),
@@ -99,25 +114,25 @@ describe("computeAllTurnMetas", () => {
 })
 
 describe("formatDuration", () => {
-  it("0 毫秒显示 0s", () => {
-    expect(formatDuration(0)).toBe("0s")
+  it("0 毫秒显示中文秒数", () => {
+    expect(formatDuration(0)).toBe("0 秒")
   })
 
   it("短于 60 秒显示秒数", () => {
-    expect(formatDuration(23000)).toBe("23s")
+    expect(formatDuration(23000)).toBe("23 秒")
   })
 
-  it("60 秒整显示 1m 0s", () => {
-    expect(formatDuration(60000)).toBe("1m 0s")
+  it("60 秒整显示 1 分 00 秒", () => {
+    expect(formatDuration(60000)).toBe("1 分 00 秒")
   })
 
   it("超过 60 秒显示分秒", () => {
-    expect(formatDuration(133000)).toBe("2m 13s")
+    expect(formatDuration(133000)).toBe("2 分 13 秒")
   })
 
   it("四舍五入到最近秒", () => {
-    expect(formatDuration(23400)).toBe("23s")
-    expect(formatDuration(23600)).toBe("24s")
+    expect(formatDuration(23400)).toBe("23 秒")
+    expect(formatDuration(23600)).toBe("24 秒")
   })
 
   it("负数返回空字符串", () => {

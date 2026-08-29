@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useSession } from "../state/SessionContext"
+import { formatDuration } from "../utils/formatting"
 
 /**
  * Typing indicator component
@@ -12,27 +13,22 @@ import { useSession } from "../state/SessionContext"
 interface TypingIndicatorProps {
   /** Whether the indicator should be visible */
   visible: boolean
+  /** Current turn start time */
+  startedAt?: number
 }
 
-export function TypingIndicator({ visible }: TypingIndicatorProps) {
+export function TypingIndicator({ visible, startedAt }: TypingIndicatorProps) {
   const { currentStatus } = useSession()
   const [seconds, setSeconds] = useState<number | null>(null)
-
-  // Elapsed seconds counter for "生成中..."
-  const [elapsed, setElapsed] = useState(0)
+  const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
-    if (!visible) {
-      setElapsed(0)
-      return
-    }
-    // Start counting from 0 when visible becomes true
-    setElapsed(0)
-    const id = window.setInterval(() => {
-      setElapsed((prev) => prev + 1)
-    }, 1000)
+    if (!visible || startedAt === undefined) return
+    const update = () => setNow(Date.now())
+    update()
+    const id = window.setInterval(update, 1000)
     return () => window.clearInterval(id)
-  }, [visible])
+  }, [startedAt, visible])
 
   useEffect(() => {
     if (currentStatus.type !== "retry") {
@@ -69,6 +65,7 @@ export function TypingIndicator({ visible }: TypingIndicatorProps) {
   })()
 
   const countdown = currentStatus.type === "retry" && typeof seconds === "number" && seconds > 0 ? seconds : null
+  const elapsedMs = startedAt === undefined ? 0 : Math.max(0, now - startedAt)
 
   return (
     <div className="flex min-h-[1rem] flex-col gap-1">
@@ -89,7 +86,7 @@ export function TypingIndicator({ visible }: TypingIndicatorProps) {
               style={{ animationDelay: "400ms", animationDuration: "1s" }}
             />
           </div>
-          {elapsed > 0 && <span className="leading-none tabular-nums">{elapsed} 秒</span>}
+          {elapsedMs >= 500 && <span className="leading-none tabular-nums">{formatDuration(elapsedMs)}</span>}
         </button>
       )}
 

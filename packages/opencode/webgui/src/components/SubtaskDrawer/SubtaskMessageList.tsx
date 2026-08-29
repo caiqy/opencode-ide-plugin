@@ -28,6 +28,7 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
   const isIdle = sessionID ? isSessionIdle(sessionID) : true
   const isReasoning = sessionID ? isSessionReasoning(sessionID) : false
   const sessionInterrupted = Boolean(sessionID && sessionStatusReady && isIdle)
+  const generationStartedAt = sortedMessages.filter((message) => message.info.role === "user").at(-1)?.info.time.created
 
   const { messagesEndRef, messagesContainerRef, showScrollToBottom, scrollToBottom } = useMessageScroll(
     sessionID,
@@ -43,7 +44,10 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
     scrollToBottom()
   }, [scrollToBottom])
 
-  const turnMetas = useMemo(() => computeAllTurnMetas(sortedMessages), [sortedMessages])
+  const turnMetas = useMemo(
+    () => computeAllTurnMetas(sortedMessages, sessionInterrupted),
+    [sessionInterrupted, sortedMessages],
+  )
 
   if (!sessionID) {
     return <EmptyState />
@@ -104,8 +108,7 @@ export function SubtaskMessageList({ sessionID }: SubtaskMessageListProps) {
               </div>
             ))}
 
-            {/* Typing indicator - hide while reasoning parts are streaming */}
-            <TypingIndicator visible={!isIdle && !isReasoning} />
+            <TypingIndicator visible={!isIdle} startedAt={generationStartedAt} />
 
             {/* Scroll anchor */}
             <div ref={messagesEndRef} />

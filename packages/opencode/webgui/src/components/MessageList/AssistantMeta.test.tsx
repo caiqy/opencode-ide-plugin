@@ -14,7 +14,7 @@ describe("AssistantMeta", () => {
 
   it("完整格式渲染：Agent · Model · Variant · Duration", () => {
     render(<AssistantMeta agent="code" modelName="Claude Sonnet 4" variant="high" durationMs={23000} />)
-    expect(screen.getByTestId("assistant-meta")).toHaveTextContent("Code · Claude Sonnet 4 · high · 23s")
+    expect(screen.getByTestId("assistant-meta")).toHaveTextContent("Code · Claude Sonnet 4 · high · 23 秒")
   })
 
   it("有 completedAt 时追加完整结束时间", () => {
@@ -31,7 +31,7 @@ describe("AssistantMeta", () => {
     )
 
     expect(screen.getByTestId("assistant-meta")).toHaveTextContent(
-      "Code · Claude Sonnet 4 · high · 23s · 今天 14:23:18",
+      "Code · Claude Sonnet 4 · high · 23 秒 · 今天 14:23:18",
     )
   })
 
@@ -50,7 +50,7 @@ describe("AssistantMeta", () => {
     )
 
     expect(screen.getByTestId("assistant-meta")).toHaveTextContent(
-      "Code · Claude Sonnet 4 · high · 23s · 今天 14:23:18 · interrupted",
+      "Code · Claude Sonnet 4 · high · 23 秒 · 今天 14:23:18 · interrupted",
     )
   })
 
@@ -65,22 +65,22 @@ describe("AssistantMeta", () => {
       />,
     )
 
-    expect(screen.getByTestId("assistant-meta").textContent).toBe("Code · Claude Sonnet 4 · high · 23s")
+    expect(screen.getByTestId("assistant-meta").textContent).toBe("Code · Claude Sonnet 4 · high · 23 秒")
   })
 
   it("无 variant 时省略", () => {
     render(<AssistantMeta agent="code" modelName="Claude Sonnet 4" durationMs={23000} />)
-    expect(screen.getByTestId("assistant-meta")).toHaveTextContent("Code · Claude Sonnet 4 · 23s")
+    expect(screen.getByTestId("assistant-meta")).toHaveTextContent("Code · Claude Sonnet 4 · 23 秒")
   })
 
   it("中断时显示 interrupted", () => {
     render(<AssistantMeta agent="code" modelName="Claude Sonnet 4" variant="high" durationMs={23000} interrupted />)
-    expect(screen.getByTestId("assistant-meta")).toHaveTextContent("Code · Claude Sonnet 4 · high · 23s · interrupted")
+    expect(screen.getByTestId("assistant-meta")).toHaveTextContent("Code · Claude Sonnet 4 · high · 23 秒 · interrupted")
   })
 
   it("分钟级 duration 格式化", () => {
     render(<AssistantMeta agent="code" modelName="GPT-4o" durationMs={133000} />)
-    expect(screen.getByTestId("assistant-meta")).toHaveTextContent("Code · GPT-4o · 2m 13s")
+    expect(screen.getByTestId("assistant-meta")).toHaveTextContent("Code · GPT-4o · 2 分 13 秒")
   })
 
   it("无 duration 时省略", () => {

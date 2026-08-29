@@ -159,23 +159,19 @@ export function formatRelativeTime(timestamp: number): string {
 
 /**
  * Format a duration in milliseconds to human-readable string
- * @example formatDuration(1500) // => "1.5s"
- * @example formatDuration(65000) // => "1m 5s"
+ * @example formatDuration(23000) // => "23 秒"
+ * @example formatDuration(65000) // => "1 分 05 秒"
  */
 export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
+  if (ms < 0) return ""
+  const total = Math.round(ms / 1000)
+  if (total < 60) return `${total} 秒`
 
-  const seconds = Math.floor(ms / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
+  const minutes = Math.floor(total / 60)
+  const seconds = total % 60
+  if (minutes < 60) return `${minutes} 分 ${pad(seconds)} 秒`
 
-  if (hours > 0) {
-    return `${hours}h ${minutes % 60}m`
-  } else if (minutes > 0) {
-    return `${minutes}m ${seconds % 60}s`
-  } else {
-    return `${seconds}s`
-  }
+  return `${Math.floor(minutes / 60)} 小时 ${pad(minutes % 60)} 分 ${pad(seconds)} 秒`
 }
 
 /**

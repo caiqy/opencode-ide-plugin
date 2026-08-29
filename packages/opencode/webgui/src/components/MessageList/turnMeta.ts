@@ -1,4 +1,5 @@
 import { isAssistantMessage, type AssistantMessage, type Message } from "../../types/messages"
+export { formatDuration } from "../../utils/formatting"
 
 export interface TurnMeta {
   turnDurationMs: number | undefined
@@ -13,12 +14,22 @@ export interface TurnMetaMap {
   get(messageID: string): TurnMeta | undefined
 }
 
+export function getMessageLastActivityAt(message: Message): number {
+  return message.parts.reduce((latest, part) => {
+    const direct = (part as { time?: { start?: number; end?: number } }).time
+    // Legacy tool records may carry activity time on the part as well as its state.
+    const state: { start?: number; end?: number } | undefined =
+      part.type === "tool" && part.state.status !== "pending" ? part.state.time : undefined
+    return Math.max(latest, direct?.end ?? direct?.start ?? latest, state?.end ?? state?.start ?? latest)
+  }, message.info.time.created)
+}
+
 /**
  * 计算所有 turn 的 meta。
  * 一个 turn = 一条 user message + 其后直到下一条 user message 之前的所有 assistant messages。
  * 返回一个 map，key 是每个 turn 最后一条 assistant message 的 ID。
  */
-export function computeAllTurnMetas(messages: Message[]): TurnMetaMap {
+export function computeAllTurnMetas(messages: Message[], interrupted = false): TurnMetaMap {
   const sorted = [...messages].sort((a, b) => a.info.time.created - b.info.time.created)
 
   // 按 user message 分割为多个 turn
@@ -44,13 +55,18 @@ export function computeAllTurnMetas(messages: Message[]): TurnMetaMap {
       .map((m) => (m.info as AssistantMessage).time.completed)
       .filter((t): t is number => typeof t === "number" && t > 0)
 
+    const lastAssistant = turn.assistants[turn.assistants.length - 1]
     const lastCompleted = completedTimes.length > 0 ? Math.max(...completedTimes) : undefined
+    const completedAt =
+      interrupted && (lastAssistant.info as AssistantMessage).time.completed === undefined
+        ? Math.max(lastCompleted ?? 0, getMessageLastActivityAt(lastAssistant))
+        : lastCompleted
     const turnDurationMs =
-      lastCompleted !== undefined && lastCompleted >= turn.user.info.time.created
-        ? lastCompleted - turn.user.info.time.created
+      completedAt !== undefined && completedAt >= turn.user.info.time.created
+        ? completedAt - turn.user.info.time.created
         : undefined
 
-    const lastAssistantID = turn.assistants[turn.assistants.length - 1].info.id
+    const lastAssistantID = lastAssistant.info.id
     map.set(lastAssistantID, { turnDurationMs, lastAssistantID })
   }
 
@@ -59,17 +75,4 @@ export function computeAllTurnMetas(messages: Message[]): TurnMetaMap {
       return map.get(messageID)
     },
   }
-}
-
-/**
- * 将毫秒格式化为人类可读的时长字符串。
- * < 60s → "Xs"，≥ 60s → "Xm Ys"
- */
-export function formatDuration(ms: number): string {
-  const total = Math.round(ms / 1000)
-  if (total < 0) return ""
-  if (total < 60) return `${total}s`
-  const minutes = Math.floor(total / 60)
-  const seconds = total % 60
-  return `${minutes}m ${seconds}s`
 }

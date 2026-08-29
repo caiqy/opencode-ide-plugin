@@ -169,6 +169,10 @@ function infoSessionErrorKey(info: unknown): string | undefined {
   return sessionErrorKey(error)
 }
 
+function isCompletedAssistant(info: SDKMessage) {
+  return info.role === "assistant" && typeof info.time.completed === "number" && info.time.completed > 0
+}
+
 function nextCursor(result: unknown): string | undefined {
   const headers =
     (result as { response?: { headers?: Headers | Record<string, unknown> } })?.response?.headers ??
@@ -238,7 +242,8 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     (part: Extract<Part, { type: "reasoning" }>) => {
       const sessionID = part.sessionID
       const current = new Set(reasoningPartsBySessionRef.current.get(sessionID) ?? [])
-      const ended = typeof part.time?.end === "number"
+      const message = messagesRef.current.find((item) => item.info.id === part.messageID)
+      const ended = typeof part.time?.end === "number" || (message ? isCompletedAssistant(message.info) : false)
 
       if (ended) {
         current.delete(part.id)
@@ -279,6 +284,7 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
     (sessionID: string, sessionMessages: Message[]) => {
       const activeReasoningIDs = new Set<string>()
       for (const message of sessionMessages) {
+        if (message.info.role !== "assistant" || isCompletedAssistant(message.info)) continue
         for (const part of message.parts) {
           if (part.type !== "reasoning") continue
           if (typeof part.time?.end === "number") continue
@@ -542,9 +548,15 @@ export function MessagesProvider({ children, emitter }: MessagesProviderProps) {
             return (m.info as any)?.syntheticErrorKey !== key
           })
         })
+        if (isCompletedAssistant(info)) {
+          syncSessionReasoningFromMessages(
+            info.sessionID,
+            messagesRef.current.filter((message) => message.info.sessionID === info.sessionID),
+          )
+        }
       }
     },
-    [touch],
+    [syncSessionReasoningFromMessages, touch],
   )
 
   // Listen to message.part.updated events

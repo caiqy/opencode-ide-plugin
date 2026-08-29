@@ -151,14 +151,15 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
     if (revertBoundaryIndex < 0) return []
     return sortedMessages.slice(0, revertBoundaryIndex)
   }, [revertBoundaryID, revertBoundaryIndex, sortedMessages])
-  const typing = !isIdle && !isReasoning
+  const generating = !isIdle
+  const generationStartedAt = visibleMessages.filter((message) => message.info.role === "user").at(-1)?.info.time.created
   const sessionInterrupted = Boolean(sessionID && sessionStatusReady && isIdle)
   const blocks = useHistoryBlocks({
     sessionID,
     messages: visibleMessages,
     questions: pendingQuestions,
     permissions,
-    isTyping: typing,
+    isTyping: generating,
   })
   const settling = useSettle(sessionID, box, sortedMessages.length)
   const tailMessages = useMemo(() => {
@@ -227,7 +228,10 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
   }, [visibleMessages])
 
   const lastMessageID = visibleMessages.at(-1)?.info.id
-  const turnMetas = useMemo(() => computeAllTurnMetas(visibleMessages), [visibleMessages])
+  const turnMetas = useMemo(
+    () => computeAllTurnMetas(visibleMessages, sessionInterrupted),
+    [sessionInterrupted, visibleMessages],
+  )
 
   const renderRow = useCallback(
     (
@@ -294,9 +298,9 @@ export function MessageList({ sessionID, onUndoToInput, sendRequestKey = 0 }: Me
           </div>
         )
       }
-      return typing ? <TypingIndicator key={item.id} visible /> : null
+      return generating ? <TypingIndicator key={item.id} visible startedAt={generationStartedAt} /> : null
     })
-  }, [blocks.tail, renderRow, trim, typing])
+  }, [blocks.tail, generating, generationStartedAt, renderRow, trim])
 
   const bar = useMemo(() => {
     if (!page.ready) return null

@@ -33,7 +33,7 @@ vi.mock("../../../state/SessionContext", () => ({
 }))
 
 vi.mock("../../../lib/api/sdkClient", () => ({
-  sdk: { session: { prompt: mocks.prompt } },
+  sdk: { session: { promptAsync: mocks.prompt } },
 }))
 
 vi.mock("../../../state/MessagesContext", () => ({
@@ -371,5 +371,47 @@ describe("useMessageActions", () => {
     await act(async () => {
       await first
     })
+  })
+
+  it("重试请求已发起但仍在执行时关闭确认弹窗", async () => {
+    mocks.prompt.mockReturnValue(new Promise(() => {}))
+    mocks.getMessagesBySession.mockReturnValue([
+      { info: { id: "m1", role: "user", agent: "build" }, parts: [{ type: "text", text: "retry" }] },
+    ])
+    const { result } = renderHook(() => useMessageActions("s1"))
+
+    act(() => result.current.handleRetry("m1"))
+    await act(async () => {
+      void result.current.handleRetryConfirm()
+      await Promise.resolve()
+    })
+
+    expect(mocks.prompt).toHaveBeenCalledTimes(1)
+    expect(result.current.retryMessageID).toBeNull()
+    expect(result.current.isRetrying).toBe(true)
+  })
+
+  it.each([
+    ["错误响应", () => Promise.resolve({ data: null, error: { message: "failed" } })],
+    ["网络异常", () => Promise.reject(new Error("failed"))],
+  ])("重试请求%s时恢复会话并允许再次重试", async (_label, response) => {
+    mocks.prompt.mockReturnValue(response())
+    mocks.getMessagesBySession.mockReturnValue([
+      { info: { id: "m1", role: "user", agent: "build" }, parts: [{ type: "text", text: "retry" }] },
+    ])
+    const { result } = renderHook(() => useMessageActions("s1"))
+
+    act(() => result.current.handleRetry("m1"))
+    await act(async () => result.current.handleRetryConfirm())
+
+    expect(mocks.setSessionIdle).toHaveBeenLastCalledWith("s1", true)
+    expect(mocks.showToast).toHaveBeenCalledWith("重试消息失败", {
+      title: "重试失败",
+      variant: "error",
+      duration: 8000,
+    })
+    expect(result.current.isRetrying).toBe(false)
+    act(() => result.current.handleRetry("m1"))
+    expect(result.current.retryMessageID).toBe("m1")
   })
 })

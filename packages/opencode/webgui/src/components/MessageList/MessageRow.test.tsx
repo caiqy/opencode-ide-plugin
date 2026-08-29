@@ -96,6 +96,80 @@ describe("MessageRow", () => {
     )
   })
 
+  it("工具续写期间隐藏 meta，最终 assistant 完成后显示", () => {
+    const base = {
+      id: "a-turn",
+      sessionID: "s1",
+      role: "assistant",
+      agent: "build",
+      providerID: "openai",
+      modelID: "gpt-5",
+      time: { created: 1, completed: 2 },
+    }
+    const tool = {
+      id: "tool-1",
+      type: "tool",
+      callID: "call-1",
+      tool: "bash",
+      state: { status: "completed", input: {}, output: "done", title: "bash", metadata: {}, time: { start: 1, end: 2 } },
+    }
+
+    const view = render(
+      <MessageRow message={{ info: { ...base, finish: "tool-calls" }, parts: [tool] } as never} showMeta />,
+    )
+    expect(screen.queryByTestId("assistant-meta")).not.toBeInTheDocument()
+
+    view.rerender(
+      <MessageRow
+        message={{ info: { ...base, finish: "tool-calls" }, parts: [tool] } as never}
+        showMeta
+        sessionInterrupted
+      />,
+    )
+    expect(screen.getByTestId("assistant-meta")).toBeInTheDocument()
+    expect(assistantMetaSpy).toHaveBeenLastCalledWith(expect.objectContaining({ interrupted: true }))
+
+    view.rerender(
+      <MessageRow
+        message={{
+          info: { ...base, time: { created: 1 } },
+          parts: [{ ...tool, state: { status: "running", input: {}, time: { start: 9000 } } }],
+        } as never}
+        showMeta
+        sessionInterrupted
+      />,
+    )
+    expect(screen.getByTestId("assistant-meta")).toBeInTheDocument()
+    expect(assistantMetaSpy).toHaveBeenLastCalledWith(expect.objectContaining({ completedAt: 9000, interrupted: true }))
+
+    view.rerender(
+      <MessageRow
+        message={{
+          info: { ...base, finish: "unknown", time: { created: 1 } },
+          parts: [{ id: "text-stream", type: "text", text: "partial", time: { start: 7000 } }],
+        } as never}
+        showMeta
+        sessionInterrupted
+      />,
+    )
+    expect(screen.getByTestId("assistant-meta")).toBeInTheDocument()
+    expect(assistantMetaSpy).toHaveBeenLastCalledWith(expect.objectContaining({ completedAt: 7000, interrupted: true }))
+
+    view.rerender(<MessageRow message={{ info: { ...base, finish: "stop" }, parts: [tool] } as never} showMeta />)
+    expect(screen.queryByTestId("assistant-meta")).not.toBeInTheDocument()
+
+    view.rerender(<MessageRow message={{ info: base, parts: [tool] } as never} showMeta />)
+    expect(screen.getByTestId("assistant-meta")).toBeInTheDocument()
+
+    view.rerender(
+      <MessageRow
+        message={{ info: { ...base, finish: "stop" }, parts: [{ id: "text-1", type: "text", text: "done" }] } as never}
+        showMeta
+      />,
+    )
+    expect(screen.getByTestId("assistant-meta")).toBeInTheDocument()
+  })
+
   it("同一条 assistant 消息中的多个思考片段只渲染一个 part", () => {
     const message = {
       info: { id: "a-reasoning", sessionID: "s1", role: "assistant", time: { created: 1 } },
