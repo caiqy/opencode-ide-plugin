@@ -7,13 +7,20 @@ import { WebviewController } from "../../ui/WebviewController"
 import { errorHandler } from "../../utils/ErrorHandler"
 import { FileMonitor } from "../../utils/FileMonitor"
 import { testResponse } from "./fetchResponse"
+import { automaticUpdateStorageKey, type UpdateService } from "../../update/UpdateService"
 
 suite("WebviewController Test Suite", () => {
   teardown(() => {
     sinon.restore()
   })
 
-  async function loadController(options: { uiBase?: string } = {}) {
+  async function loadController(
+    options: {
+      uiBase?: string
+      updateService?: ReturnType<typeof updateServiceStub>
+      storageSet?: (scope: "global" | "workspace" | "mem", key: string, value: string) => Promise<void>
+    } = {},
+  ) {
     let handlers: unknown
     let receiveMessage: ((message: any) => unknown) | undefined
     const writeFile = sinon.stub().resolves()
@@ -29,7 +36,9 @@ suite("WebviewController Test Suite", () => {
       postMessage: sinon.stub().resolves(true),
     } as unknown as vscode.Webview & { html: string }
 
-    sinon.stub(globals, "getUpdateService").returns(undefined)
+    sinon
+      .stub(globals, "getUpdateService")
+      .returns(options.updateService as unknown as UpdateService | undefined)
     sinon.stub(bridgeServer, "createSession").callsFake(async (input) => {
       handlers = input
       return {
@@ -50,7 +59,7 @@ suite("WebviewController Test Suite", () => {
       webview,
       context,
       storageGet: async () => ({}),
-      storageSet: async () => undefined,
+      storageSet: options.storageSet ?? (async () => undefined),
       readFile: async () => Buffer.from("<html>${uiUrl}${cspSource}${cspOrigins}</html>"),
       writeFile,
     })
@@ -67,6 +76,24 @@ suite("WebviewController Test Suite", () => {
       receiveMessage: (message: any) => receiveMessage?.(message),
       saveImage: (handlers as { saveImage?: (url: string, filename: string) => Promise<{ cancelled: boolean }> })
         .saveImage,
+      storageSet: (
+        handlers as {
+          storageSet?: (scope: "global" | "workspace" | "mem", key: string, value: string) => Promise<void>
+        }
+      ).storageSet,
+    }
+  }
+
+  function updateServiceStub() {
+    return {
+      attachSession: sinon.spy(),
+      detachSession: sinon.spy(),
+      checkNow: sinon.stub().resolves(null),
+      checkForUpdates: sinon.stub().resolves({ status: "up-to-date", currentVersion: "1.0.0" }),
+      getUpdateInfo: sinon.stub().returns({ latest: null, hasUpdate: false }),
+      installUpdate: sinon.stub().resolves(),
+      isAutomaticChecksEnabled: sinon.stub().returns(false),
+      setAutomaticChecks: sinon.spy(),
     }
   }
 
@@ -95,6 +122,19 @@ suite("WebviewController Test Suite", () => {
     assert.deepStrictEqual(message.directoryPaths, [])
     assert.ok(!bridgeSend.calledWithMatch("session-save-image", sinon.match({ type: "insertPaths" })))
 
+    controller.dispose()
+  })
+
+  test("保存插件自动更新设置后立即更新调度状态", async () => {
+    const updateService = updateServiceStub()
+    const persist = sinon.stub().resolves()
+    const { controller, storageSet } = await loadController({ updateService, storageSet: persist })
+
+    assert.ok(storageSet)
+    await storageSet!("global", automaticUpdateStorageKey, "false")
+
+    assert.ok(persist.calledOnceWithExactly("global", automaticUpdateStorageKey, "false"))
+    assert.ok(updateService.setAutomaticChecks.calledOnceWithExactly(false))
     controller.dispose()
   })
 

@@ -198,6 +198,35 @@ describe("config HttpApi", () => {
   )
 
   it.live(
+    "disposes active instances before a global snapshot update returns",
+    Effect.gen(function* () {
+      const global = yield* tmpdirEffect({ config: { snapshot: false } })
+      const instance = yield* tmpdirEffect({ config: { formatter: false, lsp: false } })
+
+      yield* withGlobalConfigDir(
+        global.path,
+        Effect.gen(function* () {
+          const active = yield* Effect.promise(() => InstanceRuntime.load({ directory: instance.path }))
+          const disposed = yield* waitGlobalDisposed().pipe(Effect.forkScoped({ startImmediately: true }))
+          const response = yield* Effect.promise(() =>
+            Promise.resolve(
+              app().request("/global/config", {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ snapshot: true }),
+              }),
+            ),
+          )
+
+          expect(response.status).toBe(200)
+          expect(disposed.pollUnsafe()).toBeDefined()
+          expect(yield* Effect.promise(() => InstanceRuntime.load({ directory: instance.path }))).not.toBe(active)
+        }),
+      )
+    }),
+  )
+
+  it.live(
     "serves global config replace through the default server app",
     Effect.gen(function* () {
       const tmp = yield* tmpdirEffect({
@@ -300,7 +329,7 @@ describe("config HttpApi", () => {
       yield* withGlobalConfigDir(
         tmp.path,
         Effect.gen(function* () {
-          const disposed = yield* waitGlobalDisposed().pipe(Effect.forkScoped)
+          const disposed = yield* waitGlobalDisposed().pipe(Effect.forkScoped({ startImmediately: true }))
           const response = yield* Effect.promise(() =>
             Promise.resolve(
               app().request("/global/config", {
@@ -315,6 +344,7 @@ describe("config HttpApi", () => {
 
           expect(response.status).toBe(200)
           expect(yield* Effect.promise(() => response.json())).toMatchObject({ username: "replace-user" })
+          expect(disposed.pollUnsafe()).toBeDefined()
           yield* Fiber.join(disposed)
         }),
       )

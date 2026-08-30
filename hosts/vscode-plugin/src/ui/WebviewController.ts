@@ -9,6 +9,7 @@ import { getUpdateService, logger } from "../globals"
 import type { SaveImageResult } from "./IdeBridgeServer"
 import { bridgeServer } from "./IdeBridgeServer"
 import { showSystemNotification } from "./systemNotification"
+import { automaticUpdateStorageKey } from "../update/UpdateService"
 
 /**
  * Shared webview controller to manage common UI lifecycle and messaging
@@ -179,7 +180,12 @@ export class WebviewController {
             })
           },
           storageGet: this.storageGet,
-          storageSet: this.storageSet,
+          storageSet: async (scope, key, value) => {
+            await this.storageSet(scope, key, value)
+            if (scope === "global" && key === automaticUpdateStorageKey) {
+              updateService?.setAutomaticChecks(value !== "false")
+            }
+          },
           getExtensionVersion: async () => {
             return { version: this.context.extension.packageJSON.version }
           },
@@ -213,9 +219,11 @@ export class WebviewController {
           })
         })
         attachedSessionId = session.sessionId
-        void updateService.checkNow().catch((error) => {
-          logger.appendLine(`update check failed for session ${session.sessionId}: ${error}`)
-        })
+        if (updateService.isAutomaticChecksEnabled?.() !== false) {
+          void updateService.checkNow().catch((error) => {
+            logger.appendLine(`update check failed for session ${session.sessionId}: ${error}`)
+          })
+        }
       }
 
       // Tell CommunicationBridge to route ideBridge messages through SSE

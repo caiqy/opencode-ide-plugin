@@ -22040,11 +22040,13 @@
             "properties": {
               "websearch": {
                 "type": "integer",
-                "exclusiveMinimum": 0
+                "exclusiveMinimum": 0,
+                "maximum": 10
               },
               "subagent": {
                 "type": "integer",
-                "exclusiveMinimum": 0
+                "exclusiveMinimum": 0,
+                "maximum": 10
               }
             },
             "additionalProperties": false
@@ -22055,6 +22057,7 @@
               "max_retries": {
                 "type": "integer",
                 "minimum": 0,
+                "maximum": 100,
                 "description": "Maximum Session retries after the initial provider request (default: 10; 0 disables retries)"
               }
             },

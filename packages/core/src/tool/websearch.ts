@@ -2,7 +2,7 @@ export * as WebSearchTool from "./websearch"
 
 import { LLM, LLMEvent, Message, ToolDefinition, ToolFailure, type Model } from "@opencode-ai/llm"
 import { Auth } from "@opencode-ai/llm/route"
-import { Cause, Context, Duration, Effect, Layer, Schema } from "effect"
+import { Cause, Context, Duration, Effect, Layer, Schema, Semaphore } from "effect"
 import { Headers, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { makeLocationNode } from "../effect/app-node"
 import { LayerNodePlatform } from "../effect/app-node-platform"
@@ -26,6 +26,7 @@ export const PARALLEL_URL = "https://search.parallel.ai/mcp"
 export const MAX_NUM_RESULTS = 20
 export const MAX_CONTEXT_CHARACTERS = 50_000
 export const MAX_RESPONSE_BYTES = 256 * 1024
+export const DEFAULT_MODEL = "openai/gpt-5.6-luna"
 
 /**
  * Provider-independent local web search retained in V2 core for launch parity.
@@ -301,6 +302,7 @@ const layer = Layer.effectDiscard(
     const permission = yield* PermissionV2.Service
     const configService = yield* Config.Service
     const models = yield* SessionRunnerModel.Service
+    const permits = Semaphore.makeUnsafe(Config.latest(yield* configService.entries(), "parallel_limit")?.websearch ?? 3)
 
     yield* tools
       .register({
@@ -314,7 +316,7 @@ const layer = Layer.effectDiscard(
               : [{ type: "text", text: output.text }],
           execute: (input, context) => {
             const provider = selectProvider(context.sessionID, config, config.provider)
-            return Effect.gen(function* () {
+            return permits.withPermit(Effect.gen(function* () {
               yield* permission.assert({
                 action: name,
                 resources: [input.query],
@@ -326,8 +328,8 @@ const layer = Layer.effectDiscard(
               })
 
               const websearch = Config.latest(yield* configService.entries(), "websearch")
-              const routes = websearch?.models ?? []
-              const mode = websearch?.mode ?? "responses"
+              const routes = websearch?.models ?? [DEFAULT_MODEL]
+              const mode = websearch?.mode ?? (websearch ? "responses" : "alpha-search")
               if (routes.length > 0) {
                 if (!context.model || !context.session) return yield* new ToolFailure({ message: "Native web search unavailable" })
                 const selected = yield* executeNativeSearch(routes, String(context.model.provider), (reference) =>
@@ -387,7 +389,15 @@ const layer = Layer.effectDiscard(
                     const identity = `${provider}/${String(model.id)}`
                     return { provider, model: identity, text: response.text || NO_RESULTS, citations }
                   }),
-                ).pipe(Effect.mapError(() => new ToolFailure({ message: "Native web search unavailable" })))
+                ).pipe(
+                  Effect.mapError((error) =>
+                    new ToolFailure({
+                      message: websearch
+                        ? "Native web search unavailable"
+                        : `OpenAI search requires ${DEFAULT_MODEL} and configured OpenAI credentials: ${error instanceof Error ? error.message : String(error)}`,
+                    }),
+                  ),
+                )
                 return selected.result
               }
 
@@ -420,7 +430,13 @@ const layer = Layer.effectDiscard(
                 provider,
                 text: text ?? NO_RESULTS,
               }
-            }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to search the web for ${input.query}` })))
+            }).pipe(
+              Effect.mapError((error) =>
+                error instanceof ToolFailure
+                  ? error
+                  : new ToolFailure({ message: `Unable to search the web for ${input.query}` }),
+              ),
+            ))
           },
         }),
       })

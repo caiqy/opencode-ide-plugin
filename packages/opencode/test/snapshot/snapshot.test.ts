@@ -7,6 +7,7 @@ import fs from "fs/promises"
 import path from "path"
 import { Effect, Fiber, Layer } from "effect"
 import { Snapshot } from "../../src/snapshot"
+import { Config } from "../../src/config/config"
 import {
   disposeAllInstances,
   provideInstance,
@@ -16,8 +17,15 @@ import {
 } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 
+const snapshotNodes = LayerNode.group([Snapshot.node, FSUtil.node])
+const defaultIt = testEffect(Layer.mergeAll(LayerNode.compile(snapshotNodes), testInstanceStoreLayer))
 const it = testEffect(
-  Layer.mergeAll(LayerNode.compile(LayerNode.group([Snapshot.node, FSUtil.node])), testInstanceStoreLayer),
+  Layer.mergeAll(
+    LayerNode.compile(snapshotNodes, [
+      [Config.node, Layer.mock(Config.Service, { get: () => Effect.succeed({ snapshot: true }) })],
+    ]),
+    testInstanceStoreLayer,
+  ),
 )
 // Windows forbids both * and : in directory names.
 const nonWindowsIt = process.platform === "win32" ? it.live.skip : it.live
@@ -33,6 +41,15 @@ const MIXED_BATCH_GROUP_COUNT = Math.ceil(OVER_BATCH_COUNT / 4)
 afterEach(async () => {
   await disposeAllInstances()
 })
+
+defaultIt.instance(
+  "snapshot tracking is disabled by default",
+  Effect.gen(function* () {
+    const snapshot = yield* Snapshot.Service
+    expect(yield* snapshot.track()).toBeUndefined()
+  }),
+  { git: true },
+)
 
 const exec = (cwd: string, command: string[]) =>
   Effect.promise(async () => {

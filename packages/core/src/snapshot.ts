@@ -123,7 +123,7 @@ const layer = Layer.effect(
 
     const enabled = Effect.fnUntraced(function* () {
       if (location.vcs?.type !== "git") return false
-      return Config.latest(yield* config.entries(), "snapshots") !== false
+      return Config.latest(yield* config.entries(), "snapshots") === true
     })
 
     const capture = Effect.fn("Snapshot.capture")(function* () {

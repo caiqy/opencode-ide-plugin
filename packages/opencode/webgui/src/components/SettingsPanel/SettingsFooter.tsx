@@ -5,6 +5,8 @@ interface SettingsFooterProps {
   isLoading: boolean
   hasUnsavedChanges: boolean
   successMessage: string | null
+  errorMessage?: string | null
+  canSave?: boolean
   onSave: () => void
   onCancel: () => void
 }
@@ -14,6 +16,8 @@ export function SettingsFooter({
   isLoading,
   hasUnsavedChanges,
   successMessage,
+  errorMessage,
+  canSave = true,
   onSave,
   onCancel,
 }: SettingsFooterProps) {
@@ -21,6 +25,7 @@ export function SettingsFooter({
     <div className="px-3 py-2 bg-gray-50 dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between">
       <div>
         {successMessage && <span className="text-sm text-green-600 dark:text-green-400">{successMessage}</span>}
+        {errorMessage && <span className="text-sm text-red-600 dark:text-red-400">{errorMessage}</span>}
       </div>
       <div className="flex gap-2">
         <Button variant="secondary" onClick={onCancel} disabled={isSaving}>
@@ -29,7 +34,7 @@ export function SettingsFooter({
         <Button
           variant="primary"
           onClick={onSave}
-          disabled={isSaving || isLoading || !hasUnsavedChanges}
+          disabled={isSaving || isLoading || !hasUnsavedChanges || !canSave}
           loading={isSaving}
         >
           保存更改

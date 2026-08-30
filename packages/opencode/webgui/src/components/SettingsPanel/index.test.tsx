@@ -9,14 +9,18 @@ const mocks = vi.hoisted(() => ({
   authSet: vi.fn(),
   appAgents: vi.fn(),
   configProviders: vi.fn(),
+  allProviders: vi.fn(),
+  authList: vi.fn(),
   globalConfigGet: vi.fn(),
   loadModelPrefs: vi.fn(),
   addRecentModel: vi.fn(),
   updateModelPrefs: vi.fn(),
+  ideStorageSet: vi.fn(),
 }))
 
 vi.mock("./hooks/useSettingsForm", () => ({
   useSettingsForm: (...args: unknown[]) => mocks.useSettingsForm(...args),
+  automaticUpdateStorageKey: "commonSettings.autoUpdate",
 }))
 
 vi.mock("./hooks/useUnsavedChanges", () => ({
@@ -39,6 +43,14 @@ vi.mock("../../state/ProjectContext", () => ({
   }),
 }))
 
+vi.mock("../../lib/ideBridge", () => ({
+  ideBridge: {
+    storageSet: (...args: unknown[]) => mocks.ideStorageSet(...args),
+    storageGet: vi.fn().mockResolvedValue(null),
+    isInstalled: () => false,
+  },
+}))
+
 vi.mock("../../lib/api/sdkClient", () => ({
   sdk: {
     global: {
@@ -52,9 +64,11 @@ vi.mock("../../lib/api/sdkClient", () => ({
     },
     config: {
       providers: (...args: unknown[]) => mocks.configProviders(...args),
+      allProviders: (...args: unknown[]) => mocks.allProviders(...args),
     },
     auth: {
       set: (...args: unknown[]) => mocks.authSet(...args),
+      list: (...args: unknown[]) => mocks.authList(...args),
     },
   },
 }))
@@ -69,6 +83,7 @@ import { SettingsPanel } from "./index"
 
 describe("SettingsPanel", () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     mocks.globalConfigUpdate.mockResolvedValue({ data: {}, error: null })
     mocks.globalConfigGet.mockResolvedValue({ data: {}, error: null })
     mocks.authSet.mockResolvedValue(undefined)
@@ -91,6 +106,19 @@ describe("SettingsPanel", () => {
       },
       error: null,
     })
+    mocks.allProviders.mockResolvedValue({
+      data: {
+        providers: [
+          {
+            id: "openai",
+            models: { "gpt-5.6-luna": { id: "gpt-5.6-luna" } },
+          },
+        ],
+      },
+      error: null,
+    })
+    mocks.authList.mockResolvedValue({ openai: true })
+    mocks.ideStorageSet.mockResolvedValue(true)
     mocks.loadModelPrefs.mockResolvedValue({ recent: [], favorite: [] })
     mocks.addRecentModel.mockResolvedValue({ recent: [], favorite: [] })
     mocks.updateModelPrefs.mockResolvedValue({ recent: [], favorite: [] })
@@ -102,6 +130,11 @@ describe("SettingsPanel", () => {
       setOriginalFormData: vi.fn(),
       isLoading: true,
       error: null,
+      pluginAutoUpdate: true,
+      setPluginAutoUpdate: vi.fn(),
+      originalPluginAutoUpdate: true,
+      setOriginalPluginAutoUpdate: vi.fn(),
+      pluginAutoUpdateAvailable: true,
     })
 
     mocks.useUnsavedChanges.mockReturnValue({
@@ -201,6 +234,7 @@ describe("SettingsPanel", () => {
     })
 
     render(<SettingsPanel isOpen={true} onClose={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存更改" })).toBeEnabled())
     fireEvent.click(screen.getByRole("button", { name: "保存更改" }))
 
     await waitFor(() => {
@@ -211,7 +245,7 @@ describe("SettingsPanel", () => {
     expect(mocks.authSet).not.toHaveBeenCalled()
   })
 
-  it("默认打开 Provider 设置", async () => {
+  it("默认打开常用设置", async () => {
     mocks.useSettingsForm.mockReturnValue({
       formData: { provider: { openai: { options: { apiKey: "sk-1234567890abcdef" } } } },
       setFormData: vi.fn(),
@@ -223,10 +257,38 @@ describe("SettingsPanel", () => {
 
     render(<SettingsPanel isOpen={true} onClose={vi.fn()} />)
 
-    expect(screen.getByRole("button", { name: /Provider 设置/ })).toBeInTheDocument()
-    expect(screen.getByText("配置更新")).toBeInTheDocument()
-    expect(screen.getByText("openai")).toBeInTheDocument()
-    await waitFor(() => expect(mocks.configProviders).toHaveBeenCalled())
+    expect(screen.getByRole("button", { name: /常用设置/ })).toHaveClass("text-blue-600")
+    expect(screen.getByText("IDE 插件自动更新")).toBeInTheDocument()
+    expect(screen.getByText("文件快照")).toBeInTheDocument()
+    expect(screen.queryByText("配置更新")).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText(/正在检查 OpenAI/)).not.toBeInTheDocument())
+  })
+
+  it("IDE 插件自动更新保存到独立宿主存储", async () => {
+    const setOriginalPluginAutoUpdate = vi.fn()
+    mocks.useSettingsForm.mockReturnValue({
+      formData: {},
+      setFormData: vi.fn(),
+      originalFormData: {},
+      setOriginalFormData: vi.fn(),
+      isLoading: false,
+      error: null,
+      pluginAutoUpdate: false,
+      setPluginAutoUpdate: vi.fn(),
+      originalPluginAutoUpdate: true,
+      setOriginalPluginAutoUpdate,
+      pluginAutoUpdateAvailable: true,
+    })
+
+    render(<SettingsPanel isOpen={true} onClose={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存更改" })).toBeEnabled())
+    fireEvent.click(screen.getByRole("button", { name: "保存更改" }))
+
+    await waitFor(() =>
+      expect(mocks.ideStorageSet).toHaveBeenCalledWith("global", "commonSettings.autoUpdate", "false"),
+    )
+    expect(setOriginalPluginAutoUpdate).toHaveBeenCalledWith(false)
+    expect(mocks.globalConfigUpdate).not.toHaveBeenCalled()
   })
 
   it("清空 Agent 模型时发送完整 agent 配置以删除旧字段", async () => {
@@ -255,6 +317,7 @@ describe("SettingsPanel", () => {
     })
 
     render(<SettingsPanel isOpen={true} onClose={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存更改" })).toBeEnabled())
     fireEvent.click(screen.getByRole("button", { name: "保存更改" }))
 
     await waitFor(() => {
@@ -282,7 +345,7 @@ describe("SettingsPanel", () => {
 
     expect(screen.queryByRole("button", { name: /API\s*密钥/ })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /模型/ })).not.toBeInTheDocument()
-    await waitFor(() => expect(mocks.configProviders).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByText(/正在检查 OpenAI/)).not.toBeInTheDocument())
   })
 
   it("可以切换到快捷短语标签页", async () => {

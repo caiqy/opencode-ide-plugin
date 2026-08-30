@@ -31,10 +31,19 @@ export const WebSearch = Schema.Struct({
 })
 
 export const ProviderRetry = Schema.Struct({
-  max_retries: NonNegativeInt.annotate({
+  max_retries: NonNegativeInt.check(Schema.isLessThanOrEqualTo(100)).annotate({
     description: "Maximum Session retries after the initial provider request (default: 10; 0 disables retries)",
   }),
 }).annotate({ description: "Session provider retry configuration" })
+
+export const ParallelLimit = Schema.Struct({
+  websearch: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(10))).annotate({
+    description: "Maximum number of websearch calls executing at once (default: 3)",
+  }),
+  subagent: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(10))).annotate({
+    description: "Maximum number of subagents executing at once (default: 3)",
+  }),
+})
 
 export const WellKnown = Schema.Struct({
   config: Schema.optional(Schema.Json),
@@ -68,7 +77,7 @@ export const Info = Schema.Struct({
   watcher: Schema.optional(Schema.Struct({ ignore: Schema.optional(Schema.mutable(Schema.Array(Schema.String))) })),
   snapshot: Schema.optional(Schema.Boolean).annotate({
     description:
-      "Enable or disable snapshot tracking. When false, filesystem snapshots are not recorded and undoing or reverting will not undo/redo file changes. Defaults to true.",
+      "Enable or disable snapshot tracking. When false, filesystem snapshots are not recorded and undoing or reverting will not undo/redo file changes. Defaults to false.",
   }),
   plugin: Schema.optional(Schema.mutable(Schema.Array(ConfigPluginV1.Spec))),
   share: Schema.optional(Schema.Literals(["manual", "auto", "disabled"])).annotate({
@@ -104,16 +113,7 @@ export const Info = Schema.Struct({
   subagent_depth: Schema.optional(NonNegativeInt).annotate({
     description: "Maximum subagent nesting depth. Defaults to 1, which prevents subagents from launching subagents.",
   }),
-  parallel_limit: Schema.optional(
-    Schema.Struct({
-      websearch: Schema.optional(PositiveInt).annotate({
-        description: "Maximum number of websearch calls executing at once (default: 3)",
-      }),
-      subagent: Schema.optional(PositiveInt).annotate({
-        description: "Maximum number of subagents executing at once (default: 3)",
-      }),
-    }),
-  ).annotate({ description: "Tool execution queue limits" }),
+  parallel_limit: Schema.optional(ParallelLimit).annotate({ description: "Tool execution queue limits" }),
   provider_retry: Schema.optional(ProviderRetry),
   username: Schema.optional(Schema.String).annotate({
     description: "Custom username to display in conversations instead of system username",

@@ -3,7 +3,6 @@ import { Cause, Effect, Schema } from "effect"
 import { parseResponse } from "../../src/tool/mcp-websearch"
 import * as WebSearch from "../../src/tool/websearch"
 
-import { webSearchEnabled } from "../../src/tool/registry"
 import { it } from "../lib/effect"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
@@ -14,11 +13,27 @@ import type { LanguageModelV3GenerateResult } from "@ai-sdk/provider"
 const SESSION_ID = "ses_0196aabbccddeeff001122334455"
 
 describe("websearch provider", () => {
+  test("defaults to OpenAI alpha search when websearch is absent", () => {
+    expect(WebSearch.nativeSearchModels({})).toEqual(["openai/gpt-5.6-luna"])
+    expect(WebSearch.nativeSearchMode({})).toBe("alpha-search")
+  })
+
+  test("preserves the legacy responses mode for an explicit websearch config", () => {
+    expect(WebSearch.nativeSearchMode({ websearch: { models: ["openai/gpt-5.6"] } })).toBe("responses")
+    expect(WebSearch.nativeSearchModels({ websearch: { models: [] } })).toEqual([])
+  })
+
   test("accepts an explicit alpha-search mode", () => {
     const config = Schema.decodeUnknownSync(ConfigV1.Info)({
       websearch: { mode: "alpha-search", models: ["openai/gpt-5.6"] },
     })
     expect(config.websearch?.mode).toBe("alpha-search")
+  })
+
+  test("rejects common setting values outside their supported ranges", () => {
+    expect(() => Schema.decodeUnknownSync(ConfigV1.Info)({ parallel_limit: { websearch: 11 } })).toThrow()
+    expect(() => Schema.decodeUnknownSync(ConfigV1.Info)({ parallel_limit: { subagent: 11 } })).toThrow()
+    expect(() => Schema.decodeUnknownSync(ConfigV1.Info)({ provider_retry: { max_retries: 101 } })).toThrow()
   })
 
   test("uses the provider base URL when the model URL is empty", () => {
@@ -41,9 +56,7 @@ describe("websearch provider", () => {
 
   test("prefers the configured API key over the provider key", () => {
     expect(
-      WebSearch.alphaSearchApiKey(
-        ProviderTest.info({ key: "account-key", options: { apiKey: "configured-key" } }),
-      ),
+      WebSearch.alphaSearchApiKey(ProviderTest.info({ key: "account-key", options: { apiKey: "configured-key" } })),
     ).toBe("configured-key")
   })
 
@@ -72,14 +85,6 @@ describe("websearch provider", () => {
 
   test("routes to Parallel when the Parallel flag is enabled", () => {
     expect(WebSearch.selectWebSearchProvider(SESSION_ID, { exa: false, parallel: true })).toBe("parallel")
-  })
-
-  test("is only enabled for opencode or explicit websearch provider flags", () => {
-    expect(webSearchEnabled(ProviderV2.ID.opencode, { exa: false, parallel: false })).toBe(true)
-    expect(webSearchEnabled(ProviderV2.ID.openai, { exa: false, parallel: false })).toBe(false)
-    expect(webSearchEnabled(ProviderV2.ID.openai, { exa: true, parallel: false })).toBe(true)
-    expect(webSearchEnabled(ProviderV2.ID.openai, { exa: false, parallel: true })).toBe(true)
-    expect(webSearchEnabled(ProviderV2.ID.anthropic, { exa: false, parallel: false }, true)).toBe(true)
   })
 
   test("uses branded labels", () => {

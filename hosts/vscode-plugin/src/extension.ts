@@ -8,7 +8,7 @@ import { ErrorCategory, errorHandler, ErrorSeverity } from "./utils/ErrorHandler
 import { logger, setUpdateService } from "./globals"
 import { ReleaseChecker } from "./update/ReleaseChecker"
 import { UpdateInstaller } from "./update/UpdateInstaller"
-import { UpdateService } from "./update/UpdateService"
+import { automaticUpdateStorageKey, UpdateService } from "./update/UpdateService"
 import { parseSystemNotificationUri } from "./ui/systemNotification"
 
 function withCacheBuster(url: string, version: string): string {
@@ -124,7 +124,9 @@ class OpenCodeExtension {
         )
       },
     })
-    this.updateService.start()
+    if (this.context!.globalState.get<string>(automaticUpdateStorageKey) !== "false") {
+      this.updateService.start()
+    }
     setUpdateService(this.updateService)
 
     // Initialize webview manager

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test"
-import { DateTime, Effect, Layer, Schema, Stream } from "effect"
+import { DateTime, Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { LLM, LLMClient, LLMEvent, LLMResponse } from "@opencode-ai/llm"
-import { responses } from "@opencode-ai/llm/providers/openai"
+import { configure } from "@opencode-ai/llm/providers/openai"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
@@ -151,7 +151,13 @@ let responseBody = payload("search results")
 let makeResponse = () => new Response(responseBody, { status: 200 })
 let config: WebSearchTool.Config = { enableExa: false, enableParallel: false }
 let nativeModels: string[] = []
-const searchModel = responses("gpt-5")
+let useDefaultSearch = false
+let requestGate: Deferred.Deferred<void> | undefined
+let activeRequests = 0
+let maxActiveRequests = 0
+let modelUnavailable = false
+const modelReferences: string[] = []
+const searchModel = configure({ apiKey: "test-openai-key" }).responses("gpt-5")
 const nativeResponse = LLMResponse.fromEvents([
   LLMEvent.textStart({ id: "search-text" }),
   LLMEvent.textDelta({ id: "search-text", text: "native results" }),
@@ -163,20 +169,29 @@ beforeEach(() => {
   responseBody = payload("search results")
   makeResponse = () => new Response(responseBody, { status: 200 })
   nativeModels = []
+  useDefaultSearch = false
+  requestGate = undefined
+  activeRequests = 0
+  maxActiveRequests = 0
+  modelUnavailable = false
+  modelReferences.length = 0
 })
 
 const http = Layer.succeed(
   HttpClient.HttpClient,
   HttpClient.make((request) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
       if (request.body._tag !== "Uint8Array") throw new Error(`Unexpected request body: ${request.body._tag}`)
       requests.push({
         url: request.url,
         headers: request.headers,
         body: JSON.parse(new TextDecoder().decode(request.body.body)),
       })
+      activeRequests++
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests)
+      if (requestGate) yield* Deferred.await(requestGate)
       return HttpClientResponse.fromWeb(request, makeResponse())
-    }),
+    }).pipe(Effect.ensuring(Effect.sync(() => activeRequests--))),
   ),
 )
 const permission = Layer.succeed(
@@ -216,9 +231,17 @@ const configLayer = Layer.succeed(
   Config.Service.of({
     entries: () =>
       Effect.succeed(
-        nativeModels.length === 0
+        useDefaultSearch
           ? []
-          : [new Config.Document({ type: "document", info: new Config.Info({ websearch: { models: nativeModels } }) })],
+          : [
+              new Config.Document({
+                type: "document",
+                info: new Config.Info({
+                  websearch: { models: nativeModels },
+                  parallel_limit: { websearch: 2 },
+                }),
+              }),
+            ],
       ),
   }),
 )
@@ -226,7 +249,13 @@ const modelLayer = Layer.succeed(
   SessionRunnerModel.Service,
   SessionRunnerModel.Service.of({
     resolve: () => Effect.succeed(searchModel),
-    resolveReference: () => Effect.succeed(searchModel),
+    resolveReference: (_session, reference) =>
+      modelUnavailable
+        ? Effect.die("model unavailable")
+        : Effect.sync(() => {
+            modelReferences.push(reference)
+            return searchModel
+          }),
   }),
 )
 const llm = Layer.succeed(
@@ -326,6 +355,37 @@ describe("WebSearchTool registration", () => {
     }),
   )
 
+  it.effect("honors the configured concurrent websearch limit", () =>
+    Effect.gen(function* () {
+      requests.length = 0
+      config = { provider: "exa", enableExa: false, enableParallel: false }
+      requestGate = yield* Deferred.make<void>()
+      const registry = yield* ToolRegistry.Service
+      const run = yield* Effect.all(
+        Array.from({ length: 4 }, (_, index) =>
+          executeTool(registry, {
+            sessionID,
+            ...toolIdentity,
+            call: {
+              type: "tool-call",
+              id: `call-concurrent-${index}`,
+              name: "websearch",
+              input: { query: `query ${index}` },
+            },
+          }),
+        ),
+        { concurrency: "unbounded" },
+      ).pipe(Effect.forkChild)
+
+      while (activeRequests < 2) yield* Effect.yieldNow
+      expect(maxActiveRequests).toBe(2)
+      expect(requests).toHaveLength(2)
+      yield* Deferred.succeed(requestGate, undefined)
+      yield* Fiber.join(run)
+      expect(requests).toHaveLength(4)
+    }),
+  )
+
   it.effect("executes configured native search through the local tool", () =>
     Effect.gen(function* () {
       nativeModels = ["openai/gpt-5"]
@@ -349,6 +409,73 @@ describe("WebSearchTool registration", () => {
         call: { type: "tool-call", id: "call-native", name: "websearch", input: { query: "native" } },
       })
       expect(settled).toMatchObject({ result: { type: "text", value: expect.stringContaining("native") } })
+    }),
+  )
+
+  it.effect("defaults to the configured OpenAI alpha search model without native fallback", () =>
+    Effect.gen(function* () {
+      requests.length = 0
+      useDefaultSearch = true
+      responseBody = JSON.stringify({
+        encrypted_output: "opaque-token",
+        output: "default alpha results",
+        results: [],
+      })
+      const registry = yield* ToolRegistry.Service
+      const session = SessionV2.Info.make({
+        id: sessionID,
+        projectID: ProjectV2.ID.global,
+        title: "default search",
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
+        location: { directory: AbsolutePath.make("/project") },
+      })
+
+      const settled = yield* settleTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        model: searchModel,
+        session,
+        call: { type: "tool-call", id: "call-default-alpha", name: "websearch", input: { query: "default" } },
+      })
+
+      expect(modelReferences).toEqual([WebSearchTool.DEFAULT_MODEL])
+      expect(requests).toHaveLength(1)
+      expect(requests[0]?.url).toBe("https://api.openai.com/v1/alpha/search")
+      expect(settled.result).toMatchObject({ type: "text", value: expect.stringContaining("default alpha results") })
+    }),
+  )
+
+  it.effect("returns an actionable default OpenAI configuration error without native fallback", () =>
+    Effect.gen(function* () {
+      requests.length = 0
+      useDefaultSearch = true
+      modelUnavailable = true
+      const registry = yield* ToolRegistry.Service
+      const session = SessionV2.Info.make({
+        id: sessionID,
+        projectID: ProjectV2.ID.global,
+        title: "unavailable default search",
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
+        location: { directory: AbsolutePath.make("/project") },
+      })
+
+      const settled = yield* settleTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        model: searchModel,
+        session,
+        call: { type: "tool-call", id: "call-default-unavailable", name: "websearch", input: { query: "default" } },
+      })
+
+      expect(settled.result).toEqual({
+        type: "error",
+        value: expect.stringContaining(`OpenAI search requires ${WebSearchTool.DEFAULT_MODEL}`),
+      })
+      expect(requests).toHaveLength(0)
     }),
   )
 

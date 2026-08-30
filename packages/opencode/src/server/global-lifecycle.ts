@@ -1,5 +1,6 @@
 import { GlobalBus } from "@/bus/global"
 import { InstanceStore } from "@/project/instance-store"
+import { disposeAllLocations } from "@/effect/instance-registry"
 import { Effect } from "effect"
 import { Event } from "./event"
 
@@ -20,6 +21,7 @@ export const disposeAllInstancesAndEmitGlobalDisposed = Effect.fn("Server.dispos
       yield* options?.swallowErrors
         ? store.disposeAll().pipe(Effect.catchCause((cause) => Effect.logWarning("global disposal failed", { cause })))
         : store.disposeAll()
+      yield* Effect.promise(disposeAllLocations)
       yield* emitGlobalDisposed
     }).pipe(Effect.uninterruptible)
   },

@@ -4,6 +4,7 @@ import {
   LLMError,
   LLMEvent,
   Model,
+  RateLimitReason,
   TransportReason,
   InvalidRequestReason,
   type LLMClientShape,
@@ -66,6 +67,8 @@ let responseStream: Stream.Stream<LLMEvent, LLMError> | undefined
 let streamGate: Deferred.Deferred<void> | undefined
 let streamStarted: Deferred.Deferred<void> | undefined
 let streamFailure: LLMError | undefined
+let streamFailureCount = Number.POSITIVE_INFINITY
+let providerRetries: number | undefined = 0
 let toolExecutionGate: Deferred.Deferred<void> | undefined
 let toolExecutionsStarted: Deferred.Deferred<void> | undefined
 let toolExecutionsReady = 5
@@ -82,9 +85,10 @@ const client = Layer.succeed(
         responseStream = undefined
         return stream
       }
-      const events = streamFailure
-        ? Stream.fail(streamFailure)
-        : Stream.fromIterable(responses === undefined ? response : (responses.shift() ?? []))
+      const events =
+        streamFailure && streamFailureCount > 0
+          ? Stream.fail(streamFailure).pipe(Stream.ensuring(Effect.sync(() => streamFailureCount--)))
+          : Stream.fromIterable(responses === undefined ? response : (responses.shift() ?? []))
       if (!streamGate) return events
       return Stream.unwrap(
         (streamStarted ? Deferred.succeed(streamStarted, undefined) : Effect.void).pipe(
@@ -221,6 +225,7 @@ const config = Layer.succeed(
               buffer: 3_000,
               keep: new ConfigCompaction.Keep({ tokens: 1_000 }),
             }),
+            provider_retry: providerRetries === undefined ? undefined : { max_retries: providerRetries },
           }),
         }),
       ]),
@@ -322,6 +327,8 @@ const setup = Effect.gen(function* () {
   skillBaselines.clear()
   responses = undefined
   streamFailure = undefined
+  streamFailureCount = Number.POSITIVE_INFINITY
+  providerRetries = 0
   responseStream = undefined
   streamGate = undefined
   streamStarted = undefined
@@ -344,6 +351,13 @@ const providerUnavailable = () =>
     module: "test",
     method: "stream",
     reason: new TransportReason({ message: "Provider unavailable" }),
+  })
+
+const providerRetryable = () =>
+  new LLMError({
+    module: "test",
+    method: "stream",
+    reason: new RateLimitReason({ message: "Provider rate limited" }),
   })
 
 const setupOverflowRecovery = Effect.gen(function* () {
@@ -2254,6 +2268,80 @@ describe("SessionRunnerLLM", () => {
 
       expect(requests).toHaveLength(2)
       expect(userTexts(requests[1]!)).toEqual(["Start working", "Recover with this"])
+    }),
+  )
+
+  it.effect("retries retryable provider failures up to the configured limit", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Retry provider" }), resume: false })
+      requests.length = 0
+      providerRetries = 2
+      streamFailure = providerRetryable()
+      streamFailureCount = 2
+      response = fragmentFixture("text", "text-retry", ["Recovered"]).completeEvents
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(3)
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Retry provider" },
+        { type: "assistant", content: [{ type: "text", text: "Recovered" }] },
+      ])
+    }),
+  )
+
+  it.effect("defaults to ten retries after the initial provider request", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Retry provider by default" }), resume: false })
+      requests.length = 0
+      providerRetries = undefined
+      streamFailure = providerRetryable()
+      streamFailureCount = 10
+      response = fragmentFixture("text", "text-default-retry", ["Recovered"]).completeEvents
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(11)
+    }),
+  )
+
+  it.effect("retries retryable provider error events before assistant output", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Retry provider event" }), resume: false })
+      requests.length = 0
+      providerRetries = 1
+      responses = [
+        [LLMEvent.providerError({ message: "Provider overloaded", retryable: true })],
+        fragmentFixture("text", "text-event-retry", ["Recovered"]).completeEvents,
+      ]
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(2)
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Retry provider event" },
+        { type: "assistant", content: [{ type: "text", text: "Recovered" }] },
+      ])
+    }),
+  )
+
+  it.effect("does not retry provider errors when retries are disabled", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Do not retry provider" }), resume: false })
+      requests.length = 0
+      providerRetries = 0
+      responses = [[LLMEvent.providerError({ message: "Provider overloaded", retryable: true })]]
+
+      expect(yield* session.resume(sessionID).pipe(Effect.flip)).toBeInstanceOf(LLMError)
+      expect(requests).toHaveLength(1)
     }),
   )
 

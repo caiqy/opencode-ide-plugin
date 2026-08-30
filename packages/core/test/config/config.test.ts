@@ -97,6 +97,14 @@ describe("Config", () => {
     }),
   )
 
+  it.effect("validates and migrates parallel limits", () =>
+    Effect.sync(() => {
+      const info = Schema.decodeUnknownSync(ConfigV1.Info)({ parallel_limit: { websearch: 3, subagent: 3 } })
+      expect(ConfigMigrateV1.migrate(info).parallel_limit).toEqual({ websearch: 3, subagent: 3 })
+      expect(() => Schema.decodeUnknownSync(Config.Info)({ parallel_limit: { websearch: 11 } })).toThrow()
+    }),
+  )
+
   it.effect("migrates v1 provider setup options into AISDK settings", () =>
     Effect.sync(() => {
       const migrated = ConfigMigrateV1.migrate({

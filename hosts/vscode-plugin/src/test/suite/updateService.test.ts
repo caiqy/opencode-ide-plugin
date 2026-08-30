@@ -88,6 +88,41 @@ suite("UpdateService Test Suite", () => {
     assert.deepStrictEqual(cleared, ["timeout", "interval"])
   })
 
+  test("关闭和重新开启自动检查会清理并重建调度", () => {
+    const scheduled: string[] = []
+    const cleared: string[] = []
+    const scheduler = {
+      setTimeout() {
+        scheduled.push("timeout")
+        return "timeout"
+      },
+      clearTimeout(handle: unknown) {
+        cleared.push(String(handle))
+      },
+      setInterval() {
+        scheduled.push("interval")
+        return "interval"
+      },
+      clearInterval(handle: unknown) {
+        cleared.push(String(handle))
+      },
+    }
+    const service = new UpdateService({
+      currentVersion: "26.4.1404",
+      checker: { getLatest: async () => null },
+      installer: { install: async () => "" },
+      scheduler,
+    })
+
+    service.setAutomaticChecks(true)
+    service.setAutomaticChecks(false)
+    service.setAutomaticChecks(true)
+
+    assert.deepStrictEqual(scheduled, ["timeout", "interval", "timeout", "interval"])
+    assert.deepStrictEqual(cleared, ["timeout", "interval"])
+    assert.strictEqual(service.isAutomaticChecksEnabled(), true)
+  })
+
   test("scheduled check failure 会通过本地错误处理上报", async () => {
     let task: (() => void) | undefined
     const reports: string[] = []

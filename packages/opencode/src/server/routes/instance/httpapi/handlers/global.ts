@@ -1,7 +1,6 @@
 import { Config } from "@/config/config"
 import { Agent } from "@/agent/agent"
 import { GlobalBus, type GlobalEvent as GlobalBusEvent } from "@/bus/global"
-import { EffectBridge } from "@/effect/bridge"
 import { EventV2 } from "@opencode-ai/core/event"
 import { Installation } from "@/installation"
 import { InstanceStore } from "@/project/instance-store"
@@ -22,7 +21,6 @@ const LIGHTWEIGHT_FIELDS = new Set([
   "mode",
   "username",
   "autoupdate",
-  "snapshot",
   "share",
   "autoshare",
   "watcher",
@@ -133,7 +131,6 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
     const agent = yield* Agent.Service
     const instances = yield* InstanceStore.Service
     const installation = yield* Installation.Service
-    const bridge = yield* EffectBridge.make()
     const reloadAgentConfig = () =>
       instances.provideAll(
         Effect.gen(function* () {
@@ -164,7 +161,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
         )
         if (needsDispose) {
           yield* Effect.logInfo("config update requires dispose")
-          bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
+          yield* disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true })
         } else {
           yield* Effect.logInfo("config update lightweight, reloading agent config")
           yield* reloadAgentConfig()
@@ -183,7 +180,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
         )
         if (needsDispose) {
           yield* Effect.logInfo("config replace requires dispose")
-          bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
+          yield* disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true })
         } else {
           yield* Effect.logInfo("config replace lightweight, reloading agent config")
           yield* reloadAgentConfig()

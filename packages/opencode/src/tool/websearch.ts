@@ -92,8 +92,14 @@ type NativeSearchConfig = {
   }
 }
 
-function nativeSearchModels(config: NativeSearchConfig) {
-  return config.websearch?.models ?? []
+export const DEFAULT_OPENAI_SEARCH_MODEL = "openai/gpt-5.6-luna"
+
+export function nativeSearchModels(config: NativeSearchConfig) {
+  return config.websearch?.models ?? [DEFAULT_OPENAI_SEARCH_MODEL]
+}
+
+export function nativeSearchMode(config: NativeSearchConfig) {
+  return config.websearch?.mode ?? (config.websearch ? "responses" : "alpha-search")
 }
 
 const AlphaSearchResponse = Schema.Struct({
@@ -166,7 +172,11 @@ export function runNativeSearchRequest(input: {
         ),
       }),
     catch: (error) => error,
-  }).pipe(Effect.catch(() => (input.abort.aborted ? Effect.interrupt : Effect.fail(new Error("Native web search request failed")))))
+  }).pipe(
+    Effect.catch(() =>
+      input.abort.aborted ? Effect.interrupt : Effect.fail(new Error("Native web search request failed")),
+    ),
+  )
 }
 
 function callAlphaSearch(
@@ -287,6 +297,7 @@ export const WebSearchTool = Tool.define(
         Effect.gen(function* () {
           const configured = yield* config.get()
           const routes = nativeSearchModels(configured)
+          const mode = nativeSearchMode(configured)
           const model = ctx.extra?.model
           const currentProvider =
             model && typeof model === "object" && "providerID" in model && typeof model.providerID === "string"
@@ -299,7 +310,11 @@ export const WebSearchTool = Tool.define(
                 exa: flags.enableExa,
                 parallel: flags.enableParallel,
               })
-          const title = provider ? webSearchProviderLabel(provider) : "Native Web Search"
+          const title = provider
+            ? webSearchProviderLabel(provider)
+            : mode === "alpha-search"
+              ? "OpenAI Web Search"
+              : "Native Web Search"
           yield* ctx.metadata({ title: `${title} "${params.query}"`, metadata: { provider } })
 
           yield* ctx.ask({
@@ -321,10 +336,16 @@ export const WebSearchTool = Tool.define(
                 nativeRoutes,
                 currentProvider ?? "",
                 (route) =>
-                  configured.websearch?.mode === "alpha-search"
+                  mode === "alpha-search"
                     ? callAlphaSearch(http, providerService, route, params.query, ctx.sessionID)
                     : callNativeSearch(providerService, route, params.query, ctx.sessionID, ctx.abort),
                 ctx.abort,
+              ).pipe(
+                Effect.mapError(() =>
+                  mode === "alpha-search"
+                    ? new Error(`OpenAI 搜索不可用：请先配置 ${nativeRoutes[0]} 模型和凭据。`)
+                    : new Error("Native web search unavailable"),
+                ),
               )
             : undefined
           const result =

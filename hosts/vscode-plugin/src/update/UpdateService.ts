@@ -36,6 +36,8 @@ type CheckForUpdatesResult =
   | { status: "available"; latest: ReleaseInfo }
   | { status: "up-to-date"; currentVersion: string }
 
+export const automaticUpdateStorageKey = "commonSettings.autoUpdate"
+
 export class UpdateService {
   static readonly initialDelayMs = 30_000
   static readonly pollIntervalMs = 4 * 60 * 60 * 1000
@@ -47,6 +49,7 @@ export class UpdateService {
   private readonly scheduler: UpdateScheduler
   private initialCheckTimer?: TimerHandle
   private pollTimer?: TimerHandle
+  private automaticChecksEnabled = false
 
   constructor(private readonly options: UpdateServiceOptions) {
     this.currentVersion = options.currentVersion
@@ -54,6 +57,7 @@ export class UpdateService {
   }
 
   start(): void {
+    this.automaticChecksEnabled = true
     if (this.initialCheckTimer || this.pollTimer) {
       return
     }
@@ -69,6 +73,24 @@ export class UpdateService {
   }
 
   dispose(): void {
+    this.automaticChecksEnabled = false
+    this.stopScheduledChecks()
+  }
+
+  setAutomaticChecks(enabled: boolean): void {
+    if (enabled) {
+      this.start()
+      return
+    }
+    this.automaticChecksEnabled = false
+    this.stopScheduledChecks()
+  }
+
+  isAutomaticChecksEnabled(): boolean {
+    return this.automaticChecksEnabled
+  }
+
+  private stopScheduledChecks(): void {
     if (this.initialCheckTimer) {
       this.scheduler.clearTimeout(this.initialCheckTimer)
       this.initialCheckTimer = undefined

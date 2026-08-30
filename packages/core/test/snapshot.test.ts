@@ -4,6 +4,7 @@ import fs from "fs/promises"
 import path from "path"
 import { Effect, Layer } from "effect"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { Config } from "@opencode-ai/core/config"
 import { Global } from "@opencode-ai/core/global"
 import { Location } from "@opencode-ai/core/location"
 import { AbsolutePath, RelativePath } from "@opencode-ai/core/schema"
@@ -37,6 +38,17 @@ afterAll(async () => {
 })
 
 describe("Snapshot", () => {
+  testEffect(Layer.empty).live("does not capture snapshots unless explicitly enabled", () =>
+    Effect.gen(function* () {
+      const snapshot = yield* Snapshot.Service
+      expect(yield* snapshot.capture()).toBeUndefined()
+    }).pipe(
+      Effect.provide(
+        snapshotLayer(indexedSnapshotTmp.path, indexedSnapshotProject, new Config.Info({})),
+      ),
+    ),
+  )
+
   testEffect(Layer.empty).live("captures and restores Location-scoped changes", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
@@ -172,10 +184,19 @@ describe("Snapshot", () => {
   )
 })
 
-function snapshotLayer(data: string, directory: string) {
+function snapshotLayer(data: string, directory: string, info = new Config.Info({ snapshots: true })) {
   return AppNodeBuilder.build(Snapshot.node, [
     [Location.node, Location.boundNode(Location.Ref.make({ directory: AbsolutePath.make(directory) }))],
     [Global.node, Global.layerWith({ data, config: path.join(data, "config") })],
+    [
+      Config.node,
+      Layer.succeed(
+        Config.Service,
+        Config.Service.of({
+          entries: () => Effect.succeed([new Config.Document({ type: "document", info })]),
+        }),
+      ),
+    ],
   ])
 }
 

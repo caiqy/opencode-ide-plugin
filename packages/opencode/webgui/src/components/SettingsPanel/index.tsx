@@ -12,6 +12,8 @@ import { useUnsavedChanges } from "./hooks/useUnsavedChanges"
 import { TabBar } from "./TabBar"
 import { SettingsHeader } from "./SettingsHeader"
 import { SettingsFooter } from "./SettingsFooter"
+import { ideBridge } from "../../lib/ideBridge"
+import { automaticUpdateStorageKey } from "./hooks/useSettingsForm"
 
 interface SettingsPanelProps {
   isOpen: boolean
@@ -21,17 +23,33 @@ interface SettingsPanelProps {
 type TabType = "provider" | "general" | "agents" | "advanced" | "quick-phrases"
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
-  const [activeTab, setActiveTab] = useState<TabType>("provider")
+  const [activeTab, setActiveTab] = useState<TabType>("general")
   const [isSaving, setIsSaving] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [generalStatus, setGeneralStatus] = useState({ valid: false, draftDirty: false })
 
-  const { formData, setFormData, originalFormData, setOriginalFormData, isLoading, error } = useSettingsForm(isOpen)
+  const {
+    formData,
+    setFormData,
+    originalFormData,
+    setOriginalFormData,
+    isLoading,
+    error,
+    pluginAutoUpdate,
+    setPluginAutoUpdate,
+    originalPluginAutoUpdate,
+    setOriginalPluginAutoUpdate,
+    pluginAutoUpdateAvailable,
+  } = useSettingsForm(isOpen)
 
   const { hasUnsavedChanges, showCloseConfirm, setShowCloseConfirm } = useUnsavedChanges(formData, originalFormData)
+  const hasChanges = () =>
+    hasUnsavedChanges() || pluginAutoUpdate !== originalPluginAutoUpdate || generalStatus.draftDirty
 
   // Close handler with unsaved changes check
   const handleClose = () => {
-    if (hasUnsavedChanges() && !isSaving) {
+    if (hasChanges() && !isSaving) {
       setShowCloseConfirm(true)
     } else {
       onClose()
@@ -44,10 +62,13 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     onClose()
   }
 
+  useEffect(() => {
+    if (isOpen) setActiveTab("general")
+  }, [isOpen])
+
   // Close on Escape
   useEffect(() => {
     if (!isOpen) return
-
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
       if (e.key === "Escape" && !isSaving) {
@@ -57,11 +78,13 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, isSaving, hasUnsavedChanges])
+  }, [generalStatus, isOpen, isSaving, hasUnsavedChanges, originalPluginAutoUpdate, pluginAutoUpdate])
 
   const handleSave = async () => {
+    if (!generalStatus.valid) return
     setIsSaving(true)
     setSuccessMessage(null)
+    setSaveError(null)
 
     try {
       // Save config if it changed
@@ -92,13 +115,19 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         }
       }
 
+      if (pluginAutoUpdate !== originalPluginAutoUpdate) {
+        const saved = await ideBridge.storageSet("global", automaticUpdateStorageKey, String(pluginAutoUpdate))
+        if (!saved) throw new Error("保存 IDE 插件自动更新设置失败")
+        setOriginalPluginAutoUpdate(pluginAutoUpdate)
+      }
+
       setSuccessMessage("设置已保存")
       setTimeout(() => {
         setSuccessMessage(null)
         onClose()
       }, 1500)
     } catch (err) {
-      throw err instanceof Error ? err : new Error(String(err))
+      setSaveError(err instanceof Error ? err.message : String(err))
     } finally {
       setIsSaving(false)
     }
@@ -134,7 +163,16 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                   />
                 )}
 
-                {activeTab === "general" && <GeneralTab formData={formData} setFormData={setFormData} />}
+                <div className={activeTab === "general" ? "" : "hidden"}>
+                  <GeneralTab
+                    formData={formData}
+                    setFormData={setFormData}
+                    pluginAutoUpdate={pluginAutoUpdate}
+                    setPluginAutoUpdate={setPluginAutoUpdate}
+                    pluginAutoUpdateAvailable={pluginAutoUpdateAvailable}
+                    setStatus={setGeneralStatus}
+                  />
+                </div>
 
                 {activeTab === "agents" && (
                   <AgentConfigTab formData={formData} setFormData={setFormData} onReloadConfig={setOriginalFormData} />
@@ -150,8 +188,10 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           <SettingsFooter
             isSaving={isSaving}
             isLoading={isLoading}
-            hasUnsavedChanges={hasUnsavedChanges()}
+            hasUnsavedChanges={hasChanges()}
             successMessage={successMessage}
+            errorMessage={saveError}
+            canSave={generalStatus.valid}
             onSave={handleSave}
             onCancel={handleClose}
           />

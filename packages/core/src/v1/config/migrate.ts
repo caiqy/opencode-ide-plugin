@@ -69,6 +69,7 @@ export function migrate(info: typeof ConfigV1.Info.Type) {
     experimental: info.experimental?.policies && { policies: info.experimental.policies },
     providers: providers(info.provider),
     websearch: info.websearch,
+    parallel_limit: info.parallel_limit,
     provider_retry: info.provider_retry,
   }
 }
