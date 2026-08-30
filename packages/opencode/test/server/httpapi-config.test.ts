@@ -137,7 +137,7 @@ describe("config HttpApi", () => {
   )
 
   it.live(
-    "reloads active instance agent config after a lightweight global replace",
+    "applies patched global agent model config to active instances immediately",
     Effect.gen(function* () {
       const global = yield* tmpdirEffect({
         init: (dir) =>
@@ -146,7 +146,8 @@ describe("config HttpApi", () => {
             JSON.stringify({
               agent: {
                 build: {
-                  description: "before",
+                  model: "openai/before",
+                  variant: "low",
                 },
               },
             }),
@@ -165,23 +166,36 @@ describe("config HttpApi", () => {
                     "x-opencode-directory": instance.path,
                   },
                 }),
-              ).then((response) => response.json() as Promise<Array<{ name: string; description?: string }>>),
+              ).then(
+                (response) =>
+                  response.json() as Promise<
+                    Array<{
+                      name: string
+                      model?: { providerID: string; modelID: string }
+                      variant?: string
+                    }>
+                  >,
+              ),
             )
 
-          expect((yield* getAgents()).find((agent) => agent.name === "build")?.description).toBe("before")
+          expect((yield* getAgents()).find((agent) => agent.name === "build")).toMatchObject({
+            model: { providerID: "openai", modelID: "before" },
+            variant: "low",
+          })
           const active = yield* Effect.promise(() => InstanceRuntime.load({ directory: instance.path }))
 
           const response = yield* Effect.promise(() =>
             Promise.resolve(
               app().request("/global/config", {
-                method: "PUT",
+                method: "PATCH",
                 headers: {
                   "content-type": "application/json",
                 },
                 body: JSON.stringify({
                   agent: {
                     build: {
-                      description: "after",
+                      model: "openai/after",
+                      variant: "high",
                     },
                   },
                 }),
@@ -190,7 +204,10 @@ describe("config HttpApi", () => {
           )
 
           expect(response.status).toBe(200)
-          expect((yield* getAgents()).find((agent) => agent.name === "build")?.description).toBe("after")
+          expect((yield* getAgents()).find((agent) => agent.name === "build")).toMatchObject({
+            model: { providerID: "openai", modelID: "after" },
+            variant: "high",
+          })
           expect(yield* Effect.promise(() => InstanceRuntime.load({ directory: instance.path }))).toBe(active)
         }),
       )
