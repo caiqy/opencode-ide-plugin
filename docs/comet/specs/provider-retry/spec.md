@@ -6,7 +6,7 @@ legacy Session 普通对话以及 task/subagent 子 Session 必须通过现有 `
 
 `provider_retry.max_retries` 使用非负整数配置 `SessionRetry.policy` 在初始 provider 请求之外允许的最大重试次数。未配置时默认 10，配置 0 时不重试，配置 N 时一次 provider turn 最多执行 N+1 次 provider 请求。该配置不控制 V2 RequestExecutor、V1/V2 model-backed search 或未配置 model 的 Exa/Parallel MCP websearch。
 
-无有效 provider 等待提示时，第 N 次重试的基础等待为 `2 秒 × 2^(N-1)`，并保留 0–25% jitter。本地计算的单次等待最多 120 秒。合法 `retry-after-ms`、`Retry-After` 十进制秒数或未来 HTTP-date 优先于本地指数退避；provider 明确要求的等待可以超过 120 秒。缺失、无效或过期的等待提示回退到本地指数退避。
+第 N 次重试的基础等待为 `2 秒 × 2^(N-1)`，并保留 0–25% jitter，单次等待最多 120 秒。Session retry 不遵从 provider 的 `retry-after-ms` 或 `Retry-After` 提示。每个 assistant message/provider turn 独立创建重试策略，次数和退避从第 1 次重新开始，同一 Session 的不同对话节点不得累计。
 
 rate-limit、concurrency-limit 与 HTTP 429 只补充为原 retryable 分类，不建立专用等待、固定最短等待、累计等待上限或特殊重试状态。明确的 `Concurrency limit exceeded for user, please retry later` 与 account 等价形式必须可重试；匹配必须足够具体，不得因普通业务文本包含 concurrency 或 limit 就触发重试。
 
@@ -20,4 +20,4 @@ Session retry 的状态发布、取消和错误投影继续使用现有流程。
 
 ## 验证
 
-验收必须使用确定性 fake error/provider 和 TestClock 覆盖：默认 10、配置 0、自定义次数、N+1 请求上限、次数耗尽、2 秒指数退避、0–25% jitter、120 秒本地单次封顶、超过 120 秒的合法 Retry-After、无效 Retry-After fallback、HTTP 429、rate-limit、user/account concurrency-limit、quota/auth/context/permanent 否决，以及 task/subagent 只继承子 Session 预算。还必须通过差异检查和定向测试证明 V2 RequestExecutor、model-backed search、MCP websearch、Session 删除和独立 release 文件未被本 capability 改写。真实 provider 调用不作为验收前提。
+验收必须使用确定性 fake error/provider 和 TestClock 覆盖：默认 10、配置 0、自定义次数、N+1 请求上限、次数耗尽、2 秒指数退避、0–25% jitter、120 秒单次封顶、忽略 Retry-After、不同对话节点独立计数和退避、HTTP 429、rate-limit、user/account concurrency-limit、quota/auth/context/permanent 否决，以及 task/subagent 只继承子 Session 预算。还必须通过差异检查和定向测试证明 V2 RequestExecutor、model-backed search、MCP websearch、Session 删除和独立 release 文件未被本 capability 改写。真实 provider 调用不作为验收前提。

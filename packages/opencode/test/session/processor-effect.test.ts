@@ -829,6 +829,64 @@ it.live("session.processor effect tests publish retry status updates", () =>
   ),
 )
 
+it.live("session.processor effect tests reset retries for each conversation node", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+        const events = yield* EventV2Bridge.Service
+
+        yield* llm.error(503, { error: "first" })
+        yield* llm.text("first done")
+        yield* llm.error(503, { error: "second" })
+        yield* llm.text("second done")
+
+        const chat = yield* session.create({})
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const states: { attempt: number; delay: number }[] = []
+        const off = yield* events.listen((evt) => {
+          if (evt.type !== SessionStatus.Event.Status.type) return Effect.void
+          const data = evt.data as typeof SessionStatus.Event.Status.data.Type
+          if (data.sessionID === chat.id && data.status.type === "retry") {
+            states.push({ attempt: data.status.attempt, delay: data.status.next - Date.now() })
+          }
+          return Effect.void
+        })
+
+        for (const text of ["first", "second"]) {
+          const parent = yield* user(chat.id, text)
+          const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+          const handle = yield* processors.create({ assistantMessage: msg, sessionID: chat.id, model: mdl })
+          const value = yield* handle.process({
+            user: {
+              id: parent.id,
+              sessionID: chat.id,
+              role: "user",
+              time: parent.time,
+              agent: parent.agent,
+              model: { providerID: ref.providerID, modelID: ref.modelID },
+            } satisfies SessionV1.User,
+            sessionID: chat.id,
+            model: mdl,
+            agent: agent(),
+            system: [],
+            messages: [{ role: "user", content: text }],
+            tools: {},
+          })
+          expect(value).toBe("continue")
+        }
+
+        yield* off
+
+        expect(yield* llm.calls).toBe(4)
+        expect(states.map((state) => state.attempt)).toStrictEqual([1, 1])
+        for (const state of states) expect(state.delay).toBeWithin(1900, 2501)
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+  15_000,
+)
+
 it.live("session.processor effect tests compact on structured context overflow", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>

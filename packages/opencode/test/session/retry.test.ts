@@ -1,22 +1,18 @@
 import { describe, expect, test } from "bun:test"
-import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import type { NamedError } from "@opencode-ai/core/util/error"
 import { APICallError } from "ai"
 import { setTimeout as sleep } from "node:timers/promises"
-import { Effect, Schedule, Schema } from "effect"
-import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
+import { Clock, Effect, Fiber, Schedule, Schema } from "effect"
+import * as TestClock from "effect/testing/TestClock"
 import { SessionRetry } from "../../src/session/retry"
 import { MessageV2 } from "../../src/session/message-v2"
 import { ProviderError } from "../../src/provider/error"
-import { SessionID } from "../../src/session/schema"
-import { SessionStatus } from "../../src/session/status"
-import { testEffect } from "../lib/effect"
+import { it } from "../lib/effect"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 
 const providerID = ProviderV2.ID.make("test")
 const retryProvider = "test"
-const it = testEffect(LayerNode.compile(LayerNode.group([SessionStatus.node, CrossSpawnSpawner.node])))
 
 function apiError(headers?: Record<string, string>): SessionV1.APIError {
   return Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
@@ -32,126 +28,52 @@ function wrap(message: unknown): ReturnType<NamedError["toObject"]> {
   return { name: "", data: { message } }
 }
 
+function advance<A, E, R>(effect: Effect.Effect<A, E, R>) {
+  return Effect.gen(function* () {
+    const fiber = yield* effect.pipe(Effect.ignore, Effect.forkChild)
+    yield* Effect.yieldNow
+    yield* TestClock.adjust(121_000)
+    return yield* Fiber.join(fiber)
+  })
+}
+
 describe("session.retry.delay", () => {
   test("caps local backoff at 120 seconds when headers are missing", () => {
-    const error = apiError()
-    const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error, 0))
+    const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, 0))
     expect(delays).toStrictEqual([2000, 4000, 8000, 16000, 32000, 64000, 120000, 120000, 120000, 120000])
   })
 
   test("adds jitter to exponential delays", () => {
-    const error = apiError()
-    expect(SessionRetry.delay(1, error, 0)).toBe(2000)
-    expect(SessionRetry.delay(1, error, 1)).toBe(2500)
-    expect(SessionRetry.delay(4, error, 1)).toBe(20000)
-    expect(SessionRetry.delay(6, error, 1)).toBe(80000)
-    expect(SessionRetry.delay(7, error, 1)).toBe(120000)
+    expect(SessionRetry.delay(1, 0)).toBe(2000)
+    expect(SessionRetry.delay(1, 1)).toBe(2500)
+    expect(SessionRetry.delay(4, 1)).toBe(20000)
+    expect(SessionRetry.delay(6, 1)).toBe(80000)
+    expect(SessionRetry.delay(7, 1)).toBe(120000)
   })
 
-  test("prefers retry-after-ms when shorter than exponential", () => {
-    const error = apiError({ "retry-after-ms": "1500" })
-    expect(SessionRetry.delay(4, error)).toBe(1500)
-  })
-
-  test("uses retry-after seconds when reasonable", () => {
-    const error = apiError({ "retry-after": "30" })
-    expect(SessionRetry.delay(3, error)).toBe(30000)
-  })
-
-  test("accepts http-date retry-after values", () => {
-    const date = new Date(Date.now() + 20000).toUTCString()
-    const error = apiError({ "retry-after": date })
-    const d = SessionRetry.delay(1, error)
-    expect(d).toBeGreaterThanOrEqual(19000)
-    expect(d).toBeLessThanOrEqual(20000)
-  })
-
-  test("ignores invalid retry hints", () => {
-    const error = apiError({ "retry-after": "not-a-number" })
-    expect(SessionRetry.delay(1, error, 0)).toBe(2000)
-  })
-
-  test("ignores malformed date retry hints", () => {
-    const error = apiError({ "retry-after": "Invalid Date String" })
-    expect(SessionRetry.delay(1, error, 0)).toBe(2000)
-  })
-
-  test("ignores past date retry hints", () => {
-    const pastDate = new Date(Date.now() - 5000).toUTCString()
-    const error = apiError({ "retry-after": pastDate })
-    expect(SessionRetry.delay(1, error, 0)).toBe(2000)
-  })
-
-  test("ignores dates that are not HTTP-date values", () => {
-    const error = apiError({ "retry-after": new Date(Date.now() + 20000).toISOString() })
-    expect(SessionRetry.delay(1, error, 0)).toBe(2000)
-  })
-
-  test.each([
-    ["retry-after-ms", "-1"],
-    ["retry-after-ms", "Infinity"],
-    ["retry-after-ms", "120junk"],
-    ["retry-after", "-1"],
-    ["retry-after", "Infinity"],
-    ["retry-after", "120junk"],
-  ])("ignores invalid %s value %s", (header, value) => {
-    expect(SessionRetry.delay(1, apiError({ [header]: value }), 0)).toBe(2000)
-  })
-
-  test("caps local backoff when response headers have no retry hint", () => {
-    expect(SessionRetry.delay(10, apiError({ "content-type": "application/json" }), 0)).toBe(120000)
-  })
-
-  test("uses retry-after values even when exceeding 10 minutes with headers", () => {
-    const error = apiError({ "retry-after": "50" })
-    expect(SessionRetry.delay(1, error)).toBe(50000)
-
-    const longError = apiError({ "retry-after-ms": "700000" })
-    expect(SessionRetry.delay(1, longError)).toBe(700000)
-
-    const standardLongError = apiError({ "retry-after": "121" })
-    expect(SessionRetry.delay(1, standardLongError)).toBe(121000)
-  })
-
-  test("caps oversized header delays to the runtime timer limit", () => {
-    const error = apiError({ "retry-after-ms": "999999999999" })
-    expect(SessionRetry.delay(1, error)).toBe(SessionRetry.RETRY_MAX_DELAY)
-  })
-
-  it.instance("policy updates retry status and increments attempts", () =>
+  it.effect("policy updates retry status and increments attempts", () =>
     Effect.gen(function* () {
-      const sessionID = SessionID.make("session-retry-test")
-      const error = apiError({ "retry-after-ms": "0" })
-      const status = yield* SessionStatus.Service
+      const updates: { attempt: number; message: string }[] = []
+      const error = apiError()
 
       const step = yield* Schedule.toStepWithMetadata(
         SessionRetry.policy({
           provider: "test",
           parse: Schema.decodeUnknownSync(SessionV1.APIError.Schema),
-          set: (info) =>
-            status.set(sessionID, {
-              type: "retry",
-              attempt: info.attempt,
-              message: info.message,
-              next: info.next,
-            }),
+          set: (info) => Effect.sync(() => updates.push(info)),
         }),
       )
-      yield* step(error)
-      yield* step(error)
+      yield* advance(step(error))
+      yield* advance(step(error))
 
-      expect(yield* status.get(sessionID)).toMatchObject({
-        type: "retry",
-        attempt: 2,
-        message: "boom",
-      })
+      expect(updates.at(-1)).toMatchObject({ attempt: 2, message: "boom" })
     }),
   )
 
   it.effect("policy stops after ten retries by default", () =>
     Effect.gen(function* () {
       const attempts: number[] = []
-      const error = apiError({ "retry-after-ms": "0" })
+      const error = apiError()
       const step = yield* Schedule.toStepWithMetadata(
         SessionRetry.policy({
           provider: "test",
@@ -163,9 +85,7 @@ describe("session.retry.delay", () => {
         }),
       )
 
-      yield* Effect.forEach(Array.from({ length: SessionRetry.RETRY_MAX_RETRIES + 1 }), () =>
-        Effect.ignore(step(error)),
-      )
+      yield* Effect.forEach(Array.from({ length: SessionRetry.RETRY_MAX_RETRIES + 1 }), () => advance(step(error)))
 
       expect(attempts).toStrictEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
     }),
@@ -187,11 +107,39 @@ describe("session.retry.delay", () => {
           }),
         )
 
-        yield* Effect.forEach(Array.from({ length: 4 }), () =>
-          Effect.ignore(step(apiError({ "retry-after-ms": "0" }))),
-        )
+        yield* Effect.forEach(Array.from({ length: 4 }), () => advance(step(apiError())))
         expect(attempts).toStrictEqual([...expected])
       }
+    }),
+  )
+
+  it.effect("independent retry policies reset attempts and delays", () =>
+    Effect.gen(function* () {
+      const nodes: { attempt: number; next: number }[][] = [[], []]
+      const makeStep = (node: number) =>
+        Schedule.toStepWithMetadata(
+          SessionRetry.policy({
+            provider: "test",
+            parse: Schema.decodeUnknownSync(SessionV1.APIError.Schema),
+            set: (info) => Effect.sync(() => nodes[node].push({ attempt: info.attempt, next: info.next })),
+          }),
+        )
+      const first = yield* makeStep(0)
+      const second = yield* makeStep(1)
+      const retryAfter = apiError({ "retry-after": "60" })
+      const retryAfterMs = apiError({ "retry-after-ms": "60000" })
+
+      const starts = [yield* Clock.currentTimeMillis]
+      yield* advance(first(retryAfter))
+      starts.push(yield* Clock.currentTimeMillis)
+      yield* advance(first(retryAfter))
+      starts.push(yield* Clock.currentTimeMillis)
+      yield* advance(second(retryAfterMs))
+
+      expect(nodes.map((node) => node.map((item) => item.attempt))).toStrictEqual([[1, 2], [1]])
+      expect(nodes[0][0].next - starts[0]).toBeWithin(2000, 2501)
+      expect(nodes[0][1].next - starts[1]).toBeWithin(4000, 5001)
+      expect(nodes[1][0].next - starts[2]).toBeWithin(2000, 2501)
     }),
   )
 })
