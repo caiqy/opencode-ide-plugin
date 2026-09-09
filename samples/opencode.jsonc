@@ -8,6 +8,13 @@
       "openai/gpt-5.6-luna"
     ]
   },
+  "parallel_limit": {
+    "websearch": 3,
+    "subagent": 3
+  },
+  "provider_retry": {
+    "max_retries": 30
+  },
   "agent": {
     "title": {
       "model": "openai/gpt-5.6-luna",
@@ -20,7 +27,7 @@
       "prompt": "面向用户的输出使用中文（包括：解释、总结、问题选项说明、TodoWrite 里的 todos.content）。仅专有名词保留原样；"
     },
     "build": {
-      "model": "openai/gpt-5.6-terra",
+      "model": "openai/gpt-5.6-sol",
       "variant": "high",
       "prompt": "面向用户的输出使用中文（包括：解释、总结、问题选项说明、TodoWrite 里的 todos.content）。仅专有名词保留原样；"
     },
@@ -30,7 +37,7 @@
     },
     "explore": {
       "model": "openai/gpt-5.6-luna",
-      "variant": "high"
+      "variant": "xhigh"
     },
     "reviewer": {
       "model": "openai/gpt-5.6-terra",
@@ -90,10 +97,11 @@
         ]
       },
       "whitelist": [
-        "gpt-5.5",
+        "gpt-6-astra",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
+        "gpt-5.5",
         "gpt-image-2"
       ],
       "models": {
@@ -117,22 +125,29 @@
         },
         "gpt-5.6-sol": {
           "limit": {
-            "context": 350000,
-            "input": 350000,
+            "context": 400000,
+            "input": 400000,
             "output": 64000
           }
         },
         "gpt-5.6-terra": {
           "limit": {
-            "context": 350000,
-            "input": 350000,
+            "context": 400000,
+            "input": 400000,
             "output": 64000
           }
         },
         "gpt-5.6-luna": {
           "limit": {
-            "context": 350000,
-            "input": 350000,
+            "context": 600000,
+            "input": 600000,
+            "output": 64000
+          }
+        },
+        "gpt-6-astra": {
+          "limit": {
+            "context": 400000,
+            "input": 400000,
             "output": 64000
           }
         }
