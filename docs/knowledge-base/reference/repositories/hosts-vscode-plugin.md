@@ -97,4 +97,4 @@ pnpm test
 pnpm run package:dev
 ```
 
-> Windows VSIX 正式打包走「打包下一个版本」两步流程，见 `memory/context/vscode-packaging.md`：先校验版本号（非空、两 package 一致、日期段=今天），再构建打包，禁用 `node -e` one-liner。
+> Windows VSIX 正式打包走 `.opencode/command/build-vsix.md` 的两步流程：先校验版本号（非空、两 package 一致、日期段=今天），再构建打包，禁用 `node -e` one-liner。

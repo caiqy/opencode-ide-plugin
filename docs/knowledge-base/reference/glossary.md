@@ -53,6 +53,6 @@
 
 | 术语                 | 含义                                                                                                                                      | 上下文                                                                                                                     |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| build-vsix           | Windows 版 VSCode 插件 `.vsix` 快速打包流程。知识库读者遇到 VSCode 打包或发布文档时可把它理解为本仓库的本地 VSIX 打包捷径。               | [business/packaging-release.md](business/packaging-release.md)、[../../../memory/glossary.md](../../../memory/glossary.md) |
-| gradlew.bat 命令规则 | Windows/PowerShell 中所有 `gradlew.bat` 命令默认追加 `--no-daemon --console=plain`；如遇 daemon 卡住或文件锁，先 `./gradlew.bat --stop`。 | [business/packaging-release.md](business/packaging-release.md)、[../../../memory/glossary.md](../../../memory/glossary.md) |
-| 版本规则 `YY.M.DDNN` | 仓库通用版本格式：年份后两位、月份不补零、`DDNN` 为日期乘 100 加当天序号；跨天后日期段必须更新，当天序号重置为 `00`。                     | [business/packaging-release.md](business/packaging-release.md)、[../../../memory/glossary.md](../../../memory/glossary.md) |
+| build-vsix           | Windows 版 VSCode 插件 `.vsix` 快速打包流程。知识库读者遇到 VSCode 打包或发布文档时可把它理解为本仓库的本地 VSIX 打包捷径。               | [business/packaging-release.md](business/packaging-release.md) |
+| gradlew.bat 命令规则 | Windows/PowerShell 中所有 `gradlew.bat` 命令默认追加 `--no-daemon --console=plain`；如遇 daemon 卡住或文件锁，先 `./gradlew.bat --stop`。 | [business/packaging-release.md](business/packaging-release.md) |
+| 版本规则 `YY.M.DDNN` | 仓库通用版本格式：年份后两位、月份不补零、`DDNN` 为日期乘 100 加当天序号；跨天后日期段必须更新，当天序号重置为 `00`。                     | [business/packaging-release.md](business/packaging-release.md) |

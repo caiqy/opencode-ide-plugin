@@ -102,7 +102,7 @@ Host → UI 推送：
 ./gradlew.bat buildPlugin "-Pplugin.version=<版本号>" --no-daemon --console=plain
 ```
 
-> daemon 卡住或文件锁：先 `./gradlew.bat --stop`。`-P...=...` 参数必须加引号。见 `memory/context/gradle.md`。
+> daemon 卡住或文件锁：先 `./gradlew.bat --stop`。`-P...=...` 参数必须加引号。
 
 ## 发布
 

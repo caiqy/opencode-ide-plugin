@@ -4,11 +4,10 @@
 
 ## 真源
 
-1. VSCode Windows VSIX：[vscode-packaging](../../../../memory/context/vscode-packaging.md)
-2. Gradle 命令规则：[gradle](../../../../memory/context/gradle.md)
-3. 版本规则：[versioning](../../../../memory/context/versioning.md)
-4. 正式发版：[release-publishing](../../../../memory/context/release-publishing.md)
-5. 能力背景：[packaging-release](../../reference/business/packaging-release.md)。
+1. VSCode Windows VSIX：[build-vsix](../../../../.opencode/command/build-vsix.md)
+2. Gradle 构建：[build.gradle.kts](../../../../hosts/jetbrains-plugin/build.gradle.kts)
+3. 正式发版：[release workflow](../../../../.github/workflows/release.yml)
+4. 能力背景：[packaging-release](../../reference/business/packaging-release.md)。
 
 ## 版本规则
 
@@ -21,7 +20,7 @@
 
 ## 打包 VSCode Windows VSIX
 
-1. 先按 `memory/context/vscode-packaging.md` 计算目标版本。
+1. 先按 `.opencode/command/build-vsix.md` 计算目标版本。
 2. 更新两个 package 版本：
    - `packages/opencode/webgui/package.json`
    - `hosts/vscode-plugin/package.json`
@@ -40,7 +39,7 @@ pnpm run package:dev
 
 ## 打包 JetBrains 插件
 
-1. 按 `memory/context/versioning.md` 计算目标版本。
+1. 按本仓库版本规则计算目标版本。
 2. 用 Gradle 属性注入版本，不依赖 fallback。
 3. PowerShell 中 `-Pplugin.version=...` 必须加引号。
 4. 所有 `gradlew.bat` 命令追加 `--no-daemon --console=plain`。

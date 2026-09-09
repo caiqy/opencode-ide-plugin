@@ -14,7 +14,7 @@
 | 发布内容共享真源          | `docs/release-content/manifest.json`、`README.shared.md`、`description.shared.md`、`CHANGELOG.md` |
 | 发布内容同步              | `script/release-content.ts`、`script/release-content-sync.ts`                                     |
 | 自动发布入口              | `.github/workflows/release.yml`                                                                   |
-| 本地打包记忆              | `memory/context/vscode-packaging.md`、`memory/context/gradle.md`、`memory/context/versioning.md`  |
+| Windows VSIX 打包命令     | `.opencode/command/build-vsix.md`                                                               |
 
 > 命名交叉核验（Step 5）：能力 I4/I5 对应 [hosts-vscode-plugin 参考](../repositories/hosts-vscode-plugin.md)，代码真源集中在 release-content、host package metadata 与 release workflow。
 
@@ -39,9 +39,9 @@
 
 ## 边界与约束
 
-- 版本规则是 `YY.M.DDNN`，跨天日期段必须更新，当天序号从 `00` 起（`memory/context/versioning.md` 第 3-11 行）。
-- Windows 本地 VSIX 快速打包只更新 `packages/opencode/webgui/package.json` 和 `hosts/vscode-plugin/package.json`，并验证 VSIX 内含 Windows amd64 binary（`memory/context/vscode-packaging.md` 第 7-16 行）。
-- Windows/PowerShell 下 Gradle 命令默认加 `--no-daemon --console=plain`，`-P...=...` 参数要加引号（`memory/context/gradle.md` 第 5-10 行）。
+- 版本规则是 `YY.M.DDNN`，跨天日期段必须更新，当天序号从 `00` 起（`.opencode/command/build-vsix.md` 第 7-9 行）。
+- Windows 本地 VSIX 快速打包只更新 `packages/opencode/webgui/package.json` 和 `hosts/vscode-plugin/package.json`，并验证 VSIX 内含 Windows amd64 binary（`.opencode/command/build-vsix.md` 第 11-20 行）。
+- Windows/PowerShell 下 Gradle 命令默认加 `--no-daemon --console=plain`，`-P...=...` 参数要加引号（[hosts-jetbrains-plugin](../repositories/hosts-jetbrains-plugin.md) 第 95-105 行）。
 
 ## 静态锚点
 

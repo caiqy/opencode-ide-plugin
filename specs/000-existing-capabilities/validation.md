@@ -69,7 +69,7 @@ Packaging checks:
 pnpm run package:dev
 ```
 
-Windows VSIX release packaging 需遵循 `memory/context/vscode-packaging.md`。
+Windows VSIX release packaging 需遵循 `.opencode/command/build-vsix.md`。
 
 适用场景：
 
