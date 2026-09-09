@@ -32,16 +32,16 @@
       "prompt": "面向用户的输出使用中文（包括：解释、总结、问题选项说明、TodoWrite 里的 todos.content）。仅专有名词保留原样；"
     },
     "general": {
-      "model": "openai/gpt-5.6-terra",
-      "variant": "high"
-    },
-    "explore": {
       "model": "openai/gpt-5.6-luna",
       "variant": "xhigh"
     },
-    "reviewer": {
-      "model": "openai/gpt-5.6-terra",
+    "explore": {
+      "model": "openai/gpt-5.6-luna",
       "variant": "high"
+    },
+    "reviewer": {
+      "model": "openai/gpt-5.6-sol",
+      "variant": "medium"
     },
     "compaction": {
       "model": "openai/gpt-5.6-luna",
