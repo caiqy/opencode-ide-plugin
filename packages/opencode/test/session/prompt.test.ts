@@ -377,14 +377,14 @@ const succeedVoid = (deferred: Deferred.Deferred<void>) => {
 const user = Effect.fn("test.user")(function* (
   sessionID: SessionID,
   text: string,
-  options?: { system?: string; tools?: Record<string, boolean> },
+  options?: { system?: string; tools?: Record<string, boolean>; agent?: string },
 ) {
   const session = yield* Session.Service
   const msg = yield* session.updateMessage({
     id: MessageID.ascending(),
     role: "user",
     sessionID,
-    agent: "build",
+    agent: options?.agent ?? "build",
     model: ref,
     time: { created: Date.now() },
     system: options?.system,
@@ -1055,6 +1055,200 @@ it.instance("failed subtask preserves metadata on error tool state", () =>
       providerID: ProviderV2.ID.make("test"),
       modelID: ModelV2.ID.make("missing-model"),
     })
+  }),
+)
+
+for (const agent of ["reviewer", "removed-agent"]) {
+  it.instance(`${agent} rejects queued subtask input without blocking later resumes`, () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Pinned" })
+      const msg = yield* user(chat.id, "review", { agent })
+      yield* addSubtask(chat.id, msg.id, { command: "inspect" })
+      yield* user(chat.id, "build next", { agent: "build" })
+
+      yield* llm.text("review continued")
+      yield* prompt.loop({ sessionID: chat.id })
+      yield* prompt.loop({ sessionID: chat.id })
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      const errors = messages
+        .flatMap((message) => message.parts)
+        .filter((part) => part.type === "tool" && part.tool === "task" && part.state.status === "error")
+      expect(errors).toHaveLength(1)
+      expect(JSON.stringify(errors)).toContain(
+        agent === "reviewer" ? "reviewer cannot use the task tool" : "Agent not found: removed-agent",
+      )
+      expect(yield* sessions.children(chat.id)).toHaveLength(0)
+      expect(yield* llm.calls).toBe(1)
+    }),
+  )
+}
+
+it.instance("reviewer blocks same-name custom replacements but allows other custom tools", () =>
+  Effect.gen(function* () {
+    const { dir, llm } = yield* useServerConfig(providerCfg)
+    for (const name of ["edit", "write", "apply_patch", "task", "inspect"]) {
+      yield* writeText(
+        path.join(dir, ".opencode", "tools", `${name}.ts`),
+        `export default { description: "Custom ${name}", args: {}, execute: async () => "custom ${name} result" }`,
+      )
+    }
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const build = yield* sessions.create({ title: "Build" })
+    yield* llm.tool("edit", {})
+    yield* llm.text("done")
+    yield* prompt.prompt({ sessionID: build.id, agent: "build", model: ref, parts: [{ type: "text", text: "inspect" }] })
+    const messages = yield* sessions.messages({ sessionID: build.id })
+    const edits = messages
+      .flatMap((message) => message.parts)
+      .filter((part) => part.type === "tool" && part.tool === "edit")
+    expect(edits).toHaveLength(1)
+    expect(JSON.stringify(edits)).toContain("custom edit result")
+
+    const reviewer = yield* sessions.create({ title: "Review" })
+    yield* llm.tool("inspect", {})
+    yield* llm.text("reviewed")
+    yield* prompt.prompt({
+      sessionID: reviewer.id,
+      agent: "reviewer",
+      model: ref,
+      parts: [{ type: "text", text: "review" }],
+    })
+    const tools = JSON.stringify((yield* llm.inputs).at(-1)?.tools)
+    expect(tools).toContain('"name":"inspect"')
+    for (const name of ["edit", "write", "apply_patch", "task"]) {
+      expect(tools).not.toContain(`"name":"${name}"`)
+    }
+    const reviewed = yield* sessions.messages({ sessionID: reviewer.id })
+    expect(JSON.stringify(reviewed)).toContain("custom inspect result")
+  }),
+)
+
+for (const explicit of [false, true]) {
+  it.instance(`queued subtask uses ${explicit ? "explicit" : "source message"} model`, () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => {
+        const config = providerCfg(url)
+        return {
+          ...config,
+          provider: {
+            test: {
+              ...config.provider.test,
+              models: {
+                ...config.provider.test.models,
+                alternate: { ...cfg.provider.test.models["test-model"], id: "alternate" },
+              },
+            },
+          },
+        }
+      })
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Pinned" })
+      const source = yield* user(chat.id, "inspect source")
+      yield* sessions.updatePart({
+        id: PartID.ascending(),
+        messageID: source.id,
+        sessionID: chat.id,
+        type: "subtask",
+        prompt: "inspect",
+        description: "inspect model",
+        agent: "general",
+        ...(explicit ? { model: { ...ref, modelID: ModelV2.ID.make("alternate") } } : {}),
+      })
+      const latest = yield* user(chat.id, "new model")
+      yield* sessions.updateMessage({ ...latest, model: { ...ref, modelID: ModelV2.ID.make("alternate") } })
+      yield* llm.text("child result")
+      yield* llm.text("parent result")
+
+      yield* prompt.loop({ sessionID: chat.id })
+
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      const task = messages.find((message) => message.parts.some((part) => part.type === "tool" && part.tool === "task"))
+      expect(task?.info.role).toBe("assistant")
+      if (task?.info.role === "assistant") {
+        expect(task.info.parentID).toBe(source.id)
+        expect(task.info.modelID).toBe(ModelV2.ID.make(explicit ? "alternate" : "test-model"))
+      }
+      const children = yield* sessions.children(chat.id)
+      expect(children).toHaveLength(1)
+      const child = yield* sessions.messages({ sessionID: children[0].id })
+      const input = child.find((message) => message.info.role === "user")
+      if (input?.info.role !== "user") throw new Error("Missing child user message")
+      expect(input.info.model.modelID).toBe(ModelV2.ID.make(explicit ? "alternate" : "test-model"))
+    }),
+  )
+}
+
+for (const invalid of ["source-model", "task-model", "target-agent"]) {
+  it.instance(`queued subtask with missing ${invalid} records an error and resumes`, () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Pinned" })
+      const source = yield* user(chat.id, "inspect")
+      const missing = { ...ref, modelID: ModelV2.ID.make("removed-model") }
+      if (invalid === "source-model") yield* sessions.updateMessage({ ...source, model: missing })
+      yield* sessions.updatePart({
+        id: PartID.ascending(),
+        messageID: source.id,
+        sessionID: chat.id,
+        type: "subtask",
+        prompt: "inspect",
+        description: "inspect unavailable configuration",
+        command: "inspect",
+        agent: invalid === "target-agent" ? "removed-agent" : "general",
+        ...(invalid === "task-model" ? { model: missing } : {}),
+      })
+      yield* user(chat.id, "continue with valid configuration")
+      yield* llm.text("continued")
+
+      yield* prompt.loop({ sessionID: chat.id })
+      yield* prompt.loop({ sessionID: chat.id })
+
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      const errors = messages
+        .flatMap((message) => message.parts)
+        .filter((part) => part.type === "tool" && part.tool === "task" && part.state.status === "error")
+      expect(errors).toHaveLength(1)
+      expect(JSON.stringify(errors)).toContain(invalid === "target-agent" ? "removed-agent" : "removed-model")
+      expect(yield* sessions.children(chat.id)).toHaveLength(0)
+      expect(yield* llm.calls).toBe(1)
+    }),
+  )
+}
+
+it.instance("reviewer rejects subtask input before persistence", () =>
+  Effect.gen(function* () {
+    yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+
+    const exit = yield* prompt
+      .prompt({
+        sessionID: chat.id,
+        agent: "reviewer",
+        model: ref,
+        noReply: true,
+        parts: [
+          {
+            type: "subtask",
+            prompt: "inspect",
+            description: "inspect bug",
+            agent: "general",
+          },
+        ],
+      })
+      .pipe(Effect.exit)
+
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("reviewer cannot use the task tool")
+    expect(yield* sessions.messages({ sessionID: chat.id })).toHaveLength(0)
   }),
 )
 

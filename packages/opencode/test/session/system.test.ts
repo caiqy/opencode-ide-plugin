@@ -43,6 +43,14 @@ const build: Agent.Info = {
   options: {},
 }
 
+const reviewer: Agent.Info = {
+  name: "reviewer",
+  mode: "subagent",
+  native: true,
+  permission: Permission.fromConfig({ "*": "allow", task: "deny", edit: "deny", write: "deny" }),
+  options: {},
+}
+
 const it = testEffect(
   LayerNode.compile(SystemPrompt.node, [
     [
@@ -163,6 +171,16 @@ describe("session.system", () => {
           "</mcp_instructions>",
         ].join("\n"),
       )
+    }),
+  )
+
+  it.effect("MCP output includes all server instructions for reviewer", () =>
+    Effect.gen(function* () {
+      const prompt = yield* SystemPrompt.Service
+      const output = yield* prompt.mcp(reviewer, Permission.fromConfig({ "*": "deny" }))
+
+      expect(output).toContain('<server name="guide-server">')
+      expect(output).toContain('<server name="tool-server">')
     }),
   )
 })

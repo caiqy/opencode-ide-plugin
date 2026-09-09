@@ -175,6 +175,22 @@ describe("tool.registry", () => {
     }),
   )
 
+  withCodeMode.instance("reviewer sees code mode MCP tools despite restrictive session permissions", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const agents = yield* Agent.Service
+      const tools = yield* registry.tools({
+        providerID: ProviderV2.ID.opencode,
+        modelID: ModelV2.ID.make("test"),
+        agent: yield* agents.get("reviewer"),
+        permission: [{ permission: "*", pattern: "*", action: "deny" }],
+      })
+      const execute = tools.find((tool) => tool.id === "execute")
+
+      expect(execute?.description).toContain("tools.weather.current")
+    }),
+  )
+
   withEmptyCodeMode.instance("does not expose execute when code mode has no visible tools", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service

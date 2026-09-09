@@ -146,8 +146,8 @@
         },
         "gpt-6-astra": {
           "limit": {
-            "context": 400000,
-            "input": 400000,
+            "context": 350000,
+            "input": 350000,
             "output": 64000
           }
         }

@@ -41,10 +41,22 @@ const toolIDs = [
   "grep",
   "glob",
   "bash",
+  "task",
   "edit",
   "write",
   "apply_patch",
   "webfetch",
+  "lsp",
+  "list",
+  "websearch",
+  "skill",
+  "question",
+  "todowrite",
+  "generate_image",
+  "execute",
+  "plan_exit",
+  "custom_inspect",
+  "codegraph_codegraph_explore",
   "list_mcp_resources",
   "list_mcp_resource_templates",
   "read_mcp_resource",
@@ -173,7 +185,7 @@ it.instance("explore agent denies edit and write", () =>
   }),
 )
 
-it.instance("reviewer agent is a native read-only subagent", () =>
+it.instance("reviewer agent allows investigation but denies direct edits and tasks", () =>
   Effect.gen(function* () {
     const reviewer = yield* load((svc) => svc.get("reviewer"))
     expect(reviewer?.native).toBe(true)
@@ -183,7 +195,14 @@ it.instance("reviewer agent is a native read-only subagent", () =>
     expect(evalPerm(reviewer, "glob")).toBe("allow")
     expect(evalPerm(reviewer, "edit")).toBe("deny")
     expect(evalPerm(reviewer, "write")).toBe("deny")
-    expect(evalPerm(reviewer, "bash")).toBe("deny")
+    expect(evalPerm(reviewer, "task")).toBe("deny")
+    expect(evalPerm(reviewer, "bash")).toBe("allow")
+    expect(evalPerm(reviewer, "webfetch")).toBe("allow")
+    expect(evalPerm(reviewer, "codegraph_codegraph_explore")).toBe("allow")
+    expect(Agent.canUseTool(reviewer!, "codegraph_codegraph_explore")).toBe(true)
+    expect(Agent.canUseTool(reviewer!, "custom_mcp_tool")).toBe(true)
+    expect(Agent.canUseTool(reviewer!, "apply_patch")).toBe(false)
+    expect(Agent.canUseTool(reviewer!, "task")).toBe(false)
   }),
 )
 
@@ -257,9 +276,10 @@ it.instance(
       expect(evalPerm(reviewer, "read")).toBe("allow")
       expect(evalPerm(reviewer, "grep")).toBe("allow")
       expect(evalPerm(reviewer, "glob")).toBe("allow")
-      expect(evalPerm(reviewer, "bash")).toBe("deny")
+      expect(evalPerm(reviewer, "bash")).toBe("allow")
       expect(evalPerm(reviewer, "edit")).toBe("deny")
-      expect(evalPerm(reviewer, "webfetch")).toBe("deny")
+      expect(evalPerm(reviewer, "task")).toBe("deny")
+      expect(evalPerm(reviewer, "webfetch")).toBe("allow")
     }),
   {
     config: {
@@ -268,7 +288,7 @@ it.instance(
           description: "Configured reviewer",
           name: "Untrusted reviewer",
           mode: "all",
-          permission: { "*": "allow", bash: "allow", edit: "allow" },
+          permission: { "*": "deny", bash: "deny", edit: "allow", task: "allow" },
         },
       },
     },
@@ -276,13 +296,15 @@ it.instance(
 )
 
 it.instance(
-  "reviewer excludes unsafe tools after session permissions are merged",
+  "reviewer excludes direct edit and task tools after session permissions are merged",
   () =>
     Effect.gen(function* () {
       const reviewer = yield* load((svc) => svc.get("reviewer"))
       const prepared = yield* prepareTools(reviewer!)
 
-      expect(Object.keys(prepared.tools).toSorted()).toEqual(["glob", "grep", "read"])
+      expect(Object.keys(prepared.tools).toSorted()).toEqual(
+        toolIDs.filter((tool) => !["apply_patch", "edit", "task", "write"].includes(tool)).toSorted(),
+      )
     }),
 )
 
@@ -412,15 +434,18 @@ it.instance(
   },
 )
 
-it.instance("reviewer execution denies MCP resource aliases", () =>
+it.instance("reviewer execution allows MCP tools but denies direct edits and tasks", () =>
   Effect.gen(function* () {
     const reviewer = yield* load((svc) => svc.get("reviewer"))
-    const ruleset = Agent.toolPermission(reviewer!, Permission.fromConfig({ "*": "allow" }), "read_mcp_resource")
-    expect(Permission.evaluate("read", "mcp:server:resource", ruleset).action).toBe("deny")
+    const permission = Permission.fromConfig({ "*": "allow" })
+    const mcp = Agent.toolPermission(reviewer!, permission, "read_mcp_resource")
+    const patch = Agent.toolPermission(reviewer!, permission, "apply_patch")
+    const task = Agent.toolPermission(reviewer!, permission, "task")
+    expect(Permission.evaluate("read", "mcp:server:resource", mcp).action).toBe("allow")
+    expect(Permission.evaluate("edit", "file.ts", patch).action).toBe("deny")
+    expect(Permission.evaluate("task", "general", task).action).toBe("deny")
   }),
 )
-
-
 it.instance(
   "custom agent config overrides native agent properties",
   () =>

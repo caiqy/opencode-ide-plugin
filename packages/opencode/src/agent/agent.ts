@@ -67,24 +67,27 @@ const GeneratedAgent = Schema.Struct({
 const approvalPermission = fromConfig({ "*": "deny", read: "allow", grep: "allow", glob: "allow" })
 
 const reviewerPermission = fromConfig({
-  "*": "deny",
-  read: "allow",
-  grep: "allow",
-  glob: "allow",
+  "*": "allow",
+  edit: "deny",
+  write: "deny",
+  task: "deny",
 })
-const reviewerTools = new Set(["read", "grep", "glob"])
+// Same-name custom tools replace builtins and retain the blocked tool identity.
+const reviewerBlockedTools = new Set(["edit", "write", "apply_patch", "task"])
 
 export function isReviewer(agent: Info) {
   return agent.native === true && agent.name === "reviewer"
 }
 
 export function canUseTool(agent: Info, tool: string) {
-  return !isReviewer(agent) || reviewerTools.has(tool)
+  return !isReviewer(agent) || !reviewerBlockedTools.has(tool)
 }
 
 export function finalPermission(agent: Info, sessionPermission: PermissionV1.Ruleset = []) {
   const ruleset = merge(agent.permission, sessionPermission)
   if (!isReviewer(agent)) return ruleset
+  // Reviewer deliberately overrides session denies for every other capability,
+  // including shell and MCP. Read-only use is a prompt policy, not a sandbox.
   return merge(ruleset, reviewerPermission)
 }
 
@@ -372,7 +375,7 @@ const layer = Layer.effect(
         }
 
         if (agents.reviewer) {
-          // ponytail: reviewer is permanently read-only; expand this list only with an explicit security review.
+          // Keep direct edit and task tools blocked even when config grants them.
           agents.reviewer.name = "reviewer"
           agents.reviewer.native = true
           agents.reviewer.mode = "subagent"

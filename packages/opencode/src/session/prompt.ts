@@ -298,17 +298,16 @@ const layer = Layer.effect(
 
     const handleSubtask = Effect.fn("SessionPrompt.handleSubtask")(function* (input: {
       task: SessionV1.SubtaskPart
-      model: Provider.Model
       lastUser: SessionV1.User
       sessionID: SessionID
       session: Session.Info
       msgs: SessionV1.WithParts[]
     }) {
-      const { task, model, lastUser, sessionID, session, msgs } = input
+      const { task, lastUser, sessionID, session, msgs } = input
       const ctx = yield* InstanceState.context
       const promptOps = yield* ops()
       const { task: taskTool } = yield* registry.named()
-      const taskModel = task.model ? yield* getModel(task.model.providerID, task.model.modelID, sessionID) : model
+      const model = task.model ?? lastUser.model
       const assistantMessage: SessionV1.Assistant = yield* sessions.updateMessage({
         id: MessageID.ascending(),
         role: "assistant",
@@ -320,8 +319,8 @@ const layer = Layer.effect(
         path: { cwd: ctx.directory, root: ctx.worktree },
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-        modelID: taskModel.id,
-        providerID: taskModel.providerID,
+        modelID: model.modelID,
+        providerID: model.providerID,
         time: { created: Date.now() },
       })
       let part: SessionV1.ToolPart = yield* sessions.updatePart({
@@ -348,25 +347,31 @@ const layer = Layer.effect(
         subagent_type: task.agent,
         command: task.command,
       }
-      yield* plugin.trigger(
-        "tool.execute.before",
-        { tool: TaskTool.id, sessionID, callID: part.id },
-        { args: taskArgs },
-      )
-
-      const taskAgent = yield* agents.get(task.agent)
-      if (!taskAgent) {
-        const available = (yield* agents.list()).filter((a) => !a.hidden).map((a) => a.name)
-        const hint = available.length ? ` Available agents: ${available.join(", ")}` : ""
-        const error = new NamedError.Unknown({ message: `Agent not found: "${task.agent}".${hint}` })
-        yield* events.publish(Session.Event.Error, { sessionID, error: error.toObject() })
-        throw error
-      }
-
       let error: Error | undefined
       const taskAbort = new AbortController()
-      const result = yield* taskTool
-        .execute(taskArgs, {
+      const result = yield* Effect.gen(function* () {
+        const parentAgent = yield* agents.get(lastUser.agent)
+        if (!parentAgent) throw new Error(`Agent not found: ${lastUser.agent}`)
+        if (!Agent.canUseTool(parentAgent, TaskTool.id)) {
+          throw new Error(`Agent ${lastUser.agent} cannot use the task tool`)
+        }
+        yield* getModel(model.providerID, model.modelID, sessionID)
+        yield* plugin.trigger(
+          "tool.execute.before",
+          { tool: TaskTool.id, sessionID, callID: part.id },
+          { args: taskArgs },
+        )
+
+        const taskAgent = yield* agents.get(task.agent)
+        if (!taskAgent) {
+          const available = (yield* agents.list()).filter((a) => !a.hidden).map((a) => a.name)
+          const hint = available.length ? ` Available agents: ${available.join(", ")}` : ""
+          const error = new NamedError.Unknown({ message: `Agent not found: "${task.agent}".${hint}` })
+          yield* events.publish(Session.Event.Error, { sessionID, error: error.toObject() })
+          throw error
+        }
+
+        return yield* taskTool.execute(taskArgs, {
           agent: task.agent,
           messageID: assistantMessage.id,
           sessionID,
@@ -393,37 +398,37 @@ const layer = Layer.effect(
               })
               .pipe(Effect.orDie),
         })
-        .pipe(
-          Effect.catchCause((cause) => {
-            const defect = Cause.squash(cause)
-            error = defect instanceof Error ? defect : new Error(String(defect))
-            return Effect.logError("subtask execution failed", {
-              error,
-              agent: task.agent,
-              description: task.description,
-            })
+      }).pipe(
+        Effect.catchCause((cause) => {
+          const defect = Cause.squash(cause)
+          error = defect instanceof Error ? defect : new Error(String(defect))
+          return Effect.logError("subtask execution failed", {
+            error,
+            agent: task.agent,
+            description: task.description,
+          })
+        }),
+        Effect.onInterrupt(() =>
+          Effect.gen(function* () {
+            taskAbort.abort()
+            assistantMessage.finish = "tool-calls"
+            assistantMessage.time.completed = Date.now()
+            yield* sessions.updateMessage(assistantMessage)
+            if (part.state.status === "running") {
+              yield* sessions.updatePart({
+                ...part,
+                state: {
+                  status: "error",
+                  error: "Cancelled",
+                  time: { start: part.state.time.start, end: Date.now() },
+                  metadata: part.state.metadata,
+                  input: part.state.input,
+                },
+              } satisfies SessionV1.ToolPart)
+            }
           }),
-          Effect.onInterrupt(() =>
-            Effect.gen(function* () {
-              taskAbort.abort()
-              assistantMessage.finish = "tool-calls"
-              assistantMessage.time.completed = Date.now()
-              yield* sessions.updateMessage(assistantMessage)
-              if (part.state.status === "running") {
-                yield* sessions.updatePart({
-                  ...part,
-                  state: {
-                    status: "error",
-                    error: "Cancelled",
-                    time: { start: part.state.time.start, end: Date.now() },
-                    metadata: part.state.metadata,
-                    input: part.state.input,
-                  },
-                } satisfies SessionV1.ToolPart)
-              }
-            }),
-          ),
-        )
+        ),
+      )
 
       const attachments = result?.attachments?.map((attachment) => ({
         ...attachment,
@@ -473,7 +478,9 @@ const layer = Layer.effect(
         } satisfies SessionV1.ToolPart)
       }
 
-      if (!task.command) return
+      // Failed tasks continue from the latest user instead of reintroducing
+      // the rejected task's potentially missing agent or model.
+      if (!task.command || !result) return
 
       const summaryUserMsg: SessionV1.User = {
         id: MessageID.ascending(),
@@ -690,6 +697,9 @@ const layer = Layer.effect(
         throw error
       }
 
+      if (input.parts.some((part) => part.type === "subtask") && !Agent.canUseTool(ag, TaskTool.id)) {
+        throw new Error(`Agent ${ag.name} cannot use the task tool`)
+      }
       const model = input.model ?? ag.model ?? (yield* currentModel(input.sessionID))
       const same = ag.model && model.providerID === ag.model.providerID && model.modelID === ag.model.modelID
       const full =
@@ -1250,7 +1260,9 @@ const layer = Layer.effect(
           const task = tasks.pop()
 
           if (task?.type === "subtask") {
-            yield* handleSubtask({ task, model, lastUser, sessionID, session, msgs })
+            const message = msgs.find((msg) => msg.info.id === task.messageID)
+            if (message?.info.role !== "user") throw new Error(`Subtask source message not found: ${task.id}`)
+            yield* handleSubtask({ task, lastUser: message.info, sessionID, session, msgs })
             continue
           }
 

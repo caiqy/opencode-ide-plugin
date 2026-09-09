@@ -120,7 +120,7 @@ function handleCall(name: string, args: Record<string, unknown>) {
 let tool: Awaited<ReturnType<typeof buildTool>>["tool"]
 let description: string
 
-async function buildTool() {
+async function buildTool(reviewer = false) {
   const server = new Server({ name: SERVER, version: "1.0.0" }, { capabilities: { tools: {} } })
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOL_DEFS }))
   server.setRequestHandler(CallToolRequestSchema, async (req) =>
@@ -146,8 +146,15 @@ async function buildTool() {
     Layer.mock(Truncate.Service, {
       output: (text: string) => Effect.succeed({ content: text, truncated: false as const }),
     }),
-    Layer.mock(Agent.Service, { get: () => Effect.succeed({ name: "build", permission: [] } as any) }),
-    Layer.mock(Session.Service, { get: () => Effect.succeed({ permission: [] } as any) }),
+    Layer.mock(Agent.Service, {
+      get: () => Effect.succeed({ name: reviewer ? "reviewer" : "build", native: reviewer, permission: [] } as any),
+    }),
+    Layer.mock(Session.Service, {
+      get: () =>
+        Effect.succeed({
+          permission: reviewer ? [{ permission: "*", pattern: "*", action: "deny" }] : [],
+        } as any),
+    }),
     Layer.mock(MCP.Service, {
       tools: () => Effect.succeed(mcpTools),
       clients: () => Effect.succeed({ [SERVER]: {} as any }),
@@ -174,6 +181,17 @@ beforeAll(async () => {
 })
 
 describe("code mode integration (real MCP server)", () => {
+  test("reviewer can call MCP tools despite restrictive session permissions", async () => {
+    const reviewer = await buildTool(true)
+    const out = await Effect.runPromise(
+      reviewer.tool.execute(
+        { code: "return await tools.fixtures.get_text({ name: 'reviewer' })" },
+        { ...ctx, agent: "reviewer" },
+      ),
+    )
+    expect(out.output).toBe("hello reviewer")
+  })
+
   test("the appended catalog inlines full signatures with real MCP schemas", () => {
     expect(description).toContain("Available tools (COMPLETE list")
     expect(description).toContain("- fixtures (4 tools)")
