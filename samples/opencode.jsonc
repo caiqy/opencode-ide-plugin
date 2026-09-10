@@ -40,7 +40,7 @@
       "variant": "high"
     },
     "reviewer": {
-      "model": "openai/gpt-5.6-sol",
+      "model": "openai/gpt-5.6-terra",
       "variant": "medium"
     },
     "compaction": {
