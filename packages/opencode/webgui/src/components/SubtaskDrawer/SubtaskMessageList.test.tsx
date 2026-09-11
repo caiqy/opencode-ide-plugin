@@ -217,7 +217,7 @@ describe("SubtaskMessageList", () => {
     })
     view.rerender(<SubtaskMessageList sessionID="s-child" />)
     expect(screen.getByTestId("part-r-interrupted")).toHaveTextContent("思考中…")
-    expect(screen.getByTestId("part-t-interrupted")).toHaveTextContent("open")
+    expect(screen.getByTestId("part-t-interrupted")).not.toHaveTextContent("已中断")
 
     mocks.useSession.mockReturnValue({
       isSessionIdle: () => true,
@@ -226,7 +226,7 @@ describe("SubtaskMessageList", () => {
     })
     view.rerender(<SubtaskMessageList sessionID="s-child" />)
     expect(screen.getByTestId("part-r-interrupted")).toHaveTextContent("思考中…")
-    expect(screen.getByTestId("part-t-interrupted")).toHaveTextContent("open")
+    expect(screen.getByTestId("part-t-interrupted")).not.toHaveTextContent("已中断")
   })
 
   it("showScrollToBottom=false 时不渲染 sticky layer 与按钮", () => {

@@ -224,10 +224,11 @@ export function getToolDisplayName(
 
   switch (tool) {
     case "bash": {
+      const desc = input.description
+      if (typeof desc === "string" && desc.length > 0) return `${toolLabel}：${desc}`
       const command = input.command
       if (typeof command === "string" && command.length > 0) return `${toolLabel}：${command}`
-      const desc = input.description
-      return typeof desc === "string" && desc.length > 0 ? `${toolLabel}：${desc}` : toolLabel
+      return toolLabel
     }
     case "list":
       return input.path ? `${toolLabel}：${input.path}` : toolLabel
