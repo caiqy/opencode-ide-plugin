@@ -1,0 +1,244 @@
+schema: comet.native.v4
+name: ide-file-picker
+language: zh-CN
+phase: archive
+status: done
+state_version: 22
+brief: brief.md
+shape_confirmation_hash: c59817fecf702e4831afe44406db1b757ca9f6c8658c2834cf8d340544d1a705
+spec_changes:
+  - capability: ide-file-picker
+    operation: create
+    source: specs/ide-file-picker/spec.md
+workspace:
+  isolation: current
+  change_branch: ide-plugin
+  target_branch: ide-plugin
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 4
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：在 VSCode
+      插件环境下，点击“+（添加上下文）”展开浮层，选择“文件”调出原生文件选择器，选中的非图片文件以完整绝对路径插入，工作区内文件按规范以相对路径插入。
+    result: passed
+    reason:
+      text: VSCode 文件选择返回 fsPath，工作区相对路径与外部绝对路径按既有规则插入。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：在 VSCode
+      插件环境下，点击“+（添加上下文）”选择“文件夹”调出原生目录选择器，选中的外部目录以完整绝对路径插入，工作区内目录按规范以相对路径插入。
+    result: passed
+    reason:
+      text: VSCode 目录模式唤起原生文件夹选择器，前端 pastePath 插入目录引用。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：在 JetBrains 插件环境下，点击“+（添加上下文）”能分别唤起文件或目录原生选择器，并把非图片文件与目录的路径按相同规则插入输入框。
+    result: passed
+    reason:
+      text: JetBrains 按 mode 配置原生文件/目录选择器，路径插入规则一致。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：在任何 IDE 原生对话框中点击取消或关闭时，输入框保持原样，不报错、不插入空节点。
+    result: passed
+    reason:
+      text: 取消返回 cancelled:true，前端静默返回，不插入节点不弹错。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：在没有 IDE Bridge
+      的纯浏览器环境下，选择“文件”或“文件夹”能安全降级：图片以图片附件形式插入；非图片无法获得物理路径时以名称形式插入引用；不弹出“无法获取文件路径”错误。
+    result: passed
+    reason:
+      text: 无 Bridge 时图片经 File API 转图片附件，非图片无路径以名称引用，不弹错。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：WebGUI 与 VSCode 插件端的新增与既有单元测试均通过，JetBrains 插件端完成源码与单测编译。
+    result: passed
+    reason:
+      text: WebGUI 1573 用例、VSCode 243 用例通过，JetBrains unitTest BUILD
+        SUCCESSFUL，与源码及测试相符。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：在 VSCode 与 JetBrains
+      插件环境下，通过“文件”选中的图片以图片附件形式插入输入框，显示缩略图，且发送消息时图片内容随消息传递给模型（与粘贴图片一致），不再插入 @路径
+      引用。
+    result: passed
+    reason:
+      text: 图片经 readFiles 转 AttachmentNode（72×72 缩略图），Data URL 随 session.prompt 发送给模型。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: A8：IDE 宿主读取图片内容失败时，该图片回退为 @路径 引用插入，不弹出错误提示。
+    result: passed
+    reason:
+      text: 单文件读取失败与整体请求异常均回退路径引用，仅 console.warn 不弹错。
+      truncated: false
+builder_handoff:
+  candidate_id: 081c3ccd-7b24-4b82-a907-defb21a3aa8b
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:bcef3260-96d5-4506-b5e8-c7915c3da4e9
+  iteration: 1
+  summary:
+    text: 需求补充完成：通过「添加上下文-文件」选中的图片经 readFiles 读取后以图片附件插入（72×72 缩略图、发送后模型可见），非图片文件保持
+      @路径 引用；读取失败静默回退 @路径；无 Bridge 环境用 File API 转附件。新增 VSCode/JetBrains
+      readFiles 协议与三端单测。WebGUI 163 文件/1573 用例、VSCode 243 用例、JetBrains unitTest
+      全部通过。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+  checks:
+    - name:
+        text: webgui-tests
+        truncated: false
+      result: passed
+      note:
+        text: "bun run test:run: 163 files / 1573 tests passed"
+        truncated: false
+    - name:
+        text: webgui-build
+        truncated: false
+      result: passed
+      note:
+        text: tsc -b && vite build succeeded
+        truncated: false
+    - name:
+        text: vscode-compile
+        truncated: false
+      result: passed
+      note:
+        text: tsc -p ./ && tsc -p ./tsconfig.test.json succeeded
+        truncated: false
+    - name:
+        text: vscode-tests
+        truncated: false
+      result: passed
+      note:
+        text: 243 passing / 1 pending including new readFiles routing and controller
+          tests
+        truncated: false
+    - name:
+        text: jetbrains-unit-tests
+        truncated: false
+      result: passed
+      note:
+        text: gradlew unitTest BUILD SUCCESSFUL; new readFiles tests present in JUnit
+          XML
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 复核建议的低优先级测试缺口：同一 readFiles 响应中一张图片成功附件、另一张失败回退未合并断言；base64 padding（= /
+        ==）的 size 估算未单测。
+      truncated: false
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: 图片附件恢复实现与协议规格一致；图片/非图片分流、读取失败回退、三端 readFiles 与既有行为回归均正确；测试覆盖 A7/A8 与调整后的
+        A1/A3/A5；仅两个低优先级测试缺口，非阻断。
+      truncated: false
+    reviewer_execution_ref: review-ide-file-picker-gc4-it1-pass
+  submitted_at: 2026-09-11T14:34:44.119Z
+blockers: []
+verification:
+  candidate_id: 081c3ccd-7b24-4b82-a907-defb21a3aa8b
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:d8f3e753-18f4-4c96-8bf5-33276de5cf80
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  summary:
+    text: 三端协议、图片附件发送链路与降级回退均已核对，A1-A8 全部通过。
+    truncated: false
+  risks:
+    - text: 真实 VSCode/JetBrains 原生对话框未进行人工交互验收，宿主侧以 API stub/hook 单测验证。
+      truncated: false
+    - text: WebGUI 低优先级测试缺口（同批图片混合成功/失败、base64 padding）不影响本次验收。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-09-11T14:39:32.329Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-09-11T10:28:38.408Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-09-11T11:48:59.542Z
+  - goal_cycle: 3
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 端到端添加上下文菜单与 VSCode/JetBrains 双端原生选择器协议及实现全部完成，三端全量单元测试与构建通过。
+      truncated: false
+    completed_at: 2026-09-11T12:09:34.246Z
+  - goal_cycle: 3
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 用户要求补充需求：通过「添加上下文-文件」选中的图片恢复为图片附件（显示缩略图且模型可见）；其他文件仍按 @路径
+        引用插入；取消与浏览器降级行为不变。
+      truncated: false
+    completed_at: 2026-09-11T14:03:06.416Z
+  - goal_cycle: 4
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 三端协议、图片附件发送链路与降级回退均已核对，A1-A8 全部通过。
+      truncated: false
+    completed_at: 2026-09-11T14:39:32.329Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-09-11T09:07:25.688Z
