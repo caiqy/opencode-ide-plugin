@@ -6,15 +6,38 @@ export interface SaveImageResult {
 
 export function getMimeTypeFromExtension(ext: string): string {
   const map: Record<string, string> = {
+    // Images
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png": "image/png",
     ".gif": "image/gif",
     ".webp": "image/webp",
-    ".pdf": "application/pdf",
+    ".svg": "image/svg+xml",
+    ".bmp": "image/bmp",
+    ".ico": "image/x-icon",
+    ".avif": "image/avif",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+    // Text-like formats become text/plain attachments after normalization.
     ".txt": "text/plain",
     ".md": "text/markdown",
     ".markdown": "text/markdown",
+    ".csv": "text/csv",
+    ".tsv": "text/tab-separated-values",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".css": "text/css",
+    ".xml": "text/xml",
+    ".json": "text/plain",
+    ".jsonc": "text/plain",
+    ".yaml": "text/plain",
+    ".yml": "text/plain",
+    ".toml": "text/plain",
+    ".ini": "text/plain",
+    ".conf": "text/plain",
+    ".log": "text/plain",
+    ".env": "text/plain",
+    ".pdf": "application/pdf",
   }
   return map[ext.toLowerCase()] || "application/octet-stream"
 }
@@ -54,16 +77,12 @@ export function isImageFile(mime: string): boolean {
   return mime.startsWith("image/")
 }
 
-export function isPdfFile(mime: string): boolean {
-  return mime === "application/pdf"
-}
-
 export function isTextFile(mime: string): boolean {
   return mime.startsWith("text/")
 }
 
 export function isSupportedAttachmentType(mime: string): boolean {
-  return isImageFile(mime) || isPdfFile(mime) || isTextFile(mime)
+  return isImageFile(mime) || isTextFile(mime)
 }
 
 export function normalizeTextAttachment(mime: string, url: string): { mime: string; url: string } {

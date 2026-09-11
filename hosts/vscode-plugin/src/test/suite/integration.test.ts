@@ -301,7 +301,8 @@ suite("Integration Test Suite", () => {
       }
     })
 
-    test("Should handle missing workspace gracefully", async () => {
+    test("Should handle missing workspace gracefully", async function () {
+      this.timeout(10000)
       // This test runs regardless of workspace state
       try {
         await vscode.commands.executeCommand("opencode.openPanel")

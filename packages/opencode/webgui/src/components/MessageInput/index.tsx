@@ -3,6 +3,7 @@ import { LexicalComposer } from "@lexical/react/LexicalComposer"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import { $getRoot, $getSelection, $isRangeSelection, $createTextNode, type EditorState } from "lexical"
 import { $createMentionNode } from "../mention/MentionNode"
+import { $createAttachmentNode, type AttachmentMetadata } from "../attachment/AttachmentNode"
 import { useSession } from "../../state/SessionContext"
 import { useMessages } from "../../state/MessagesContext"
 import { useProject } from "../../state/ProjectContext"
@@ -239,8 +240,6 @@ const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
       onError,
     })
 
-  const { fileInputRef, handleFileSelect, handleFileChange } = useFileAttachment(editor)
-
   const selectionPending =
     !!sessionID &&
     currentSession?.id === sessionID &&
@@ -250,6 +249,111 @@ const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
   const isIdle = !busy
   const interactionLocked = blocked || selectionPending
   const sendLocked = busy || interactionLocked
+
+  const insertPaths = useCallback(
+    (paths: string[]) => {
+      if (interactionLocked) return
+      if (!paths || paths.length === 0) return
+      let tries = 0
+      const perform = () => {
+        if (!worktree && tries++ < 10) {
+          setTimeout(perform, 200)
+          return
+        }
+        editor.update(() => {
+          const selection = $getSelection()
+          if (!$isRangeSelection(selection)) return
+          const nodes = [] as any[]
+          for (const raw of paths) {
+            const isDir = raw.endsWith("/")
+            if (isDir) {
+              let rel = toProjectRelative(raw, worktree)
+              if (!rel.endsWith("/")) rel = rel + "/"
+              const metadata = {
+                type: "directory" as const,
+                display: rel,
+                path: rel,
+              }
+              nodes.push($createMentionNode(metadata))
+              nodes.push($createTextNode(" "))
+              continue
+            }
+
+            const parsed = parseWithRange(raw)
+            const relBase = toProjectRelative(parsed.path, worktree)
+            const display = parsed.range ? `${relBase}:${parsed.range.start}-${parsed.range.end}` : relBase
+            const metadata: any = {
+              type: "file" as const,
+              display,
+              path: relBase,
+            }
+            if (parsed.range) {
+              metadata.range = {
+                start: { line: parsed.range.start, character: 0 },
+                end: { line: parsed.range.end, character: 0 },
+              }
+            }
+            nodes.push($createMentionNode(metadata))
+            nodes.push($createTextNode(" "))
+          }
+          if (nodes.length > 0) selection.insertNodes(nodes)
+        })
+      }
+      perform()
+    },
+    [editor, interactionLocked, parseWithRange, worktree],
+  )
+
+  const pastePath = useCallback(
+    (path: string) => {
+      if (interactionLocked) return
+      if (!path) return
+      let tries = 0
+      const perform = () => {
+        if (!worktree && tries++ < 10) {
+          setTimeout(perform, 200)
+          return
+        }
+        editor.update(() => {
+          const selection = $getSelection()
+          if (!$isRangeSelection(selection)) return
+          let rel = toProjectRelative(path, worktree)
+          if (!rel.endsWith("/")) rel = rel + "/"
+          const metadata = {
+            type: "directory" as const,
+            display: rel,
+            path: rel,
+          }
+          selection.insertNodes([$createMentionNode(metadata), $createTextNode(" ")])
+        })
+      }
+      perform()
+    },
+    [editor, interactionLocked, worktree],
+  )
+
+  const insertAttachments = useCallback(
+    (attachments: AttachmentMetadata[]) => {
+      if (interactionLocked) return
+      if (!attachments || attachments.length === 0) return
+      editor.update(() => {
+        const selection = $getSelection()
+        if (!$isRangeSelection(selection)) return
+        selection.insertNodes(attachments.map((metadata) => $createAttachmentNode(metadata)))
+      })
+    },
+    [editor, interactionLocked],
+  )
+
+  const {
+    fileInputRef,
+    directoryInputRef,
+    handleFileSelect,
+    handleSelectFiles,
+    handleSelectDirectory,
+    handleFileChange,
+    handleDirectoryChange,
+  } = useFileAttachment(editor, insertPaths, pastePath, insertAttachments)
 
 const currentApproval = approvalMode(
     currentSession?.id === sessionID ? (currentSession as SessionWithApproval).permission : undefined,
@@ -337,86 +441,14 @@ const currentApproval = approvalMode(
       focus: () => {
         editor.focus()
       },
-      insertPaths: (paths: string[]) => {
-        if (interactionLocked) return
-        if (!paths || paths.length === 0) return
-        let tries = 0
-        const perform = () => {
-          if (!worktree && tries++ < 10) {
-            setTimeout(perform, 200)
-            return
-          }
-          editor.update(() => {
-            const selection = $getSelection()
-            if (!$isRangeSelection(selection)) return
-            const nodes = [] as any[]
-            for (const raw of paths) {
-              const isDir = raw.endsWith("/")
-              if (isDir) {
-                let rel = toProjectRelative(raw, worktree)
-                if (!rel.endsWith("/")) rel = rel + "/"
-                const metadata = {
-                  type: "directory" as const,
-                  display: rel,
-                  path: rel,
-                }
-                nodes.push($createMentionNode(metadata))
-                nodes.push($createTextNode(" "))
-                continue
-              }
-
-              const parsed = parseWithRange(raw)
-              const relBase = toProjectRelative(parsed.path, worktree)
-              const display = parsed.range ? `${relBase}:${parsed.range.start}-${parsed.range.end}` : relBase
-              const metadata: any = {
-                type: "file" as const,
-                display,
-                path: relBase,
-              }
-              if (parsed.range) {
-                metadata.range = {
-                  start: { line: parsed.range.start, character: 0 },
-                  end: { line: parsed.range.end, character: 0 },
-                }
-              }
-              nodes.push($createMentionNode(metadata))
-              nodes.push($createTextNode(" "))
-            }
-            if (nodes.length > 0) selection.insertNodes(nodes)
-          })
-        }
-        perform()
-      },
-      pastePath: (path: string) => {
-        if (interactionLocked) return
-        if (!path) return
-        let tries = 0
-        const perform = () => {
-          if (!worktree && tries++ < 10) {
-            setTimeout(perform, 200)
-            return
-          }
-          editor.update(() => {
-            const selection = $getSelection()
-            if (!$isRangeSelection(selection)) return
-            let rel = toProjectRelative(path, worktree)
-            if (!rel.endsWith("/")) rel = rel + "/"
-            const metadata = {
-              type: "directory" as const,
-              display: rel,
-              path: rel,
-            }
-            selection.insertNodes([$createMentionNode(metadata), $createTextNode(" ")])
-          })
-        }
-        perform()
-      },
+      insertPaths,
+      pastePath,
       insertPlainWithMentions: (value: string) => {
         if (interactionLocked) return
         insertPlainWithMentionsImpl(editor, parseWithRange, value, { replace: true })
       },
     }),
-    [editor, interactionLocked, worktree, parseWithRange],
+    [editor, insertPaths, pastePath, interactionLocked, parseWithRange],
   )
 
   // Requests and selection restoration lock editing; model execution only locks sending.
@@ -585,12 +617,16 @@ const currentApproval = approvalMode(
               onModelSelect={setSelectedModel}
               onAgentSelect={setSelectedAgent}
               onFileSelect={handleFileSelect}
+              onSelectFiles={handleSelectFiles}
+              onSelectDirectory={handleSelectDirectory}
               isDisabled={interactionLocked}
               modelSelectorKey={modelSelectorKey}
               lastFailedMessage={Boolean(lastFailedMessage)}
               onRetry={handleRetry}
               fileInputRef={fileInputRef}
+              directoryInputRef={directoryInputRef}
               onFileChange={handleFileChange}
+              onDirectoryChange={handleDirectoryChange}
               isIdle={isIdle}
               isButtonDisabled={isButtonDisabled}
               isCompactDisabled={isCompactDisabled}

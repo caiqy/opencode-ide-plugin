@@ -9,7 +9,12 @@ import * as os from "os"
 // so we need the vscode test host. That's fine — these tests run via vscode-test.
 
 import { bridgeServer } from "../../ui/IdeBridgeServer"
-import type { SessionHandlers } from "../../ui/IdeBridgeServer"
+import type {
+  SessionHandlers,
+  SelectFilesOptions,
+  SelectFilesResult,
+  ReadFilesResult,
+} from "../../ui/IdeBridgeServer"
 
 const TIMEOUT = 2000
 
@@ -988,6 +993,186 @@ suite("IdeBridgeServer protocol", () => {
     } finally {
       sse.req.destroy()
       bridgeServer.removeSession(session.sessionId)
+    }
+  })
+})
+
+suite("IdeBridgeServer selectFiles", () => {
+  let baseUrl: string
+  let token: string
+  let sessionId: string
+  let calls: Array<SelectFilesOptions>
+  let handlerResult: SelectFilesResult
+
+  setup(async () => {
+    calls = []
+    handlerResult = { cancelled: false, paths: ["/path/to/file.txt"] }
+
+    const handlers = {
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+      selectFiles: async (options: SelectFilesOptions) => {
+        calls.push(options)
+        return handlerResult
+      },
+    } as unknown as SessionHandlers
+
+    const session = await bridgeServer.createSession(handlers)
+    baseUrl = session.baseUrl
+    token = session.token
+    sessionId = session.sessionId
+  })
+
+  teardown(() => {
+    bridgeServer.removeSession(sessionId)
+  })
+
+  test("routes selectFiles to the session handler and returns paths", async () => {
+    const response = await requestRoundtrip(baseUrl, token, {
+      type: "selectFiles",
+      payload: { mode: "file", multiple: true },
+    })
+
+    assert.strictEqual(response.status, 204)
+    assert.strictEqual(response.reply.ok, true)
+    assert.deepStrictEqual(response.reply.result, { cancelled: false, paths: ["/path/to/file.txt"] })
+    assert.deepStrictEqual(calls, [{ mode: "file", multiple: true }])
+  })
+
+  test("routes selectFiles directory mode", async () => {
+    handlerResult = { cancelled: false, paths: ["/path/to/dir"] }
+    const response = await requestRoundtrip(baseUrl, token, {
+      type: "selectFiles",
+      payload: { mode: "directory", multiple: false },
+    })
+
+    assert.strictEqual(response.status, 204)
+    assert.strictEqual(response.reply.ok, true)
+    assert.deepStrictEqual(response.reply.result, { cancelled: false, paths: ["/path/to/dir"] })
+    assert.deepStrictEqual(calls, [{ mode: "directory", multiple: false }])
+  })
+
+  test("returns cancelled result when user cancels selection", async () => {
+    handlerResult = { cancelled: true, paths: [] }
+    const response = await requestRoundtrip(baseUrl, token, {
+      type: "selectFiles",
+      payload: { mode: "file" },
+    })
+
+    assert.strictEqual(response.status, 204)
+    assert.strictEqual(response.reply.ok, true)
+    assert.deepStrictEqual(response.reply.result, { cancelled: true, paths: [] })
+  })
+
+  test("returns error when selectFiles is not supported", async () => {
+    const handlers = {
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+    } as unknown as SessionHandlers
+
+    const noSupportSession = await bridgeServer.createSession(handlers)
+    try {
+      const response = await requestRoundtrip(noSupportSession.baseUrl, noSupportSession.token, {
+        type: "selectFiles",
+      })
+
+      assert.strictEqual(response.status, 204)
+      assert.strictEqual(response.reply.ok, false)
+      assert.strictEqual(response.reply.error, "selectFiles not supported")
+    } finally {
+      bridgeServer.removeSession(noSupportSession.sessionId)
+    }
+  })
+})
+
+suite("IdeBridgeServer readFiles", () => {
+  let baseUrl: string
+  let token: string
+  let sessionId: string
+  let calls: string[][]
+  let handlerResult: ReadFilesResult
+
+  setup(async () => {
+    calls = []
+    handlerResult = { files: [{ path: "/path/to/image.png", base64: "QUJD" }] }
+
+    const handlers = {
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+      readFiles: async (paths: string[]) => {
+        calls.push(paths)
+        return handlerResult
+      },
+    } as unknown as SessionHandlers
+
+    const session = await bridgeServer.createSession(handlers)
+    baseUrl = session.baseUrl
+    token = session.token
+    sessionId = session.sessionId
+  })
+
+  teardown(() => {
+    bridgeServer.removeSession(sessionId)
+  })
+
+  test("routes readFiles to the session handler and returns file contents", async () => {
+    const response = await requestRoundtrip(baseUrl, token, {
+      type: "readFiles",
+      payload: { paths: ["/path/to/image.png"] },
+    })
+
+    assert.strictEqual(response.status, 204)
+    assert.strictEqual(response.reply.ok, true)
+    assert.deepStrictEqual(response.reply.result, { files: [{ path: "/path/to/image.png", base64: "QUJD" }] })
+    assert.deepStrictEqual(calls, [["/path/to/image.png"]])
+  })
+
+  test("returns per-file errors without failing the request", async () => {
+    handlerResult = { files: [{ path: "/path/to/missing.png", error: "ENOENT" }] }
+
+    const response = await requestRoundtrip(baseUrl, token, {
+      type: "readFiles",
+      payload: { paths: ["/path/to/missing.png"] },
+    })
+
+    assert.strictEqual(response.reply.ok, true)
+    assert.deepStrictEqual(response.reply.result, { files: [{ path: "/path/to/missing.png", error: "ENOENT" }] })
+  })
+
+  test("returns error when paths are missing", async () => {
+    const response = await requestRoundtrip(baseUrl, token, { type: "readFiles" })
+
+    assert.strictEqual(response.status, 204)
+    assert.strictEqual(response.reply.ok, false)
+    assert.strictEqual(response.reply.error, "Missing paths")
+  })
+
+  test("returns error when readFiles is not supported", async () => {
+    const handlers = {
+      openFile: async () => {},
+      openUrl: async () => {},
+      reloadPath: async () => {},
+      clipboardWrite: async () => {},
+    } as unknown as SessionHandlers
+
+    const noSupportSession = await bridgeServer.createSession(handlers)
+    try {
+      const response = await requestRoundtrip(noSupportSession.baseUrl, noSupportSession.token, {
+        type: "readFiles",
+        payload: { paths: ["/path/to/image.png"] },
+      })
+
+      assert.strictEqual(response.status, 204)
+      assert.strictEqual(response.reply.ok, false)
+      assert.strictEqual(response.reply.error, "readFiles not supported")
+    } finally {
+      bridgeServer.removeSession(noSupportSession.sessionId)
     }
   })
 })

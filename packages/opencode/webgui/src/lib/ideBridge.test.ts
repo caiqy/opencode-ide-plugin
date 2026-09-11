@@ -384,4 +384,25 @@ describe("ideBridge connected metadata", () => {
 
     expect(send).toHaveBeenCalledTimes(0)
   })
+
+  it("selectFiles 请求超时为 120 秒", async () => {
+    const send = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal("fetch", send)
+
+    const { ideBridge } = await import("./ideBridge")
+    ideBridge.init()
+
+    const source = MockEventSource.all[0]
+    expect(source).toBeDefined()
+    source.onopen?.call(source as unknown as EventSource, new Event("open"))
+
+    const bad = vi.fn()
+    ideBridge.request("selectFiles").catch(bad)
+
+    await vi.advanceTimersByTimeAsync(119999)
+    expect(bad).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(2)
+    expect(bad).toHaveBeenCalledTimes(1)
+  })
 })

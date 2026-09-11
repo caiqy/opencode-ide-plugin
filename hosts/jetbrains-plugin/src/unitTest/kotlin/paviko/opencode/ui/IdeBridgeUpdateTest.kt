@@ -1,6 +1,7 @@
 package paviko.opencode.ui
 
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.Application
 import com.intellij.openapi.application.ApplicationManager
@@ -46,6 +47,7 @@ class IdeBridgeUpdateTest {
         IdeBridge.installStartRunner = null
         IdeBridge.openPluginSettingsHook = null
         setNullableIdeBridgeField("saveImageTargetHook", null)
+        setNullableIdeBridgeField("chooseFilesHook", null)
         setNullableIdeBridgeField("readUrlBytesHook", null)
         IdeBridge.stop()
     }
@@ -837,6 +839,115 @@ class IdeBridgeUpdateTest {
                     msg.get("type")?.asString == "manualUpdate" ||
                     msg.get("type")?.asString == "error"
             }
+        }
+    }
+
+    @Test
+    fun `selectFiles returns selected file paths`() {
+        setNullableIdeBridgeField("chooseFilesHook") { _: Project, mode: String, multiple: Boolean ->
+            assertEquals("file", mode)
+            assertTrue(multiple)
+            listOf("C:/project/test.txt", "C:/project/image.png")
+        }
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("selectFiles", JsonObject().apply {
+                addProperty("mode", "file")
+                addProperty("multiple", true)
+            })
+
+            assertEquals(true, reply.get("ok")?.asBoolean)
+            val result = reply.getAsJsonObject("result")
+            assertEquals(false, result.get("cancelled")?.asBoolean)
+            val paths = result.getAsJsonArray("paths")
+            assertEquals(2, paths.size())
+            assertEquals("C:/project/test.txt", paths[0].asString)
+            assertEquals("C:/project/image.png", paths[1].asString)
+        }
+    }
+
+    @Test
+    fun `selectFiles in directory mode returns selected directory path`() {
+        setNullableIdeBridgeField("chooseFilesHook") { _: Project, mode: String, multiple: Boolean ->
+            assertEquals("directory", mode)
+            assertFalse(multiple)
+            listOf("C:/project/src")
+        }
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("selectFiles", JsonObject().apply {
+                addProperty("mode", "directory")
+                addProperty("multiple", false)
+            })
+
+            assertEquals(true, reply.get("ok")?.asBoolean)
+            val result = reply.getAsJsonObject("result")
+            assertEquals(false, result.get("cancelled")?.asBoolean)
+            val paths = result.getAsJsonArray("paths")
+            assertEquals(1, paths.size())
+            assertEquals("C:/project/src", paths[0].asString)
+        }
+    }
+
+    @Test
+    fun `selectFiles returns cancelled when user skips dialog`() {
+        setNullableIdeBridgeField("chooseFilesHook") { _: Project, _: String, _: Boolean ->
+            emptyList<String>()
+        }
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("selectFiles", JsonObject().apply {
+                addProperty("mode", "file")
+            })
+
+            assertEquals(true, reply.get("ok")?.asBoolean)
+            val result = reply.getAsJsonObject("result")
+            assertEquals(true, result.get("cancelled")?.asBoolean)
+            val paths = result.getAsJsonArray("paths")
+            assertEquals(0, paths.size())
+        }
+    }
+
+    @Test
+    fun `readFiles returns base64 content and per-file error`() {
+        val tempFile = Files.createTempFile("opencode-read", ".txt").toFile()
+        try {
+            tempFile.writeText("hello")
+            val session = IdeBridge.createSession(project = project())
+
+            sse(session).use { events ->
+                val reply = events.send("readFiles", JsonObject().apply {
+                    add("paths", JsonArray().apply {
+                        add(tempFile.absolutePath.replace('\\', '/'))
+                        add("C:/does/not/exist/opencode-missing.png")
+                    })
+                })
+
+                assertEquals(true, reply.get("ok")?.asBoolean)
+                val files = reply.getAsJsonObject("result").getAsJsonArray("files")
+                assertEquals(2, files.size())
+                val first = files[0].getAsJsonObject()
+                assertEquals(tempFile.absolutePath.replace('\\', '/'), first.get("path")?.asString)
+                assertEquals("aGVsbG8=", first.get("base64")?.asString)
+                assertTrue(files[1].getAsJsonObject().has("error"))
+            }
+        } finally {
+            tempFile.delete()
+        }
+    }
+
+    @Test
+    fun `readFiles without paths replies with bridge error`() {
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("readFiles", JsonObject())
+
+            assertEquals(false, reply.get("ok")?.asBoolean)
+            assertEquals("Missing paths", reply.get("error")?.asString)
         }
     }
 }

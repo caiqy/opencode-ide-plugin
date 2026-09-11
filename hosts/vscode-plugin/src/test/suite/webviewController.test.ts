@@ -3,6 +3,7 @@ import * as sinon from "sinon"
 import * as vscode from "vscode"
 import * as globals from "../../globals"
 import { bridgeServer } from "../../ui/IdeBridgeServer"
+import type { SelectFilesOptions, SelectFilesResult, ReadFilesResult } from "../../ui/IdeBridgeServer"
 import { WebviewController } from "../../ui/WebviewController"
 import { errorHandler } from "../../utils/ErrorHandler"
 import { FileMonitor } from "../../utils/FileMonitor"
@@ -76,6 +77,16 @@ suite("WebviewController Test Suite", () => {
       receiveMessage: (message: any) => receiveMessage?.(message),
       saveImage: (handlers as { saveImage?: (url: string, filename: string) => Promise<{ cancelled: boolean }> })
         .saveImage,
+      selectFiles: (
+        handlers as {
+          selectFiles?: (options: SelectFilesOptions) => Promise<SelectFilesResult>
+        }
+      ).selectFiles,
+      readFiles: (
+        handlers as {
+          readFiles?: (paths: string[]) => Promise<ReadFilesResult>
+        }
+      ).readFiles,
       storageSet: (
         handlers as {
           storageSet?: (scope: "global" | "workspace" | "mem", key: string, value: string) => Promise<void>
@@ -390,6 +401,92 @@ suite("WebviewController Test Suite", () => {
       controller.dispose()
     } finally {
       globalThis.fetch = originalFetch
+    }
+  })
+
+  test("selectFiles opens openDialog with file mode and returns selected paths", async () => {
+    const file1 = vscode.Uri.file("D:/repo/a.ts")
+    const file2 = vscode.Uri.file("D:/repo/b.ts")
+    const showOpenDialog = sinon.stub(vscode.window, "showOpenDialog").resolves([file1, file2])
+
+    const { controller, selectFiles } = await loadController()
+    try {
+      assert.ok(selectFiles)
+      const result = await selectFiles!({ mode: "file", multiple: true })
+
+      assert.ok(showOpenDialog.calledOnce)
+      const options = showOpenDialog.firstCall.args[0]
+      assert.strictEqual(options?.canSelectFiles, true)
+      assert.strictEqual(options?.canSelectFolders, false)
+      assert.strictEqual(options?.canSelectMany, true)
+      assert.strictEqual(options?.openLabel, "选择文件")
+      assert.deepStrictEqual(result, {
+        cancelled: false,
+        paths: [file1.fsPath, file2.fsPath],
+      })
+    } finally {
+      controller.dispose()
+    }
+  })
+
+  test("selectFiles opens openDialog with directory mode and returns directory path", async () => {
+    const dir = vscode.Uri.file("D:/repo/src")
+    const showOpenDialog = sinon.stub(vscode.window, "showOpenDialog").resolves([dir])
+
+    const { controller, selectFiles } = await loadController()
+    try {
+      assert.ok(selectFiles)
+      const result = await selectFiles!({ mode: "directory", multiple: false })
+
+      assert.ok(showOpenDialog.calledOnce)
+      const options = showOpenDialog.firstCall.args[0]
+      assert.strictEqual(options?.canSelectFiles, false)
+      assert.strictEqual(options?.canSelectFolders, true)
+      assert.strictEqual(options?.canSelectMany, false)
+      assert.strictEqual(options?.openLabel, "选择文件夹")
+      assert.deepStrictEqual(result, {
+        cancelled: false,
+        paths: [dir.fsPath],
+      })
+    } finally {
+      controller.dispose()
+    }
+  })
+
+  test("selectFiles returns cancelled when user dismisses dialog", async () => {
+    const showOpenDialog = sinon.stub(vscode.window, "showOpenDialog").resolves(undefined)
+
+    const { controller, selectFiles } = await loadController()
+    try {
+      assert.ok(selectFiles)
+      const result = await selectFiles!({ mode: "file" })
+
+      assert.ok(showOpenDialog.calledOnce)
+      assert.deepStrictEqual(result, { cancelled: true, paths: [] })
+    } finally {
+      controller.dispose()
+    }
+  })
+
+  test("readFiles returns base64 content and per-file errors", async () => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+    assert.ok(workspaceFolder)
+    const uri = vscode.Uri.joinPath(workspaceFolder.uri, ".gitkeep")
+    const missing = "D:/repo/missing-opencode-image.png"
+
+    const { controller, readFiles } = await loadController()
+    try {
+      assert.ok(readFiles)
+      const result = await readFiles!([uri.fsPath, missing])
+      const expected = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("base64")
+
+      assert.strictEqual(result.files.length, 2)
+      assert.strictEqual(result.files[0].path, uri.fsPath)
+      assert.strictEqual(result.files[0].base64, expected)
+      assert.strictEqual(result.files[1].path, missing)
+      assert.ok(result.files[1].error)
+    } finally {
+      controller.dispose()
     }
   })
 })

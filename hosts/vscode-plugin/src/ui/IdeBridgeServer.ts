@@ -11,6 +11,8 @@ export interface SessionHandlers {
   reloadPath: (path: string) => Promise<void>
   clipboardWrite: (text: string) => Promise<void>
   saveImage?: (url: string, filename: string) => Promise<SaveImageResult | void>
+  selectFiles?: (options: SelectFilesOptions) => Promise<SelectFilesResult>
+  readFiles?: (paths: string[]) => Promise<ReadFilesResult>
   restartHost?: () => Promise<void>
   showSystemNotification?: (sessionID: string, title: string, body: string) => Promise<void>
   storageGet?: (scope: StorageScope, keys: string[]) => Promise<Record<string, string | undefined>>
@@ -23,6 +25,20 @@ export interface SessionHandlers {
 
 export interface SaveImageResult {
   cancelled: boolean
+}
+
+export interface SelectFilesOptions {
+  mode?: "file" | "directory"
+  multiple?: boolean
+}
+
+export interface SelectFilesResult {
+  cancelled: boolean
+  paths: string[]
+}
+
+export interface ReadFilesResult {
+  files: Array<{ path: string; base64?: string; error?: string }>
 }
 
 type StorageScope = "global" | "workspace" | "mem"
@@ -320,6 +336,47 @@ class IdeBridgeServer {
           const result = (await session.handlers.saveImage(payload.url, payload.filename)) ?? { cancelled: false }
           this.replyOk(session, id, result)
           break
+
+        case "selectFiles":
+          if (!session.handlers.selectFiles) {
+            this.replyError(session, id, "selectFiles not supported")
+            break
+          }
+          try {
+            const mode = payload?.mode === "directory" ? "directory" : "file"
+            const multiple = typeof payload?.multiple === "boolean" ? payload.multiple : undefined
+            const selectResult = (await session.handlers.selectFiles({ mode, multiple })) ?? {
+              cancelled: true,
+              paths: [],
+            }
+            this.replyOk(session, id, selectResult)
+          } catch (e: any) {
+            this.replyError(session, id, `selectFiles failed: ${e?.message || e}`)
+          }
+          break
+
+        case "readFiles": {
+          if (!session.handlers.readFiles) {
+            this.replyError(session, id, "readFiles not supported")
+            break
+          }
+          const paths = Array.isArray(payload?.paths)
+            ? payload.paths.filter(
+                (value: unknown): value is string => typeof value === "string" && value.trim().length > 0,
+              )
+            : []
+          if (paths.length === 0) {
+            this.replyError(session, id, "Missing paths")
+            break
+          }
+          try {
+            const readResult = (await session.handlers.readFiles(paths)) ?? { files: [] }
+            this.replyOk(session, id, readResult)
+          } catch (e: any) {
+            this.replyError(session, id, `readFiles failed: ${e?.message || e}`)
+          }
+          break
+        }
 
         case "restartHost":
           if (!session.handlers.restartHost) {

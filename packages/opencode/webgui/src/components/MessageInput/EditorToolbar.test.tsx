@@ -79,14 +79,15 @@ describe("EditorToolbar", () => {
       "variant-selector",
       "auto-approve",
       null,
+      null,
     ])
     const approval = screen.getByTitle("选择审批模式")
     expect(approval).toHaveTextContent("手动审批")
     await user.click(approval)
     expect(screen.getByRole("menu")).toBeInTheDocument()
-    expect(screen.getByRole("menuitemradio", { name: /手动审批\s*Manual/ })).toHaveAttribute("aria-checked", "true")
-    expect(screen.getByRole("menuitemradio", { name: /自动审批\s*Automatic/ })).toHaveAttribute("aria-checked", "false")
-    await user.click(screen.getByRole("menuitemradio", { name: /完全访问\s*Full access/ }))
+    expect(screen.getByRole("menuitemradio", { name: "手动审批" })).toHaveAttribute("aria-checked", "true")
+    expect(screen.getByRole("menuitemradio", { name: "自动审批" })).toHaveAttribute("aria-checked", "false")
+    await user.click(screen.getByRole("menuitemradio", { name: "完全访问" }))
     expect(approvalProps.onApprovalSelect).toHaveBeenCalledWith("full")
     expect(screen.getByTestId("model-selector")).toHaveAttribute("data-render-in-portal", "true")
     expect(screen.getByTestId("auto-approve").querySelector("path")).toHaveAttribute(
@@ -95,7 +96,11 @@ describe("EditorToolbar", () => {
     )
   })
 
-  it("重试与添加文件按钮文案为中文", () => {
+  it("重试与添加上下文按钮文案为中文并支持展开文件与文件夹选项", async () => {
+    const user = userEvent.setup()
+    const onSelectFiles = vi.fn()
+    const onSelectDirectory = vi.fn()
+
     render(
       <EditorToolbar
         {...approvalProps}
@@ -104,7 +109,8 @@ describe("EditorToolbar", () => {
         selectedAgent="build"
         onModelSelect={vi.fn()}
         onAgentSelect={vi.fn()}
-        onFileSelect={vi.fn()}
+        onSelectFiles={onSelectFiles}
+        onSelectDirectory={onSelectDirectory}
         isDisabled={false}
         modelSelectorKey={0}
         lastFailedMessage={true}
@@ -128,8 +134,18 @@ describe("EditorToolbar", () => {
     expect(retry).toHaveAttribute("title", "恢复失败消息")
     expect(retry).toHaveAttribute("data-tip", "恢复失败消息")
 
-    const addFile = screen.getByRole("button", { name: "添加文件" })
-    expect(addFile).toHaveAttribute("title", "添加文件")
+    const addContext = screen.getByRole("button", { name: "添加上下文" })
+    expect(addContext).toHaveAttribute("title", "添加上下文")
+    expect(addContext).toHaveAttribute("data-tip", "添加上下文")
+
+    // 点击展开菜单
+    await user.click(addContext)
+    expect(screen.getByRole("menuitem", { name: "文件" })).toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: "文件夹" })).toBeInTheDocument()
+
+    // 点击文件选项触发回调
+    await user.click(screen.getByRole("menuitem", { name: "文件" }))
+    expect(onSelectFiles).toHaveBeenCalledTimes(1)
   })
 
   it("隐藏文件输入框提供表单标识与可访问名称", () => {
@@ -165,6 +181,7 @@ describe("EditorToolbar", () => {
     expect(input).toHaveAttribute("id", "opencode-file-input")
     expect(input).toHaveAttribute("name", "opencode-file-input")
     expect(input).toHaveAttribute("aria-label", "添加文件")
+    expect(input).not.toHaveAttribute("accept")
   })
 
   it("无有效 session 时审批模式选择器禁用", () => {

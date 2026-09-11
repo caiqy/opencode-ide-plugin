@@ -6,7 +6,7 @@ import { FileMonitor } from "../utils/FileMonitor"
 import { errorHandler } from "../utils/ErrorHandler"
 import { PathInserter } from "../utils/PathInserter"
 import { getUpdateService, logger } from "../globals"
-import type { SaveImageResult } from "./IdeBridgeServer"
+import type { SaveImageResult, SelectFilesOptions, SelectFilesResult, ReadFilesResult } from "./IdeBridgeServer"
 import { bridgeServer } from "./IdeBridgeServer"
 import { showSystemNotification } from "./systemNotification"
 import { automaticUpdateStorageKey } from "../update/UpdateService"
@@ -159,6 +159,8 @@ export class WebviewController {
             await vscode.env.clipboard.writeText(text)
           },
           saveImage: async (url, filename) => this.saveImage(url, filename),
+          selectFiles: async (options) => this.selectFiles(options),
+          readFiles: async (paths) => this.readFiles(paths),
           restartHost: async () => {
             await vscode.commands.executeCommand("workbench.action.reloadWindow").then(
               () => undefined,
@@ -430,6 +432,43 @@ export class WebviewController {
     const bytes = url.startsWith("data:") ? this.readDataUrl(url) : await this.fetchBytes(url)
     await this.writeFile(target, bytes)
     return { cancelled: false }
+  }
+
+  private async selectFiles(options: SelectFilesOptions): Promise<SelectFilesResult> {
+    const isDirectory = options.mode === "directory"
+    const multiple = options.multiple ?? !isDirectory
+    const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri
+
+    const uris = await vscode.window.showOpenDialog({
+      canSelectFiles: !isDirectory,
+      canSelectFolders: isDirectory,
+      canSelectMany: multiple,
+      openLabel: isDirectory ? "选择文件夹" : "选择文件",
+      defaultUri,
+    })
+
+    if (!uris || uris.length === 0) {
+      return { cancelled: true, paths: [] }
+    }
+
+    return {
+      cancelled: false,
+      paths: uris.map((uri) => uri.fsPath),
+    }
+  }
+
+  private async readFiles(paths: string[]): Promise<ReadFilesResult> {
+    const files = await Promise.all(
+      paths.map(async (path) => {
+        try {
+          const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(path))
+          return { path, base64: Buffer.from(bytes).toString("base64") }
+        } catch (e) {
+          return { path, error: String(e) }
+        }
+      }),
+    )
+    return { files }
   }
 
   private readDataUrl(url: string): Uint8Array {

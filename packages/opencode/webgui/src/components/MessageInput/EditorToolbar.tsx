@@ -4,6 +4,7 @@ import { VariantSelector } from "../VariantSelector"
 import { MessageActions } from "./MessageActions"
 import type { ApprovalMode } from "../../state/approval"
 import { ApprovalModeSelector } from "../ApprovalModeSelector"
+import { AddContextMenu } from "./AddContextMenu"
 
 interface EditorToolbarProps {
   selectedProviderId: string | undefined
@@ -11,13 +12,17 @@ interface EditorToolbarProps {
   selectedAgent: string
   onModelSelect: (providerId: string, modelId: string) => void
   onAgentSelect: (agent: string) => void
-  onFileSelect: () => void
+  onFileSelect?: () => void
+  onSelectFiles?: () => void
+  onSelectDirectory?: () => void
   isDisabled: boolean
   modelSelectorKey: number
   lastFailedMessage: boolean
   onRetry: () => void
   fileInputRef: React.RefObject<HTMLInputElement | null>
+  directoryInputRef?: React.RefObject<HTMLInputElement | null>
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+  onDirectoryChange?: (event: React.ChangeEvent<HTMLInputElement>) => void
   isIdle: boolean
   isButtonDisabled: boolean
   isCompactDisabled: boolean
@@ -42,12 +47,16 @@ export function EditorToolbar({
   onModelSelect,
   onAgentSelect,
   onFileSelect,
+  onSelectFiles,
+  onSelectDirectory,
   isDisabled,
   modelSelectorKey,
   lastFailedMessage,
   onRetry,
   fileInputRef,
+  directoryInputRef,
   onFileChange,
+  onDirectoryChange,
   isIdle,
   isButtonDisabled,
   isCompactDisabled,
@@ -89,20 +98,11 @@ selectionPending = false,
                 重试
               </button>
             )}
-            <button
-              type="button"
-              onClick={onFileSelect}
+            <AddContextMenu
               disabled={isDisabled}
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label="添加文件"
-              title="添加文件"
-              data-tip="添加文件"
-              data-testid="add-file"
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
-              </svg>
-            </button>
+              onSelectFiles={onSelectFiles ?? onFileSelect ?? (() => {})}
+              onSelectDirectory={onSelectDirectory ?? (() => {})}
+            />
             <AgentSelector selectedAgent={selectedAgent} onSelect={onAgentSelect} disabled={isDisabled} />
             <ModelSelector
               key={modelSelectorKey}
@@ -129,10 +129,20 @@ selectionPending = false,
               id="opencode-file-input"
               name="opencode-file-input"
               type="file"
-              accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,application/pdf,text/*"
               multiple
               onChange={onFileChange}
               aria-label="添加文件"
+              className="hidden"
+            />
+            <input
+              ref={directoryInputRef}
+              id="opencode-directory-input"
+              name="opencode-directory-input"
+              type="file"
+              {...({ webkitdirectory: "" } as any)}
+              multiple
+              onChange={onDirectoryChange}
+              aria-label="添加文件夹"
               className="hidden"
             />
           </>

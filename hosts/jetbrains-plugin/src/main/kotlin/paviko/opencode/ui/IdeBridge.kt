@@ -7,6 +7,8 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.LogicalPosition
 import com.intellij.openapi.editor.ScrollType
+import com.intellij.openapi.fileChooser.FileChooser
+import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
@@ -111,6 +113,9 @@ object IdeBridge {
 
     @Volatile
     internal var saveImageTargetHook: ((Project, String) -> File?)? = null
+
+    @Volatile
+    internal var chooseFilesHook: ((Project, String, Boolean) -> List<String>)? = null
 
     @Volatile
     internal var readUrlBytesHook: ((String) -> ByteArray)? = null
@@ -464,6 +469,54 @@ object IdeBridge {
                     }
                 }
 
+                "selectFiles" -> {
+                    val mode = payload?.get("mode")?.asString?.trim() ?: "file"
+                    val multiple = if (payload?.has("multiple") == true) {
+                        payload.get("multiple")?.asBoolean ?: (mode != "directory")
+                    } else {
+                        mode != "directory"
+                    }
+                    try {
+                        val paths = chooseFiles(session.project, mode, multiple)
+                        if (paths.isEmpty()) {
+                            replyResult(session, id, mapOf("cancelled" to true, "paths" to emptyList<String>()))
+                        } else {
+                            replyResult(session, id, mapOf("cancelled" to false, "paths" to paths))
+                        }
+                    } catch (e: Exception) {
+                        replyError(session, id, "selectFiles failed: ${e.message ?: e}")
+                    }
+                }
+
+                "readFiles" -> {
+                    val paths = payload?.getAsJsonArray("paths")
+                        ?.mapNotNull { element ->
+                            element.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                                ?.asString
+                                ?.trim()
+                                ?.takeIf { it.isNotEmpty() }
+                        }
+                    if (paths.isNullOrEmpty()) {
+                        replyError(session, id, "Missing paths")
+                    } else {
+                        try {
+                            val files = paths.map { path ->
+                                try {
+                                    mapOf(
+                                        "path" to path,
+                                        "base64" to Base64.getEncoder().encodeToString(File(path).readBytes()),
+                                    )
+                                } catch (e: Exception) {
+                                    mapOf("path" to path, "error" to (e.message ?: e.toString()))
+                                }
+                            }
+                            replyResult(session, id, mapOf("files" to files))
+                        } catch (e: Exception) {
+                            replyError(session, id, "readFiles failed: ${e.message ?: e}")
+                        }
+                    }
+                }
+
                 "getExtensionVersion" -> {
                     try {
                         replyResult(
@@ -737,6 +790,54 @@ object IdeBridge {
             if (SwingUtilities.isEventDispatchThread()) task.run() else SwingUtilities.invokeAndWait(task)
         }
         return target[0]
+    }
+
+    private fun chooseFiles(project: Project, mode: String, multiple: Boolean): List<String> {
+        chooseFilesHook?.let { return it(project, mode, multiple) }
+
+        val selected = mutableListOf<String>()
+        val task = Runnable {
+            try {
+                val descriptor = FileChooserDescriptor(
+                    mode != "directory",
+                    mode == "directory",
+                    false,
+                    false,
+                    false,
+                    multiple
+                ).apply {
+                    title = if (mode == "directory") "选择文件夹" else "选择文件"
+                }
+
+                val files = FileChooser.chooseFiles(descriptor, project, null)
+                selected.addAll(files.mapNotNull { it.canonicalPath ?: it.path }.map { it.replace('\\', '/') })
+            } catch (_: Throwable) {
+                val chooser = JFileChooser(project.basePath?.let(::File)).apply {
+                    dialogTitle = if (mode == "directory") "选择文件夹" else "选择文件"
+                    fileSelectionMode = if (mode == "directory") {
+                        JFileChooser.DIRECTORIES_ONLY
+                    } else {
+                        JFileChooser.FILES_ONLY
+                    }
+                    isMultiSelectionEnabled = multiple
+                }
+                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                    if (multiple && chooser.selectedFiles.isNotEmpty()) {
+                        selected.addAll(chooser.selectedFiles.map { it.absolutePath.replace('\\', '/') })
+                    } else if (chooser.selectedFile != null) {
+                        selected.add(chooser.selectedFile.absolutePath.replace('\\', '/'))
+                    }
+                }
+            }
+        }
+
+        val app = ApplicationManager.getApplication()
+        if (app != null) {
+            if (app.isDispatchThread) task.run() else app.invokeAndWait(task)
+        } else {
+            if (SwingUtilities.isEventDispatchThread()) task.run() else SwingUtilities.invokeAndWait(task)
+        }
+        return selected
     }
 
     private fun readImageBytes(session: Session, url: String): ByteArray {

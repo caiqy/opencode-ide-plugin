@@ -40,6 +40,8 @@ class IdeBridge {
     checkForUpdates: 15000,
     restartHost: 5000,
     storageSet: 5000,
+    selectFiles: 120000,
+    readFiles: 60000,
   }
   private reconnectScheduled = false
   private connectErrorLogged = false
