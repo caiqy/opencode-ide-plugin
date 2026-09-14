@@ -1,0 +1,244 @@
+schema: comet.native.v4
+name: webgui-session-sync
+language: zh-CN
+phase: archive
+status: done
+state_version: 8
+brief: brief.md
+shape_confirmation_hash: 30aa962d1fc1e75ab69a2d632e5a1463637a39c5ad022d6839c389645a319e32
+spec_changes:
+  - capability: webgui-session-sync
+    operation: create
+    source: specs/webgui-session-sync/spec.md
+workspace:
+  isolation: current
+  change_branch: ide-plugin
+  target_branch: ide-plugin
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：同一后端进程内、其他目录创建的会话在后台执行时，WebGUI 打开的会话界面无需刷新即可实时显示流式消息，并在执行完成后自动结束“生成中”。
+    result: passed
+    reason:
+      text: /global/event 信封正确解包并分发；跨目录消息增量与 session.idle 会更新 store 和空闲状态。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：在该跨目录会话后台执行期间切走到其他会话、再切回时，界面显示已产生的后台内容，不再残留“生成中”，Composer 可以继续输入。
+    result: passed
+    reason:
+      text: 后台会话事件按 sessionID 保留在消息 store，状态事件按任意 session 更新，切回后可见内容且解除 busy。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：在当前目录点击“+”，只复用当前目录内的空会话；其他目录的空会话不会被选中或切换。
+    result: passed
+    reason:
+      text: 空默认会话筛选与草稿复用均要求归一化后的当前目录匹配。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：当恢复的草稿指针指向其他目录的会话时，新建流程不复用该会话，而是在当前目录创建或复用会话。
+    result: passed
+    reason:
+      text: 草稿会话目录不匹配时判为不可复用，并转入当前目录限定的 fallback/创建流程。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：运行 VS Code 插件自动化测试后，用户真实数据目录不产生测试遗留会话（测试数据写入隔离的临时目录）。
+    result: passed
+    reason:
+      text: VS Code 测试配置向临时目录注入全部 XDG_* 环境变量；后端继承宿主环境，核心路径使用这些变量。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：当消息缓存中只有缺少 `model`/`agent` 的乐观用户消息时，切换或恢复该会话不抛异常，Composer
+      不会停留在“正在切换会话设置…”。
+    result: passed
+    reason:
+      text: selection 恢复跳过缺少 model/agent 的乐观消息；仅有不完整消息时安全返回 null。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：会话设置恢复过程发生任意异常时，Composer 自动解除禁用并可继续输入，不会永久锁死。
+    result: passed
+    reason:
+      text: 激活流程捕获恢复异常、记录错误并调用 resolveSelections 收敛 pending 状态。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: A8：WebGUI 与 VS Code 插件的新增与既有自动化测试通过；会话列表跨目录可见、消息提交、停止生成等既有行为不回归。
+    result: passed
+    reason:
+      text: 当前实现保留跨目录列表和既有提交/停止路径；webgui-tests、webgui-typecheck、vscode-tests 均已通过。
+      truncated: false
+builder_handoff:
+  candidate_id: 4d784d88-a777-4d7c-9672-647ee78c34ce
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:b5f9be98-5513-4f21-9c75-421f98c27324
+  iteration: 1
+  summary:
+    text: WebGUI 会话同步修复完成：事件改订阅 /global/event 并解包 {directory,project,payload}（忽略
+      sync），跨目录会话实时更新；新建/复用空会话限定当前实例目录（Windows 盘符/UNC/POSIX 归一化）；VS Code 测试通过
+      XDG_DATA_HOME/CACHE/CONFIG/STATE 隔离到临时目录；selection 恢复跳过缺 model/agent
+      的乐观消息，激活异常兜底收敛 selection pending。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+  checks:
+    - name:
+        text: webgui-tests
+        truncated: false
+      result: passed
+      note:
+        text: "bun run test:run: 164 files / 1588 tests passed"
+        truncated: false
+    - name:
+        text: webgui-typecheck
+        truncated: false
+      result: passed
+      note:
+        text: bunx tsc -b exit 0
+        truncated: false
+    - name:
+        text: opencode-typecheck
+        truncated: false
+      result: passed
+      note:
+        text: bun typecheck (tsgo --noEmit) passed
+        truncated: false
+    - name:
+        text: vscode-tests
+        truncated: false
+      result: passed
+      note:
+        text: "pnpm test: 244 passing / 1 pending / 0 failing, includes new test data
+          isolation assertion"
+        truncated: false
+    - name:
+        text: real-db-isolation
+        truncated: false
+      result: passed
+      note:
+        text: VS Code 测试后真实 opencode.db / opencode-ide-plugin.db / opencode-local.db
+          均无测试遗留会话
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 多窗口（不同后端进程）之间的实时事件同步不在本次范围；该场景由 Composer 兜底保证不锁死，刷新后可见（与 brief 非目标一致）。
+      truncated: false
+    - text: A2 没有单条 UI 端到端测试，由全局信封→消息 store、session.idle→setSessionIdle、切回 activation
+        收敛三段测试组合覆盖，复核已接受。
+      truncated: false
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: 只读复核复核两轮：首轮指出测试隔离缺少 XDG_CONFIG_HOME、目录归一化根路径/UNC 边界及集成覆盖不足，第二轮指出 POSIX
+        反斜杠误归一；均已修复并补测试。终验确认 A1-A8 的组成链路与实现一致，无必须修复项。
+      truncated: false
+    reviewer_execution_ref: ses_f6eade28bffeKzOTLtSp6RtM8X
+  submitted_at: 2026-09-11T16:51:56.084Z
+blockers: []
+verification:
+  candidate_id: 4d784d88-a777-4d7c-9672-647ee78c34ce
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:c9f793fd-9760-45bc-b8c6-248ff2f0bfa8
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: webgui-tests
+      name:
+        text: WebGUI tests
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: test:run
+          truncated: false
+      argv_truncated: false
+      cwd_ref: packages/opencode/webgui
+      status: passed
+      exit_code: 0
+      duration_ms: 60190
+    - id: webgui-typecheck
+      name:
+        text: WebGUI TypeScript build
+        truncated: false
+      argv_display:
+        - text: x
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: -b
+          truncated: false
+      argv_truncated: false
+      cwd_ref: packages/opencode/webgui
+      status: passed
+      exit_code: 0
+      duration_ms: 8701
+    - id: vscode-tests
+      name:
+        text: VS Code extension tests
+        truncated: false
+      argv_display:
+        - text: test
+          truncated: false
+      argv_truncated: false
+      cwd_ref: hosts/vscode-plugin
+      status: passed
+      exit_code: 0
+      duration_ms: 49647
+  summary:
+    text: 当前磁盘实现符合 Spec 的事件、目录作用域、测试隔离和 Composer 恢复要求，未发现阻塞验收的问题。
+    truncated: false
+  risks:
+    - text: A2 由事件流、消息 store、idle 与激活恢复的组合测试覆盖，尚无单一完整 UI 切走再切回测试。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-09-11T17:01:42.660Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 当前磁盘实现符合 Spec 的事件、目录作用域、测试隔离和 Composer 恢复要求，未发现阻塞验收的问题。
+      truncated: false
+    completed_at: 2026-09-11T17:01:42.660Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-09-11T16:07:00.939Z
