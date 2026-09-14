@@ -49,8 +49,14 @@ vi.mock("../lib/ideBridge", () => {
   }
 })
 
+vi.mock("../lib/selection/selectionFromMessages", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/selection/selectionFromMessages")>()
+  return { ...actual, selectionFromMessages: vi.fn(actual.selectionFromMessages) }
+})
+
 import { sdk } from "../lib/api/sdkClient"
 import { ideBridge } from "../lib/ideBridge"
+import { selectionFromMessages } from "../lib/selection/selectionFromMessages"
 import { MessagesProvider } from "./MessagesContext"
 import { useMessages } from "./MessagesContext"
 import { SessionProvider, useSession } from "./SessionContext"
@@ -98,12 +104,16 @@ function deferred<T>() {
 }
 
 describe("useSessionActivation", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     activate = null
     sessionApi = null
     messagesApi = null
     localStorage.clear()
     vi.resetAllMocks()
+    const selectionModule = await vi.importActual<typeof import("../lib/selection/selectionFromMessages")>(
+      "../lib/selection/selectionFromMessages",
+    )
+    vi.mocked(selectionFromMessages).mockImplementation(selectionModule.selectionFromMessages)
     tabStore.state.openTabs = []
     ;(ideBridge.isInstalled as any).mockReturnValue(false)
     ;(ideBridge.request as any).mockResolvedValue({ ok: true, result: {} })
@@ -769,6 +779,52 @@ describe("useSessionActivation", () => {
       expect(sessionApi!.selectionSessionId).toBe("s1")
       expect(sessionApi!.selectedVariant).toBe("medium")
       expect(sessionApi!.selectionRestoreNotice).toContain("未能恢复")
+    })
+  })
+
+  it("selection 恢复抛出异常时仍会结束 selection pending 并给出提示", async () => {
+    ;(sdk.session.messages as any).mockResolvedValue({
+      error: null,
+      data: [
+        {
+          info: {
+            id: "u1",
+            sessionID: "s1",
+            role: "user",
+            time: { created: 1 },
+            agent: "build",
+            model: { providerID: "openai", modelID: "gpt-4.1" },
+          },
+          parts: [],
+        },
+      ],
+      response: { headers: new Headers() },
+    })
+    vi.mocked(selectionFromMessages).mockImplementationOnce(() => {
+      throw new Error("restore failed")
+    })
+
+    render(
+      <Providers>
+        <ActivationHarness />
+        <Capture />
+      </Providers>,
+    )
+
+    await waitFor(() => {
+      expect(sessionApi).toBeTruthy()
+      expect(sessionApi!.sessions.length).toBe(1)
+    })
+
+    await act(async () => {
+      await sessionApi!.switchSession("s1")
+    })
+
+    await waitFor(() => {
+      expect(sessionApi!.currentSession?.id).toBe("s1")
+      expect(sessionApi!.selectionSessionId).toBe("s1")
+      expect(sessionApi!.selectionRestoreNotice).toContain("未能恢复")
+      expect(sessionApi!.foregroundSessions.has("s1")).toBe(false)
     })
   })
 

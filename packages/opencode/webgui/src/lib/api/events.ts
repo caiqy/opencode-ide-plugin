@@ -55,6 +55,24 @@ export type ConnectionState = "connecting" | "connected" | "disconnected" | "err
 
 export type EventHandler = (event: ServerEvent) => void
 
+/**
+ * WebGUI subscribes to the project-wide event stream (`/global/event`) so that
+ * sessions from every directory served by this backend stay live. That stream
+ * wraps each event as `{ directory, project, payload }`; unwrap it before the
+ * existing flat `{ type, properties }` dispatch. Durable `sync` envelopes carry
+ * no UI event and are dropped.
+ */
+export function unwrapServerEvent(input: unknown): ServerEvent | null {
+  if (!input || typeof input !== "object") return null
+  const envelope = input as { payload?: unknown }
+  const candidate =
+    envelope.payload && typeof envelope.payload === "object"
+      ? (envelope.payload as Record<string, unknown>)
+      : (input as Record<string, unknown>)
+  if (typeof candidate.type !== "string" || candidate.type === "sync") return null
+  return candidate as unknown as ServerEvent
+}
+
 export interface EventEmitterOptions {
   debug?: boolean
 }
@@ -159,7 +177,7 @@ export interface EventStreamOptions {
  * @returns Object with connection state, event emitter, and control functions
  */
 export function useEventStream(options: EventStreamOptions = {}) {
-  const { url = "/event", onConnectionStateChange, debug = false } = options
+  const { url = "/global/event", onConnectionStateChange, debug = false } = options
 
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting")
   const emitterRef = useRef<EventEmitter>(new EventEmitter({ debug }))
@@ -219,7 +237,8 @@ export function useEventStream(options: EventStreamOptions = {}) {
 
       eventSource.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data) as ServerEvent
+          const data = unwrapServerEvent(JSON.parse(event.data))
+          if (!data) return
           emitterRef.current.emit(data)
         } catch (error) {
           if (debug) {

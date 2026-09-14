@@ -168,6 +168,62 @@ describe("selectionFromMessages", () => {
     expect(selectionFromMessages(messages, { messageID: "u1" })).toBeNull()
   })
 
+  it("跳过缺少 model/agent 的乐观 user，回退到更早的完整选择", () => {
+    const messages: Message[] = [
+      createMessage({
+        role: "user",
+        id: "u1",
+        created: 100,
+        agent: "plan",
+        model: { providerID: "openai", modelID: "gpt-4.1" },
+      }),
+      createMessage({ role: "assistant", id: "a1", created: 150 }),
+      {
+        info: {
+          id: "optimistic-session-1",
+          sessionID: "session-1",
+          role: "user",
+          time: { created: 200 },
+        } as Message["info"],
+        parts: [],
+      },
+    ]
+
+    expect(selectionFromMessages(messages)).toEqual({
+      providerId: "openai",
+      modelId: "gpt-4.1",
+      agent: "plan",
+      variant: null,
+    })
+  })
+
+  it("只有缺 model/agent 的乐观 user 或 model 不完整时返回 null", () => {
+    const messages: Message[] = [
+      {
+        info: {
+          id: "optimistic-session-1",
+          sessionID: "session-1",
+          role: "user",
+          time: { created: 100 },
+        } as Message["info"],
+        parts: [],
+      },
+      {
+        info: {
+          id: "message-200",
+          sessionID: "session-1",
+          role: "user",
+          time: { created: 200 },
+          agent: "build",
+          model: { providerID: "anthropic" },
+        } as unknown as Message["info"],
+        parts: [],
+      },
+    ]
+
+    expect(selectionFromMessages(messages)).toBeNull()
+  })
+
   it("当 user created 相同时，选择输入顺序更靠后的 user", () => {
     const messages: Message[] = [
       createMessage({

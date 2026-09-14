@@ -7,6 +7,7 @@ import {
   handleIdeBridgeUiEvent,
   handleSessionUiEvent,
   ideSessionExists,
+  normalizeDirectory,
   prepareSession,
   reuseCheckFromResponses,
 } from "./App"
@@ -29,7 +30,7 @@ beforeEach(() => {
   vi.mocked(sdk.session.messages).mockReset()
 })
 
-type DefaultSession = Pick<Session, "id" | "title" | "parentID"> & {
+type DefaultSession = Pick<Session, "id" | "title" | "parentID" | "directory"> & {
   time: Session["time"] & { archived?: number }
 }
 
@@ -41,11 +42,12 @@ function sessionMessagesResult(data: unknown, error: unknown): Awaited<ReturnTyp
   return { data, error } as Awaited<ReturnType<typeof sdk.session.messages>>
 }
 
-function defaultSession(id: string, created: number, updated = created): DefaultSession {
+function defaultSession(id: string, created: number, updated = created, directory = "/repo"): DefaultSession {
   return {
     id,
     title: `New session - ${new Date(created).toISOString()}`,
     parentID: undefined,
+    directory,
     time: {
       created,
       updated,
@@ -74,6 +76,7 @@ describe("findReusableDefaultSession", () => {
           defaultSession("s-middle-empty", 2000),
           defaultSession("s-new-used", 3000),
         ],
+        "/repo",
         messages,
       ),
     ).resolves.toEqual({ id: "s-middle-empty" })
@@ -90,7 +93,11 @@ describe("findReusableDefaultSession", () => {
     })
 
     await expect(
-      findReusableDefaultSession([defaultSession("s-old-empty", 1000), defaultSession("s-new-fails", 3000)], messages),
+      findReusableDefaultSession(
+        [defaultSession("s-old-empty", 1000), defaultSession("s-new-fails", 3000)],
+        "/repo",
+        messages,
+      ),
     ).resolves.toEqual({ id: "s-old-empty" })
   })
 
@@ -108,12 +115,75 @@ describe("findReusableDefaultSession", () => {
           { ...defaultSession("s-titled", 2000), title: "Feature work" },
           defaultSession("s-valid", 1000),
         ],
+        "/repo",
         messages,
       ),
     ).resolves.toEqual({ id: "s-valid" })
 
     expect(messages).toHaveBeenCalledTimes(1)
     expect(messages).toHaveBeenCalledWith("s-valid")
+  })
+
+  it("不接受其他目录的空会话", async () => {
+    const messages = vi.fn(async () => [])
+
+    await expect(
+      findReusableDefaultSession(
+        [
+          defaultSession("s-other-empty", 3000, 3000, "/repo/hosts/vscode-plugin/test-fixtures"),
+          { ...defaultSession("s-titled", 2000), title: "Feature work" },
+        ],
+        "/repo",
+        messages,
+      ),
+    ).resolves.toBeNull()
+
+    expect(messages).not.toHaveBeenCalled()
+  })
+
+  it("目录比较归一化 Windows 路径大小写与分隔符", async () => {
+    const messages = vi.fn(async () => [])
+
+    await expect(
+      findReusableDefaultSession(
+        [defaultSession("s-win-empty", 2000, 2000, "D:\\Repo\\Sub\\")],
+        "d:/repo/sub",
+        messages,
+      ),
+    ).resolves.toEqual({ id: "s-win-empty" })
+    expect(messages).toHaveBeenCalledWith("s-win-empty")
+  })
+
+  it("目录比较兼容 UNC 共享大小写与尾斜杠", async () => {
+    const messages = vi.fn(async () => [])
+
+    await expect(
+      findReusableDefaultSession(
+        [defaultSession("s-unc", 2000, 2000, "\\\\Server\\Share\\Repo\\")],
+        "//server/share/repo",
+        messages,
+      ),
+    ).resolves.toEqual({ id: "s-unc" })
+    expect(messages).toHaveBeenCalledWith("s-unc")
+  })
+
+  it("根路径归一化后保持可比较", () => {
+    expect(normalizeDirectory("/")).toBe("/")
+    expect(normalizeDirectory("C:\\")).toBe("c:/")
+  })
+
+  it("POSIX 路径中的反斜杠是合法字符，不参与分隔符归一化", () => {
+    expect(normalizeDirectory("/repo/a\\b")).not.toBe(normalizeDirectory("/repo/a/b"))
+    expect(normalizeDirectory("/repo/a\\b")).toBe("/repo/a\\b")
+  })
+
+  it("当前目录未知时不复用任何会话", async () => {
+    const messages = vi.fn(async () => [])
+
+    await expect(
+      findReusableDefaultSession([defaultSession("s-empty", 1000)], null, messages),
+    ).resolves.toBeNull()
+    expect(messages).not.toHaveBeenCalled()
   })
 
   it("无候选时返回 null", async () => {
@@ -125,6 +195,7 @@ describe("findReusableDefaultSession", () => {
           { ...defaultSession("s-child", 3000), parentID: "parent" },
           { ...defaultSession("s-titled", 2000), title: "Feature work" },
         ],
+        "/repo",
         messages,
       ),
     ).resolves.toBeNull()
@@ -141,6 +212,7 @@ describe("findReusableDefaultSessionFallback", () => {
     await expect(
       findReusableDefaultSessionFallback({
         sessions: [defaultSession("s-current", 1000)],
+        directory: "/repo",
         list,
         messages,
       }),
@@ -156,6 +228,7 @@ describe("findReusableDefaultSessionFallback", () => {
     await expect(
       findReusableDefaultSessionFallback({
         sessions: [],
+        directory: "/repo",
         list,
         messages,
       }),
@@ -519,13 +592,13 @@ describe("checkDraftSessionReusable", () => {
   it("get throw 时返回 unknown", async () => {
     vi.mocked(sdk.session.get).mockRejectedValue(new Error("boom"))
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("unknown")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("unknown")
   })
 
   it("get response.error 时返回 unknown", async () => {
     vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult(null, { message: "boom" }))
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("unknown")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("unknown")
   })
 
   it("get response.error 明确 404/not-found 时返回 not_reusable", async () => {
@@ -533,7 +606,7 @@ describe("checkDraftSessionReusable", () => {
       sessionGetResult(null, { message: "session not found", statusCode: 404 }),
     )
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("not_reusable")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("not_reusable")
   })
 
   it("get response.error 为 SDK NotFoundError shape 时返回 not_reusable", async () => {
@@ -541,66 +614,82 @@ describe("checkDraftSessionReusable", () => {
       sessionGetResult(null, { name: "NotFoundError", data: { message: "Session not found" } }),
     )
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("not_reusable")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("not_reusable")
   })
 
   it("get response.error message 包含 not-found 时返回 not_reusable", async () => {
     vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult(null, { message: "session not-found" }))
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("not_reusable")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("not_reusable")
   })
 
   it("get response.error data.message 包含 not-found 时返回 not_reusable", async () => {
     vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult(null, { data: { message: "session not-found" } }))
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("not_reusable")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("not_reusable")
   })
 
   it("get throw 明确 not-found 时返回 not_reusable", async () => {
     vi.mocked(sdk.session.get).mockRejectedValue(new Error("404 not found"))
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("not_reusable")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("not_reusable")
   })
 
   it("get 返回空 data 且无 error 时返回 not_reusable", async () => {
     vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult(null, null))
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("not_reusable")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("not_reusable")
+  })
+
+  it("会话目录与当前目录不一致时返回 not_reusable 且不请求消息", async () => {
+    vi.mocked(sdk.session.get).mockResolvedValue(
+      sessionGetResult({ id: "s-draft", directory: "/repo/hosts/vscode-plugin/test-fixtures" }, null),
+    )
+
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("not_reusable")
+    expect(sdk.session.messages).not.toHaveBeenCalled()
+  })
+
+  it("当前目录未知时返回 unknown 以保留 draft 指针", async () => {
+    vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult({ id: "s-draft", directory: "/repo" }, null))
+
+    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("unknown")
+    expect(sdk.session.messages).not.toHaveBeenCalled()
   })
 
   it("messages throw 时返回 unknown", async () => {
-    vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult({ id: "s-draft" }, null))
+    vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult({ id: "s-draft", directory: "/repo" }, null))
     vi.mocked(sdk.session.messages).mockRejectedValue(new Error("boom"))
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("unknown")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("unknown")
   })
 
   it("messages response.error 时返回 unknown", async () => {
-    vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult({ id: "s-draft" }, null))
+    vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult({ id: "s-draft", directory: "/repo" }, null))
     vi.mocked(sdk.session.messages).mockResolvedValue(sessionMessagesResult(null, { message: "boom" }))
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("unknown")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("unknown")
   })
 
   it("messages data 缺失且无 error 时返回 unknown", async () => {
-    vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult({ id: "s-draft" }, null))
+    vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult({ id: "s-draft", directory: "/repo" }, null))
     vi.mocked(sdk.session.messages).mockResolvedValue(sessionMessagesResult(null, null))
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("unknown")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("unknown")
   })
 
   it("messages empty array 时返回 reusable", async () => {
-    vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult({ id: "s-draft" }, null))
+    vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult({ id: "s-draft", directory: "/repo" }, null))
     vi.mocked(sdk.session.messages).mockResolvedValue(sessionMessagesResult([], null))
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("reusable")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("reusable")
   })
 
   it("messages non-empty array 时返回 not_reusable", async () => {
-    vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult({ id: "s-draft" }, null))
+    vi.mocked(sdk.session.get).mockResolvedValue(sessionGetResult({ id: "s-draft", directory: "/repo" }, null))
     vi.mocked(sdk.session.messages).mockResolvedValue(sessionMessagesResult([{ id: "m-1" }], null))
 
-    await expect(checkDraftSessionReusable("s-draft")).resolves.toBe("not_reusable")
+    await expect(checkDraftSessionReusable("s-draft", "/repo")).resolves.toBe("not_reusable")
   })
 })
 

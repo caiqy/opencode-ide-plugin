@@ -156,6 +156,13 @@ export function useSessionActivation() {
         },
         sessionID,
       )
+    } catch (error) {
+      // Selection pending must always settle: a thrown restore must not leave the
+      // composer stuck behind "正在切换会话设置…".
+      if (token === activationTokenRef.current) {
+        console.error("[useSessionActivation] Failed to restore session selection:", error)
+        resolveRef.current(sessionID, "未能恢复该会话的设置，继续使用当前配置")
+      }
     } finally {
       release()
     }

@@ -34,6 +34,7 @@ import { retryScopedStateWrites, setScopedStateWriteErrorReporter } from "./stat
 import { loadDraftSession, saveDraftSession } from "./state/repo/draftRepo"
 import { switchSessionWithTabRollback } from "./state/switchSession"
 import { useSessionVisibilitySync } from "./hooks/useSessionVisibilitySync"
+import { useProjectOptional } from "./state/ProjectContext"
 
 const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac")
 
@@ -127,7 +128,7 @@ export async function ideSessionExists(sessionID: string) {
 
 export type ReuseCheck = "reusable" | "not_reusable" | "unknown"
 type SessionCandidate = { id: string }
-type DefaultSessionInput = Pick<Session, "id" | "title" | "parentID"> & {
+type DefaultSessionInput = Pick<Session, "id" | "title" | "parentID" | "directory"> & {
   time: Session["time"] & { archived?: number }
 }
 
@@ -136,6 +137,26 @@ function normalizeReuseCheck(value: unknown): ReuseCheck {
   if (value === false) return "not_reusable"
   if (value === "reusable" || value === "not_reusable" || value === "unknown") return value
   return "unknown"
+}
+
+/**
+ * Normalize a directory for comparison: unify separators, drop trailing slashes and,
+ * for case-insensitive Windows forms (drive paths and UNC shares), fold case.
+ */
+export function normalizeDirectory(value: string | null | undefined): string {
+  if (!value) return ""
+  // Backslashes are separators only on Windows forms. On POSIX they are legal
+  // filename characters, so `/repo/a\b` must stay distinct from `/repo/a/b`.
+  const windows = /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("\\\\") || value.startsWith("//")
+  const unified = windows ? value.replaceAll("\\", "/") : value
+  const trimmed = unified.replace(/\/+$/, "")
+  const normalized = /^[a-zA-Z]:$/.test(trimmed) ? `${trimmed}/` : trimmed || (unified.startsWith("/") ? "/" : "")
+  return windows ? normalized.toLowerCase() : normalized
+}
+
+function sameDirectory(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = normalizeDirectory(a)
+  return left.length > 0 && left === normalizeDirectory(b)
 }
 
 function isNotFoundError(error: unknown) {
@@ -174,6 +195,7 @@ export function reuseCheckFromResponses(input: {
 
 export async function findReusableDefaultSession(
   sessions: DefaultSessionInput[],
+  directory: string | null | undefined,
   messages: (id: string) => Promise<unknown[]> | unknown[],
 ): Promise<SessionCandidate | null> {
   return [...sessions]
@@ -181,6 +203,7 @@ export async function findReusableDefaultSession(
       (session) =>
         !session.parentID &&
         session.time.archived === undefined &&
+        sameDirectory(session.directory, directory) &&
         /^New session - \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(session.title || ""),
     )
     .sort((a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created))
@@ -194,14 +217,15 @@ export async function findReusableDefaultSession(
 
 export async function findReusableDefaultSessionFallback(input: {
   sessions: DefaultSessionInput[]
+  directory: string | null | undefined
   list: () => Promise<DefaultSessionInput[]>
   messages: (id: string) => Promise<unknown[]> | unknown[]
 }) {
   const loaded = input.sessions.length > 0 ? input.sessions : await input.list()
-  return findReusableDefaultSession(loaded, input.messages)
+  return findReusableDefaultSession(loaded, input.directory, input.messages)
 }
 
-export async function checkDraftSessionReusable(id: string): Promise<ReuseCheck> {
+export async function checkDraftSessionReusable(id: string, directory: string | null = null): Promise<ReuseCheck> {
   const session = await sdk.session.get({ path: { id } }).catch((error: unknown) => error)
   if (isNotFoundError(session)) return "not_reusable"
   const response =
@@ -210,6 +234,10 @@ export async function checkDraftSessionReusable(id: string): Promise<ReuseCheck>
   if (isNotFoundError(response.error)) return "not_reusable"
   if (response.error) return "unknown"
   if (!response.data) return reuseCheckFromResponses({ exists: false, messages: "unknown" })
+  // Reusing an empty session from another directory would run the conversation in
+  // that directory's workspace, so it only counts when the directories match.
+  if (!normalizeDirectory(directory)) return "unknown"
+  if (!sameDirectory((response.data as { directory?: string }).directory, directory)) return "not_reusable"
   const messages = await sdk.session.messages({ path: { id } }).catch(() => null)
   if (!messages || messages.error) return "unknown"
   if (!messages.data) return "unknown"
@@ -325,6 +353,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
   const [sendRequestKey, setSendRequestKey] = useState(0)
 
   const creating = useRef(false)
+  const projectDirectory = useProjectOptional()?.directory ?? null
 
   const activateSession = useSessionActivation()
   useSessionVisibilitySync()
@@ -352,10 +381,11 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     void prepareSession({
       draft: null,
       restore: loadDraftSession,
-      reusable: checkDraftSessionReusable,
+      reusable: (id) => checkDraftSessionReusable(id, projectDirectory),
       fallback: () =>
         findReusableDefaultSessionFallback({
           sessions,
+          directory: projectDirectory,
           list: () =>
             sdk.session.list({ limit: 50, roots: true }).then((response) => {
               if (response.error) {
@@ -393,7 +423,7 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
     }).finally(() => {
       creating.current = false
     })
-  }, [createSession, sessions, switchSession, tabStore.openTab, showToast])
+  }, [createSession, projectDirectory, sessions, switchSession, tabStore.openTab, showToast])
 
   const handleToggleSessionList = useCallback(() => {
     compactHeaderRef.current?.toggleSessionDropdown()

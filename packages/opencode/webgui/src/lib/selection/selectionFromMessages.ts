@@ -27,11 +27,28 @@ function visibleMessages(messages: Message[], revert?: RevertBoundary) {
   return messages.slice(0, index)
 }
 
+/**
+ * Optimistic placeholders and legacy entries can be missing the persisted
+ * selection metadata. They are not valid selection sources; skipping them lets
+ * restore fall back to an older complete user message.
+ */
+function isSelectableUser(message: UserMessage) {
+  const model = (message as { model?: { providerID?: unknown; modelID?: unknown } }).model
+  const agent = (message as { agent?: unknown }).agent
+  return (
+    typeof model?.providerID === "string" &&
+    typeof model?.modelID === "string" &&
+    typeof agent === "string" &&
+    agent.length > 0
+  )
+}
+
 export function selectionFromMessages(messages: Message[], revert?: RevertBoundary): MessageSelection | null {
   let latestUser: UserMessage | null = null
 
   for (const message of visibleMessages(messages, revert)) {
     if (!isUserMessage(message.info)) continue
+    if (!isSelectableUser(message.info)) continue
     if (!latestUser || message.info.time.created >= latestUser.time.created) {
       latestUser = message.info
     }
