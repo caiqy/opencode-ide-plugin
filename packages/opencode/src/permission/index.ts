@@ -17,7 +17,7 @@ import { Session } from "@/session/session"
 import { ToolRegistry } from "@/tool/registry"
 import { ToolJsonSchema } from "@/tool/json-schema"
 import { EffectBridge } from "@/effect/bridge"
-import { MessageID } from "@/session/schema"
+import { MessageID, SessionID } from "@/session/schema"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { setRuntimeApproval } from "@/session/approval-sync"
 import { evaluate } from "./rules"
@@ -35,6 +35,8 @@ export interface Interface {
   }) => Effect.Effect<void>
   readonly reviewPending: (sessionID: PermissionV1.AskInput["sessionID"]) => Effect.Effect<void>
   readonly reply: (input: PermissionV1.ReplyInput) => Effect.Effect<void, PermissionV1.NotFoundError>
+  readonly rejectSession: (sessionID: SessionID) => Effect.Effect<void>
+  readonly openSession: (sessionID: SessionID) => Effect.Effect<void>
   readonly list: () => Effect.Effect<ReadonlyArray<PermissionV1.Request>>
 }
 
@@ -50,6 +52,7 @@ interface PendingEntry {
 interface State {
   pending: Map<PermissionV1.ID, PendingEntry>
   approved: PermissionV1.Rule[]
+  closedSessions: Set<SessionID>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Permission") {}
@@ -66,18 +69,28 @@ const layer = Layer.effect(
     const state = yield* InstanceState.make<State>(
       Effect.fn("Permission.state")(function* (ctx) {
         void ctx
-        const state = {
+        const state: State = {
           pending: new Map<PermissionV1.ID, PendingEntry>(),
           approved: [],
+          closedSessions: new Set<SessionID>(),
         }
+
+        const unsubscribe = yield* events.listen((event) => {
+          if (event.type === SessionV1.Event.Deleted.type) {
+            state.closedSessions.delete((event.data as { sessionID: SessionID }).sessionID)
+          }
+          return Effect.void
+        })
 
         yield* Effect.addFinalizer(() =>
           Effect.gen(function* () {
+            yield* unsubscribe
             for (const item of state.pending.values()) {
               yield* Deferred.fail(item.deferred, new PermissionV1.RejectedError())
               item.unregister()
             }
             state.pending.clear()
+            state.closedSessions.clear()
           }),
         )
 
@@ -302,6 +315,11 @@ const layer = Layer.effect(
 
         const waiting = yield* Effect.uninterruptibleMask((restore) =>
           Effect.gen(function* () {
+            // Must remain here in the needsAsk branch so full access, rule allow, and automatic approvals are not blocked.
+            const currentState = yield* InstanceState.get(state)
+            if (currentState.closedSessions.has(request.sessionID)) {
+              return yield* new PermissionV1.RejectedError()
+            }
             const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
             const published = yield* Deferred.make<void>()
             if (pending.has(id)) throw new Error(`Duplicate pending permission ID: ${id}`)
@@ -538,12 +556,35 @@ const layer = Layer.effect(
         }),
     )
 
+    const rejectSession = Effect.fn("Permission.rejectSession")(function* (sessionID: SessionID) {
+      const data = yield* InstanceState.get(state)
+      data.closedSessions.add(sessionID)
+      for (const [id, item] of data.pending.entries()) {
+        if (item.info.sessionID === sessionID) {
+          data.pending.delete(id)
+          item.unregister()
+          yield* Effect.logInfo("session rejected permission", { sessionID, requestID: id })
+          yield* events.publish(Event.Replied, {
+            sessionID,
+            requestID: id,
+            reply: "reject",
+          })
+          yield* Deferred.fail(item.deferred, new PermissionV1.RejectedError())
+        }
+      }
+    })
+
+    const openSession = Effect.fn("Permission.openSession")(function* (sessionID: SessionID) {
+      const data = yield* InstanceState.get(state)
+      data.closedSessions.delete(sessionID)
+    })
+
     const list = Effect.fn("Permission.list")(function* () {
       const pending = (yield* InstanceState.get(state)).pending
       return Array.from(pending.values(), (item) => item.info)
     })
 
-    return Service.of({ ask, setApproval, reviewPending, reply, list })
+    return Service.of({ ask, setApproval, reviewPending, reply, rejectSession, openSession, list })
   }),
 )
 

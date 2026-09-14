@@ -2174,4 +2174,49 @@ describe("SessionContext session.deleted scoped draft cleanup", () => {
       expect((result.current as any).sessionDiffStatus).toEqual({})
     })
   })
+
+  it("支持设置优雅打断状态并在切回 idle 时自动清除", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    expect(result.current.isSessionGracefulStopping("s-graceful")).toBe(false)
+
+    act(() => {
+      result.current.setSessionGracefulStopping("s-graceful", true)
+    })
+
+    expect(result.current.isSessionGracefulStopping("s-graceful")).toBe(true)
+
+    // 当会话被置为 idle 时，自动清除优雅打断状态
+    act(() => {
+      result.current.setSessionIdle("s-graceful", true)
+    })
+
+    expect(result.current.isSessionGracefulStopping("s-graceful")).toBe(false)
+  })
+
+  it("当会话被删除时自动清除优雅打断状态", async () => {
+    const { result } = renderHook(() => useSession(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    act(() => {
+      result.current.setSessionGracefulStopping("s-delete", true)
+    })
+
+    expect(result.current.isSessionGracefulStopping("s-delete")).toBe(true)
+
+    act(() => {
+      events.emit("session.deleted", sessionDeletedEvent("s-delete"))
+    })
+
+    await waitFor(() => {
+      expect(result.current.isSessionGracefulStopping("s-delete")).toBe(false)
+    })
+  })
 })

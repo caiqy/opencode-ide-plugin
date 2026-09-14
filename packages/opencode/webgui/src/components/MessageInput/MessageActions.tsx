@@ -5,6 +5,7 @@ interface MessageActionsProps {
   isIdle: boolean
   isButtonDisabled: boolean
   isCompactDisabled: boolean
+  isGracefulStopping?: boolean
   onSubmit: () => void
   onAbort: () => void
   onCompactClick: () => void
@@ -14,6 +15,7 @@ export function MessageActions({
   isIdle,
   isButtonDisabled,
   isCompactDisabled,
+  isGracefulStopping = false,
   onSubmit,
   onAbort,
   onCompactClick,
@@ -59,10 +61,14 @@ export function MessageActions({
         <button
           type="button"
           onClick={onAbort}
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300"
-          aria-label="停止生成"
-          title="停止生成"
-          data-tip="停止生成"
+          className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+            isGracefulStopping
+              ? "bg-red-500 text-white hover:bg-red-600 animate-pulse"
+              : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+          }`}
+          aria-label={isGracefulStopping ? "已请求停止，再次点击强制打断" : "停止生成"}
+          title={isGracefulStopping ? "已请求停止，再次点击强制打断" : "停止生成"}
+          data-tip={isGracefulStopping ? "已请求停止，再次点击强制打断" : "停止生成"}
         >
           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <rect x="6" y="6" width="12" height="12" rx="1" ry="1" />

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { $getRoot, $createParagraphNode, type EditorState, type LexicalEditor } from "lexical"
 import { sdk } from "../../../lib/api/sdkClient"
 import { useSession } from "../../../state/SessionContext"
@@ -50,9 +50,17 @@ export function useMessageInput({
   onError,
 }: UseMessageInputOptions) {
   const [failedMap, setFailedMap] = useState<Record<string, EditorState>>({})
+  const [confirmForceAbortSessionID, setConfirmForceAbortSessionID] = useState<string | null>(null)
+  const isConfirmForceAbortOpen = Boolean(sessionID && confirmForceAbortSessionID === sessionID)
+
+  useEffect(() => {
+    if (confirmForceAbortSessionID && confirmForceAbortSessionID !== sessionID) {
+      setConfirmForceAbortSessionID(null)
+    }
+  }, [confirmForceAbortSessionID, sessionID])
   const { showToast } = useToast()
-  const { setSessionIdle } = useSession()
-  const { addMessage, setMessages, getQuestionsBySession, rejectQuestion } = useMessages()
+  const { setSessionIdle, isSessionGracefulStopping, setSessionGracefulStopping } = useSession()
+  const { addMessage, setMessages, getQuestionsBySession, rejectQuestion, permissions, respondPermission } = useMessages()
   const seq = useRef(new Map<string, number>())
   const submittingEditor = useRef(new Set<string>())
 
@@ -232,36 +240,91 @@ export function useMessageInput({
     }
   }, [lastFailedMessage, editor, sessionID, setFailed])
 
+  const rejectPendingWork = useCallback(
+    async (id: string) => {
+      const qPromise = Promise.allSettled(getQuestionsBySession(id).map((item) => rejectQuestion(item.id)))
+      const pPromise = Promise.allSettled(
+        (permissions ?? []).filter((p) => p.sessionID === id).map((item) => respondPermission(item.id, "reject")),
+      )
+      await Promise.allSettled([qPromise, pPromise])
+    },
+    [getQuestionsBySession, permissions, rejectQuestion, respondPermission],
+  )
+
   const handleAbort = useCallback(async () => {
     if (!sessionID) return
+
+    const isStopping = typeof isSessionGracefulStopping === "function" && isSessionGracefulStopping(sessionID)
+    // If already in graceful stopping state, 2nd click triggers confirmation modal for force abort
+    if (isStopping) {
+      setConfirmForceAbortSessionID(sessionID)
+      return
+    }
+
+    // 1st click: Graceful stop
     try {
-      const response = await sdk.session.abort({ path: { id: sessionID } })
+      setSessionGracefulStopping?.(sessionID, true)
+      const response = await sdk.session.abort({
+        path: { id: sessionID },
+        body: { graceful: true },
+      })
       if (response.error) {
         const message =
           typeof response.error === "object" && "message" in response.error
             ? String(response.error.message)
-            : "终止会话失败"
+            : "请求优雅停止失败"
         throw new Error(message)
       }
+      await rejectPendingWork(sessionID)
+    } catch (err) {
+      setSessionGracefulStopping?.(sessionID, false)
+      const error = err instanceof Error ? err : new Error("请求优雅停止失败")
+      console.error("[MessageInput] Failed to gracefully abort session:", error)
+      showToast(error.message, {
+        title: "停止失败",
+        variant: "error",
+        duration: 6000,
+      })
+    }
+  }, [isSessionGracefulStopping, rejectPendingWork, sessionID, setSessionGracefulStopping, showToast])
 
-      const result = await Promise.allSettled(getQuestionsBySession(sessionID).map((item) => rejectQuestion(item.id)))
-      if (result.some((item) => item.status === "rejected" || (item.status === "fulfilled" && item.value === false))) {
-        console.warn("[MessageInput] Failed to reject question after abort")
+  const handleConfirmForceAbort = useCallback(async () => {
+    const targetID = confirmForceAbortSessionID ?? sessionID
+    if (!targetID) return
+    setConfirmForceAbortSessionID(null)
+    try {
+      setSessionGracefulStopping?.(targetID, false)
+      const response = await sdk.session.abort({
+        path: { id: targetID },
+        body: { graceful: false },
+      })
+      if (response.error) {
+        const message =
+          typeof response.error === "object" && "message" in response.error
+            ? String(response.error.message)
+            : "强制终止会话失败"
+        throw new Error(message)
       }
-      setSessionIdle(sessionID, true)
+      await rejectPendingWork(targetID)
+      setSessionIdle(targetID, true)
       setTimeout(() => {
         editor.focus()
       }, 0)
     } catch (err) {
-      const error = err instanceof Error ? err : new Error("终止会话失败")
-      console.error("[MessageInput] Failed to abort session:", error)
+      setSessionGracefulStopping?.(targetID, true)
+      const error = err instanceof Error ? err : new Error("强制终止会话失败")
+      console.error("[MessageInput] Failed to force abort session:", error)
       showToast(error.message, {
         title: "终止失败",
         variant: "error",
         duration: 6000,
       })
     }
-  }, [sessionID, setSessionIdle, showToast, editor, getQuestionsBySession, rejectQuestion])
+  }, [confirmForceAbortSessionID, editor, rejectPendingWork, sessionID, setSessionGracefulStopping, setSessionIdle, showToast])
+
+  const handleCancelForceAbort = useCallback(() => {
+    setConfirmForceAbortSessionID(null)
+  }, [])
 
   const handleCompact = useCallback(
     async (closeModal: () => void) => {
@@ -328,5 +391,8 @@ export function useMessageInput({
     handleRetry,
     handleAbort,
     handleCompact,
+    isConfirmForceAbortOpen,
+    handleConfirmForceAbort,
+    handleCancelForceAbort,
   }
 }

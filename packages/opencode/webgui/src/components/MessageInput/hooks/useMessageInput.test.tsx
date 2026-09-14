@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => {
     prompt: vi.fn(async (_input: unknown) => ({ data: {}, error: null })),
     summarize: vi.fn(async (_input: unknown): Promise<any> => ({ data: true, error: null })),
     abort: vi.fn(async (_input: unknown) => ({ data: true, error: null })),
+    isSessionGracefulStopping: vi.fn((_id: string) => false),
+    setSessionGracefulStopping: vi.fn(),
     getQuestionsBySession: vi.fn(() => []),
     rejectQuestion: vi.fn(async (_requestID: string) => true),
     loadDraftSession: vi.fn(async (): Promise<string | null> => null),
@@ -53,6 +55,8 @@ vi.mock("../../../state/SessionContext", () => {
   return {
     useSession: () => ({
       setSessionIdle: mocks.setSessionIdle,
+      isSessionGracefulStopping: (id: string) => mocks.isSessionGracefulStopping(id),
+      setSessionGracefulStopping: mocks.setSessionGracefulStopping,
     }),
   }
 })
@@ -951,12 +955,13 @@ describe("useMessageInput", () => {
     expect(mocks.rejectQuestion).toHaveBeenNthCalledWith(1, "q1")
     expect(mocks.rejectQuestion).toHaveBeenNthCalledWith(2, "q2")
     expect(mocks.rejectQuestion).toHaveBeenNthCalledWith(3, "q3")
-    expect(mocks.abort).toHaveBeenCalledWith({ path: { id: "s-1" } })
+    expect(mocks.abort).toHaveBeenCalledWith({ path: { id: "s-1" }, body: { graceful: true } })
     expect(mocks.abort).toHaveBeenCalledTimes(1)
+    expect(mocks.setSessionGracefulStopping).toHaveBeenCalledWith("s-1", true)
     expect(mocks.abort.mock.invocationCallOrder[0]).toBeLessThan(mocks.rejectQuestion.mock.invocationCallOrder[0])
   })
 
-  it("0 条 pending question 时直接 abort", async () => {
+  it("0 条 pending question 时直接优雅 abort", async () => {
     mocks.getQuestionsBySession.mockReturnValue([])
 
     const editor = {
@@ -985,12 +990,13 @@ describe("useMessageInput", () => {
     })
 
     expect(mocks.rejectQuestion).not.toHaveBeenCalled()
-    expect(mocks.abort).toHaveBeenCalledWith({ path: { id: "s-2" } })
+    expect(mocks.abort).toHaveBeenCalledWith({ path: { id: "s-2" }, body: { graceful: true } })
     expect(mocks.abort).toHaveBeenCalledTimes(1)
-    expect(mocks.setSessionIdle).toHaveBeenCalledWith("s-2", true)
+    expect(mocks.setSessionGracefulStopping).toHaveBeenCalledWith("s-2", true)
+    expect(mocks.setSessionIdle).not.toHaveBeenCalledWith("s-2", true)
   })
 
-  it("abort error tuple keeps session busy", async () => {
+  it("abort error tuple keeps session busy and rolls back graceful stopping", async () => {
     mocks.abort.mockResolvedValueOnce({ data: null, error: { message: "busy" } })
     mocks.getQuestionsBySession.mockReturnValue([{ id: "q1" }, { id: "q2" }])
 
@@ -1021,6 +1027,7 @@ describe("useMessageInput", () => {
 
     expect(mocks.rejectQuestion).not.toHaveBeenCalled()
     expect(mocks.setSessionIdle).not.toHaveBeenCalledWith("s-3", true)
+    expect(mocks.setSessionGracefulStopping).toHaveBeenCalledWith("s-3", false)
     expect(mocks.showToast).toHaveBeenCalledWith("busy", expect.objectContaining({ variant: "error" }))
   })
 
@@ -1053,6 +1060,180 @@ describe("useMessageInput", () => {
     })
 
     expect(mocks.setSessionIdle).not.toHaveBeenCalledWith("s-4", true)
+    expect(mocks.setSessionGracefulStopping).toHaveBeenCalledWith("s-4", false)
     expect(mocks.showToast).toHaveBeenCalledWith("network down", expect.objectContaining({ variant: "error" }))
+  })
+
+  it("已处于优雅停止状态时，再次点击触发强制打断确认弹窗", async () => {
+    mocks.isSessionGracefulStopping.mockReturnValue(true)
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-5",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "x" }]),
+      }),
+    )
+
+    expect(result.current.isConfirmForceAbortOpen).toBe(false)
+
+    await act(async () => {
+      await result.current.handleAbort()
+    })
+
+    expect(result.current.isConfirmForceAbortOpen).toBe(true)
+    expect(mocks.abort).not.toHaveBeenCalled()
+  })
+
+  it("确认强制打断时调用 force abort 并恢复 idle", async () => {
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-6",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "x" }]),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.handleConfirmForceAbort()
+    })
+
+    expect(mocks.abort).toHaveBeenCalledWith({ path: { id: "s-6" }, body: { graceful: false } })
+    expect(mocks.setSessionIdle).toHaveBeenCalledWith("s-6", true)
+    expect(mocks.setSessionGracefulStopping).toHaveBeenCalledWith("s-6", false)
+    expect(result.current.isConfirmForceAbortOpen).toBe(false)
+  })
+
+  it("取消强制打断时仅关闭确认弹窗", async () => {
+    mocks.isSessionGracefulStopping.mockReturnValue(true)
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-7",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "x" }]),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.handleAbort()
+    })
+    expect(result.current.isConfirmForceAbortOpen).toBe(true)
+
+    act(() => {
+      result.current.handleCancelForceAbort()
+    })
+    expect(result.current.isConfirmForceAbortOpen).toBe(false)
+    expect(mocks.abort).not.toHaveBeenCalled()
+  })
+
+  it("会话切换时自动关闭强停确认弹窗，防止误强停新会话", async () => {
+    mocks.isSessionGracefulStopping.mockReturnValue(true)
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    let currentSession = "s-8"
+    const { result, rerender } = renderHook(
+      (props) =>
+        useMessageInput({
+          sessionID: props.sessionID,
+          editor,
+          isEmpty: false,
+          selectedProviderId: "openai",
+          selectedModelId: "gpt-4.1",
+          selectedAgent: "build",
+          selectedVariant: undefined,
+          extractMessageParts: vi.fn(() => [{ type: "text", text: "x" }]),
+        }),
+      { initialProps: { sessionID: currentSession } },
+    )
+
+    await act(async () => {
+      await result.current.handleAbort()
+    })
+    expect(result.current.isConfirmForceAbortOpen).toBe(true)
+
+    // 切到新会话 s-9
+    currentSession = "s-9"
+    rerender({ sessionID: currentSession })
+
+    expect(result.current.isConfirmForceAbortOpen).toBe(false)
+  })
+
+  it("强停请求失败时恢复目标会话的 graceful 状态并展示错误", async () => {
+    mocks.abort.mockResolvedValueOnce({ data: null, error: { message: "force fail" } })
+
+    const editor = {
+      getEditorState: () => ({
+        read: (fn: () => void) => fn(),
+      }),
+      update: (fn: () => void) => fn(),
+      focus: vi.fn(),
+    } as any
+
+    const { result } = renderHook(() =>
+      useMessageInput({
+        sessionID: "s-force-err",
+        editor,
+        isEmpty: false,
+        selectedProviderId: "openai",
+        selectedModelId: "gpt-4.1",
+        selectedAgent: "build",
+        selectedVariant: undefined,
+        extractMessageParts: vi.fn(() => [{ type: "text", text: "x" }]),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.handleConfirmForceAbort()
+    })
+
+    expect(mocks.setSessionGracefulStopping).toHaveBeenLastCalledWith("s-force-err", true)
+    expect(mocks.showToast).toHaveBeenCalledWith("force fail", expect.objectContaining({ variant: "error" }))
   })
 })

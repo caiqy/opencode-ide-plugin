@@ -10257,7 +10257,9 @@ export type SessionForkResponses = {
 export type SessionForkResponse = SessionForkResponses[keyof SessionForkResponses]
 
 export type SessionAbortData = {
-  body?: never
+  body?: {
+    graceful?: boolean
+  }
   path: {
     sessionID: string
   }

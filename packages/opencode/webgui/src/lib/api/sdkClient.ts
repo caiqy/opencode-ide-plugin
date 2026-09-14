@@ -514,12 +514,30 @@ export const sdk = {
         }
       }
     },
+    abort: async (options: { path: { id: string }; body?: { graceful?: boolean } }) => {
+      try {
+        const response = await fetch(`/session/${encodeURIComponent(options.path.id)}/abort`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: options.body ? JSON.stringify(options.body) : undefined,
+        })
+        if (!response.ok) {
+          const data = await response.json().catch(() => null)
+          return { error: { message: data?.message || "终止会话失败" }, data: null }
+        }
+        const data = await response.json().catch(() => true)
+        return { data, error: null }
+      } catch (error) {
+        return { error: { message: error instanceof Error ? error.message : "终止会话失败" }, data: null }
+      }
+    },
   }) as typeof baseClient.session & {
     list: (options?: SessionListOptions) => Promise<ApiResult<Session[]>>
     setApproval: (input: { sessionID: string; approval: ApprovalMode }) => Promise<ApiResult<SessionWithApproval>>
     regenerateTitle: (options: { path: { sessionID: string } }) => Promise<ApiResult<Session>>
     syncVisible: (options: { body: { sessionIDs: string[] } }) => Promise<ApiResult<{ sessionIDs: string[] }>>
     retry: (options: { path: { sessionID: string } }) => Promise<any>
+    abort: (options: { path: { id: string }; body?: { graceful?: boolean } }) => Promise<ApiResult<boolean>>
   },
   mcp: Object.assign(baseClient.mcp, {
     tools: mcpTools,

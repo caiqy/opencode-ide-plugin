@@ -33,6 +33,7 @@ import { NamedError } from "@opencode-ai/core/util/error"
 import { SessionProcessor } from "./processor"
 import { Tool } from "@/tool/tool"
 import { Permission } from "@/permission"
+import { Question } from "@/question"
 import { ApprovalV1 } from "@opencode-ai/core/v1/approval"
 import { Approval } from "@opencode-ai/core/approval"
 import { SessionStatus } from "./status"
@@ -105,7 +106,7 @@ function isOrphanedInterruptedTool(part: SessionV1.ToolPart) {
 }
 
 export interface Interface {
-  readonly cancel: (sessionID: SessionID) => Effect.Effect<void>
+  readonly cancel: (sessionID: SessionID, options?: { graceful?: boolean }) => Effect.Effect<void>
   readonly prompt: (input: PromptInput, options?: PromptOptions) => Effect.Effect<SessionV1.WithParts, Image.Error>
   readonly loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts>
   readonly shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError>
@@ -129,6 +130,7 @@ const layer = Layer.effect(
     const commands = yield* Command.Service
     const config = yield* Config.Service
     const permission = yield* Permission.Service
+    const questions = yield* Question.Service
     const fsys = yield* FSUtil.Service
     const mcp = yield* MCP.Service
     const lsp = yield* LSP.Service
@@ -147,6 +149,14 @@ const layer = Layer.effect(
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
     const { db } = database
+    const gracefulStops = new Set<SessionID>()
+    const unsubscribeSessionDeleted = yield* events.listen((event) => {
+      if (event.type === SessionV1.Event.Deleted.type) {
+        gracefulStops.delete((event.data as { sessionID: SessionID }).sessionID)
+      }
+      return Effect.void
+    })
+    yield* Effect.addFinalizer(() => unsubscribeSessionDeleted)
     const readAttachmentSample = Effect.fn("SessionPrompt.readAttachmentSample")(function* (filepath: string) {
       const stat = yield* fsys.stat(filepath).pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (!stat || stat.type === "Directory" || Number(stat.size) === 0) return new Uint8Array()
@@ -178,7 +188,21 @@ const layer = Layer.effect(
       } satisfies TaskPromptOps
     })
 
-    const cancel = Effect.fn("SessionPrompt.cancel")(function* (sessionID: SessionID) {
+    const cancel = Effect.fn("SessionPrompt.cancel")(function* (
+      sessionID: SessionID,
+      options?: { graceful?: boolean },
+    ) {
+      if (options?.graceful) {
+        yield* Effect.logInfo("graceful stop requested", { "session.id": sessionID })
+        gracefulStops.add(sessionID)
+        // Reject all existing pending questions/permissions for this session and guard against new ones
+        yield* questions.rejectSession(sessionID)
+        yield* permission.rejectSession(sessionID)
+        return
+      }
+      gracefulStops.delete(sessionID)
+      yield* questions.openSession(sessionID)
+      yield* permission.openSession(sessionID)
       yield* Effect.logInfo("cancel", { "session.id": sessionID })
       yield* state.cancel(sessionID)
     })
@@ -1155,6 +1179,20 @@ const layer = Layer.effect(
     const prompt: (input: PromptInput, options?: PromptOptions) => Effect.Effect<SessionV1.WithParts, Image.Error> = Effect.fn(
       "SessionPrompt.prompt",
     )(function* (input: PromptInput, options?: PromptOptions) {
+      // If the session is currently stopping gracefully, wait until the active run finishes stopping
+      // before admitting the new prompt, so the graceful stop is not bypassed or hijacked.
+      while (gracefulStops.has(input.sessionID)) {
+        const busy = yield* state
+          .assertNotBusy(input.sessionID)
+          .pipe(Effect.as(false), Effect.catchTag("SessionBusyError", () => Effect.succeed(true)))
+        if (!busy) {
+          gracefulStops.delete(input.sessionID)
+          break
+        }
+        yield* Effect.sleep("20 millis")
+      }
+      yield* questions.openSession(input.sessionID)
+      yield* permission.openSession(input.sessionID)
       const session = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
       yield* revert.cleanup(session)
       const message = yield* createUserMessage(input)
@@ -1454,9 +1492,17 @@ const layer = Layer.effect(
             Effect.onInterrupt(() => finalizeInterruptedAssistant),
           )
           if (outcome === "break") break
+          if (gracefulStops.has(sessionID)) {
+            gracefulStops.delete(sessionID)
+            yield* Effect.logInfo("graceful stop exiting loop", { "session.id": sessionID, step })
+            break
+          }
           continue
         }
 
+        gracefulStops.delete(sessionID)
+        yield* questions.openSession(sessionID)
+        yield* permission.openSession(sessionID)
         yield* compaction.prune({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))
         return yield* lastAssistant(sessionID)
       },
@@ -1751,6 +1797,7 @@ export const node = LayerNode.make({
     Command.node,
     Config.node,
     Permission.node,
+    Question.node,
     FSUtil.node,
     MCP.node,
     LSP.node,

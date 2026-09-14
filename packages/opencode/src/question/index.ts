@@ -5,6 +5,7 @@ import { SessionID } from "@/session/schema"
 import { QuestionID } from "./schema"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { QuestionV1 } from "@opencode-ai/schema/question-v1"
+import { SessionV1 } from "@opencode-ai/core/v1/session"
 
 export const Option = QuestionV1.Option
 export type Option = typeof Option.Type
@@ -41,6 +42,7 @@ interface PendingEntry {
 
 interface State {
   pending: Map<QuestionID, PendingEntry>
+  closedSessions: Set<SessionID>
 }
 
 // Service
@@ -56,6 +58,8 @@ export interface Interface {
     answers: ReadonlyArray<Answer>
   }) => Effect.Effect<void, NotFoundError>
   readonly reject: (requestID: QuestionID) => Effect.Effect<void, NotFoundError>
+  readonly rejectSession: (sessionID: SessionID) => Effect.Effect<void>
+  readonly openSession: (sessionID: SessionID) => Effect.Effect<void>
   readonly list: () => Effect.Effect<ReadonlyArray<Request>>
 }
 
@@ -67,16 +71,26 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const state = yield* InstanceState.make<State>(
       Effect.fn("Question.state")(function* () {
-        const state = {
+        const state: State = {
           pending: new Map<QuestionID, PendingEntry>(),
+          closedSessions: new Set<SessionID>(),
         }
+
+        const unsubscribe = yield* events.listen((event) => {
+          if (event.type === SessionV1.Event.Deleted.type) {
+            state.closedSessions.delete((event.data as { sessionID: SessionID }).sessionID)
+          }
+          return Effect.void
+        })
 
         yield* Effect.addFinalizer(() =>
           Effect.gen(function* () {
+            yield* unsubscribe
             for (const item of state.pending.values()) {
               yield* Deferred.fail(item.deferred, new RejectedError())
             }
             state.pending.clear()
+            state.closedSessions.clear()
           }),
         )
 
@@ -89,24 +103,42 @@ const layer = Layer.effect(
       questions: ReadonlyArray<Info>
       tool?: Tool
     }) {
-      const pending = (yield* InstanceState.get(state)).pending
+      const data = yield* InstanceState.get(state)
       const id = QuestionID.ascending()
-      yield* Effect.logInfo("asking", { id, questions: input.questions.length })
 
-      const deferred = yield* Deferred.make<ReadonlyArray<Answer>, RejectedError>()
-      const info: Request = {
-        id,
-        sessionID: input.sessionID,
-        questions: input.questions,
-        tool: input.tool,
-      }
-      pending.set(id, { info, deferred })
-      yield* events.publish(Event.Asked, info)
+      // Atomic check and registration boundary: check closed state and register pending synchronously
+      // without yielding, ensuring rejectSession cannot race between check and pending registration.
+      const item = yield* Effect.uninterruptible(
+        Effect.gen(function* () {
+          if (data.closedSessions.has(input.sessionID)) {
+            return yield* new RejectedError()
+          }
+          const deferred = yield* Deferred.make<ReadonlyArray<Answer>, RejectedError>()
+          const info: Request = {
+            id,
+            sessionID: input.sessionID,
+            questions: input.questions,
+            tool: input.tool,
+          }
+          const entry = { info, deferred }
+          data.pending.set(id, entry)
+          return entry
+        }),
+      )
+
+      yield* Effect.logInfo("asking", { id, questions: input.questions.length })
+      yield* events.publish(Event.Asked, item.info).pipe(
+        Effect.onError(() =>
+          Effect.sync(() => {
+            if (data.pending.get(id) === item) data.pending.delete(id)
+          }),
+        ),
+      )
 
       return yield* Effect.ensuring(
-        Deferred.await(deferred),
+        Deferred.await(item.deferred),
         Effect.sync(() => {
-          pending.delete(id)
+          if (data.pending.get(id) === item) data.pending.delete(id)
         }),
       )
     })
@@ -147,12 +179,37 @@ const layer = Layer.effect(
       yield* Deferred.fail(existing.deferred, new RejectedError())
     })
 
+    const rejectSession = Effect.fn("Question.rejectSession")(function* (sessionID: SessionID) {
+      const data = yield* InstanceState.get(state)
+      data.closedSessions.add(sessionID)
+      const toReject: Array<{ id: QuestionID; deferred: Deferred.Deferred<ReadonlyArray<Answer>, RejectedError> }> = []
+      for (const [id, item] of data.pending.entries()) {
+        if (item.info.sessionID === sessionID) {
+          data.pending.delete(id)
+          toReject.push({ id, deferred: item.deferred })
+        }
+      }
+      for (const item of toReject) {
+        yield* Effect.logInfo("session rejected question", { sessionID, requestID: item.id })
+        yield* events.publish(Event.Rejected, {
+          sessionID,
+          requestID: item.id,
+        })
+        yield* Deferred.fail(item.deferred, new RejectedError())
+      }
+    })
+
+    const openSession = Effect.fn("Question.openSession")(function* (sessionID: SessionID) {
+      const data = yield* InstanceState.get(state)
+      data.closedSessions.delete(sessionID)
+    })
+
     const list = Effect.fn("Question.list")(function* () {
       const pending = (yield* InstanceState.get(state)).pending
       return Array.from(pending.values(), (x) => x.info)
     })
 
-    return Service.of({ ask, reply, reject, list })
+    return Service.of({ ask, reply, reject, rejectSession, openSession, list })
   }),
 )
 

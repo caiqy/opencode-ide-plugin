@@ -27,6 +27,7 @@ import { HttpApiBuilder, HttpApiError, HttpApiSchema } from "effect/unstable/htt
 import { InstanceHttpApi } from "../api"
 import { withForegroundRead } from "../session"
 import {
+  AbortPayload,
   CommandPayload,
   DiffQuery,
   ForkPayload,
@@ -289,9 +290,26 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       return yield* fork({ params: ctx.params, payload })
     })
 
-    const abort = Effect.fn("SessionHttpApi.abort")(function* (ctx: { params: { sessionID: SessionID } }) {
-      yield* promptSvc.cancel(ctx.params.sessionID)
+    const abort = Effect.fn("SessionHttpApi.abort")(function* (ctx: {
+      params: { sessionID: SessionID }
+      payload?: typeof AbortPayload.Type
+    }) {
+      yield* promptSvc.cancel(ctx.params.sessionID, { graceful: ctx.payload?.graceful })
       return true
+    })
+
+    const abortRaw = Effect.fn("SessionHttpApi.abortRaw")(function* (ctx: {
+      params: { sessionID: SessionID }
+      request: HttpServerRequest.HttpServerRequest
+    }) {
+      const body = yield* Effect.orDie(ctx.request.text)
+      if (body.trim().length === 0) return yield* abort({ params: ctx.params })
+
+      const json = yield* tryParseJson(body)
+      const payload = yield* Schema.decodeUnknownEffect(AbortPayload)(json).pipe(
+        Effect.mapError(() => new HttpApiError.BadRequest({})),
+      )
+      return yield* abort({ params: ctx.params, payload })
     })
 
     const init = Effect.fn("SessionHttpApi.init")(function* (ctx: {
@@ -485,7 +503,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("update", update)
       .handle("regenerateTitle", regenerateTitle)
       .handleRaw("fork", forkRaw)
-      .handle("abort", abort)
+      .handleRaw("abort", abortRaw)
       .handle("init", init)
       .handle("share", share)
       .handle("unshare", unshare)

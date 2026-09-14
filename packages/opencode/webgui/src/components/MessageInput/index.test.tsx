@@ -14,6 +14,8 @@ let lastEditorKeyboardOptions: any
 let rootText = ""
 let sessionIdle = true
 let sessionIdleById: Record<string, boolean> = {}
+let sessionGracefulStoppingById: Record<string, boolean> = {}
+let isConfirmForceAbortOpen = false
 let selectionSessionId: string | null = null
 let currentSessionId: string | null = null
 let currentSessionPermission: Array<{ permission: string; pattern: string; action: string }> | undefined
@@ -38,6 +40,8 @@ const mocks = vi.hoisted(() => {
     submitQuickPhrase: vi.fn(),
     handleRetry: vi.fn(),
     handleAbort: vi.fn(),
+    handleConfirmForceAbort: vi.fn(),
+    handleCancelForceAbort: vi.fn(),
     handleCompact: vi.fn((done: () => void) => done()),
     loadQuickPhraseState: vi.fn(async () => ({
       preset_version: 1,
@@ -76,11 +80,12 @@ vi.mock("@lexical/react/LexicalComposer", () => {
   }
 })
 
+let editorFocus = vi.fn()
 vi.mock("@lexical/react/LexicalComposerContext", () => {
   return {
     useLexicalComposerContext: () => [
       {
-        focus: vi.fn(),
+        focus: editorFocus,
         update: vi.fn((fn: any) => fn()),
         setEditable: vi.fn(),
       },
@@ -156,6 +161,9 @@ vi.mock("./hooks/useMessageInput", () => {
       handleRetry: mocks.handleRetry,
       handleAbort: mocks.handleAbort,
       handleCompact: mocks.handleCompact,
+      isConfirmForceAbortOpen,
+      handleConfirmForceAbort: mocks.handleConfirmForceAbort,
+      handleCancelForceAbort: mocks.handleCancelForceAbort,
     }),
   }
 })
@@ -219,6 +227,7 @@ vi.mock("../../state/SessionContext", () => {
     useSession: () => ({
       isIdle: sessionIdle,
       isSessionIdle: (sessionID: string) => sessionIdleById[sessionID] ?? sessionIdle,
+      isSessionGracefulStopping: (sessionID: string) => sessionGracefulStoppingById[sessionID] ?? false,
       currentSession: currentSessionId ? { id: currentSessionId, permission: currentSessionPermission } : null,
       setCurrentSession: mocks.setCurrentSession,
       selectedProviderId,
@@ -295,6 +304,8 @@ describe("MessageInput compact confirm", () => {
   beforeEach(() => {
     sessionIdle = true
     sessionIdleById = {}
+    sessionGracefulStoppingById = {}
+    isConfirmForceAbortOpen = false
     selectionSessionId = null
     currentSessionId = null
     currentSessionPermission = undefined
@@ -310,6 +321,7 @@ describe("MessageInput compact confirm", () => {
     lastEditorKeyboardOptions = null
     confirmModalMap = {}
     rootText = ""
+    editorFocus.mockClear()
     vi.clearAllMocks()
     mocks.getMessagesBySession.mockReturnValue([])
     mocks.isSessionLoaded.mockReturnValue(true)
@@ -1338,6 +1350,72 @@ it("审批切换异常后恢复控件并显示错误", async () => {
       expect(lastEditorToolbarProps.selectionPending).toBe(true)
       expect(lastEditorToolbarProps.isDisabled).toBe(true)
       expect(lastEditorToolbarProps.isButtonDisabled).toBe(true)
+    })
+  })
+
+  it("优雅打断状态下在输入框上方渲染等待提示横幅并向 EditorToolbar 传递 isGracefulStopping", async () => {
+    sessionGracefulStoppingById["s2"] = true
+    currentSessionId = "s2"
+
+    render(<MessageInput sessionID="s2" />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId("graceful-stop-banner")).toBeInTheDocument()
+      expect(screen.getByTestId("graceful-stop-banner")).toHaveTextContent("正在等待当前操作完成以优雅停止")
+      expect(lastEditorToolbarProps.isGracefulStopping).toBe(true)
+    })
+  })
+
+  it("优雅打断等待超过 30 秒时横幅更新为长耗时警示文案", async () => {
+    vi.useFakeTimers()
+    sessionGracefulStoppingById["s2"] = true
+    currentSessionId = "s2"
+
+    render(<MessageInput sessionID="s2" />)
+
+    expect(screen.getByTestId("graceful-stop-banner")).toHaveTextContent("正在等待当前操作完成以优雅停止")
+
+    act(() => {
+      vi.advanceTimersByTime(31000)
+    })
+
+    expect(screen.getByTestId("graceful-stop-banner")).toHaveTextContent("当前工具执行耗时较长，若需立即停止，请点击右下角红色按钮强制打断")
+
+    vi.useRealTimers()
+  })
+
+  it("当 isConfirmForceAbortOpen 为 true 时渲染强制打断 ConfirmModal", async () => {
+    isConfirmForceAbortOpen = true
+    currentSessionId = "s2"
+
+    render(<MessageInput sessionID="s2" />)
+
+    await waitFor(() => {
+      expect(lastConfirmModalProps).toBeTruthy()
+      expect(lastConfirmModalProps.title).toBe("强制打断")
+      expect(lastConfirmModalProps.message).toContain("强制打断将立即终止")
+      expect(lastConfirmModalProps.confirmText).toBe("强制打断")
+    })
+  })
+
+  it("优雅打断转为 idle 后自动调用 editor.focus() 并移除横幅", async () => {
+    sessionIdle = false
+    sessionGracefulStoppingById["s2"] = true
+    currentSessionId = "s2"
+
+    const { rerender } = render(<MessageInput sessionID="s2" />)
+
+    expect(screen.getByTestId("graceful-stop-banner")).toBeInTheDocument()
+
+    // 模拟会话转为 idle（优雅打断结束）
+    sessionIdle = true
+    sessionGracefulStoppingById["s2"] = false
+
+    rerender(<MessageInput sessionID="s2" />)
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("graceful-stop-banner")).not.toBeInTheDocument()
+      expect(editorFocus).toHaveBeenCalled()
     })
   })
 })

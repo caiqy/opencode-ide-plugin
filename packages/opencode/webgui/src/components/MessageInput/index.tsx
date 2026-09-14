@@ -99,6 +99,7 @@ const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
     currentSession,
     setCurrentSession,
     isSessionIdle,
+    isSessionGracefulStopping,
     selectedProviderId,
     selectedModelId,
     selectedAgent,
@@ -226,19 +227,44 @@ const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
     [draftHydration, extractMessageParts, getMessagesBySession, isSessionLoaded, selectedAgent, selectedModelId, selectedProviderId, selectedVariant, sessionID],
   )
 
-  const { lastFailedMessage, handleSubmit, submitQuickPhrase, handleRetry, handleAbort, handleCompact } =
-    useMessageInput({
-      sessionID,
-      editor,
-      isEmpty,
-      selectedProviderId,
-      selectedModelId,
-      selectedVariant,
-      selectedAgent,
-      extractMessageParts,
-      onMessageSent,
-      onError,
-    })
+  const {
+    lastFailedMessage,
+    handleSubmit,
+    submitQuickPhrase,
+    handleRetry,
+    handleAbort,
+    handleCompact,
+    isConfirmForceAbortOpen,
+    handleConfirmForceAbort,
+    handleCancelForceAbort,
+  } = useMessageInput({
+    sessionID,
+    editor,
+    isEmpty,
+    selectedProviderId,
+    selectedModelId,
+    selectedVariant,
+    selectedAgent,
+    extractMessageParts,
+    onMessageSent,
+    onError,
+  })
+
+  const isGracefulStopping = sessionID && typeof isSessionGracefulStopping === "function" ? isSessionGracefulStopping(sessionID) : false
+  const [gracefulElapsedSeconds, setGracefulElapsedSeconds] = useState(0)
+
+  useEffect(() => {
+    if (!isGracefulStopping) {
+      setGracefulElapsedSeconds(0)
+      return
+    }
+
+    const timer = setInterval(() => {
+      setGracefulElapsedSeconds((prev) => prev + 1)
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [isGracefulStopping])
 
   const selectionPending =
     !!sessionID &&
@@ -249,6 +275,20 @@ const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
   const isIdle = !busy
   const interactionLocked = blocked || selectionPending
   const sendLocked = busy || interactionLocked
+
+  const wasGracefulStoppingRef = useRef(false)
+  useEffect(() => {
+    if (isGracefulStopping) {
+      wasGracefulStoppingRef.current = true
+      return
+    }
+    if (wasGracefulStoppingRef.current && isIdle) {
+      wasGracefulStoppingRef.current = false
+      setTimeout(() => {
+        editor.focus()
+      }, 0)
+    }
+  }, [editor, isGracefulStopping, isIdle])
 
   const insertPaths = useCallback(
     (paths: string[]) => {
@@ -594,6 +634,27 @@ const currentApproval = approvalMode(
           className="ml-4 mr-[22px] mb-2 rounded-lg bg-white dark:bg-[rgb(30,30,30)]"
           data-testid="message-composer"
         >
+          {isGracefulStopping && (
+            <div
+              data-testid="graceful-stop-banner"
+              className={`flex items-center justify-between px-3 py-1.5 text-xs rounded-t-lg transition-colors ${
+                gracefulElapsedSeconds >= 30
+                  ? "bg-amber-100 text-amber-900 border-b border-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800 font-medium"
+                  : "bg-blue-50 text-blue-800 border-b border-blue-100 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900"
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="flex-shrink-0" aria-hidden="true">
+                  ⏸️
+                </span>
+                <span>
+                  {gracefulElapsedSeconds >= 30
+                    ? "当前工具执行耗时较长，若需立即停止，请点击右下角红色按钮强制打断"
+                    : "正在等待当前操作完成以优雅停止... 若需立即终止，请点击右下角红色按钮"}
+                </span>
+              </div>
+            </div>
+          )}
           <FooterPanels sessionID={sessionID} />
           <QuickPhraseBar
             items={phraseItems}
@@ -630,6 +691,7 @@ const currentApproval = approvalMode(
               isIdle={isIdle}
               isButtonDisabled={isButtonDisabled}
               isCompactDisabled={isCompactDisabled}
+              isGracefulStopping={isGracefulStopping}
               onSubmit={submit}
               onAbort={handleAbort}
               onCompactClick={openCompactConfirm}
@@ -658,6 +720,19 @@ selectionPending={selectionPending}
         variant="warning"
         isLoading={isCompacting}
       />
+
+      {isConfirmForceAbortOpen && (
+        <ConfirmModal
+          isOpen={isConfirmForceAbortOpen}
+          onClose={handleCancelForceAbort}
+          onConfirm={handleConfirmForceAbort}
+          title="强制打断"
+          message="确定要强制打断吗？强制打断将立即终止当前工具执行和生成，可能导致未保存的操作中断。"
+          confirmText="强制打断"
+          cancelText="取消"
+          variant="danger"
+        />
+      )}
     </>
   )
 })

@@ -7369,6 +7369,21 @@
         },
         "description": "Abort an active session and stop any ongoing AI processing or command execution.",
         "summary": "Abort session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "graceful": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
         "x-codeSamples": [
           {
             "lang": "js",

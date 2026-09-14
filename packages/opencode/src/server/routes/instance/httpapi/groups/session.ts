@@ -60,6 +60,9 @@ export const UpdatePayload = Schema.Struct({
   ),
 })
 export const ForkPayload = Schema.Struct(Struct.omit(Session.ForkInput.fields, ["sessionID"]))
+export const AbortPayload = Schema.Struct({
+  graceful: Schema.optional(Schema.Boolean),
+})
 export const InitPayload = Schema.Struct({
   modelID: ModelV2.ID,
   providerID: ProviderV2.ID,
@@ -281,6 +284,7 @@ export const SessionApi = HttpApi.make("session")
         HttpApiEndpoint.post("abort", SessionPaths.abort, {
           params: { sessionID: SessionID },
           query: WorkspaceRoutingQuery,
+          payload: [HttpApiSchema.NoContent, AbortPayload],
           success: described(Schema.Boolean, "Aborted session"),
           error: HttpApiError.BadRequest,
         }).annotateMerge(

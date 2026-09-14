@@ -2353,6 +2353,158 @@ noLLMServer.instance(
   30_000,
 )
 
+noLLMServer.instance(
+  "graceful cancel auto-rejects pending questions and permissions and unblocks full/allowed tools",
+  () =>
+    Effect.gen(function* () {
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const questions = yield* Question.Service
+      const permission = yield* Permission.Service
+      const session = yield* sessions.create({ title: "Graceful Abort Test" })
+
+      // Seed a pending question and permission for this session
+      const qFiber = yield* questions
+        .ask({
+          sessionID: session.id,
+          questions: [{ question: "continue?", header: "q1", options: [] }],
+        })
+        .pipe(Effect.forkChild)
+
+      const pFiber = yield* permission
+        .ask({
+          sessionID: session.id,
+          permission: "bash",
+          patterns: ["echo test"],
+          always: ["*"],
+          ruleset: [{ permission: "bash", action: "ask", pattern: "*" }],
+          metadata: {},
+        })
+        .pipe(Effect.forkChild)
+
+      yield* pollWithTimeout(
+        Effect.gen(function* () {
+          const qList = yield* questions.list()
+          const pList = yield* permission.list()
+          return qList.some((item) => item.sessionID === session.id) &&
+            pList.some((item) => item.sessionID === session.id)
+            ? (true as const)
+            : undefined
+        }),
+        "question or permission never became pending",
+      )
+
+      // Request graceful cancel
+      yield* prompt.cancel(session.id, { graceful: true })
+
+      // Both the pending question and permission should be automatically rejected on server
+      const qExit = yield* Fiber.await(qFiber)
+      expect(Exit.isFailure(qExit)).toBe(true)
+
+      const pExit = yield* Fiber.await(pFiber)
+      expect(Exit.isFailure(pExit)).toBe(true)
+
+      const remainingQuestions = yield* questions.list()
+      expect(remainingQuestions.filter((item) => item.sessionID === session.id).length).toBe(0)
+
+      const remainingPermissions = yield* permission.list()
+      expect(remainingPermissions.filter((item) => item.sessionID === session.id).length).toBe(0)
+
+      // A new question or permission asked after graceful cancel should fail immediately with rejection
+      const qAfterExit = yield* questions
+        .ask({
+          sessionID: session.id,
+          questions: [{ question: "new question?", header: "q2", options: [] }],
+        })
+        .pipe(Effect.exit)
+      expect(Exit.isFailure(qAfterExit)).toBe(true)
+
+      const pAfterExit = yield* permission
+        .ask({
+          sessionID: session.id,
+          permission: "bash",
+          patterns: ["echo after"],
+          always: ["*"],
+          ruleset: [{ permission: "bash", action: "ask", pattern: "*" }],
+          metadata: {},
+        })
+        .pipe(Effect.exit)
+      expect(Exit.isFailure(pAfterExit)).toBe(true)
+
+      const pAllowedAfterExit = yield* permission
+        .ask({
+          sessionID: session.id,
+          permission: "read",
+          patterns: ["package.json"],
+          always: ["*"],
+          ruleset: [{ permission: "read", action: "allow", pattern: "*" }],
+          metadata: {},
+        })
+        .pipe(Effect.exit)
+      expect(Exit.isSuccess(pAllowedAfterExit)).toBe(true)
+
+      // In genuine full mode (via ApprovalV1.withRuleset), permission should also succeed without being blocked by graceful stop
+      const fullRuleset = ApprovalV1.withRuleset([], "full")
+      const pFullAfterExit = yield* permission
+        .ask({
+          sessionID: session.id,
+          permission: "bash",
+          patterns: ["echo full mode"],
+          always: ["*"],
+          ruleset: fullRuleset,
+          metadata: {},
+        })
+        .pipe(Effect.exit)
+      expect(Exit.isSuccess(pFullAfterExit)).toBe(true)
+
+      yield* sessions.remove(session.id)
+
+      // Verify that after session removal, closed session tracking is cleared via Session.Deleted event
+      const qAfterRemove = yield* questions
+        .ask({
+          sessionID: session.id,
+          questions: [{ question: "after delete?", header: "q3", options: [] }],
+        })
+        .pipe(Effect.forkChild)
+      yield* pollWithTimeout(
+        Effect.gen(function* () {
+          const qList = yield* questions.list()
+          return qList.some((item) => item.sessionID === session.id) ? (true as const) : undefined
+        }),
+        "question never became pending after session removal",
+      )
+      yield* questions.rejectSession(session.id)
+    }),
+  { config: cfg },
+)
+
+noLLMServer.instance(
+  "idle graceful cancel followed by prompt completes in bounded time without hanging",
+  () =>
+    Effect.gen(function* () {
+      const promptSvc = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+
+      const session = yield* sessions.create({})
+
+      // Request graceful cancel on idle session
+      yield* promptSvc.cancel(session.id, { graceful: true })
+
+      // Prompting should not deadlock or hang
+      const msg = yield* promptSvc
+        .prompt({
+          sessionID: session.id,
+          noReply: true,
+          parts: [{ type: "text", text: "hello after idle graceful cancel" }],
+        })
+        .pipe(Effect.timeout("5 seconds"))
+
+      expect(msg.info.role).toBe("user")
+      yield* sessions.remove(session.id)
+    }),
+  { config: cfg },
+)
+
 // Missing file handling
 
 noLLMServer.instance(

@@ -158,4 +158,24 @@ describe("MessageActions", () => {
 
     expect(screen.getByTitle("停止生成")).toHaveClass("bg-gray-200", "text-gray-700", "hover:bg-gray-300")
   })
+
+  it("优雅打断状态下停止按钮变为红色微动并提示再次点击强制打断", () => {
+    render(
+      <MessageActions
+        isIdle={false}
+        isButtonDisabled={false}
+        isCompactDisabled={false}
+        isGracefulStopping={true}
+        onSubmit={vi.fn()}
+        onAbort={vi.fn()}
+        onCompactClick={vi.fn()}
+      />,
+    )
+
+    const stopButton = screen.getByTitle("已请求停止，再次点击强制打断")
+    expect(stopButton).toBeInTheDocument()
+    expect(stopButton).toHaveClass("bg-red-500", "text-white", "hover:bg-red-600", "animate-pulse")
+    expect(stopButton).toHaveAttribute("data-tip", "已请求停止，再次点击强制打断")
+    expect(stopButton).toHaveAttribute("aria-label", "已请求停止，再次点击强制打断")
+  })
 })

@@ -26,6 +26,7 @@ interface EditorToolbarProps {
   isIdle: boolean
   isButtonDisabled: boolean
   isCompactDisabled: boolean
+  isGracefulStopping?: boolean
   onSubmit: () => void
   onAbort: () => void
   onCompactClick: () => void
@@ -60,6 +61,7 @@ export function EditorToolbar({
   isIdle,
   isButtonDisabled,
   isCompactDisabled,
+  isGracefulStopping,
   onSubmit,
   onAbort,
   onCompactClick,
@@ -152,6 +154,7 @@ selectionPending = false,
         isIdle={isIdle}
         isButtonDisabled={isButtonDisabled}
         isCompactDisabled={isCompactDisabled}
+        isGracefulStopping={isGracefulStopping}
         onSubmit={onSubmit}
         onAbort={onAbort}
         onCompactClick={onCompactClick}

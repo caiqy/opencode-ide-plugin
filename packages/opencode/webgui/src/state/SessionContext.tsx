@@ -59,6 +59,10 @@ interface SessionContextState {
   // Idle state for arbitrary session (e.g. subagent session)
   isSessionIdle: (sessionId: string) => boolean
 
+  // Graceful stopping state per session
+  isSessionGracefulStopping: (sessionId: string) => boolean
+  setSessionGracefulStopping: (sessionId: string, stopping: boolean) => void
+
   // Reasoning state per session
   isReasoning: boolean
   setReasoning: (sessionId: string, active: boolean) => void
@@ -241,10 +245,42 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const statusVersionRef = useRef<Record<string, number>>({})
   const currentSessionEpochRef = useRef(0)
   const currentSessionIDRef = useRef<string | null>(null)
+  const [gracefulStoppingMap, setGracefulStoppingMap] = useState<Record<string, boolean>>({})
+
+  const isSessionGracefulStopping = useCallback(
+    (sessionId: string) => {
+      if (!sessionId) return false
+      return Boolean(gracefulStoppingMap[sessionId])
+    },
+    [gracefulStoppingMap],
+  )
+
+  const setSessionGracefulStopping = useCallback((sessionId: string, stopping: boolean) => {
+    if (!sessionId) return
+    setGracefulStoppingMap((prev) => {
+      const current = prev[sessionId] ?? false
+      if (current === stopping) return prev
+      if (!stopping) {
+        if (!prev[sessionId]) return prev
+        const next = { ...prev }
+        delete next[sessionId]
+        return next
+      }
+      return { ...prev, [sessionId]: true }
+    })
+  }, [])
 
   const setSessionIdle = useCallback((sessionId: string, idle: boolean) => {
     if (!sessionId) return
     statusVersionRef.current[sessionId] = (statusVersionRef.current[sessionId] ?? 0) + 1
+    if (idle) {
+      setGracefulStoppingMap((gPrev) => {
+        if (!gPrev[sessionId]) return gPrev
+        const gNext = { ...gPrev }
+        delete gNext[sessionId]
+        return gNext
+      })
+    }
     setBusyMap((prev) => {
       const busy = prev[sessionId] ?? false
       const nextBusy = !idle
@@ -1433,6 +1469,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
           setCurrentSession(null)
         }
         setReasoning(deletedId, false)
+        setGracefulStoppingMap((prev) => {
+          if (!prev[deletedId]) return prev
+          const next = { ...prev }
+          delete next[deletedId]
+          return next
+        })
       }
     }
 
@@ -1557,6 +1599,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
     isIdle,
     setSessionIdle,
     isSessionIdle,
+    isSessionGracefulStopping,
+    setSessionGracefulStopping,
     isReasoning,
     setReasoning,
     isSessionReasoning,

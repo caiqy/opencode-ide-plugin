@@ -1134,7 +1134,28 @@ describe("session HttpApi", () => {
           requestID: permissionID,
           message: `Permission request not found: ${permissionID}`,
         })
-    }),
+
+        const abortGraceful = yield* request(
+          pathFor(SessionPaths.abort, { sessionID: session.id }),
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ graceful: true }),
+          },
+        )
+        expect(abortGraceful.status).toBe(200)
+        expect(yield* responseJson(abortGraceful)).toBe(true)
+
+        const abortForce = yield* request(
+          pathFor(SessionPaths.abort, { sessionID: session.id }),
+          {
+            method: "POST",
+            headers,
+          },
+        )
+        expect(abortForce.status).toBe(200)
+        expect(yield* responseJson(abortForce)).toBe(true)
+      }),
     { git: true, config: { formatter: false, lsp: false } },
     { timeout: 15000 },
   )
