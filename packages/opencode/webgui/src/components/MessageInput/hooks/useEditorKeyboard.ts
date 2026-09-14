@@ -23,6 +23,7 @@ export function useEditorKeyboard({ editor, contentEditableRef, onSubmit }: UseE
       KEY_ENTER_COMMAND,
       (event) => {
         if (!event || event.key !== "Enter") return false
+        if (event.isComposing || event.keyCode === 229 || editor.isComposing()) return false
         if (event.metaKey || event.ctrlKey || event.shiftKey) return false
         if (document.querySelector("[data-mention-popover], [data-command-popover]")) return false
 

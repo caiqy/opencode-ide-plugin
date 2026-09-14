@@ -5,6 +5,7 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Session } from "@/session/session"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
+import { SessionInputQueue } from "@/session/input-queue"
 import { SessionRevert } from "@/session/revert"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
@@ -20,7 +21,7 @@ import {
   WorkspaceRoutingQuery,
   WorkspaceRoutingQueryFields,
 } from "../middleware/workspace-routing"
-import { ApiNotFoundError, PermissionNotFoundError, SessionBusyError } from "../errors"
+import { ApiNotFoundError, ConflictError, PermissionNotFoundError, SessionBusyError } from "../errors"
 import { described } from "./metadata"
 import { QueryBoolean } from "./query"
 import { ProviderV2 } from "@opencode-ai/core/provider"
@@ -116,6 +117,42 @@ export const SessionApi = HttpApi.make("session")
   .add(
     HttpApiGroup.make("session")
       .add(
+        HttpApiEndpoint.get("inputList", `${root}/:sessionID/input`, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: SessionInputQueue.Snapshot,
+          error: ConflictError,
+        }).annotateMerge(OpenApi.annotations({ identifier: "session.inputList", summary: "List pending inputs" })),
+        HttpApiEndpoint.post("inputAdd", `${root}/:sessionID/input`, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          payload: SessionInputQueue.Submission,
+          success: SessionInputQueue.Snapshot,
+          error: ConflictError,
+        }).annotateMerge(OpenApi.annotations({ identifier: "session.inputAdd", summary: "Admit a pending input" })),
+        HttpApiEndpoint.patch("inputUpdate", `${root}/:sessionID/input/:inputID`, {
+          params: { sessionID: SessionID, inputID: MessageID },
+          query: WorkspaceRoutingQuery,
+          payload: Schema.Struct({ delivery: SessionInputQueue.Delivery }),
+          success: SessionInputQueue.Snapshot,
+          error: ConflictError,
+        }).annotateMerge(
+          OpenApi.annotations({ identifier: "session.inputUpdate", summary: "Change pending input delivery" }),
+        ),
+        HttpApiEndpoint.delete("inputDelete", `${root}/:sessionID/input/:inputID`, {
+          params: { sessionID: SessionID, inputID: MessageID },
+          query: WorkspaceRoutingQuery,
+          success: SessionInputQueue.Snapshot,
+          error: ConflictError,
+        }).annotateMerge(OpenApi.annotations({ identifier: "session.inputDelete", summary: "Delete a pending input" })),
+        HttpApiEndpoint.post("inputNext", `${root}/:sessionID/input/next`, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: SessionInputQueue.Snapshot,
+          error: ConflictError,
+        }).annotateMerge(
+          OpenApi.annotations({ identifier: "session.inputNext", summary: "Send next input and resume delivery" }),
+        ),
         HttpApiEndpoint.get("list", SessionPaths.list, {
           query: ListQuery,
           success: described(Schema.Array(Session.Info), "List of sessions"),

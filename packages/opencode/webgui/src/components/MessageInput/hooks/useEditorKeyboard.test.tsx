@@ -9,6 +9,7 @@ function setup() {
   let enterHandler: ((event?: KeyboardEvent) => boolean) | undefined
 
   const editor = {
+    isComposing: () => false,
     registerCommand: vi.fn((_command, handler: (event?: KeyboardEvent) => boolean) => {
       enterHandler = handler
       return vi.fn()
@@ -34,6 +35,11 @@ function setup() {
 }
 
 describe("useEditorKeyboard", () => {
+  it("输入法确认回车不发送", () => {
+    const { onSubmit, enterHandler } = setup()
+    expect(enterHandler(new KeyboardEvent("keydown", { key: "Enter", isComposing: true }))).toBe(false)
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
   it("Enter 应发送消息", () => {
     const { onSubmit, enterHandler } = setup()
     const event = new KeyboardEvent("keydown", { key: "Enter" })

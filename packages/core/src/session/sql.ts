@@ -97,6 +97,32 @@ export const PartTable = sqliteTable(
   ],
 )
 
+export const InputQueueTable = sqliteTable("session_input_queue_v1", {
+  session_id: text()
+    .primaryKey()
+    .references(() => SessionTable.id, { onDelete: "cascade" }),
+  revision: integer().notNull().default(0),
+  paused: integer({ mode: "boolean" }).notNull().default(false),
+  owner: text().notNull(),
+  next_id: text(),
+})
+
+export const QueuedInputTable = sqliteTable(
+  "session_queued_input_v1",
+  {
+    id: text().primaryKey(),
+    session_id: text()
+      .notNull()
+      .references(() => SessionTable.id, { onDelete: "cascade" }),
+    sequence: integer().notNull(),
+    delivery: text().$type<"steer" | "queue">().notNull(),
+    state: text().$type<"pending" | "prepared" | "consumed" | "deleted">().notNull(),
+    input: text({ mode: "json" }).$type<unknown>().notNull(),
+    prepared: text({ mode: "json" }).$type<SessionV1.WithParts>(),
+  },
+  (table) => [index("session_queued_input_v1_pending_idx").on(table.session_id, table.state, table.sequence)],
+)
+
 export const TodoTable = sqliteTable(
   "todo",
   {

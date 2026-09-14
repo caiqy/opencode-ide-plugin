@@ -11,6 +11,7 @@ import { Session } from "@/session/session"
 import { SessionCompaction } from "@/session/compaction"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
+import type { SessionInputQueue } from "@/session/input-queue"
 import { SessionRevert } from "@/session/revert"
 import { SessionRunState } from "@/session/run-state"
 import { SessionStatus } from "@/session/status"
@@ -52,6 +53,10 @@ const tryParseJson = (text: string) =>
     try: () => JSON.parse(text) as unknown,
     catch: () => new HttpApiError.BadRequest({}),
   })
+
+const mapInputError = Effect.mapError(
+  (error: SessionInputQueue.InputError) => new ApiError.ConflictError({ message: error.message }),
+)
 
 export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", (handlers) =>
   Effect.gen(function* () {
@@ -489,6 +494,25 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     })
 
     return handlers
+      .handle("inputList", (ctx) => promptSvc.inputs.get(ctx.params.sessionID).pipe(mapInputError))
+      .handle("inputAdd", (ctx) =>
+        Effect.gen(function* () {
+          const result = yield* promptSvc.inputs.add(ctx.params.sessionID, ctx.payload)
+          yield* promptSvc.wakeInputs(ctx.params.sessionID)
+          return result
+        }).pipe(mapInputError),
+      )
+      .handle("inputUpdate", (ctx) =>
+        Effect.gen(function* () {
+          const result = yield* promptSvc.inputs.update(ctx.params.sessionID, ctx.params.inputID, ctx.payload.delivery)
+          yield* promptSvc.wakeInputs(ctx.params.sessionID)
+          return result
+        }).pipe(mapInputError),
+      )
+      .handle("inputDelete", (ctx) =>
+        promptSvc.inputs.update(ctx.params.sessionID, ctx.params.inputID).pipe(mapInputError),
+      )
+      .handle("inputNext", (ctx) => promptSvc.nextInput(ctx.params.sessionID).pipe(mapInputError))
       .handle("list", list)
       .handle("status", status)
       .handle("syncVisible", syncVisible)

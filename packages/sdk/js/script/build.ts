@@ -107,7 +107,12 @@ const approvalSdkPatched = visibilitySdkPatched.replace(
 if (approvalSdkPatched === visibilitySdkPatched) {
   throw new Error("Session approval required payload patch did not apply")
 }
-await Bun.write("./src/v2/gen/sdk.gen.ts", approvalSdkPatched)
+const inputSdkPatched = approvalSdkPatched.replace(
+  /(public inputAdd[\s\S]*?parameters: \{[\s\S]*?)(\n\s*command): \{/,
+  "$1$2?: {",
+)
+if (inputSdkPatched === approvalSdkPatched) throw new Error("Input queue optional command SDK patch did not apply")
+await Bun.write("./src/v2/gen/sdk.gen.ts", inputSdkPatched)
 
 // Patch a @hey-api/openapi-ts codegen bug: SseFn incorrectly passes the
 // endpoint's TError into the second generic of ServerSentEventsResult, which

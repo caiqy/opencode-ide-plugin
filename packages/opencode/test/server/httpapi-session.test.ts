@@ -25,6 +25,7 @@ import * as HttpSessionError from "../../src/server/routes/instance/httpapi/hand
 import { ExperimentalPaths } from "../../src/server/routes/instance/httpapi/groups/experimental"
 import { SessionPaths } from "../../src/server/routes/instance/httpapi/groups/session"
 import { Session } from "@/session/session"
+import { SessionInputQueue } from "@/session/input-queue"
 import { SessionSummary } from "@/session/summary"
 import { SessionSummaryScheduler } from "@/session/summary-scheduler"
 import { MessageID, PartID, SessionID, type SessionID as SessionIDType } from "../../src/session/schema"
@@ -256,6 +257,72 @@ afterEach(async () => {
 })
 
 describe("session HttpApi", () => {
+  it.instance(
+    "input queue routes persist, validate and reconcile paused inputs",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const headers = { "x-opencode-directory": test.directory, "content-type": "application/json" }
+        const session = yield* createSession({ title: "queue routes" })
+        const other = yield* createSession({ title: "other queue" })
+        yield* request(`/session/${session.id}/abort`, {
+          headers,
+          method: "POST",
+          body: JSON.stringify({ graceful: true }),
+        })
+        const id = MessageID.ascending()
+        const input = {
+          id,
+          delivery: "queue",
+          prompt: { parts: [{ type: "text", text: "queued text" }], agent: "build" },
+        }
+        const added = yield* requestJson<SessionInputQueue.Snapshot>(`/session/${session.id}/input`, {
+          headers,
+          method: "POST",
+          body: JSON.stringify(input),
+        })
+        expect(added.paused).toBe(true)
+        expect(added.items).toHaveLength(1)
+        const updated = yield* requestJson<SessionInputQueue.Snapshot>(`/session/${session.id}/input/${id}`, {
+          headers,
+          method: "PATCH",
+          body: JSON.stringify({ delivery: "steer" }),
+        })
+        expect(updated.items[0]?.delivery).toBe("steer")
+        const retry = yield* requestJson<SessionInputQueue.Snapshot>(`/session/${session.id}/input`, {
+          headers,
+          method: "POST",
+          body: JSON.stringify(input),
+        })
+        expect(retry.items).toHaveLength(1)
+        expect(retry.items[0]?.delivery).toBe("steer")
+        const conflict = yield* request(`/session/${session.id}/input`, {
+          headers,
+          method: "POST",
+          body: JSON.stringify({ ...input, delivery: "steer" }),
+        })
+        expect(conflict.status).toBe(409)
+        const cross = yield* request(`/session/${other.id}/input/${id}`, { headers, method: "DELETE" })
+        expect(cross.status).toBe(409)
+        const invalid = yield* request(`/session/${session.id}/input/${id}`, {
+          headers,
+          method: "PATCH",
+          body: JSON.stringify({ delivery: "invalid" }),
+        })
+        expect(invalid.status).toBe(400)
+        const deleted = yield* requestJson<SessionInputQueue.Snapshot>(`/session/${session.id}/input/${id}`, {
+          headers,
+          method: "DELETE",
+        })
+        expect(deleted.items).toHaveLength(0)
+        expect(deleted.revision).toBeGreaterThan(updated.revision)
+        const restored = yield* requestJson<SessionInputQueue.Snapshot>(`/session/${session.id}/input`, { headers })
+        expect(restored).toEqual(deleted)
+        const emptyNext = yield* request(`/session/${session.id}/input/next`, { headers, method: "POST" })
+        expect(emptyNext.status).toBe(409)
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
   it.effect("maps busy sessions to public session busy errors", () =>
     Effect.gen(function* () {
       const sessionID = SessionID.descending()
@@ -1135,24 +1202,18 @@ describe("session HttpApi", () => {
           message: `Permission request not found: ${permissionID}`,
         })
 
-        const abortGraceful = yield* request(
-          pathFor(SessionPaths.abort, { sessionID: session.id }),
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ graceful: true }),
-          },
-        )
+        const abortGraceful = yield* request(pathFor(SessionPaths.abort, { sessionID: session.id }), {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ graceful: true }),
+        })
         expect(abortGraceful.status).toBe(200)
         expect(yield* responseJson(abortGraceful)).toBe(true)
 
-        const abortForce = yield* request(
-          pathFor(SessionPaths.abort, { sessionID: session.id }),
-          {
-            method: "POST",
-            headers,
-          },
-        )
+        const abortForce = yield* request(pathFor(SessionPaths.abort, { sessionID: session.id }), {
+          method: "POST",
+          headers,
+        })
         expect(abortForce.status).toBe(200)
         expect(yield* responseJson(abortForce)).toBe(true)
       }),

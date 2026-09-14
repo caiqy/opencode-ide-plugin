@@ -207,6 +207,16 @@ import type {
   SessionGetResponses,
   SessionInitErrors,
   SessionInitResponses,
+  SessionInputAddErrors,
+  SessionInputAddResponses,
+  SessionInputDeleteErrors,
+  SessionInputDeleteResponses,
+  SessionInputListErrors,
+  SessionInputListResponses,
+  SessionInputNextErrors,
+  SessionInputNextResponses,
+  SessionInputUpdateErrors,
+  SessionInputUpdateResponses,
   SessionListErrors,
   SessionListResponses,
   SessionMessageErrors,
@@ -3610,6 +3620,196 @@ export class Provider2 extends HeyApiClient {
 }
 
 export class Session2 extends HeyApiClient {
+  /**
+   * List pending inputs
+   */
+  public inputList<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionInputListResponses, SessionInputListErrors, ThrowOnError>({
+      url: "/session/{sessionID}/input",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Admit a pending input
+   */
+  public inputAdd<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+      id?: string
+      delivery?: "steer" | "queue"
+      prompt?: {
+        parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
+        agent?: string
+        model?: {
+          providerID: string
+          modelID: string
+        }
+        variant?: string
+      }
+      command?: {
+        command: string
+        arguments: string
+        agent?: string
+        model?: string
+        variant?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "id" },
+            { in: "body", key: "delivery" },
+            { in: "body", key: "prompt" },
+            { in: "body", key: "command" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionInputAddResponses, SessionInputAddErrors, ThrowOnError>({
+      url: "/session/{sessionID}/input",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete a pending input
+   */
+  public inputDelete<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      inputID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "inputID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<SessionInputDeleteResponses, SessionInputDeleteErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/input/{inputID}",
+        ...options,
+        ...params,
+      },
+    )
+  }
+
+  /**
+   * Change pending input delivery
+   */
+  public inputUpdate<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      inputID: string
+      directory?: string
+      workspace?: string
+      delivery?: "steer" | "queue"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "inputID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "delivery" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<SessionInputUpdateResponses, SessionInputUpdateErrors, ThrowOnError>({
+      url: "/session/{sessionID}/input/{inputID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Send next input and resume delivery
+   */
+  public inputNext<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionInputNextResponses, SessionInputNextErrors, ThrowOnError>({
+      url: "/session/{sessionID}/input/next",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * List sessions
    *

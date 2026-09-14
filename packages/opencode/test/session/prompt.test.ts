@@ -28,7 +28,7 @@ import { Image } from "../../src/image/image"
 import { Question } from "../../src/question"
 import { Todo } from "../../src/session/todo"
 import { Session } from "@/session/session"
-import { SessionMessageTable } from "@opencode-ai/core/session/sql"
+import { InputQueueTable, QueuedInputTable, SessionMessageTable } from "@opencode-ai/core/session/sql"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { FSUtil } from "@opencode-ai/core/fs-util"
@@ -37,6 +37,7 @@ import { SessionSummary } from "../../src/session/summary"
 import { Instruction } from "../../src/session/instruction"
 import { SessionProcessor } from "../../src/session/processor"
 import { SessionPrompt } from "../../src/session/prompt"
+import { SessionInputQueue } from "../../src/session/input-queue"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
@@ -455,6 +456,249 @@ const boot = Effect.fn("test.boot")(function* (input?: { title?: string }) {
   return { prompt, run, sessions, chat }
 })
 
+it.instance("input queue batches steers before FIFO queued turns and reconciles retries", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const { prompt, chat, sessions } = yield* boot()
+    yield* seed(chat.id, { finish: "stop" })
+    const input = (text: string, delivery: SessionInputQueue.Delivery) => ({
+      id: MessageID.ascending(),
+      delivery,
+      prompt: { parts: [{ type: "text" as const, text }], agent: "build", model: ref },
+    })
+    const queued = input("queued-first", "queue")
+    const a = input("steer-A", "steer")
+    const b = input("steer-B", "steer")
+    const removed = input("never-send", "queue")
+    yield* prompt.inputs.add(chat.id, queued)
+    yield* prompt.inputs.add(chat.id, a)
+    yield* prompt.inputs.add(chat.id, b)
+    yield* prompt.inputs.add(chat.id, removed)
+    yield* prompt.inputs.update(chat.id, removed.id)
+    yield* prompt.inputs.add(chat.id, removed)
+    expect((yield* prompt.inputs.get(chat.id)).items.map((item) => item.text)).toEqual([
+      "queued-first",
+      "steer-A",
+      "steer-B",
+    ])
+    yield* llm.text("steers answered")
+    yield* llm.text("queue answered")
+    yield* prompt.loop({ sessionID: chat.id })
+    const requests = yield* llm.inputs
+    expect(requests).toHaveLength(2)
+    const first = JSON.stringify(requests[0])
+    expect(first).toContain("steer-A")
+    expect(first).toContain("steer-B")
+    expect(first.indexOf("steer-A")).toBeLessThan(first.indexOf("steer-B"))
+    expect(first).not.toContain("queued-first")
+    expect(JSON.stringify(requests[1])).toContain("queued-first")
+    expect(JSON.stringify(requests)).not.toContain("never-send")
+    expect((yield* prompt.inputs.get(chat.id)).items).toHaveLength(0)
+    yield* prompt.inputs.add(chat.id, a)
+    expect((yield* prompt.inputs.get(chat.id)).items).toHaveLength(0)
+    const history = yield* sessions.messages({ sessionID: chat.id })
+    expect(history.filter((msg) => msg.info.role === "user")).toHaveLength(4)
+    const conflict = yield* prompt.inputs.add(chat.id, { ...a, delivery: "queue" }).pipe(Effect.exit)
+    expect(Exit.isFailure(conflict)).toBe(true)
+    const consumed = yield* prompt.inputs.update(chat.id, a.id, "queue").pipe(Effect.exit)
+    expect(Exit.isFailure(consumed)).toBe(true)
+  }),
+)
+
+it.instance("input queue pause preserves inputs and explicit next sends first separately", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const { prompt, chat } = yield* boot()
+    yield* seed(chat.id, { finish: "stop" })
+    const first = {
+      id: MessageID.ascending(),
+      delivery: "queue" as const,
+      prompt: { parts: [{ type: "text" as const, text: "first queued" }], agent: "build", model: ref },
+    }
+    const second = {
+      ...first,
+      id: MessageID.ascending(),
+      delivery: "steer" as const,
+      prompt: { ...first.prompt, parts: [{ type: "text" as const, text: "remaining steer" }] },
+    }
+    yield* prompt.inputs.add(chat.id, first)
+    yield* prompt.cancel(chat.id, { graceful: true })
+    yield* prompt.inputs.add(chat.id, second)
+    yield* prompt.inputs.update(chat.id, first.id, "steer")
+    expect((yield* prompt.inputs.get(chat.id)).paused).toBe(true)
+    yield* llm.text("independent draft answered")
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      model: ref,
+      parts: [{ type: "text", text: "independent draft" }],
+    })
+    expect((yield* prompt.inputs.get(chat.id)).items).toHaveLength(2)
+    expect(JSON.stringify((yield* llm.inputs)[0])).not.toContain("remaining steer")
+    yield* prompt.inputs.resume(chat.id, Effect.succeed(true))
+    yield* llm.text("first answered")
+    yield* llm.text("remaining answered")
+    yield* prompt.loop({ sessionID: chat.id })
+    const requests = yield* llm.inputs
+    expect(requests).toHaveLength(3)
+    expect(JSON.stringify(requests[1])).toContain("first queued")
+    expect(JSON.stringify(requests[1])).not.toContain("remaining steer")
+    expect(JSON.stringify(requests[2])).toContain("remaining steer")
+    expect((yield* prompt.inputs.get(chat.id)).items).toHaveLength(0)
+  }),
+)
+
+it.instance("input queue admits while streaming and defers late steers to the following request", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const { prompt, chat } = yield* boot()
+    const first = defer<void>()
+    const second = defer<void>()
+    yield* llm.push(reply().wait(first.promise).text("first response").stop())
+    yield* llm.push(reply().wait(second.promise).text("second response").stop())
+    yield* llm.text("late steer response")
+    yield* llm.text("queue response")
+    const run = yield* prompt
+      .prompt({ sessionID: chat.id, model: ref, agent: "build", parts: [{ type: "text", text: "original" }] })
+      .pipe(Effect.forkChild)
+    yield* llm.wait(1)
+    const add = (text: string, delivery: SessionInputQueue.Delivery = "steer") =>
+      prompt.inputs.add(chat.id, {
+        id: MessageID.ascending(),
+        delivery,
+        prompt: { agent: "build", model: ref, parts: [{ type: "text", text }] },
+      })
+    yield* add("queued-after-task", "queue")
+    yield* add("stream-steer-A")
+    yield* add("stream-steer-B")
+    expect(yield* llm.calls).toBe(1)
+    first.resolve()
+    yield* llm.wait(2)
+    yield* add("late-steer-C")
+    second.resolve()
+    yield* Fiber.join(run)
+    const requests = yield* llm.inputs
+    expect(requests).toHaveLength(4)
+    expect(JSON.stringify(requests[0])).not.toContain("stream-steer-A")
+    expect(JSON.stringify(requests[1])).toContain("stream-steer-A")
+    expect(JSON.stringify(requests[1])).toContain("stream-steer-B")
+    expect(JSON.stringify(requests[1])).not.toContain("late-steer-C")
+    expect(JSON.stringify(requests[2])).toContain("late-steer-C")
+    expect(JSON.stringify(requests[2])).not.toContain("queued-after-task")
+    expect(JSON.stringify(requests[3])).toContain("queued-after-task")
+  }),
+)
+
+it.instance("input queue graceful stop retains pending input until nextInput resumes", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const { prompt, chat } = yield* boot()
+    const gate = defer<void>()
+    yield* llm.push(reply().wait(gate.promise).text("stopped safely").stop())
+    const run = yield* prompt
+      .prompt({ sessionID: chat.id, model: ref, agent: "build", parts: [{ type: "text", text: "original" }] })
+      .pipe(Effect.forkChild)
+    yield* llm.wait(1)
+    yield* prompt.inputs.add(chat.id, {
+      id: MessageID.ascending(),
+      delivery: "steer",
+      prompt: { model: ref, agent: "build", parts: [{ type: "text", text: "saved input" }] },
+    })
+    yield* prompt.cancel(chat.id, { graceful: true })
+    const busy = yield* prompt.nextInput(chat.id).pipe(Effect.exit)
+    expect(Exit.isFailure(busy)).toBe(true)
+    gate.resolve()
+    yield* Fiber.join(run)
+    expect(yield* llm.calls).toBe(1)
+    expect((yield* prompt.inputs.get(chat.id)).paused).toBe(true)
+    yield* llm.text("resumed")
+    yield* prompt.nextInput(chat.id)
+    yield* llm.wait(2)
+    yield* pollWithTimeout(
+      Effect.gen(function* () {
+        const result = yield* prompt.inputs.get(chat.id)
+        return result.items.length === 0 ? true : undefined
+      }),
+      "input was not consumed",
+    )
+    expect(JSON.stringify((yield* llm.inputs)[1])).toContain("saved input")
+  }),
+)
+
+it.instance("input queue restart pauses pending items and completes prepared history without a provider retry", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const { prompt, chat, sessions } = yield* boot()
+    const database = yield* Database.Service
+    const id = MessageID.ascending()
+    yield* prompt.inputs.add(chat.id, {
+      id,
+      delivery: "queue",
+      prompt: { model: ref, agent: "build", parts: [{ type: "text", text: "persisted" }] },
+    })
+    // Simulate a process dying after the durable prepared record, before history publication.
+    const messageID = MessageID.ascending()
+    yield* database.db
+      .update(QueuedInputTable)
+      .set({
+        state: "prepared",
+        prepared: {
+          info: {
+            id: messageID,
+            sessionID: chat.id,
+            role: "user",
+            agent: "build",
+            model: ref,
+            time: { created: Date.now() },
+          },
+          parts: [{ id: PartID.ascending(), messageID, sessionID: chat.id, type: "text", text: "persisted" }],
+        },
+      })
+      .where(eq(QueuedInputTable.id, id))
+      .run()
+      .pipe(Effect.orDie)
+    yield* database.db
+      .update(InputQueueTable)
+      .set({ owner: "previous-process" })
+      .where(eq(InputQueueTable.session_id, chat.id))
+      .run()
+      .pipe(Effect.orDie)
+    const recovered = yield* prompt.inputs.get(chat.id)
+    expect(recovered.paused).toBe(true)
+    expect(recovered.items).toHaveLength(0)
+    yield* prompt.inputs.get(chat.id)
+    expect(
+      (yield* sessions.messages({ sessionID: chat.id })).filter((message) => message.info.id === messageID),
+    ).toHaveLength(1)
+    expect(yield* llm.calls).toBe(0)
+  }),
+)
+
+it.instance("input queue expands queued commands at consumption and keeps delivery changes", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => ({
+      ...providerCfg(url),
+      command: { queued: { template: "QUEUED_COMMAND $ARGUMENTS" } },
+    }))
+    const { prompt, chat } = yield* boot()
+    yield* seed(chat.id, { finish: "stop" })
+    const id = MessageID.ascending()
+    yield* prompt.inputs.add(chat.id, {
+      id,
+      delivery: "queue",
+      prompt: { model: ref, agent: "build", parts: [{ type: "text", text: "/queued details" }] },
+      command: { command: "queued", arguments: "details", agent: "build", model: "test/test-model" },
+    })
+    yield* prompt.inputs.update(chat.id, id, "steer")
+    expect((yield* prompt.inputs.get(chat.id)).items[0]?.delivery).toBe("steer")
+    expect(yield* llm.calls).toBe(0)
+    yield* llm.text("command answered")
+    yield* prompt.loop({ sessionID: chat.id })
+    expect(JSON.stringify((yield* llm.inputs)[0])).toContain("QUEUED_COMMAND details")
+    expect((yield* prompt.inputs.get(chat.id)).items).toHaveLength(0)
+  }),
+)
+
 it.instance("regenerateTitle uses complete history after multiple user turns", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
@@ -813,41 +1057,41 @@ noLLMServer.instance.skip(
   { config: cfg },
 )
 
-noLLMServer.instance("data URL image attachments keep base64 and get a temp file path", () =>
-  Effect.gen(function* () {
-    const prompt = yield* SessionPrompt.Service
-    const sessions = yield* Session.Service
-    const chat = yield* sessions.create({ title: "Temp image" })
+noLLMServer.instance(
+  "data URL image attachments keep base64 and get a temp file path",
+  () =>
+    Effect.gen(function* () {
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Temp image" })
 
-    const png =
-      "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NMQ0AAAwDoEqqf3VT0WMJGCAdi0AgEAgEAoFAIOiT4ADYvEAfMIOjPQAAAABJRU5ErkJggg=="
-    const url = `data:image/png;base64,${png}`
-    const message = yield* prompt.prompt({
-      sessionID: chat.id,
-      agent: "build",
-      noReply: true,
-      parts: [
-        { type: "text", text: "look at this" },
-        // webgui image pastes can arrive with an empty mime; the data URL header is authoritative
-        { type: "file", mime: "", filename: "shot.png", url },
-      ],
-    })
+      const png =
+        "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NMQ0AAAwDoEqqf3VT0WMJGCAdi0AgEAgEAoFAIOiT4ADYvEAfMIOjPQAAAABJRU5ErkJggg=="
+      const url = `data:image/png;base64,${png}`
+      const message = yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [
+          { type: "text", text: "look at this" },
+          // webgui image pastes can arrive with an empty mime; the data URL header is authoritative
+          { type: "file", mime: "", filename: "shot.png", url },
+        ],
+      })
 
-    expect(message.parts).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: "file", url })]),
-    )
-    const tempText = message.parts.find(
-      (part) => part.type === "text" && part.text.includes("Attached image saved to a temporary file"),
-    )
-    expect(tempText?.type).toBe("text")
-    if (tempText?.type !== "text") return
-    const filepath = tempText.text.slice(tempText.text.lastIndexOf(" ") + 1)
-    expect(filepath.startsWith(path.join(Global.Path.tmp, "attachments"))).toBe(true)
-    expect(yield* Effect.promise(() => Bun.file(filepath).exists())).toBe(true)
-    const bytes = yield* Effect.promise(() => Bun.file(filepath).arrayBuffer())
-    expect(Buffer.from(bytes).toString("base64")).toBe(png)
-    yield* Effect.promise(() => Bun.file(filepath).delete())
-  }),
+      expect(message.parts).toEqual(expect.arrayContaining([expect.objectContaining({ type: "file", url })]))
+      const tempText = message.parts.find(
+        (part) => part.type === "text" && part.text.includes("Attached image saved to a temporary file"),
+      )
+      expect(tempText?.type).toBe("text")
+      if (tempText?.type !== "text") return
+      const filepath = tempText.text.slice(tempText.text.lastIndexOf(" ") + 1)
+      expect(filepath.startsWith(path.join(Global.Path.tmp, "attachments"))).toBe(true)
+      expect(yield* Effect.promise(() => Bun.file(filepath).exists())).toBe(true)
+      const bytes = yield* Effect.promise(() => Bun.file(filepath).arrayBuffer())
+      expect(Buffer.from(bytes).toString("base64")).toBe(png)
+      yield* Effect.promise(() => Bun.file(filepath).delete())
+    }),
   { config: cfg },
 )
 
@@ -1100,7 +1344,12 @@ it.instance("reviewer blocks same-name custom replacements but allows other cust
     const build = yield* sessions.create({ title: "Build" })
     yield* llm.tool("edit", {})
     yield* llm.text("done")
-    yield* prompt.prompt({ sessionID: build.id, agent: "build", model: ref, parts: [{ type: "text", text: "inspect" }] })
+    yield* prompt.prompt({
+      sessionID: build.id,
+      agent: "build",
+      model: ref,
+      parts: [{ type: "text", text: "inspect" }],
+    })
     const messages = yield* sessions.messages({ sessionID: build.id })
     const edits = messages
       .flatMap((message) => message.parts)
@@ -1167,7 +1416,9 @@ for (const explicit of [false, true]) {
       yield* prompt.loop({ sessionID: chat.id })
 
       const messages = yield* sessions.messages({ sessionID: chat.id })
-      const task = messages.find((message) => message.parts.some((part) => part.type === "tool" && part.tool === "task"))
+      const task = messages.find((message) =>
+        message.parts.some((part) => part.type === "tool" && part.tool === "task"),
+      )
       expect(task?.info.role).toBe("assistant")
       if (task?.info.role === "assistant") {
         expect(task.info.parentID).toBe(source.id)
@@ -2609,9 +2860,7 @@ noLLMServer.instance(
         sessionID: session.id,
         agent: "build",
         noReply: true,
-        parts: [
-          { type: "file", mime: "text/plain", filename: "report.xlsx", url: pathToFileURL(xlsx).toString() },
-        ],
+        parts: [{ type: "file", mime: "text/plain", filename: "report.xlsx", url: pathToFileURL(xlsx).toString() }],
       })
       yield* off
       const stored = yield* MessageV2.get({ sessionID: session.id, messageID: message.info.id })

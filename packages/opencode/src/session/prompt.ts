@@ -60,6 +60,7 @@ import { eq } from "drizzle-orm"
 import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
+import { SessionInputQueue } from "./input-queue"
 import { LLMEvent } from "@opencode-ai/llm"
 
 // @ts-ignore
@@ -111,8 +112,13 @@ export interface Interface {
   readonly loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts>
   readonly shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError>
   readonly command: (input: CommandInput) => Effect.Effect<SessionV1.WithParts, Image.Error>
-  readonly regenerateTitle: (sessionID: SessionID) => Effect.Effect<Session.Info, Session.NotFound | Provider.ModelNotFoundError>
+  readonly regenerateTitle: (
+    sessionID: SessionID,
+  ) => Effect.Effect<Session.Info, Session.NotFound | Provider.ModelNotFoundError>
   readonly resolvePromptParts: (template: string) => Effect.Effect<PromptInput["parts"]>
+  readonly inputs: SessionInputQueue.Interface
+  readonly wakeInputs: (sessionID: SessionID) => Effect.Effect<void>
+  readonly nextInput: (sessionID: SessionID) => Effect.Effect<SessionInputQueue.Snapshot, SessionInputQueue.InputError>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionPrompt") {}
@@ -148,6 +154,7 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const inputs = yield* SessionInputQueue.Service
     const { db } = database
     const gracefulStops = new Set<SessionID>()
     const unsubscribeSessionDeleted = yield* events.listen((event) => {
@@ -192,6 +199,10 @@ const layer = Layer.effect(
       sessionID: SessionID,
       options?: { graceful?: boolean },
     ) {
+      // Set the intent before waiting for an in-flight input preparation to release its lock.
+      gracefulStops.add(sessionID)
+      if (!options?.graceful) yield* state.cancel(sessionID)
+      yield* inputs.pause(sessionID)
       if (options?.graceful) {
         yield* Effect.logInfo("graceful stop requested", { "session.id": sessionID })
         gracefulStops.add(sessionID)
@@ -200,11 +211,10 @@ const layer = Layer.effect(
         yield* permission.rejectSession(sessionID)
         return
       }
-      gracefulStops.delete(sessionID)
       yield* questions.openSession(sessionID)
       yield* permission.openSession(sessionID)
       yield* Effect.logInfo("cancel", { "session.id": sessionID })
-      yield* state.cancel(sessionID)
+      gracefulStops.delete(sessionID)
     })
 
     const resolvePromptParts = Effect.fn("SessionPrompt.resolvePromptParts")(function* (template: string) {
@@ -283,10 +293,7 @@ const layer = Layer.effect(
           : yield* MessageV2.toModelMessagesEffect(context, mdl).pipe(
               Effect.map((messages) =>
                 onlySubtasks
-                  ? [
-                      ...messages,
-                      { role: "user" as const, content: subtasks.map((part) => part.prompt).join("\n") },
-                    ]
+                  ? [...messages, { role: "user" as const, content: subtasks.map((part) => part.prompt).join("\n") }]
                   : messages,
               ),
             )
@@ -710,7 +717,7 @@ const layer = Layer.effect(
       return yield* provider.defaultModel().pipe(Effect.orDie)
     })
 
-    const createUserMessage = Effect.fn("SessionPrompt.createUserMessage")(function* (input: PromptInput) {
+    const createUserMessage = Effect.fn("SessionPrompt.createUserMessage")(function* (input: PromptInput, save = true) {
       const agentName = input.agent
       const ag = agentName ? yield* agents.get(agentName) : yield* agents.defaultInfo()
       if (!ag) {
@@ -752,10 +759,11 @@ const layer = Layer.effect(
 
       const current = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
       if (
-        current.agent !== info.agent ||
-        current.model?.providerID !== info.model.providerID ||
-        current.model?.id !== info.model.modelID ||
-        (current.model?.variant === "default" ? undefined : current.model?.variant) !== info.model.variant
+        save &&
+        (current.agent !== info.agent ||
+          current.model?.providerID !== info.model.providerID ||
+          current.model?.id !== info.model.modelID ||
+          (current.model?.variant === "default" ? undefined : current.model?.variant) !== info.model.variant)
       ) {
         yield* sessions.setAgentModel({
           sessionID: input.sessionID,
@@ -894,9 +902,7 @@ const layer = Layer.effect(
               if (mime.startsWith("image/")) {
                 const filepath = yield* saveDataUrlToTemp(part.url, mime).pipe(
                   Effect.catch((error) =>
-                    Effect.logWarning("failed to save attachment to temp file", { error }).pipe(
-                      Effect.as(undefined),
-                    ),
+                    Effect.logWarning("failed to save attachment to temp file", { error }).pipe(Effect.as(undefined)),
                   ),
                 )
                 if (filepath) {
@@ -1170,61 +1176,63 @@ const layer = Layer.effect(
         })
       }
 
-      yield* sessions.updateMessage(info)
-      for (const part of parts) yield* sessions.updatePart(part)
+      if (save) {
+        yield* sessions.updateMessage(info)
+        for (const part of parts) yield* sessions.updatePart(part)
+      }
 
       return { info, parts }
     }, Effect.scoped)
 
-    const prompt: (input: PromptInput, options?: PromptOptions) => Effect.Effect<SessionV1.WithParts, Image.Error> = Effect.fn(
-      "SessionPrompt.prompt",
-    )(function* (input: PromptInput, options?: PromptOptions) {
-      // If the session is currently stopping gracefully, wait until the active run finishes stopping
-      // before admitting the new prompt, so the graceful stop is not bypassed or hijacked.
-      while (gracefulStops.has(input.sessionID)) {
-        const busy = yield* state
-          .assertNotBusy(input.sessionID)
-          .pipe(Effect.as(false), Effect.catchTag("SessionBusyError", () => Effect.succeed(true)))
-        if (!busy) {
-          gracefulStops.delete(input.sessionID)
-          break
+    const prompt: (input: PromptInput, options?: PromptOptions) => Effect.Effect<SessionV1.WithParts, Image.Error> =
+      Effect.fn("SessionPrompt.prompt")(function* (input: PromptInput, options?: PromptOptions) {
+        // If the session is currently stopping gracefully, wait until the active run finishes stopping
+        // before admitting the new prompt, so the graceful stop is not bypassed or hijacked.
+        while (gracefulStops.has(input.sessionID)) {
+          const busy = yield* state.assertNotBusy(input.sessionID).pipe(
+            Effect.as(false),
+            Effect.catchTag("SessionBusyError", () => Effect.succeed(true)),
+          )
+          if (!busy) {
+            gracefulStops.delete(input.sessionID)
+            break
+          }
+          yield* Effect.sleep("20 millis")
         }
-        yield* Effect.sleep("20 millis")
-      }
-      yield* questions.openSession(input.sessionID)
-      yield* permission.openSession(input.sessionID)
-      const session = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
-      yield* revert.cleanup(session)
-      const message = yield* createUserMessage(input)
-      yield* sessions.touch(input.sessionID)
+        yield* questions.openSession(input.sessionID)
+        yield* permission.openSession(input.sessionID)
+        const session = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
+        yield* revert.cleanup(session)
+        const message = yield* createUserMessage(input)
+        yield* sessions.touch(input.sessionID)
 
-      const permissions: PermissionV1.Rule[] = []
-      for (const [t, enabled] of Object.entries(input.tools ?? {})) {
-        permissions.push({ permission: t, action: enabled ? "allow" : "deny", pattern: "*" })
-      }
-      if (permissions.length > 0 && options?.persistTools !== false) {
-        yield* Approval.runtime.withUpdate(session.id)(
-          Effect.uninterruptible(
-            Effect.gen(function* () {
-              const current = yield* sessions.get(session.id).pipe(Effect.orDie)
-              const next = [
-                ...(current.permission?.some((rule) => rule.permission === ApprovalV1.RulePermission)
-                  ? ApprovalV1.withRuleset(permissions, ApprovalV1.modeFromRuleset(current.permission))
-                  : permissions),
-              ]
-              const ruleset = ApprovalV1.isTransitioning(current.permission ?? [])
-                ? [...ApprovalV1.withTransition(next)]
-                : next
-              session.permission = ruleset
-              yield* sessions.setPermission({ sessionID: session.id, permission: ruleset })
-            }),
-          ),
-        )
-      }
+        const permissions: PermissionV1.Rule[] = []
+        for (const [t, enabled] of Object.entries(input.tools ?? {})) {
+          permissions.push({ permission: t, action: enabled ? "allow" : "deny", pattern: "*" })
+        }
+        if (permissions.length > 0 && options?.persistTools !== false) {
+          yield* Approval.runtime.withUpdate(session.id)(
+            Effect.uninterruptible(
+              Effect.gen(function* () {
+                const current = yield* sessions.get(session.id).pipe(Effect.orDie)
+                const next = [
+                  ...(current.permission?.some((rule) => rule.permission === ApprovalV1.RulePermission)
+                    ? ApprovalV1.withRuleset(permissions, ApprovalV1.modeFromRuleset(current.permission))
+                    : permissions),
+                ]
+                const ruleset = ApprovalV1.isTransitioning(current.permission ?? [])
+                  ? [...ApprovalV1.withTransition(next)]
+                  : next
+                session.permission = ruleset
+                yield* sessions.setPermission({ sessionID: session.id, permission: ruleset })
+              }),
+            ),
+          )
+        }
 
-      if (input.noReply === true) return message
-      return yield* loop({ sessionID: input.sessionID })
-    })
+        if (input.noReply === true) return message
+        return yield* loop({ sessionID: input.sessionID })
+      })
 
     const lastAssistant = Effect.fnUntraced(function* (sessionID: SessionID) {
       const match = yield* sessions.findMessage(sessionID, (m) => m.info.role !== "user").pipe(Effect.orDie)
@@ -1239,15 +1247,26 @@ const layer = Layer.effect(
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
+        let promoted = false
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
         while (true) {
+          if (gracefulStops.has(sessionID)) break
           yield* status.set(sessionID, { type: "busy" })
           yield* Effect.logInfo("loop", { "session.id": sessionID, step })
 
           let msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
             Effect.provideService(Database.Service, database),
           )
+
+          const admitted = promoted ? 0 : yield* consumeInputs(sessionID, msgs.length === 0)
+          promoted = false
+          if (admitted) {
+            step = 0
+            msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+              Effect.provideService(Database.Service, database),
+            )
+          }
 
           const { user: lastUser, assistant: lastAssistant, finished: lastFinished, tasks } = MessageV2.latest(msgs)
 
@@ -1270,6 +1289,15 @@ const layer = Layer.effect(
             !hasToolCalls &&
             lastAssistant.parentID === lastUser.id
           ) {
+            if (lastAssistant.error) {
+              yield* inputs.pause(sessionID)
+              break
+            }
+            if (yield* consumeInputs(sessionID, true)) {
+              step = 0
+              promoted = true
+              continue
+            }
             const orphan = lastAssistantMsg?.parts.find(
               (part): part is SessionV1.ToolPart => part.type === "tool" && isOrphanedInterruptedTool(part),
             )
@@ -1428,6 +1456,10 @@ const layer = Layer.effect(
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
+            if (gracefulStops.has(sessionID)) {
+              yield* finalizeInterruptedAssistant
+              return "break" as const
+            }
             const result = yield* handle.process({
               user: lastUser,
               agent,
@@ -1491,7 +1523,10 @@ const layer = Layer.effect(
             Effect.ensuring(instruction.clear(handle.message.id)),
             Effect.onInterrupt(() => finalizeInterruptedAssistant),
           )
-          if (outcome === "break") break
+          if (outcome === "break") {
+            if (handle.message.error || structured === undefined) yield* inputs.pause(sessionID)
+            break
+          }
           if (gracefulStops.has(sessionID)) {
             gracefulStops.delete(sessionID)
             yield* Effect.logInfo("graceful stop exiting loop", { "session.id": sessionID, step })
@@ -1511,7 +1546,13 @@ const layer = Layer.effect(
     const loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.loop")(function* (
       input: LoopInput,
     ) {
-      return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+      return yield* state.ensureRunning(
+        input.sessionID,
+        lastAssistant(input.sessionID),
+        runLoop(input.sessionID).pipe(
+          Effect.onExit((exit) => (Exit.isFailure(exit) ? inputs.pause(input.sessionID) : Effect.void)),
+        ),
+      )
     })
 
     const shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError> = Effect.fn(
@@ -1521,7 +1562,7 @@ const layer = Layer.effect(
       return yield* state.startShell(input.sessionID, lastAssistant(input.sessionID), shellImpl(input, ready), ready)
     })
 
-    const command = Effect.fn("SessionPrompt.command")(function* (input: CommandInput) {
+    const prepareCommand = Effect.fn("SessionPrompt.prepareCommand")(function* (input: CommandInput) {
       yield* Effect.logInfo("command", {
         "session.id": input.sessionID,
         command: input.command,
@@ -1631,20 +1672,80 @@ const layer = Layer.effect(
         { parts },
       )
 
-      const result = yield* prompt({
+      return {
         sessionID: input.sessionID,
         messageID: input.messageID,
         model: userModel,
         agent: userAgent,
         parts,
         variant: input.variant,
-      })
+      } satisfies PromptInput
+    })
+
+    const command = Effect.fn("SessionPrompt.command")(function* (input: CommandInput) {
+      const result = yield* prompt(yield* prepareCommand(input))
       yield* events.publish(Command.Event.Executed, {
         name: input.command,
         sessionID: input.sessionID,
         arguments: input.arguments,
         messageID: result.info.id,
       })
+      return result
+    })
+
+    const consumeInputs = (sessionID: SessionID, idle: boolean) =>
+      inputs.consume(
+        sessionID,
+        idle,
+        (input) =>
+          Effect.gen(function* () {
+            const prepared = input.command
+              ? yield* prepareCommand({
+                  ...input.command,
+                  sessionID,
+                  parts: input.prompt.parts.filter((part) => part.type === "file"),
+                })
+              : Schema.decodeUnknownSync(PromptInput)({ ...input.prompt, sessionID })
+            return yield* createUserMessage(prepared, false).pipe(Effect.orDie)
+          }),
+        () => gracefulStops.has(sessionID),
+      )
+
+    const wakeInputs = Effect.fn("SessionPrompt.wakeInputs")(function* (sessionID: SessionID) {
+      yield* Effect.gen(function* () {
+        // A wake joins the current runner, then rechecks admission after its final idle boundary.
+        while (true) {
+          const pending = yield* inputs.get(sessionID).pipe(Effect.orDie)
+          if (pending.paused || !pending.items.length || gracefulStops.has(sessionID)) return
+          yield* loop({ sessionID })
+        }
+      }).pipe(
+        Effect.catchCause((cause) =>
+          inputs.pause(sessionID).pipe(
+            Effect.andThen(
+              events.publish(Session.Event.Error, {
+                sessionID,
+                error: new NamedError.Unknown({ message: Cause.pretty(cause) }).toObject(),
+              }),
+            ),
+          ),
+        ),
+        Effect.forkIn(scope),
+      )
+    })
+
+    const nextInput = Effect.fn("SessionPrompt.nextInput")(function* (sessionID: SessionID) {
+      const result = yield* inputs.resume(
+        sessionID,
+        state.assertNotBusy(sessionID).pipe(
+          Effect.as(true),
+          Effect.catchTag("SessionBusyError", () => Effect.succeed(false)),
+        ),
+      )
+      gracefulStops.delete(sessionID)
+      yield* questions.openSession(sessionID)
+      yield* permission.openSession(sessionID)
+      yield* wakeInputs(sessionID)
       return result
     })
 
@@ -1671,6 +1772,9 @@ const layer = Layer.effect(
       command,
       regenerateTitle,
       resolvePromptParts,
+      inputs,
+      wakeInputs,
+      nextInput,
     })
   }),
 )
@@ -1814,6 +1918,7 @@ export const node = LayerNode.make({
     EventV2Bridge.node,
     RuntimeFlags.node,
     Database.node,
+    SessionInputQueue.node,
   ],
 })
 

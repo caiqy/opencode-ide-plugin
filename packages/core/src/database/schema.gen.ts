@@ -125,6 +125,16 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`session_input_queue_v1\` (
+          \`session_id\` text PRIMARY KEY,
+          \`revision\` integer DEFAULT 0 NOT NULL,
+          \`paused\` integer DEFAULT false NOT NULL,
+          \`owner\` text NOT NULL,
+          \`next_id\` text,
+          CONSTRAINT \`fk_session_input_queue_v1_session_id_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`message\` (
           \`id\` text PRIMARY KEY,
           \`session_id\` text NOT NULL,
@@ -143,6 +153,18 @@ export default {
           \`time_updated\` integer NOT NULL,
           \`data\` text NOT NULL,
           CONSTRAINT \`fk_part_message_id_message_id_fk\` FOREIGN KEY (\`message_id\`) REFERENCES \`message\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`session_queued_input_v1\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`sequence\` integer NOT NULL,
+          \`delivery\` text NOT NULL,
+          \`state\` text NOT NULL,
+          \`input\` text NOT NULL,
+          \`prepared\` text,
+          CONSTRAINT \`fk_session_queued_input_v1_session_id_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE
         );
       `)
       yield* tx.run(`
@@ -246,6 +268,9 @@ export default {
       )
       yield* tx.run(`CREATE INDEX \`part_message_id_id_idx\` ON \`part\` (\`message_id\`,\`id\`);`)
       yield* tx.run(`CREATE INDEX \`part_session_idx\` ON \`part\` (\`session_id\`);`)
+      yield* tx.run(
+        `CREATE INDEX \`session_queued_input_v1_pending_idx\` ON \`session_queued_input_v1\` (\`session_id\`,\`state\`,\`sequence\`);`,
+      )
       yield* tx.run(
         `CREATE INDEX \`session_input_session_pending_delivery_seq_idx\` ON \`session_input\` (\`session_id\`,\`promoted_seq\`,\`delivery\`,\`admitted_seq\`);`,
       )

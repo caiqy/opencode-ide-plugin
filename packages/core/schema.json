@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "f14a9b18-8207-487e-a3d3-227e629ba9ad",
-  "prevIds": ["169a0f0f-d58f-479f-b024-fa1c7b9a09db"],
+  "id": "7ad3b30c-3a02-49ed-9f57-baff2b5998a3",
+  "prevIds": ["f14a9b18-8207-487e-a3d3-227e629ba9ad"],
   "ddl": [
     {
       "name": "workspace",
@@ -49,11 +49,19 @@
       "entityType": "tables"
     },
     {
+      "name": "session_input_queue_v1",
+      "entityType": "tables"
+    },
+    {
       "name": "message",
       "entityType": "tables"
     },
     {
       "name": "part",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_queued_input_v1",
       "entityType": "tables"
     },
     {
@@ -776,6 +784,56 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_input_queue_v1"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "session_input_queue_v1"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "false",
+      "generated": null,
+      "name": "paused",
+      "entityType": "columns",
+      "table": "session_input_queue_v1"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "owner",
+      "entityType": "columns",
+      "table": "session_input_queue_v1"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "next_id",
+      "entityType": "columns",
+      "table": "session_input_queue_v1"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
       "name": "id",
       "entityType": "columns",
       "table": "message"
@@ -879,6 +937,76 @@
       "name": "data",
       "entityType": "columns",
       "table": "part"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "session_queued_input_v1"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_queued_input_v1"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "sequence",
+      "entityType": "columns",
+      "table": "session_queued_input_v1"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "delivery",
+      "entityType": "columns",
+      "table": "session_queued_input_v1"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state",
+      "entityType": "columns",
+      "table": "session_queued_input_v1"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "input",
+      "entityType": "columns",
+      "table": "session_queued_input_v1"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "prepared",
+      "entityType": "columns",
+      "table": "session_queued_input_v1"
     },
     {
       "type": "text",
@@ -1542,6 +1670,17 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
+      "name": "fk_session_input_queue_v1_session_id_session_id_fk",
+      "entityType": "fks",
+      "table": "session_input_queue_v1"
+    },
+    {
+      "columns": ["session_id"],
+      "tableTo": "session",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
       "name": "fk_message_session_id_session_id_fk",
       "entityType": "fks",
       "table": "message"
@@ -1556,6 +1695,17 @@
       "name": "fk_part_message_id_message_id_fk",
       "entityType": "fks",
       "table": "part"
+    },
+    {
+      "columns": ["session_id"],
+      "tableTo": "session",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_queued_input_v1_session_id_session_id_fk",
+      "entityType": "fks",
+      "table": "session_queued_input_v1"
     },
     {
       "columns": ["session_id"],
@@ -1708,6 +1858,13 @@
       "entityType": "pks"
     },
     {
+      "columns": ["session_id"],
+      "nameExplicit": false,
+      "name": "session_input_queue_v1_pk",
+      "table": "session_input_queue_v1",
+      "entityType": "pks"
+    },
+    {
       "columns": ["id"],
       "nameExplicit": false,
       "name": "message_pk",
@@ -1719,6 +1876,13 @@
       "nameExplicit": false,
       "name": "part_pk",
       "table": "part",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "session_queued_input_v1_pk",
+      "table": "session_queued_input_v1",
       "entityType": "pks"
     },
     {
@@ -1871,6 +2035,28 @@
       "name": "part_session_idx",
       "entityType": "indexes",
       "table": "part"
+    },
+    {
+      "columns": [
+        {
+          "value": "session_id",
+          "isExpression": false
+        },
+        {
+          "value": "state",
+          "isExpression": false
+        },
+        {
+          "value": "sequence",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "session_queued_input_v1_pending_idx",
+      "entityType": "indexes",
+      "table": "session_queued_input_v1"
     },
     {
       "columns": [

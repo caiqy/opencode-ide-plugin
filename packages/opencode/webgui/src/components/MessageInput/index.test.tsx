@@ -64,6 +64,9 @@ const mocks = vi.hoisted(() => {
   }
 })
 
+vi.mock("./hooks/useInputQueue", () => ({ useInputQueue: () => ({ snapshot: null, error: null, pending: [], add: vi.fn(), update: vi.fn(), remove: vi.fn(), next: vi.fn(), refresh: vi.fn() }) }))
+vi.mock("./hooks/useQueuedSubmission", () => ({ useQueuedSubmission: () => ({ isOpen: false, pending: false, error: null, open: vi.fn(), close: vi.fn(), select: vi.fn() }) }))
+
 vi.mock("../ConfirmModal", () => {
   return {
     ConfirmModal: (props: any) => {

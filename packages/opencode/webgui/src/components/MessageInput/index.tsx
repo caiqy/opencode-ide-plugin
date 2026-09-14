@@ -28,6 +28,10 @@ import { loadQuickPhraseState, type QuickPhraseState } from "../../state/repo/qu
 import { quick_phrase_updated_event } from "../../state/repo/quickPhraseEvent"
 import { approvalMode, type ApprovalMode } from "../../state/approval"
 import { useToast } from "../../state/ToastContext"
+import { useInputQueue } from "./hooks/useInputQueue"
+import { useQueuedSubmission } from "./hooks/useQueuedSubmission"
+import { PendingInputBar } from "./PendingInputBar"
+import { InputDeliveryModal } from "./InputDeliveryModal"
 
 interface MessageInputProps {
   sessionID: string | null
@@ -196,6 +200,11 @@ const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
   )
 
   const { extractMessageParts } = useMessageParts({ editor, resolveToAbsolutePath })
+  const inputQueue = useInputQueue(sessionID)
+  const queuedSubmission = useQueuedSubmission({
+    sessionID, editor, extractMessageParts, selectedAgent, selectedProviderId, selectedModelId, selectedVariant,
+    add: inputQueue.add, onMessageSent,
+  })
 
   const handleEditorChange = useCallback(
     (editorState: EditorState) => {
@@ -424,9 +433,10 @@ const currentApproval = approvalMode(
   )
 
   const submit = useCallback(() => {
-    if (sendLocked) return
+    if (interactionLocked) return
+    if (busy || isGracefulStopping) { queuedSubmission.open(); return }
     void handleSubmit()
-  }, [handleSubmit, sendLocked])
+  }, [handleSubmit, interactionLocked, busy, isGracefulStopping, queuedSubmission.open])
 
   useDragDrop({ contentEditableRef, containerRef, disabled: interactionLocked })
 
@@ -491,7 +501,7 @@ const currentApproval = approvalMode(
     [editor, insertPaths, pastePath, interactionLocked, parseWithRange],
   )
 
-  // Requests and selection restoration lock editing; model execution only locks sending.
+  // Model execution keeps the editor available for subsequent inputs.
   useEffect(() => {
     editor.setEditable(!interactionLocked)
   }, [editor, interactionLocked])
@@ -663,6 +673,11 @@ const currentApproval = approvalMode(
             onSend={onSendPhrase}
             onFill={onFillPhrase}
           />
+          <PendingInputBar key={sessionID} snapshot={inputQueue.snapshot} error={inputQueue.error} pending={inputQueue.pending}
+            disabled={interactionLocked} busy={busy || !!isGracefulStopping}
+            onUpdate={(id, delivery) => { void inputQueue.update(id, delivery) }}
+            onRemove={(id) => { void inputQueue.remove(id) }} onNext={() => { void inputQueue.next() }}
+            onRefresh={() => { void inputQueue.refresh() }} />
           <div
             className="first:rounded-t-lg border border-transparent bg-white rounded-b-lg focus-within:border-blue-500 dark:bg-[var(--color-gray-800)] dark:focus-within:border-blue-400"
           >
@@ -720,6 +735,9 @@ selectionPending={selectionPending}
         variant="warning"
         isLoading={isCompacting}
       />
+
+      {queuedSubmission.isOpen && <InputDeliveryModal pending={queuedSubmission.pending} error={queuedSubmission.error}
+        onSelect={(delivery) => { void queuedSubmission.select(delivery) }} onClose={queuedSubmission.close} />}
 
       {isConfirmForceAbortOpen && (
         <ConfirmModal

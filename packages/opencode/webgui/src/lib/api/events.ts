@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import type { SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
+import type { InputQueueSnapshot } from "./inputQueue"
 
 // Event type definitions based on server Bus events
 export type ServerEvent =
@@ -21,6 +22,7 @@ export type ServerEvent =
       }
     }
   | { type: "session.idle"; properties: { sessionID: string } }
+  | { type: "session.input.changed"; properties: InputQueueSnapshot }
   | { type: "session.compacted"; properties: { sessionID: string } }
   | { type: "session.diff"; properties: { sessionID: string; diff: SnapshotFileDiff[] } }
   | {

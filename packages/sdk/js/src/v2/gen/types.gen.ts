@@ -2583,6 +2583,12 @@ export type ProviderAuthError1 = {
   }
 }
 
+export type ConflictError = {
+  _tag: "ConflictError"
+  message: string
+  resource?: string
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -2746,12 +2752,6 @@ export type PromptInput = {
   text: string
   files?: Array<PromptInputFileAttachment>
   agents?: Array<PromptAgentAttachment>
-}
-
-export type ConflictError = {
-  _tag: "ConflictError"
-  message: string
-  resource?: string
 }
 
 export type ServiceUnavailableError = {
@@ -3889,6 +3889,18 @@ export type ProjectDirectories = Array<{
 export type PtyTicketConnectToken = {
   ticket: string
   expires_in: number
+}
+
+export type SessionInputQueueSnapshot = {
+  sessionID: string
+  revision: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  paused: boolean
+  items: Array<{
+    id: string
+    sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    delivery: "steer" | "queue"
+    text: string
+  }>
 }
 
 export type WorkspaceEventConnectionStatus = {
@@ -9670,6 +9682,199 @@ export type ProviderOauthCallbackResponses = {
 }
 
 export type ProviderOauthCallbackResponse = ProviderOauthCallbackResponses[keyof ProviderOauthCallbackResponses]
+
+export type SessionInputListData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/input"
+}
+
+export type SessionInputListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type SessionInputListError = SessionInputListErrors[keyof SessionInputListErrors]
+
+export type SessionInputListResponses = {
+  /**
+   * SessionInputQueue.Snapshot
+   */
+  200: SessionInputQueueSnapshot
+}
+
+export type SessionInputListResponse = SessionInputListResponses[keyof SessionInputListResponses]
+
+export type SessionInputAddData = {
+  body?: {
+    id: string
+    delivery: "steer" | "queue"
+    prompt: {
+      parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
+      agent?: string
+      model?: {
+        providerID: string
+        modelID: string
+      }
+      variant?: string
+    }
+    command?: {
+      command: string
+      arguments: string
+      agent?: string
+      model?: string
+      variant?: string
+    }
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/input"
+}
+
+export type SessionInputAddErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type SessionInputAddError = SessionInputAddErrors[keyof SessionInputAddErrors]
+
+export type SessionInputAddResponses = {
+  /**
+   * SessionInputQueue.Snapshot
+   */
+  200: SessionInputQueueSnapshot
+}
+
+export type SessionInputAddResponse = SessionInputAddResponses[keyof SessionInputAddResponses]
+
+export type SessionInputDeleteData = {
+  body?: never
+  path: {
+    sessionID: string
+    inputID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/input/{inputID}"
+}
+
+export type SessionInputDeleteErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type SessionInputDeleteError = SessionInputDeleteErrors[keyof SessionInputDeleteErrors]
+
+export type SessionInputDeleteResponses = {
+  /**
+   * SessionInputQueue.Snapshot
+   */
+  200: SessionInputQueueSnapshot
+}
+
+export type SessionInputDeleteResponse = SessionInputDeleteResponses[keyof SessionInputDeleteResponses]
+
+export type SessionInputUpdateData = {
+  body?: {
+    delivery: "steer" | "queue"
+  }
+  path: {
+    sessionID: string
+    inputID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/input/{inputID}"
+}
+
+export type SessionInputUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type SessionInputUpdateError = SessionInputUpdateErrors[keyof SessionInputUpdateErrors]
+
+export type SessionInputUpdateResponses = {
+  /**
+   * SessionInputQueue.Snapshot
+   */
+  200: SessionInputQueueSnapshot
+}
+
+export type SessionInputUpdateResponse = SessionInputUpdateResponses[keyof SessionInputUpdateResponses]
+
+export type SessionInputNextData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/input/next"
+}
+
+export type SessionInputNextErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type SessionInputNextError = SessionInputNextErrors[keyof SessionInputNextErrors]
+
+export type SessionInputNextResponses = {
+  /**
+   * SessionInputQueue.Snapshot
+   */
+  200: SessionInputQueueSnapshot
+}
+
+export type SessionInputNextResponse = SessionInputNextResponses[keyof SessionInputNextResponses]
 
 export type SessionListData = {
   body?: never
