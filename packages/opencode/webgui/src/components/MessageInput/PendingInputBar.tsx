@@ -23,7 +23,7 @@ export function PendingInputBar(props: {
   return (
     <section
       aria-label="待发送消息"
-      className={`first:rounded-t-lg border-b border-gray-200/80 bg-gray-50/70 px-3.5 py-2 text-xs backdrop-blur-xs dark:border-white/[0.08] dark:bg-[rgb(24,24,27)] ${items.length ? "border-t border-t-gray-100 dark:border-t-gray-800" : ""}`}
+      className={`first:rounded-t-lg border-b border-gray-200/80 bg-gray-50/70 px-3 py-2 text-xs backdrop-blur-xs dark:border-white/[0.08] dark:bg-[rgb(24,24,27)] ${items.length ? "border-t border-t-gray-100 dark:border-t-gray-800" : ""}`}
     >
       {items.length > 0 && (
         <>
@@ -76,10 +76,11 @@ export function PendingInputBar(props: {
                   type="button"
                   aria-expanded={expanded}
                   aria-controls={listID}
-                  className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200 transition-colors"
+                  aria-label={expanded ? "收起待发送消息" : "展开待发送消息"}
+                  title={expanded ? "收起待发送消息" : "展开待发送消息"}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200 transition-colors"
                   onClick={() => setExpanded((value) => !value)}
                 >
-                  <span>{expanded ? "收起" : "展开"}</span>
                   <svg
                     className={`h-3.5 w-3.5 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
                     fill="none"
@@ -94,22 +95,22 @@ export function PendingInputBar(props: {
             </div>
           </div>
 
-          <ul id={listID} className="mt-2 space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
+          <ul id={listID} className="mt-1 max-h-48 overflow-y-auto">
             {(expanded ? items : items.slice(0, 1)).map((item) => (
               <li
                 key={item.id}
-                className="group flex items-center gap-2.5 rounded-lg border border-gray-200/80 bg-white px-2.5 py-1.5 shadow-2xs hover:border-gray-300 dark:border-white/[0.08] dark:bg-[rgb(32,32,36)] dark:hover:border-white/[0.15] transition-all"
+                className="group flex min-h-8 items-center gap-2 border-b border-gray-200/70 ps-1 py-0.5 last:border-b-0 hover:bg-gray-100/70 dark:border-white/[0.08] dark:hover:bg-white/[0.04]"
               >
                 {item.delivery === "steer" ? (
-                  <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-indigo-200/60 bg-indigo-50 px-1.5 py-0.5 text-[11px] font-medium text-indigo-700 dark:border-indigo-800/60 dark:bg-indigo-950/40 dark:text-indigo-300">
-                    <svg className="h-3 w-3 text-indigo-500 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <span className="inline-flex w-12 shrink-0 items-center gap-1 text-[11px] font-medium text-blue-700 dark:text-blue-400">
+                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                     补充
                   </span>
                 ) : (
-                  <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-200/60 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-300">
-                    <svg className="h-3 w-3 text-amber-500 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <span className="inline-flex w-12 shrink-0 items-center gap-1 text-[11px] font-medium text-gray-600 dark:text-gray-400">
+                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     排队
@@ -124,17 +125,19 @@ export function PendingInputBar(props: {
                   {item.text}
                 </span>
 
-                <div className="flex shrink-0 items-center gap-1">
+                <div className="flex shrink-0 items-center gap-0.5">
                   <button
                     type="button"
                     disabled={props.disabled || props.pending.includes(item.id)}
+                    aria-label={item.delivery === "steer" ? "转排队" : "转补充"}
+                    title={item.delivery === "steer" ? "转排队" : "转补充"}
                     onClick={() => props.onUpdate(item.id, item.delivery === "steer" ? "queue" : "steer")}
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-blue-500 disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200 transition-colors"
+                    className="inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded px-1.5 text-xs text-gray-500 hover:bg-gray-200/70 hover:text-gray-800 focus-visible:outline-blue-500 disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200"
                   >
-                    <svg className="h-3 w-3 text-gray-400 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                     </svg>
-                    <span>{item.delivery === "steer" ? "转排队" : "转补充"}</span>
+                    <span className="hidden sm:inline">{item.delivery === "steer" ? "转排队" : "转补充"}</span>
                   </button>
 
                   <button
@@ -143,7 +146,7 @@ export function PendingInputBar(props: {
                     aria-label="删除待发送消息"
                     title="删除待发送消息"
                     onClick={() => props.onRemove(item.id)}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-red-50 hover:text-red-600 focus-visible:outline-blue-500 disabled:opacity-40 dark:text-gray-500 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors"
+                    className="flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-red-50 hover:text-red-600 focus-visible:outline-blue-500 disabled:opacity-40 dark:text-gray-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
                   >
                     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
