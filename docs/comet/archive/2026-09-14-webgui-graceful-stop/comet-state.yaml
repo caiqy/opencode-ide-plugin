@@ -1,0 +1,205 @@
+schema: comet.native.v4
+name: webgui-graceful-stop
+language: zh-CN
+phase: archive
+status: done
+state_version: 10
+brief: brief.md
+shape_confirmation_hash: 64ce8809861102ae1a0d0beee1009a5db04e20376b9624d645a1653d91f7535b
+spec_changes:
+  - capability: webgui-graceful-stop
+    operation: create
+    source: specs/webgui-graceful-stop/spec.md
+workspace:
+  isolation: current
+  change_branch: ide-plugin
+  target_branch: ide-plugin
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：在 WebGUI 对话中当 AI 正在生成时，点击停止按钮触发优雅打断，按钮变为红色微动状态，输入框上方展示等待收尾的提示横幅，Tooltip
+      变为“已请求停止，再次点击强制打断”。
+    result: passed
+    reason:
+      text: 首次点击触发优雅打断，红色微动按钮、动态 Tooltip 和输入框上方等待横幅均按规范呈现并已通过自动化测试。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：在优雅打断等待期间，大模型当前文字输出正常完成，伴随发起的工具调用正常执行完毕并写盘落库，服务端不在当前回合结束后启动下一轮 LLM
+      推理，会话平滑退出回到 Idle 状态。
+    result: passed
+    reason:
+      text: 当前文字与伴随工具完整落库，SessionPrompt 核心循环在回合边界检测优雅打断标记安全 break 退出，不启动下轮推理，会话平滑恢复
+        Idle。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：在优雅打断等待期间，输入框保持可编辑状态，允许用户提前输入文本草稿；当会话转为 Idle
+      后，红色按钮自动恢复为常规发送箭头，输入框自动获得焦点，且 Assistant 消息正常展示完成耗时（不打红色 interrupted 标记）。
+    result: passed
+    reason:
+      text: 优雅打断期间输入框保持可编辑，转为 Idle 后红钮恢复为发送图标，输入框自动获得焦点，Assistant 消息正常记录耗时且无
+        interrupted 标记。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：在优雅打断等待期间，若用户再次点击红色停止按钮，界面弹出全局 ConfirmModal
+      确认弹窗；用户点击“取消”时关闭弹窗并继续保持优雅打断等待状态。
+    result: passed
+    reason:
+      text: 再次点击红钮唤起 ConfirmModal 确认弹窗；用户点击取消后弹窗关闭且继续保持优雅打断等待状态。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：在确认弹窗中用户点击“强制打断”时，系统立即调用底层强制打断，立即中断服务端 Fiber 并停止会话。
+    result: passed
+    reason:
+      text: "确认弹窗中点击强制打断后以 { graceful: false } 调用服务端接口，立即中断 Fiber 并停止会话。"
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：在优雅打断触发时，若当前会话存在未决的 Question 提问或 Permission 权限审批，系统自动将其拒绝，避免会话卡在等待审批。
+    result: passed
+    reason:
+      text: 优雅打断触发时，服务端与前端协同拒绝未决的 Question 与 Permission 待办项，并建立 closedSessions
+        准入拦截，避免流程阻塞挂起。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：当优雅打断等待时长超过 30 秒时，横幅文本自动更新并高亮强调工具执行耗时较长，引导用户可通过红色按钮强制打断。
+    result: passed
+    reason:
+      text: 优雅打断等待超过 30 秒时，横幅文本自动更新并高亮强化长耗时工具警示文案引导强停。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: "A8：服务端 `POST /session/:sessionID/abort` 接受可选 `{ graceful: boolean }`
+      请求体；在 `graceful: true` 时标记当前会话在当前回合结束后优雅退出，在缺省或 `false` 时执行立即强杀。"
+    result: passed
+    reason:
+      text: "服务端 POST /session/:sessionID/abort 接口兼容 { graceful: true } 优雅打断与缺省/{
+        graceful: false } 强制打断，自动化测试验证通过。"
+      truncated: false
+builder_handoff:
+  candidate_id: ae014ae9-440c-4c3d-861d-d72d67a563a7
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:e88b9473-2e2c-4c76-81f5-c3abe4a6a90e
+  iteration: 1
+  summary:
+    text: "实现 WebGUI 优雅打断与强制打断全链路机制：扩展服务端 POST /session/:sessionID/abort 接口支持可选 {
+      graceful: boolean }，并在 SessionPrompt 核心循环边界检测退出；在 Question/Permission 中加入
+      closedSessions 准入拦截与原子批量拒绝；WebGUI 前端 SessionContext 内存追踪 graceful stopping
+      状态，MessageActions 提供红色呼吸微动按钮，输入框上方提供动态 30 秒长耗时提示横幅，再次点击触发 ConfirmModal
+      强制打断，转为 Idle 后自动聚焦输入框并恢复发送按钮。"
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+  checks:
+    - name:
+        text: bun turbo typecheck
+        truncated: false
+      result: passed
+      note:
+        text: 全工作区 30 个包全部 typecheck 通过
+        truncated: false
+    - name:
+        text: webgui vitest
+        truncated: false
+      result: passed
+      note:
+        text: WebGUI 全量 164 个测试文件 / 1600 个测试用例全部通过
+        truncated: false
+    - name:
+        text: server httpapi-session tests
+        truncated: false
+      result: passed
+      note:
+        text: packages/opencode test/server/httpapi-session.test.ts 22 tests 全部通过
+        truncated: false
+    - name:
+        text: session prompt cancel & rejection tests
+        truncated: false
+      result: passed
+      note:
+        text: packages/opencode test/session/prompt.test.ts graceful cancel 测试通过
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: 四项复核改动均已落实；权限登记屏障、强停失败恢复、编辑器聚焦断言和会话切换隔离均无回归。
+      truncated: false
+    reviewer_execution_ref: codex-review-20260914-graceful-stop-r2
+  submitted_at: 2026-09-14T07:32:28.256Z
+blockers: []
+verification:
+  candidate_id: ae014ae9-440c-4c3d-861d-d72d67a563a7
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:261be304-bdc7-40db-a783-fa371c349caa
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  summary:
+    text: 8 项验收场景 A1-A8 全部独立验收通过，全量自动化单测（WebGUI 164 files / 1600 tests、后端 81 tests）与
+      typecheck 均通过，无破坏性阻断问题。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-09-14T07:41:09.853Z
+history:
+  - goal_cycle: 1
+    iteration: 0
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-09-14T05:44:33.451Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 8 项验收场景 A1-A8 全部独立验收通过，全量自动化单测（WebGUI 164 files / 1600 tests、后端 81 tests）与
+        typecheck 均通过，无破坏性阻断问题。
+      truncated: false
+    completed_at: 2026-09-14T07:41:09.853Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-09-14T05:38:47.790Z
