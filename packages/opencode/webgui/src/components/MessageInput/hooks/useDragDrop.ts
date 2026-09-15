@@ -7,49 +7,33 @@ interface UseDragDropOptions {
 }
 
 export function useDragDrop({ contentEditableRef, containerRef, disabled = false }: UseDragDropOptions) {
+  useEffect(() => {
+    containerRef.current?.classList.remove("ring-2", "ring-blue-500", "border-blue-500")
+  }, [containerRef])
+
   // Attach drag-and-drop to the contentEditable
   useEffect(() => {
     const el = contentEditableRef.current
     if (!el) return
 
-    let overCount = 0
-
-    const addHighlight = () => {
-      const box = containerRef.current
-      if (!box) return
-      box.classList.add("ring-2", "ring-blue-500", "border-blue-500")
-    }
-    const removeHighlight = () => {
-      const box = containerRef.current
-      if (!box) return
-      box.classList.remove("ring-2", "ring-blue-500", "border-blue-500")
-    }
-
     const onDragEnter = (ev: DragEvent) => {
       ev.preventDefault()
       if (disabled) return
-      overCount = overCount + 1
-      addHighlight()
     }
 
     const onDragOver = (ev: DragEvent) => {
       ev.preventDefault()
       if (disabled) return
       if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy"
-      addHighlight()
     }
 
     const onDragLeave = (ev: DragEvent) => {
       ev.preventDefault()
       if (disabled) return
-      overCount = Math.max(0, overCount - 1)
-      if (overCount === 0) removeHighlight()
     }
 
     const onDrop = (ev: DragEvent) => {
       ev.preventDefault()
-      overCount = 0
-      removeHighlight()
     }
 
     el.addEventListener("dragenter", onDragEnter as any)
@@ -62,39 +46,21 @@ export function useDragDrop({ contentEditableRef, containerRef, disabled = false
       el.removeEventListener("dragleave", onDragLeave as any)
       el.removeEventListener("drop", onDrop as any)
     }
-  }, [contentEditableRef.current, disabled, containerRef])
+  }, [contentEditableRef.current, disabled])
 
-  // Document-level drag highlight
+  // Document-level drag handling
   useEffect(() => {
-    let over = 0
-    const add = () => {
-      const box = containerRef.current
-      if (!box) return
-      box.classList.add("ring-2", "ring-blue-500", "border-blue-500")
-    }
-    const rm = () => {
-      const box = containerRef.current
-      if (!box) return
-      box.classList.remove("ring-2", "ring-blue-500", "border-blue-500")
-    }
     const onEnter = (e: DragEvent) => {
       e.preventDefault()
-      over = over + 1
-      add()
     }
     const onOver = (e: DragEvent) => {
       e.preventDefault()
-      add()
     }
     const onLeave = (e: DragEvent) => {
       e.preventDefault()
-      over = Math.max(0, over - 1)
-      if (over === 0) rm()
     }
     const onEnd = (e: DragEvent) => {
       e.preventDefault()
-      over = 0
-      rm()
     }
 
     document.addEventListener("dragenter", onEnter as any)
@@ -110,5 +76,5 @@ export function useDragDrop({ contentEditableRef, containerRef, disabled = false
       document.removeEventListener("drop", onEnd as any)
       document.removeEventListener("dragend", onEnd as any)
     }
-  }, [containerRef])
+  }, [])
 }

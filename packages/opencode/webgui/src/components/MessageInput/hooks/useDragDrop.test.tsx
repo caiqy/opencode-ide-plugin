@@ -76,13 +76,14 @@ describe("useDragDrop", () => {
     expect(preventDefault).toHaveBeenCalledOnce()
   })
 
-  it("disabled 时 editor drop 也会清掉已有拖拽高亮", () => {
+  it("拖拽进入或在 document 上 dragenter 时不会给输入框添加高亮框", () => {
     const update = vi.fn((fn: () => void) => fn())
     const view = render(<Harness disabled update={update} />)
     const box = view.getByTestId("box")
 
     document.dispatchEvent(new Event("dragenter", { bubbles: true, cancelable: true }))
-    expect(box.classList.contains("ring-2")).toBe(true)
+    expect(box.classList.contains("ring-2")).toBe(false)
+    expect(box.classList.contains("border-blue-500")).toBe(false)
 
     const ev = new Event("drop", { bubbles: true, cancelable: true })
     view.getByTestId("editor").dispatchEvent(ev)
@@ -106,17 +107,13 @@ describe("useDragDrop", () => {
     document.removeEventListener("drop", documentDrop)
   })
 
-  it("editor drop 后，新一轮 document dragleave 不会残留高亮", () => {
+  it("dragleave 时保持无高亮框", () => {
     const update = vi.fn((fn: () => void) => fn())
     const view = render(<Harness update={update} />)
     const box = view.getByTestId("box")
 
     document.dispatchEvent(new Event("dragenter", { bubbles: true, cancelable: true }))
-    view.getByTestId("editor").dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }))
     expect(box.classList.contains("ring-2")).toBe(false)
-
-    document.dispatchEvent(new Event("dragenter", { bubbles: true, cancelable: true }))
-    expect(box.classList.contains("ring-2")).toBe(true)
 
     document.dispatchEvent(new Event("dragleave", { bubbles: true, cancelable: true }))
     expect(box.classList.contains("ring-2")).toBe(false)
