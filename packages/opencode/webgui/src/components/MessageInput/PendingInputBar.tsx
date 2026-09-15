@@ -13,7 +13,7 @@ export function PendingInputBar(props: {
   onNext: () => void
   onRefresh: () => void
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
   const listID = useId()
   const items = props.snapshot?.items ?? []
   if (!items.length && !props.error) return null

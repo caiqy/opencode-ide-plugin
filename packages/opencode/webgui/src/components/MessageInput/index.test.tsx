@@ -527,6 +527,35 @@ describe("MessageInput compact confirm", () => {
     expect(mocks.insertPlainWithMentionsImpl).not.toHaveBeenCalled()
   })
 
+  it("切换会话不强制展开手动收起的待发送列表", () => {
+    inputQueueSnapshot = {
+      sessionID: "s1",
+      revision: 1,
+      paused: false,
+      items: [
+        { id: "a", sequence: 1, delivery: "steer", text: "第一条" },
+        { id: "b", sequence: 2, delivery: "queue", text: "第二条" },
+      ],
+    }
+    const view = render(<MessageInput sessionID="s1" />)
+    fireEvent.click(screen.getByRole("button", { name: "收起待发送消息" }))
+    expect(screen.queryByText("第二条")).not.toBeInTheDocument()
+
+    inputQueueSnapshot = {
+      sessionID: "s2",
+      revision: 1,
+      paused: false,
+      items: [
+        { id: "c", sequence: 1, delivery: "steer", text: "会话二第一条" },
+        { id: "d", sequence: 2, delivery: "queue", text: "会话二第二条" },
+      ],
+    }
+    view.rerender(<MessageInput sessionID="s2" />)
+
+    expect(screen.getByRole("button", { name: "展开待发送消息" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByText("会话二第二条")).not.toBeInTheDocument()
+  })
+
   it("从当前 Session 恢复审批模式并持久化切换", async () => {
     currentSessionId = "s1"
     currentSessionPermission = [

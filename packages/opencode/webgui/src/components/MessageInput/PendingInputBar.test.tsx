@@ -32,7 +32,7 @@ describe("待发送交互", () => {
     expect(screen.getByRole("region", { name: "待发送消息" })).toHaveClass("border-t", "border-t-gray-100")
   })
 
-  it("默认首条，展开后显示各项，隐藏当前模式按钮", () => {
+  it("默认展开各项并可收起，隐藏当前模式按钮", () => {
     const onUpdate = vi.fn()
     const onMoveUp = vi.fn()
     const onRemove = vi.fn()
@@ -59,10 +59,14 @@ describe("待发送交互", () => {
       />,
     )
     expect(screen.getByText("第一条补充")).toBeInTheDocument()
+    expect(screen.getByText("第二条排队")).toBeInTheDocument()
+    const collapse = screen.getByRole("button", { name: "收起待发送消息" })
+    expect(collapse).toHaveAttribute("aria-expanded", "true")
+    expect(collapse.textContent).toBe("")
+    fireEvent.click(collapse)
     expect(screen.queryByText("第二条排队")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "转补充" })).not.toBeInTheDocument()
     const expand = screen.getByRole("button", { name: "展开待发送消息" })
-    expect(expand.textContent).toBe("")
     fireEvent.click(expand)
     expect(screen.getByRole("button", { name: "收起待发送消息" })).toHaveAttribute("aria-expanded", "true")
     const rows = screen.getAllByRole("listitem")

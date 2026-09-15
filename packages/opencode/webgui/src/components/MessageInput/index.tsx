@@ -709,7 +709,7 @@ const currentApproval = approvalMode(
             onSend={onSendPhrase}
             onFill={onFillPhrase}
           />
-          <PendingInputBar key={sessionID} snapshot={inputQueue.snapshot} error={inputQueue.error} pending={inputQueue.pending}
+          <PendingInputBar snapshot={inputQueue.snapshot} error={inputQueue.error} pending={inputQueue.pending}
             disabled={interactionLocked} busy={busy || !!isGracefulStopping}
             onUpdate={(id, delivery) => { void inputQueue.update(id, delivery) }}
             onMoveUp={(id) => { void inputQueue.moveUp(id) }}
