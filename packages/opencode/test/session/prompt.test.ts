@@ -674,6 +674,28 @@ it.instance("input queue restart pauses pending items and completes prepared his
   }),
 )
 
+it.instance("input queue restart keeps an empty queue active for new submissions", () =>
+  Effect.gen(function* () {
+    const { prompt, chat } = yield* boot()
+    const database = yield* Database.Service
+    expect((yield* prompt.inputs.get(chat.id)).paused).toBe(false)
+    yield* database.db
+      .update(InputQueueTable)
+      .set({ owner: "previous-process" })
+      .where(eq(InputQueueTable.session_id, chat.id))
+      .run()
+      .pipe(Effect.orDie)
+
+    expect((yield* prompt.inputs.get(chat.id)).paused).toBe(false)
+    const added = yield* prompt.inputs.add(chat.id, {
+      id: MessageID.ascending(),
+      delivery: "queue",
+      prompt: { model: ref, agent: "build", parts: [{ type: "text", text: "new after restart" }] },
+    })
+    expect(added.paused).toBe(false)
+  }),
+)
+
 it.instance("input queue expands queued commands at consumption and keeps delivery changes", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig((url) => ({

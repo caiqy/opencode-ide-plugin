@@ -134,10 +134,17 @@ const layer = Layer.effect(
       if (!current) return yield* Effect.die("Missing input queue")
       if (current.owner === owner) return current
       // A restart never retries provider work. Finish only idempotent history publication.
-      for (const row of yield* pending(sessionID)) {
+      const rows = yield* pending(sessionID)
+      for (const row of rows) {
         if (row.prepared) yield* publishMessage(row.id, row.prepared)
       }
-      const recovered = { ...current, owner, paused: true, next_id: null, revision: current.revision + 1 }
+      const recovered = {
+        ...current,
+        owner,
+        paused: rows.length > 0,
+        next_id: null,
+        revision: current.revision + 1,
+      }
       yield* db
         .update(InputQueueTable)
         .set(recovered)
