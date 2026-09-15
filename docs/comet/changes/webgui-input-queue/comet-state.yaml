@@ -3,9 +3,9 @@ name: webgui-input-queue
 language: zh-CN
 phase: build
 status: active
-state_version: 24
+state_version: 27
 brief: brief.md
-shape_confirmation_hash: 9057094546d80cae9f2bf7ea7e53ba51fe5948f05f04dee2623d1e39568ff660
+shape_confirmation_hash: 11ae29e52d03932015cfd304082c174a4f617e67f26b8cd30a2dacb9e986b138
 spec_changes:
   - capability: webgui-input-queue
     operation: create
@@ -17,7 +17,7 @@ workspace:
   finish: null
 loop:
   stage: building
-  goal_cycle: 6
+  goal_cycle: 7
   iteration: 1
   attempt: 0
   retry_epoch: 0
@@ -178,6 +178,15 @@ history:
       text: Native confirmed acceptance criteria changed
       truncated: false
     completed_at: 2026-09-15T03:18:28.056Z
+  - goal_cycle: 6
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native Shape artifacts changed
+      truncated: false
+    completed_at: 2026-09-15T03:37:38.154Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
