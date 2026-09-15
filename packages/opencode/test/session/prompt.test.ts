@@ -639,6 +639,56 @@ it.instance("input queue holds steers behind a queued input until its response b
   }),
 )
 
+it.instance("input queue waits for provider tools before promoting steers", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const { prompt, chat, sessions } = yield* boot()
+    const questions = yield* Question.Service
+    yield* llm.tool("question", {
+      questions: [
+        {
+          question: "Continue?",
+          header: "Continue",
+          options: [{ label: "Yes", description: "Continue the task" }],
+        },
+      ],
+    })
+    yield* llm.text("continued after tool")
+    const run = yield* prompt
+      .prompt({
+        sessionID: chat.id,
+        agent: "build",
+        model: ref,
+        parts: [{ type: "text", text: "ask first" }],
+      })
+      .pipe(Effect.forkChild)
+    yield* llm.wait(1)
+    const question = yield* pollWithTimeout(
+      questions.list().pipe(Effect.map((items) => items.find((item) => item.sessionID === chat.id))),
+      "question tool did not become pending",
+    )
+    yield* prompt.inputs.add(chat.id, {
+      id: MessageID.ascending(),
+      delivery: "steer",
+      prompt: { agent: "build", model: ref, parts: [{ type: "text", text: "steer after tool" }] },
+    })
+
+    expect((yield* prompt.inputs.get(chat.id)).items).toHaveLength(1)
+    expect(JSON.stringify(yield* sessions.messages({ sessionID: chat.id }))).not.toContain("steer after tool")
+    yield* questions.reply({ requestID: question.id, answers: [["Yes"]] })
+    yield* Fiber.join(run)
+
+    const requests = yield* llm.inputs
+    expect(requests).toHaveLength(2)
+    expect(JSON.stringify(requests[0])).not.toContain("steer after tool")
+    const followup = JSON.stringify(requests[1])
+    expect(followup).toContain("steer after tool")
+    expect(followup).toContain("Yes")
+    expect(followup.indexOf("Yes")).toBeLessThan(followup.indexOf("steer after tool"))
+    expect((yield* prompt.inputs.get(chat.id)).items).toHaveLength(0)
+  }),
+)
+
 it.instance("input queue graceful stop retains pending input until nextInput resumes", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
