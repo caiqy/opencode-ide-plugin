@@ -1,11 +1,11 @@
 schema: comet.native.v4
 name: webgui-input-queue
 language: zh-CN
-phase: build
-status: active
-state_version: 3
+phase: shape
+status: await-user
+state_version: 5
 brief: brief.md
-shape_confirmation_hash: 318fa0a406c7aab84ec846427ba25b9fe9172b20f598ee39f98b53cb0bf47ad3
+shape_confirmation_hash: bf25def91d29f12550de7d8ca116daf006aa1210c501a0c02caa1e768cb6e6aa
 spec_changes:
   - capability: webgui-input-queue
     operation: create
@@ -16,16 +16,16 @@ workspace:
   target_branch: ide-plugin
   finish: null
 loop:
-  stage: building
-  goal_cycle: 1
-  iteration: 1
+  stage: await-user
+  goal_cycle: 2
+  iteration: 0
   attempt: 0
   retry_epoch: 0
   failed_iteration_count: 0
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: submit-builder-candidate
+  next_action: confirm-shape
 acceptance:
   - id: A1
     source: brief.md
@@ -92,14 +92,23 @@ acceptance:
     reason: null
   - id: A12
     source: brief.md
-    text: A12：后端边界与竞争测试、WebGUI 提交与恢复交互测试、受影响包类型检查及必要 SDK 生成完成；独立只读复核和 Comet Verifier
-      分别报告实际结果。
+    text: A12：后端边界与竞争测试、WebGUI 提交与恢复交互测试、受影响包类型检查及必要 SDK 生成完成；按用户最新要求，由当前 Agent
+      自行检查，不启动子代理。
     result: pending
     reason: null
 builder_handoff: null
 blockers: []
 verification: null
-history: []
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-09-15T00:45:41.326Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
