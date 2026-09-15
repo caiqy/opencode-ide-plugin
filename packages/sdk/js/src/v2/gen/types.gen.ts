@@ -3903,6 +3903,30 @@ export type SessionInputQueueSnapshot = {
   }>
 }
 
+export type SessionInputQueueRemoved = {
+  snapshot: SessionInputQueueSnapshot
+  input: {
+    id: string
+    delivery: "steer" | "queue"
+    prompt: {
+      parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
+      agent?: string
+      model?: {
+        providerID: string
+        modelID: string
+      }
+      variant?: string
+    }
+    command?: {
+      command: string
+      arguments: string
+      agent?: string
+      model?: string
+      variant?: string
+    }
+  }
+}
+
 export type WorkspaceEventConnectionStatus = {
   workspaceID: string
   status: "connected" | "connecting" | "disconnected" | "error"
@@ -9798,9 +9822,9 @@ export type SessionInputDeleteError = SessionInputDeleteErrors[keyof SessionInpu
 
 export type SessionInputDeleteResponses = {
   /**
-   * SessionInputQueue.Snapshot
+   * SessionInputQueue.Removed
    */
-  200: SessionInputQueueSnapshot
+  200: SessionInputQueueRemoved
 }
 
 export type SessionInputDeleteResponse = SessionInputDeleteResponses[keyof SessionInputDeleteResponses]
@@ -9841,6 +9865,41 @@ export type SessionInputUpdateResponses = {
 }
 
 export type SessionInputUpdateResponse = SessionInputUpdateResponses[keyof SessionInputUpdateResponses]
+
+export type SessionInputMoveUpData = {
+  body?: never
+  path: {
+    sessionID: string
+    inputID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/input/{inputID}/move-up"
+}
+
+export type SessionInputMoveUpErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type SessionInputMoveUpError = SessionInputMoveUpErrors[keyof SessionInputMoveUpErrors]
+
+export type SessionInputMoveUpResponses = {
+  /**
+   * SessionInputQueue.Snapshot
+   */
+  200: SessionInputQueueSnapshot
+}
+
+export type SessionInputMoveUpResponse = SessionInputMoveUpResponses[keyof SessionInputMoveUpResponses]
 
 export type SessionInputNextData = {
   body?: never

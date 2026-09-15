@@ -1,11 +1,11 @@
 schema: comet.native.v4
 name: webgui-input-queue
 language: zh-CN
-phase: shape
-status: await-user
-state_version: 5
+phase: build
+status: active
+state_version: 15
 brief: brief.md
-shape_confirmation_hash: bf25def91d29f12550de7d8ca116daf006aa1210c501a0c02caa1e768cb6e6aa
+shape_confirmation_hash: a79b04999ae247a46955091e0b6ae61db2be88d04d3dc0b29cfbf570e14d3d3b
 spec_changes:
   - capability: webgui-input-queue
     operation: create
@@ -16,16 +16,16 @@ workspace:
   target_branch: ide-plugin
   finish: null
 loop:
-  stage: await-user
-  goal_cycle: 2
-  iteration: 0
+  stage: building
+  goal_cycle: 4
+  iteration: 1
   attempt: 0
   retry_epoch: 0
   failed_iteration_count: 0
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: confirm-shape
+  next_action: submit-builder-candidate
 acceptance:
   - id: A1
     source: brief.md
@@ -35,24 +35,25 @@ acceptance:
     reason: null
   - id: A2
     source: brief.md
-    text: A2：当前响应与关联工具完成后，边界前已接收的 A、B、C 补充按顺序作为三条 user 消息进入一次后续 LLM 请求，C 最新；边界后到达的 D
-      等待下一次请求；当前响应自然 stop 时仍处理已接收补充。
+    text: A2：当前响应与关联工具完成后，只批量接收列表开头连续的补充消息并按顺序作为独立 user 消息进入下一次 LLM
+      请求；排队消息后的补充不得越过屏障，边界后到达的输入等待后续边界；当前响应自然 stop 时仍处理符合顺序的已接收补充。
     result: pending
     reason: null
   - id: A3
     source: brief.md
-    text: A3：排队消息不进入当前任务的工具后续上下文；当前任务自然结束后只启动最早一条排队消息，其执行完成后再处理下一条；含工具调用的 provider
-      stop 不被误判为任务完成。
+    text: A3：排队消息不进入当前任务的工具后续上下文；当前任务自然结束后只启动列表最前的一条排队消息，其执行边界后才允许处理位于其后的补充，完成该条任务后再考虑下一条排队消息；含工具调用的
+      provider stop 不被误判为任务完成。
     result: pending
     reason: null
   - id: A4
     source: brief.md
-    text: A4：两种模式共享提交顺序列表，默认展示首条及总数，支持展开收起；补充项仅显示“转排队／删除”，排队项仅显示“转补充／删除”；空列表不占位，已消费项移入正式对话。
+    text: A4：两种模式共享服务端顺序列表，默认展示首条及总数，支持展开收起；补充项显示“转排队／上移／删除”，排队项显示“转补充／上移／删除”，第一项不显示上移，当前模式按钮隐藏；空列表不占位，已消费项移入正式对话；删除成功的任意待发送项按确认结果回填输入框或丢弃。
     result: pending
     reason: null
   - id: A5
     source: brief.md
-    text: A5：模式切换保持 ID、内容和提交顺序，成功删除的待发送输入不进入上下文；与消费竞争时服务端只接受一个结果，已消费项不可伪装成修改或删除成功。
+    text: A5：模式切换保持
+      ID、内容和顺序；上移将当前待发送项与前一项原子交换并同步到多窗口，用户把补充移到排队消息前后该补充才可提前释放；删除只在服务端确认成功后回填完整文本和附件，与消费竞争失败时不修改草稿；重排、转换、删除与消费竞争时服务端只接受一个结果，已消费项不可伪装成操作成功。
     result: pending
     reason: null
   - id: A6
@@ -87,7 +88,7 @@ acceptance:
   - id: A11
     source: brief.md
     text: A11：弹窗支持键盘选择、Escape
-      取消、焦点返回；列表操作有可访问名称、状态反馈，浅色/深色及窄屏不遮挡编辑区或停止操作；请求失败不丢草稿、不误报会话空闲。
+      取消、焦点返回；删除时若输入框为空则成功后自动回填，若非空则先选择“覆盖输入框并回填”或“保留当前草稿并丢弃待发送内容”，取消不删除；列表操作有可访问名称、状态反馈，浅色/深色及窄屏不遮挡编辑区或停止操作；请求失败不丢草稿、不误报会话空闲。
     result: pending
     reason: null
   - id: A12
@@ -109,6 +110,38 @@ history:
       text: Native confirmed acceptance criteria changed
       truncated: false
     completed_at: 2026-09-15T00:45:41.326Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A2
+      - A3
+      - A8
+      - A12
+    summary:
+      text: 独立只读 Verifier 确认 state -> add/snapshot -> useInputQueue 的暂停回归，候选需退回 Build
+        修复空队列 owner 交接。
+      truncated: false
+    completed_at: 2026-09-15T00:59:02.475Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 用户新增并确认待发送消息上移功能和严格顺序语义：每条非首项可向上移动一位并持久化；排队消息作为屏障，其后的补充不得越过提前释放，只有手动移到屏障前才可提前释放。
+      truncated: false
+    completed_at: 2026-09-15T01:16:52.091Z
+  - goal_cycle: 3
+    iteration: 0
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-09-15T01:41:43.353Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null

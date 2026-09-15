@@ -81,11 +81,11 @@ export function InputDeliveryModal(props: {
                     立即补充
                   </span>
                   <span className="rounded bg-indigo-100 px-1.5 py-0.2 text-[10px] font-medium text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300">
-                    插队
+                    补充
                   </span>
                 </div>
                 <span className="mt-1 block text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                  当前响应与工具完成后，在下一次模型调用时加入。
+                  按待发送顺序，在下一个安全模型调用时加入。
                 </span>
               </div>
             </button>

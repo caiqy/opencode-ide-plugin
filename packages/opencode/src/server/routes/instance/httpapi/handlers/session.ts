@@ -509,8 +509,15 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
           return result
         }).pipe(mapInputError),
       )
+      .handle("inputMoveUp", (ctx) =>
+        Effect.gen(function* () {
+          const result = yield* promptSvc.inputs.moveUp(ctx.params.sessionID, ctx.params.inputID)
+          yield* promptSvc.wakeInputs(ctx.params.sessionID)
+          return result
+        }).pipe(mapInputError),
+      )
       .handle("inputDelete", (ctx) =>
-        promptSvc.inputs.update(ctx.params.sessionID, ctx.params.inputID).pipe(mapInputError),
+        promptSvc.inputs.remove(ctx.params.sessionID, ctx.params.inputID).pipe(mapInputError),
       )
       .handle("inputNext", (ctx) => promptSvc.nextInput(ctx.params.sessionID).pipe(mapInputError))
       .handle("list", list)

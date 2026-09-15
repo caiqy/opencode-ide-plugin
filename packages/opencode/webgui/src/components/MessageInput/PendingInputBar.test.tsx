@@ -12,6 +12,7 @@ describe("待发送交互", () => {
       disabled: false,
       busy: false,
       onUpdate: vi.fn(),
+      onMoveUp: vi.fn(),
       onRemove: vi.fn(),
       onNext: vi.fn(),
       onRefresh: vi.fn(),
@@ -33,6 +34,7 @@ describe("待发送交互", () => {
 
   it("默认首条，展开后显示各项，隐藏当前模式按钮", () => {
     const onUpdate = vi.fn()
+    const onMoveUp = vi.fn()
     const onRemove = vi.fn()
     render(
       <PendingInputBar
@@ -50,6 +52,7 @@ describe("待发送交互", () => {
         disabled={false}
         busy
         onUpdate={onUpdate}
+        onMoveUp={onMoveUp}
         onRemove={onRemove}
         onNext={vi.fn()}
         onRefresh={vi.fn()}
@@ -68,10 +71,17 @@ describe("待发送交互", () => {
     expect(rows[0]).toHaveClass("ps-1")
     expect(screen.getByRole("button", { name: "收起待发送消息" })).toHaveClass("h-6", "w-6")
     expect(within(rows[0]).getByRole("button", { name: "删除待发送消息" })).toHaveClass("h-6", "w-6")
+    expect(within(rows[0]).queryByRole("button", { name: "向上移动待发送消息" })).not.toBeInTheDocument()
+    const moveUp = within(rows[1]).getByRole("button", { name: "向上移动待发送消息" })
+    expect(moveUp.compareDocumentPosition(within(rows[1]).getByRole("button", { name: "删除待发送消息" }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
     expect(within(rows[0]).queryByRole("button", { name: "转补充" })).not.toBeInTheDocument()
     expect(within(rows[1]).queryByRole("button", { name: "转排队" })).not.toBeInTheDocument()
     fireEvent.click(within(rows[1]).getByRole("button", { name: "转补充" }))
     expect(onUpdate).toHaveBeenCalledWith("b", "steer")
+    fireEvent.click(moveUp)
+    expect(onMoveUp).toHaveBeenCalledWith("b")
     fireEvent.click(within(rows[0]).getByRole("button", { name: "删除待发送消息" }))
     expect(onRemove).toHaveBeenCalledWith("a")
   })
@@ -87,6 +97,7 @@ describe("待发送交互", () => {
       pending: [],
       disabled: false,
       onUpdate: vi.fn(),
+      onMoveUp: vi.fn(),
       onRemove: vi.fn(),
       onNext: vi.fn(),
       onRefresh: vi.fn(),

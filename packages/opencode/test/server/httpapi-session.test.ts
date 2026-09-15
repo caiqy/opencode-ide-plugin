@@ -271,7 +271,7 @@ describe("session HttpApi", () => {
           body: JSON.stringify({ graceful: true }),
         })
         const id = MessageID.ascending()
-        const input = {
+        const input: SessionInputQueue.Submission = {
           id,
           delivery: "queue",
           prompt: { parts: [{ type: "text", text: "queued text" }], agent: "build" },
@@ -296,6 +296,18 @@ describe("session HttpApi", () => {
         })
         expect(retry.items).toHaveLength(1)
         expect(retry.items[0]?.delivery).toBe("steer")
+        const secondID = MessageID.ascending()
+        yield* requestJson<SessionInputQueue.Snapshot>(`/session/${session.id}/input`, {
+          headers,
+          method: "POST",
+          body: JSON.stringify({ ...input, id: secondID, prompt: { ...input.prompt, parts: [{ type: "text", text: "second" }] } }),
+        })
+        const moved = yield* requestJson<SessionInputQueue.Snapshot>(
+          `/session/${session.id}/input/${secondID}/move-up`,
+          { headers, method: "POST" },
+        )
+        expect(moved.items.map((item) => item.id)).toEqual([secondID, id])
+        yield* request(`/session/${session.id}/input/${secondID}`, { headers, method: "DELETE" })
         const conflict = yield* request(`/session/${session.id}/input`, {
           headers,
           method: "POST",
@@ -310,14 +322,15 @@ describe("session HttpApi", () => {
           body: JSON.stringify({ delivery: "invalid" }),
         })
         expect(invalid.status).toBe(400)
-        const deleted = yield* requestJson<SessionInputQueue.Snapshot>(`/session/${session.id}/input/${id}`, {
+        const deleted = yield* requestJson<SessionInputQueue.Removed>(`/session/${session.id}/input/${id}`, {
           headers,
           method: "DELETE",
         })
-        expect(deleted.items).toHaveLength(0)
-        expect(deleted.revision).toBeGreaterThan(updated.revision)
+        expect(deleted.snapshot.items).toHaveLength(0)
+        expect(deleted.snapshot.revision).toBeGreaterThan(updated.revision)
+        expect(deleted.input).toEqual(input)
         const restored = yield* requestJson<SessionInputQueue.Snapshot>(`/session/${session.id}/input`, { headers })
-        expect(restored).toEqual(deleted)
+        expect(restored).toEqual(deleted.snapshot)
         const emptyNext = yield* request(`/session/${session.id}/input/next`, { headers, method: "POST" })
         expect(emptyNext.status).toBe(409)
       }),

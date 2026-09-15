@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useReducer, forwardRef, useImperativeHandle, useMemo, type RefObject } from "react"
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, useReducer, forwardRef, useImperativeHandle, useMemo, type RefObject } from "react"
 import { LexicalComposer } from "@lexical/react/LexicalComposer"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import { $getRoot, $getSelection, $isRangeSelection, $createTextNode, type EditorState } from "lexical"
@@ -23,15 +23,17 @@ import { useDragDrop } from "./hooks/useDragDrop"
 import { useEditorKeyboard } from "./hooks/useEditorKeyboard"
 import { useMessageParts } from "./hooks/useMessageParts"
 import { insertPlainWithMentionsImpl, restoreDraftImpl } from "./utils"
-import { draftText, loadDrafts, saveDraftSession, saveDrafts, type Draft } from "../../state/repo/draftRepo"
+import { draftText, loadDrafts, saveDraftSession, saveDrafts, type Draft, type DraftPart } from "../../state/repo/draftRepo"
 import { loadQuickPhraseState, type QuickPhraseState } from "../../state/repo/quickPhraseRepo"
 import { quick_phrase_updated_event } from "../../state/repo/quickPhraseEvent"
 import { approvalMode, type ApprovalMode } from "../../state/approval"
 import { useToast } from "../../state/ToastContext"
 import { useInputQueue } from "./hooks/useInputQueue"
+import type { InputQueueSnapshot, QueuedSubmission } from "../../lib/api/inputQueue"
 import { useQueuedSubmission } from "./hooks/useQueuedSubmission"
 import { PendingInputBar } from "./PendingInputBar"
 import { InputDeliveryModal } from "./InputDeliveryModal"
+import { PendingInputDeleteModal } from "./PendingInputDeleteModal"
 
 interface MessageInputProps {
   sessionID: string | null
@@ -47,6 +49,8 @@ interface DraftHydration {
   editorRevision: number
   loading: number
 }
+
+type PendingInput = InputQueueSnapshot["items"][number]
 
 export const MessageInput = forwardRef<
   {
@@ -88,9 +92,11 @@ const MessageInputInner = forwardRef<
 >(({ sessionID, blocked = false, onMessageSent, onSendIntent, onError, draftHydration }, ref) => {
   const [editor] = useLexicalComposerContext()
   const [isEmpty, setIsEmpty] = useState(true)
-const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
+  const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
+  const [deletingInput, setDeletingInput] = useState<PendingInput | null>(null)
   const activeSessionRef = useRef(sessionID)
   activeSessionRef.current = sessionID
+  const deleteEpoch = useRef(0)
   const pendingApprovalRef = useRef<Record<string, boolean>>({})
   const [, forceRender] = useReducer((count: number) => count + 1, 0)
 
@@ -205,6 +211,36 @@ const [isCompactConfirmOpen, setIsCompactConfirmOpen] = useState(false)
     sessionID, editor, extractMessageParts, selectedAgent, selectedProviderId, selectedModelId, selectedVariant,
     add: inputQueue.add, onMessageSent,
   })
+  const removeInput = useCallback(
+    async (item: PendingInput, refill: boolean) => {
+      if (!sessionID) return
+      const epoch = deleteEpoch.current
+      const input = await inputQueue.remove(item.id)
+      if (!input || deleteEpoch.current !== epoch) return
+      setDeletingInput(null)
+      if (!refill) return
+      restore(inputDraft(input, item.text, selectedAgent), false)
+      setTimeout(() => editor.focus(), 0)
+    },
+    [editor, inputQueue, restore, selectedAgent, sessionID],
+  )
+  const removePendingInput = useCallback(
+    (id: string) => {
+      const item = inputQueue.snapshot?.items.find((input) => input.id === id)
+      if (!item) return
+      if (isEmpty) {
+        void removeInput(item, true)
+        return
+      }
+      setDeletingInput(item)
+    },
+    [inputQueue.snapshot, isEmpty, removeInput],
+  )
+
+  useLayoutEffect(() => {
+    deleteEpoch.current++
+    setDeletingInput(null)
+  }, [sessionID])
 
   const handleEditorChange = useCallback(
     (editorState: EditorState) => {
@@ -676,7 +712,8 @@ const currentApproval = approvalMode(
           <PendingInputBar key={sessionID} snapshot={inputQueue.snapshot} error={inputQueue.error} pending={inputQueue.pending}
             disabled={interactionLocked} busy={busy || !!isGracefulStopping}
             onUpdate={(id, delivery) => { void inputQueue.update(id, delivery) }}
-            onRemove={(id) => { void inputQueue.remove(id) }} onNext={() => { void inputQueue.next() }}
+            onMoveUp={(id) => { void inputQueue.moveUp(id) }}
+            onRemove={removePendingInput} onNext={() => { void inputQueue.next() }}
             onRefresh={() => { void inputQueue.refresh() }} />
           <div
             className="first:rounded-t-lg border border-transparent bg-white rounded-b-lg focus-within:border-blue-500 dark:bg-[var(--color-gray-800)] dark:focus-within:border-blue-400"
@@ -739,6 +776,16 @@ selectionPending={selectionPending}
       {queuedSubmission.isOpen && <InputDeliveryModal pending={queuedSubmission.pending} error={queuedSubmission.error}
         onSelect={(delivery) => { void queuedSubmission.select(delivery) }} onClose={queuedSubmission.close} />}
 
+      {deletingInput && (
+        <PendingInputDeleteModal
+          pending={inputQueue.pending.includes(deletingInput.id)}
+          error={inputQueue.error}
+          onClose={() => setDeletingInput(null)}
+          onDiscard={() => { void removeInput(deletingInput, false) }}
+          onOverwrite={() => { void removeInput(deletingInput, true) }}
+        />
+      )}
+
       {isConfirmForceAbortOpen && (
         <ConfirmModal
           isOpen={isConfirmForceAbortOpen}
@@ -756,3 +803,23 @@ selectionPending={selectionPending}
 })
 
 MessageInputInner.displayName = "MessageInputInner"
+
+function inputDraft(input: QueuedSubmission, text: string, agent: string): Draft {
+  if (input.command) {
+    return `/${input.command.command}${input.command.arguments ? ` ${input.command.arguments}` : ""}`
+  }
+  const parts = input.prompt.parts.flatMap((part): DraftPart[] => {
+    if (part.type === "subtask") return []
+    if (part.type === "text") return [{ type: "text", text: part.text }]
+    if (part.type === "agent") return [{ type: "agent", name: part.name, source: part.source }]
+    return [{ type: "file", mime: part.mime, filename: part.filename, url: part.url, source: part.source }]
+  })
+  if (!parts.length) return text
+  return {
+    parts,
+    agent: input.prompt.agent ?? agent,
+    model: input.prompt.model
+      ? { ...input.prompt.model, ...(input.prompt.variant ? { variant: input.prompt.variant } : {}) }
+      : undefined,
+  }
+}

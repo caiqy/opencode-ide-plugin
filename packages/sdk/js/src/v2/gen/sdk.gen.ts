@@ -213,6 +213,8 @@ import type {
   SessionInputDeleteResponses,
   SessionInputListErrors,
   SessionInputListResponses,
+  SessionInputMoveUpErrors,
+  SessionInputMoveUpResponses,
   SessionInputNextErrors,
   SessionInputNextResponses,
   SessionInputUpdateErrors,
@@ -3777,6 +3779,38 @@ export class Session2 extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Move pending input up
+   */
+  public inputMoveUp<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      inputID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "inputID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionInputMoveUpResponses, SessionInputMoveUpErrors, ThrowOnError>({
+      url: "/session/{sessionID}/input/{inputID}/move-up",
+      ...options,
+      ...params,
     })
   }
 

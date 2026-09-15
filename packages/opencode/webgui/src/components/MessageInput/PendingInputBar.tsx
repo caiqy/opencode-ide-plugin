@@ -8,6 +8,7 @@ export function PendingInputBar(props: {
   disabled: boolean
   busy: boolean
   onUpdate: (id: string, delivery: InputDelivery) => void
+  onMoveUp: (id: string) => void
   onRemove: (id: string) => void
   onNext: () => void
   onRefresh: () => void
@@ -96,7 +97,7 @@ export function PendingInputBar(props: {
           </div>
 
           <ul id={listID} className="mt-1 max-h-48 overflow-y-auto">
-            {(expanded ? items : items.slice(0, 1)).map((item) => (
+            {(expanded ? items : items.slice(0, 1)).map((item, index) => (
               <li
                 key={item.id}
                 className="group flex min-h-8 items-center gap-2 border-b border-gray-200/70 ps-1 py-0.5 last:border-b-0 hover:bg-gray-100/70 dark:border-white/[0.08] dark:hover:bg-white/[0.04]"
@@ -139,6 +140,21 @@ export function PendingInputBar(props: {
                     </svg>
                     <span className="hidden sm:inline">{item.delivery === "steer" ? "转排队" : "转补充"}</span>
                   </button>
+
+                  {index > 0 && (
+                    <button
+                      type="button"
+                      disabled={props.disabled || props.pending.includes(item.id)}
+                      aria-label="向上移动待发送消息"
+                      title="向上移动待发送消息"
+                      onClick={() => props.onMoveUp(item.id)}
+                      className="flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-200/70 hover:text-gray-700 focus-visible:outline-blue-500 disabled:opacity-40 dark:text-gray-500 dark:hover:bg-white/10 dark:hover:text-gray-200"
+                    >
+                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19V5m0 0l-6 6m6-6l6 6" />
+                      </svg>
+                    </button>
+                  )}
 
                   <button
                     type="button"

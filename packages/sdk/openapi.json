@@ -6128,11 +6128,11 @@
         ],
         "responses": {
           "200": {
-            "description": "SessionInputQueue.Snapshot",
+            "description": "SessionInputQueue.Removed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionInputQueueSnapshot"
+                  "$ref": "#/components/schemas/SessionInputQueueRemoved"
                 }
               }
             }
@@ -6163,6 +6163,87 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.inputDelete({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/input/{inputID}/move-up": {
+      "post": {
+        "tags": ["session"],
+        "operationId": "session.inputMoveUp",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "inputID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^msg"
+            },
+            "required": true
+          },
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SessionInputQueue.Snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInputQueueSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Move pending input up",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.inputMoveUp({\n  ...\n})"
           }
         ]
       }
@@ -28511,6 +28592,98 @@
           }
         },
         "required": ["sessionID", "revision", "paused", "items"],
+        "additionalProperties": false
+      },
+      "SessionInputQueueRemoved": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "$ref": "#/components/schemas/SessionInputQueueSnapshot"
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^msg"
+              },
+              "delivery": {
+                "type": "string",
+                "enum": ["steer", "queue"]
+              },
+              "prompt": {
+                "type": "object",
+                "properties": {
+                  "parts": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/TextPartInput"
+                        },
+                        {
+                          "$ref": "#/components/schemas/FilePartInput"
+                        },
+                        {
+                          "$ref": "#/components/schemas/AgentPartInput"
+                        },
+                        {
+                          "$ref": "#/components/schemas/SubtaskPartInput"
+                        }
+                      ]
+                    }
+                  },
+                  "agent": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "providerID": {
+                        "type": "string"
+                      },
+                      "modelID": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["providerID", "modelID"],
+                    "additionalProperties": false
+                  },
+                  "variant": {
+                    "type": "string"
+                  }
+                },
+                "required": ["parts"],
+                "additionalProperties": false
+              },
+              "command": {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string"
+                  },
+                  "arguments": {
+                    "type": "string"
+                  },
+                  "agent": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "variant": {
+                    "type": "string"
+                  }
+                },
+                "required": ["command", "arguments"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["id", "delivery", "prompt"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["snapshot", "input"],
         "additionalProperties": false
       },
       "WorkspaceEventConnectionStatus": {

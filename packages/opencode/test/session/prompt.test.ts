@@ -456,7 +456,7 @@ const boot = Effect.fn("test.boot")(function* (input?: { title?: string }) {
   return { prompt, run, sessions, chat }
 })
 
-it.instance("input queue batches steers before FIFO queued turns and reconciles retries", () =>
+it.instance("input queue honors queue barriers and reconciles retries", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
     const { prompt, chat, sessions } = yield* boot()
@@ -474,24 +474,25 @@ it.instance("input queue batches steers before FIFO queued turns and reconciles 
     yield* prompt.inputs.add(chat.id, a)
     yield* prompt.inputs.add(chat.id, b)
     yield* prompt.inputs.add(chat.id, removed)
-    yield* prompt.inputs.update(chat.id, removed.id)
+    yield* prompt.inputs.remove(chat.id, removed.id)
     yield* prompt.inputs.add(chat.id, removed)
     expect((yield* prompt.inputs.get(chat.id)).items.map((item) => item.text)).toEqual([
       "queued-first",
       "steer-A",
       "steer-B",
     ])
-    yield* llm.text("steers answered")
     yield* llm.text("queue answered")
+    yield* llm.text("steers answered")
     yield* prompt.loop({ sessionID: chat.id })
     const requests = yield* llm.inputs
     expect(requests).toHaveLength(2)
     const first = JSON.stringify(requests[0])
-    expect(first).toContain("steer-A")
-    expect(first).toContain("steer-B")
-    expect(first.indexOf("steer-A")).toBeLessThan(first.indexOf("steer-B"))
-    expect(first).not.toContain("queued-first")
-    expect(JSON.stringify(requests[1])).toContain("queued-first")
+    expect(first).toContain("queued-first")
+    expect(first).not.toContain("steer-A")
+    const second = JSON.stringify(requests[1])
+    expect(second).toContain("steer-A")
+    expect(second).toContain("steer-B")
+    expect(second.indexOf("steer-A")).toBeLessThan(second.indexOf("steer-B"))
     expect(JSON.stringify(requests)).not.toContain("never-send")
     expect((yield* prompt.inputs.get(chat.id)).items).toHaveLength(0)
     yield* prompt.inputs.add(chat.id, a)
@@ -502,6 +503,33 @@ it.instance("input queue batches steers before FIFO queued turns and reconciles 
     expect(Exit.isFailure(conflict)).toBe(true)
     const consumed = yield* prompt.inputs.update(chat.id, a.id, "queue").pipe(Effect.exit)
     expect(Exit.isFailure(consumed)).toBe(true)
+  }),
+)
+
+it.instance("input queue moves a pending item up one position", () =>
+  Effect.gen(function* () {
+    const { prompt, chat } = yield* boot()
+    const input = (text: string) => ({
+      id: MessageID.ascending(),
+      delivery: "queue" as const,
+      prompt: { parts: [{ type: "text" as const, text }], agent: "build", model: ref },
+    })
+    const first = input("first")
+    const second = input("second")
+    const third = input("third")
+    yield* prompt.inputs.add(chat.id, first)
+    yield* prompt.inputs.add(chat.id, second)
+    yield* prompt.inputs.add(chat.id, third)
+    expect((yield* prompt.inputs.moveUp(chat.id, third.id)).items.map((item) => item.id)).toEqual([
+      first.id,
+      third.id,
+      second.id,
+    ])
+    expect((yield* prompt.inputs.moveUp(chat.id, third.id)).items.map((item) => item.id)).toEqual([
+      third.id,
+      first.id,
+      second.id,
+    ])
   }),
 )
 
@@ -548,7 +576,7 @@ it.instance("input queue pause preserves inputs and explicit next sends first se
   }),
 )
 
-it.instance("input queue admits while streaming and defers late steers to the following request", () =>
+it.instance("input queue holds steers behind a queued input until its response boundary", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
     const { prompt, chat } = yield* boot()
@@ -556,8 +584,7 @@ it.instance("input queue admits while streaming and defers late steers to the fo
     const second = defer<void>()
     yield* llm.push(reply().wait(first.promise).text("first response").stop())
     yield* llm.push(reply().wait(second.promise).text("second response").stop())
-    yield* llm.text("late steer response")
-    yield* llm.text("queue response")
+    yield* llm.text("steers response")
     const run = yield* prompt
       .prompt({ sessionID: chat.id, model: ref, agent: "build", parts: [{ type: "text", text: "original" }] })
       .pipe(Effect.forkChild)
@@ -578,14 +605,13 @@ it.instance("input queue admits while streaming and defers late steers to the fo
     second.resolve()
     yield* Fiber.join(run)
     const requests = yield* llm.inputs
-    expect(requests).toHaveLength(4)
+    expect(requests).toHaveLength(3)
     expect(JSON.stringify(requests[0])).not.toContain("stream-steer-A")
-    expect(JSON.stringify(requests[1])).toContain("stream-steer-A")
-    expect(JSON.stringify(requests[1])).toContain("stream-steer-B")
-    expect(JSON.stringify(requests[1])).not.toContain("late-steer-C")
+    expect(JSON.stringify(requests[1])).toContain("queued-after-task")
+    expect(JSON.stringify(requests[1])).not.toContain("stream-steer-A")
+    expect(JSON.stringify(requests[2])).toContain("stream-steer-A")
+    expect(JSON.stringify(requests[2])).toContain("stream-steer-B")
     expect(JSON.stringify(requests[2])).toContain("late-steer-C")
-    expect(JSON.stringify(requests[2])).not.toContain("queued-after-task")
-    expect(JSON.stringify(requests[3])).toContain("queued-after-task")
   }),
 )
 

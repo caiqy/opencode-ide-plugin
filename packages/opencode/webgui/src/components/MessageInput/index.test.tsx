@@ -1,6 +1,6 @@
 import { createRef } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { prepareSession } from "../../App"
 import { quick_phrase_updated_event } from "../../state/repo/quickPhraseEvent"
 
@@ -12,6 +12,7 @@ let lastQuickPhraseBarProps: any
 let lastDragDropOptions: any
 let lastEditorKeyboardOptions: any
 let rootText = ""
+let inputQueueSnapshot: any = null
 let sessionIdle = true
 let sessionIdleById: Record<string, boolean> = {}
 let sessionGracefulStoppingById: Record<string, boolean> = {}
@@ -61,10 +62,28 @@ const mocks = vi.hoisted(() => {
     setApproval: vi.fn(),
     setCurrentSession: vi.fn(),
     showToast: vi.fn(),
+    inputQueueAdd: vi.fn(),
+    inputQueueUpdate: vi.fn(),
+    inputQueueMoveUp: vi.fn(),
+    inputQueueRemove: vi.fn(),
+    inputQueueNext: vi.fn(),
+    inputQueueRefresh: vi.fn(),
   }
 })
 
-vi.mock("./hooks/useInputQueue", () => ({ useInputQueue: () => ({ snapshot: null, error: null, pending: [], add: vi.fn(), update: vi.fn(), remove: vi.fn(), next: vi.fn(), refresh: vi.fn() }) }))
+vi.mock("./hooks/useInputQueue", () => ({
+  useInputQueue: () => ({
+    snapshot: inputQueueSnapshot,
+    error: null,
+    pending: [],
+    add: mocks.inputQueueAdd,
+    update: mocks.inputQueueUpdate,
+    moveUp: mocks.inputQueueMoveUp,
+    remove: mocks.inputQueueRemove,
+    next: mocks.inputQueueNext,
+    refresh: mocks.inputQueueRefresh,
+  }),
+}))
 vi.mock("./hooks/useQueuedSubmission", () => ({ useQueuedSubmission: () => ({ isOpen: false, pending: false, error: null, open: vi.fn(), close: vi.fn(), select: vi.fn() }) }))
 
 vi.mock("../ConfirmModal", () => {
@@ -324,6 +343,7 @@ describe("MessageInput compact confirm", () => {
     lastEditorKeyboardOptions = null
     confirmModalMap = {}
     rootText = ""
+    inputQueueSnapshot = null
     editorFocus.mockClear()
     vi.clearAllMocks()
     mocks.getMessagesBySession.mockReturnValue([])
@@ -343,6 +363,7 @@ describe("MessageInput compact confirm", () => {
     mocks.setApproval.mockReset()
     mocks.setCurrentSession.mockReset()
     mocks.showToast.mockReset()
+    mocks.inputQueueRemove.mockResolvedValue(null)
   })
 
   it("会在输入框上方渲染快捷短语栏", async () => {
@@ -359,6 +380,151 @@ describe("MessageInput compact confirm", () => {
         body: "请总结改动",
       },
     ])
+  })
+
+  it("空输入框删除待发送消息后回填完整内容", async () => {
+    const input = {
+      id: "queued",
+      delivery: "queue" as const,
+      prompt: {
+        agent: "build",
+        parts: [
+          { type: "text" as const, text: "queued text[file.txt]" },
+          { type: "file" as const, mime: "text/plain", filename: "file.txt", url: "data:text/plain;base64,eA==" },
+        ],
+      },
+    }
+    inputQueueSnapshot = {
+      sessionID: "s1",
+      revision: 1,
+      paused: false,
+      items: [
+        {
+          id: "queued",
+          sequence: 1,
+          delivery: "queue",
+          text: "queued text",
+        },
+      ],
+    }
+    mocks.inputQueueRemove.mockResolvedValue(input)
+    render(<MessageInput sessionID="s1" />)
+
+    fireEvent.click(screen.getByRole("button", { name: "删除待发送消息" }))
+
+    await waitFor(() => expect(mocks.inputQueueRemove).toHaveBeenCalledWith("queued"))
+    expect(mocks.restoreDraftImpl).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        parts: [
+          { type: "text", text: "queued text[file.txt]" },
+          { type: "file", mime: "text/plain", filename: "file.txt", url: "data:text/plain;base64,eA==" },
+        ],
+      }),
+    )
+  })
+
+  it("输入框非空时选择保留草稿并丢弃待发送内容", async () => {
+    const input = {
+      id: "queued",
+      delivery: "steer" as const,
+      prompt: { parts: [{ type: "text" as const, text: "queued text" }] },
+    }
+    inputQueueSnapshot = {
+      sessionID: "s1",
+      revision: 1,
+      paused: false,
+      items: [
+        {
+          id: "queued",
+          sequence: 1,
+          delivery: "steer",
+          text: "queued text",
+        },
+      ],
+    }
+    mocks.inputQueueRemove.mockResolvedValue(input)
+    rootText = "current draft"
+    render(<MessageInput sessionID="s1" />)
+    act(() => lastEditorContentProps.onEditorChange({ read: (run: () => void) => run() }))
+
+    fireEvent.click(screen.getByRole("button", { name: "删除待发送消息" }))
+    fireEvent.click(await screen.findByRole("button", { name: "取消" }))
+    expect(mocks.inputQueueRemove).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "删除待发送消息" }))
+    fireEvent.click(await screen.findByRole("button", { name: "保留草稿并丢弃" }))
+
+    await waitFor(() => expect(mocks.inputQueueRemove).toHaveBeenCalledWith("queued"))
+    expect(mocks.restoreDraftImpl).not.toHaveBeenCalled()
+  })
+
+  it("输入框非空时可覆盖并回填 slash command", async () => {
+    const input = {
+      id: "command",
+      delivery: "queue" as const,
+      prompt: { parts: [{ type: "text" as const, text: "/review details" }] },
+      command: { command: "review", arguments: "details" },
+    }
+    inputQueueSnapshot = {
+      sessionID: "s1",
+      revision: 1,
+      paused: false,
+      items: [
+        {
+          id: "command",
+          sequence: 1,
+          delivery: "queue",
+          text: "/review details",
+        },
+      ],
+    }
+    mocks.inputQueueRemove.mockResolvedValue(input)
+    rootText = "current draft"
+    render(<MessageInput sessionID="s1" />)
+    act(() => lastEditorContentProps.onEditorChange({ read: (run: () => void) => run() }))
+
+    fireEvent.click(screen.getByRole("button", { name: "删除待发送消息" }))
+    fireEvent.click(await screen.findByRole("button", { name: "覆盖并回填" }))
+
+    await waitFor(() => expect(mocks.inputQueueRemove).toHaveBeenCalledWith("command"))
+    expect(mocks.insertPlainWithMentionsImpl).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(Function),
+      "/review details",
+      { replace: true },
+    )
+  })
+
+  it("删除响应期间切换会话再返回时不覆盖新草稿", async () => {
+    const input = {
+      id: "queued",
+      delivery: "queue" as const,
+      prompt: { parts: [{ type: "text" as const, text: "stale queued text" }] },
+    }
+    inputQueueSnapshot = {
+      sessionID: "s1",
+      revision: 1,
+      paused: false,
+      items: [{ id: "queued", sequence: 1, delivery: "queue", text: "stale queued text" }],
+    }
+    let resolve!: (value: typeof input) => void
+    mocks.inputQueueRemove.mockReturnValue(new Promise((done) => (resolve = done)))
+    const view = render(<MessageInput sessionID="s1" />)
+    fireEvent.click(screen.getByRole("button", { name: "删除待发送消息" }))
+
+    inputQueueSnapshot = null
+    view.rerender(<MessageInput sessionID="s2" />)
+    inputQueueSnapshot = { sessionID: "s1", revision: 2, paused: false, items: [] }
+    view.rerender(<MessageInput sessionID="s1" />)
+    rootText = "new draft"
+    act(() => lastEditorContentProps.onEditorChange({ read: (run: () => void) => run() }))
+    mocks.restoreDraftImpl.mockClear()
+    mocks.insertPlainWithMentionsImpl.mockClear()
+
+    await act(async () => resolve(input))
+
+    expect(mocks.restoreDraftImpl).not.toHaveBeenCalled()
+    expect(mocks.insertPlainWithMentionsImpl).not.toHaveBeenCalled()
   })
 
   it("从当前 Session 恢复审批模式并持久化切换", async () => {

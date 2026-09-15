@@ -139,10 +139,16 @@ export const SessionApi = HttpApi.make("session")
         }).annotateMerge(
           OpenApi.annotations({ identifier: "session.inputUpdate", summary: "Change pending input delivery" }),
         ),
-        HttpApiEndpoint.delete("inputDelete", `${root}/:sessionID/input/:inputID`, {
+        HttpApiEndpoint.post("inputMoveUp", `${root}/:sessionID/input/:inputID/move-up`, {
           params: { sessionID: SessionID, inputID: MessageID },
           query: WorkspaceRoutingQuery,
           success: SessionInputQueue.Snapshot,
+          error: ConflictError,
+        }).annotateMerge(OpenApi.annotations({ identifier: "session.inputMoveUp", summary: "Move pending input up" })),
+        HttpApiEndpoint.delete("inputDelete", `${root}/:sessionID/input/:inputID`, {
+          params: { sessionID: SessionID, inputID: MessageID },
+          query: WorkspaceRoutingQuery,
+          success: SessionInputQueue.Removed,
           error: ConflictError,
         }).annotateMerge(OpenApi.annotations({ identifier: "session.inputDelete", summary: "Delete a pending input" })),
         HttpApiEndpoint.post("inputNext", `${root}/:sessionID/input/next`, {

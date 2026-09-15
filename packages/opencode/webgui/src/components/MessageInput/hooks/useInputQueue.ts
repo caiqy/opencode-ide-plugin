@@ -63,6 +63,28 @@ export function useInputQueue(sessionID: string | null) {
     },
     [apply, refresh, sessionID],
   )
+  const remove = useCallback(
+    async (id: string) => {
+      if (!sessionID) return null
+      const key = `${sessionID}:${id}`
+      if (locks.current.has(key)) return null
+      locks.current.add(key)
+      setPending((current) => [...current, id])
+      try {
+        const removed = await inputQueue.remove(sessionID, id)
+        apply(removed.snapshot)
+        return removed.input
+      } catch (error) {
+        await refresh()
+        if (active.current === sessionID) setError(error instanceof Error ? error.message : "操作失败，请重试")
+        return null
+      } finally {
+        locks.current.delete(key)
+        if (active.current === sessionID) setPending((current) => current.filter((value) => value !== id))
+      }
+    },
+    [apply, refresh, sessionID],
+  )
 
   return {
     snapshot: snapshot?.sessionID === sessionID ? snapshot : null,
@@ -76,7 +98,8 @@ export function useInputQueue(sessionID: string | null) {
     ),
     update: (id: string, delivery: InputDelivery) =>
       sessionID && mutate(id, () => inputQueue.update(sessionID, id, delivery)),
-    remove: (id: string) => sessionID && mutate(id, () => inputQueue.remove(sessionID, id)),
+    moveUp: (id: string) => sessionID && mutate(id, () => inputQueue.moveUp(sessionID, id)),
+    remove,
     next: () => sessionID && mutate("next", () => inputQueue.next(sessionID)),
   }
 }

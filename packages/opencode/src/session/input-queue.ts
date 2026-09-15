@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect"
-import { and, asc, eq, inArray } from "drizzle-orm"
+import { and, asc, eq, inArray, sql } from "drizzle-orm"
 import { isDeepStrictEqual } from "node:util"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
@@ -53,6 +53,10 @@ export const Snapshot = Schema.Struct({
   ),
 }).annotate({ identifier: "SessionInputQueue.Snapshot" })
 export type Snapshot = typeof Snapshot.Type
+export const Removed = Schema.Struct({ snapshot: Snapshot, input: Submission }).annotate({
+  identifier: "SessionInputQueue.Removed",
+})
+export type Removed = typeof Removed.Type
 export class InputError extends Schema.TaggedErrorClass<InputError>()("SessionInputQueueError", {
   message: Schema.String,
 }) {}
@@ -65,7 +69,9 @@ const decode = Schema.decodeUnknownSync(Submission)
 export interface Interface {
   get: (sessionID: SessionID) => Effect.Effect<Snapshot, InputError>
   add: (sessionID: SessionID, input: Submission) => Effect.Effect<Snapshot, InputError>
-  update: (sessionID: SessionID, id: MessageID, delivery?: Delivery) => Effect.Effect<Snapshot, InputError>
+  update: (sessionID: SessionID, id: MessageID, delivery: Delivery) => Effect.Effect<Snapshot, InputError>
+  moveUp: (sessionID: SessionID, id: MessageID) => Effect.Effect<Snapshot, InputError>
+  remove: (sessionID: SessionID, id: MessageID) => Effect.Effect<Removed, InputError>
   pause: (sessionID: SessionID) => Effect.Effect<void>
   resume: (sessionID: SessionID, idle: Effect.Effect<boolean>) => Effect.Effect<Snapshot, InputError>
   consume: (
@@ -232,7 +238,55 @@ const layer = Layer.effect(
           return yield* changed(sessionID)
         }),
       )
-    const update = (sessionID: SessionID, id: MessageID, delivery?: Delivery) =>
+    const update = (sessionID: SessionID, id: MessageID, delivery: Delivery) =>
+      locks.withLock(sessionID)(
+        Effect.gen(function* () {
+          yield* state(sessionID)
+          const row = yield* db
+            .select()
+            .from(QueuedInputTable)
+            .where(and(eq(QueuedInputTable.id, id), eq(QueuedInputTable.session_id, sessionID)))
+            .get()
+            .pipe(Effect.orDie)
+          if (!row || row.state !== "pending")
+            return yield* new InputError({ message: "消息已发送或已删除，请刷新列表" })
+          yield* db
+            .update(QueuedInputTable)
+            .set({ delivery })
+            .where(eq(QueuedInputTable.id, id))
+            .run()
+            .pipe(Effect.orDie)
+          return yield* changed(sessionID)
+        }),
+      )
+    const moveUp = (sessionID: SessionID, id: MessageID) =>
+      locks.withLock(sessionID)(
+        Effect.gen(function* () {
+          yield* state(sessionID)
+          const rows = (yield* pending(sessionID)).filter((row) => row.state === "pending")
+          const index = rows.findIndex((row) => row.id === id)
+          if (index < 0) return yield* new InputError({ message: "消息已发送或已删除，请刷新列表" })
+          if (index === 0) return yield* snapshot(sessionID)
+          const row = rows[index]
+          const previous = rows[index - 1]
+          yield* db
+            .update(QueuedInputTable)
+            .set({
+              sequence: sql`case ${QueuedInputTable.id} when ${row.id} then ${previous.sequence} else ${row.sequence} end`,
+            })
+            .where(
+              and(
+                eq(QueuedInputTable.session_id, sessionID),
+                eq(QueuedInputTable.state, "pending"),
+                inArray(QueuedInputTable.id, [previous.id, row.id]),
+              ),
+            )
+            .run()
+            .pipe(Effect.orDie)
+          return yield* changed(sessionID)
+        }),
+      )
+    const remove = (sessionID: SessionID, id: MessageID) =>
       locks.withLock(sessionID)(
         Effect.gen(function* () {
           const current = yield* state(sessionID)
@@ -246,11 +300,11 @@ const layer = Layer.effect(
             return yield* new InputError({ message: "消息已发送或已删除，请刷新列表" })
           yield* db
             .update(QueuedInputTable)
-            .set(delivery ? { delivery } : { state: "deleted" })
+            .set({ state: "deleted" })
             .where(eq(QueuedInputTable.id, id))
             .run()
             .pipe(Effect.orDie)
-          if (!delivery && current.next_id === id) {
+          if (current.next_id === id) {
             yield* db
               .update(InputQueueTable)
               .set({ next_id: null })
@@ -258,7 +312,7 @@ const layer = Layer.effect(
               .run()
               .pipe(Effect.orDie)
           }
-          return yield* changed(sessionID)
+          return { snapshot: yield* changed(sessionID), input: decode(row.input) }
         }),
       )
     const pause = (sessionID: SessionID) =>
@@ -300,7 +354,8 @@ const layer = Layer.effect(
             const current = yield* state(sessionID)
             if (current.paused || stopping()) return 0
             const rows = yield* pending(sessionID)
-            const steers = rows.filter((row) => row.delivery === "steer")
+            const queue = rows.findIndex((row) => row.delivery === "queue")
+            const steers = rows.slice(0, queue < 0 ? rows.length : queue)
             const selected = current.next_id
               ? rows.filter((row) => row.id === current.next_id)
               : steers.length
@@ -339,7 +394,7 @@ const layer = Layer.effect(
           }),
         )
         .pipe(Effect.orDie)
-    return Service.of({ get, add, update, pause, resume, consume })
+    return Service.of({ get, add, update, moveUp, remove, pause, resume, consume })
   }),
 )
 
