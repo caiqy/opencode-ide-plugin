@@ -1231,6 +1231,7 @@ const layer = Layer.effect(
         }
 
         if (input.noReply === true) return message
+        yield* inputs.activate(input.sessionID, () => gracefulStops.has(input.sessionID)).pipe(Effect.orDie)
         return yield* loop({ sessionID: input.sessionID })
       })
 

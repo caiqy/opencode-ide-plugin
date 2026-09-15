@@ -3,7 +3,7 @@ name: webgui-input-queue
 language: zh-CN
 phase: build
 status: active
-state_version: 15
+state_version: 19
 brief: brief.md
 shape_confirmation_hash: a79b04999ae247a46955091e0b6ae61db2be88d04d3dc0b29cfbf570e14d3d3b
 spec_changes:
@@ -16,9 +16,9 @@ workspace:
   target_branch: ide-plugin
   finish: null
 loop:
-  stage: building
+  stage: repairing
   goal_cycle: 4
-  iteration: 1
+  iteration: 2
   attempt: 0
   retry_epoch: 0
   failed_iteration_count: 0
@@ -97,7 +97,121 @@ acceptance:
       自行检查，不启动子代理。
     result: pending
     reason: null
-builder_handoff: null
+builder_handoff:
+  candidate_id: 042243fd-68bb-42ed-9ae7-37cd67bf968b
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:5701a8a2-255a-4cd6-ab00-fe83f8be272c
+  iteration: 1
+  summary:
+    text: 提交 797ea9fd0f 完成最终 Shape：新增持久化相邻上移与 SDK endpoint；queue 成为严格顺序屏障；删除成功返回原始
+      Submission 并按 Composer 空/非空策略回填或丢弃；修复跨会话 ABA 删除响应竞态。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+  checks:
+    - name:
+        text: OpenCode input queue integration
+        truncated: false
+      result: passed
+      note:
+        text: 8 passed
+        truncated: false
+    - name:
+        text: Session HttpApi input queue
+        truncated: false
+      result: passed
+      note:
+        text: 1 passed
+        truncated: false
+    - name:
+        text: WebGUI targeted
+        truncated: false
+      result: passed
+      note:
+        text: 62 passed
+        truncated: false
+    - name:
+        text: WebGUI full suite
+        truncated: false
+      result: passed
+      note:
+        text: 167 files, 1615 tests passed
+        truncated: false
+    - name:
+        text: OpenCode typecheck
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: Protocol typecheck
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: Client typecheck and generated check
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: legacy SDK typecheck and generation
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: WebGUI typecheck
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: WebGUI production build
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: Changed queue files eslint
+        truncated: false
+      result: passed
+      note:
+        text: 新增和独立改动文件无 lint 问题；MessageInput index 仅命中既有违规
+        truncated: false
+    - name:
+        text: Browser desktop and 375px
+        truncated: false
+      result: passed
+      note:
+        text: 上移顺序、按钮布局、三选项模态框、非空丢弃、空草稿自动回填均通过，控制台无 error/warn
+        truncated: false
+    - name:
+        text: git diff --check
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits:
+    - text: WebGUI 全仓 lint 仍有 687 个既有错误和 49 个既有 warning；本次新增/独立改动文件定向 lint
+        通过，MessageInput index 的报告位于既有 any 与 Hook 依赖行。
+      truncated: false
+    - text: 未调用真实外部模型；provider 请求顺序由可控 TestLLMServer 集成测试验证。
+      truncated: false
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: 独立只读复核确认重排、queue 屏障、删除响应负载边界和 UI 行为正确；发现的 A-B-A 与放弃 render 竞态均已修复并复核通过。
+      truncated: false
+    reviewer_execution_ref: ses_f5d22ff6dffe6jutijXZE4qPqn
+  submitted_at: 2026-09-15T02:33:21.251Z
 blockers: []
 verification: null
 history:
@@ -142,6 +256,24 @@ history:
       text: Native confirmed acceptance criteria changed
       truncated: false
     completed_at: 2026-09-15T01:41:43.353Z
+  - goal_cycle: 4
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立只读 Verifier 核实候选满足相邻上移、严格 queue 屏障、删除 payload、草稿恢复和并发回填保护，结论 pass。
+      truncated: false
+    completed_at: 2026-09-15T02:40:15.502Z
+  - goal_cycle: 4
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 用户实测发现：队列已暂停时手动发送新消息后，旧待发送列表仍显示已暂停，未恢复为等待发送；返回 Build 修复该状态转换并补回归验证。
+      truncated: false
+    completed_at: 2026-09-15T02:45:13.698Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null

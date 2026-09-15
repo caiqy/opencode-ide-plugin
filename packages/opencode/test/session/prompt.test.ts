@@ -533,46 +533,70 @@ it.instance("input queue moves a pending item up one position", () =>
   }),
 )
 
-it.instance("input queue pause preserves inputs and explicit next sends first separately", () =>
+it.instance("a manual prompt resumes a paused input queue", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
     const { prompt, chat } = yield* boot()
     yield* seed(chat.id, { finish: "stop" })
+    const gate = defer<void>()
     const first = {
       id: MessageID.ascending(),
-      delivery: "queue" as const,
-      prompt: { parts: [{ type: "text" as const, text: "first queued" }], agent: "build", model: ref },
+      delivery: "steer" as const,
+      prompt: { parts: [{ type: "text" as const, text: "first steer" }], agent: "build", model: ref },
     }
     const second = {
       ...first,
       id: MessageID.ascending(),
-      delivery: "steer" as const,
-      prompt: { ...first.prompt, parts: [{ type: "text" as const, text: "remaining steer" }] },
+      delivery: "queue" as const,
+      prompt: { ...first.prompt, parts: [{ type: "text" as const, text: "queued after draft" }] },
     }
     yield* prompt.inputs.add(chat.id, first)
     yield* prompt.cancel(chat.id, { graceful: true })
     yield* prompt.inputs.add(chat.id, second)
-    yield* prompt.inputs.update(chat.id, first.id, "steer")
     expect((yield* prompt.inputs.get(chat.id)).paused).toBe(true)
-    yield* llm.text("independent draft answered")
-    yield* prompt.prompt({
-      sessionID: chat.id,
-      agent: "build",
-      model: ref,
-      parts: [{ type: "text", text: "independent draft" }],
-    })
-    expect((yield* prompt.inputs.get(chat.id)).items).toHaveLength(2)
-    expect(JSON.stringify((yield* llm.inputs)[0])).not.toContain("remaining steer")
-    yield* prompt.inputs.resume(chat.id, Effect.succeed(true))
+    yield* llm.push(reply().wait(gate.promise).text("independent draft answered").stop())
     yield* llm.text("first answered")
     yield* llm.text("remaining answered")
-    yield* prompt.loop({ sessionID: chat.id })
+    const run = yield* prompt
+      .prompt({
+        sessionID: chat.id,
+        agent: "build",
+        model: ref,
+        parts: [{ type: "text", text: "independent draft" }],
+      })
+      .pipe(Effect.forkChild)
+    yield* llm.wait(1)
+    expect((yield* prompt.inputs.get(chat.id)).paused).toBe(false)
+    expect((yield* prompt.inputs.get(chat.id)).items).toHaveLength(2)
+    expect(JSON.stringify((yield* llm.inputs)[0])).not.toContain("first steer")
+    expect(JSON.stringify((yield* llm.inputs)[0])).not.toContain("queued after draft")
+    gate.resolve()
+    yield* Fiber.join(run)
     const requests = yield* llm.inputs
     expect(requests).toHaveLength(3)
-    expect(JSON.stringify(requests[1])).toContain("first queued")
-    expect(JSON.stringify(requests[1])).not.toContain("remaining steer")
-    expect(JSON.stringify(requests[2])).toContain("remaining steer")
+    expect(JSON.stringify(requests[1])).toContain("first steer")
+    expect(JSON.stringify(requests[1])).not.toContain("queued after draft")
+    expect(JSON.stringify(requests[2])).toContain("queued after draft")
     expect((yield* prompt.inputs.get(chat.id)).items).toHaveLength(0)
+  }),
+)
+
+it.instance("input queue activation rolls back when stop arrives during the transition", () =>
+  Effect.gen(function* () {
+    const { prompt, chat } = yield* boot()
+    yield* prompt.inputs.add(chat.id, {
+      id: MessageID.ascending(),
+      delivery: "queue",
+      prompt: { parts: [{ type: "text", text: "still paused" }], agent: "build", model: ref },
+    })
+    yield* prompt.inputs.pause(chat.id)
+    let checks = 0
+
+    const result = yield* prompt.inputs.activate(chat.id, () => ++checks === 2)
+
+    expect(checks).toBe(2)
+    expect(result.paused).toBe(true)
+    expect(result.items).toHaveLength(1)
   }),
 )
 

@@ -73,6 +73,7 @@ export interface Interface {
   moveUp: (sessionID: SessionID, id: MessageID) => Effect.Effect<Snapshot, InputError>
   remove: (sessionID: SessionID, id: MessageID) => Effect.Effect<Removed, InputError>
   pause: (sessionID: SessionID) => Effect.Effect<void>
+  activate: (sessionID: SessionID, stopping: () => boolean) => Effect.Effect<Snapshot, InputError>
   resume: (sessionID: SessionID, idle: Effect.Effect<boolean>) => Effect.Effect<Snapshot, InputError>
   consume: (
     sessionID: SessionID,
@@ -89,6 +90,8 @@ const layer = Layer.effect(
     const database = yield* Database.Service
     const events = yield* EventV2Bridge.Service
     const db = database.db
+    // A resumed manual prompt gets one provider turn before old steers can join it.
+    const skipInputs = new Set<SessionID>()
     const pending = (sessionID: SessionID) =>
       db
         .select()
@@ -320,6 +323,7 @@ const layer = Layer.effect(
         .withLock(sessionID)(
           Effect.gen(function* () {
             const current = yield* state(sessionID)
+            skipInputs.delete(sessionID)
             if (current.paused && !current.next_id) return
             yield* db
               .update(InputQueueTable)
@@ -331,6 +335,30 @@ const layer = Layer.effect(
           }),
         )
         .pipe(Effect.catchTag("SessionInputQueueError", () => Effect.void))
+    const activate = (sessionID: SessionID, stopping: () => boolean) =>
+      locks.withLock(sessionID)(
+        Effect.gen(function* () {
+          const current = yield* state(sessionID)
+          if (!current.paused || stopping()) return yield* snapshot(sessionID)
+          yield* db
+            .update(InputQueueTable)
+            .set({ paused: false, next_id: null })
+            .where(eq(InputQueueTable.session_id, sessionID))
+            .run()
+            .pipe(Effect.orDie)
+          if (stopping()) {
+            yield* db
+              .update(InputQueueTable)
+              .set({ paused: true })
+              .where(eq(InputQueueTable.session_id, sessionID))
+              .run()
+              .pipe(Effect.orDie)
+            return yield* snapshot(sessionID)
+          }
+          skipInputs.add(sessionID)
+          return yield* changed(sessionID)
+        }),
+      )
     const resume = (sessionID: SessionID, idle: Effect.Effect<boolean>) =>
       locks.withLock(sessionID)(
         Effect.gen(function* () {
@@ -352,7 +380,11 @@ const layer = Layer.effect(
         .withLock(sessionID)(
           Effect.gen(function* () {
             const current = yield* state(sessionID)
-            if (current.paused || stopping()) return 0
+            if (current.paused || stopping()) {
+              skipInputs.delete(sessionID)
+              return 0
+            }
+            if (skipInputs.delete(sessionID)) return 0
             const rows = yield* pending(sessionID)
             const queue = rows.findIndex((row) => row.delivery === "queue")
             const steers = rows.slice(0, queue < 0 ? rows.length : queue)
@@ -394,7 +426,7 @@ const layer = Layer.effect(
           }),
         )
         .pipe(Effect.orDie)
-    return Service.of({ get, add, update, moveUp, remove, pause, resume, consume })
+    return Service.of({ get, add, update, moveUp, remove, pause, activate, resume, consume })
   }),
 )
 
