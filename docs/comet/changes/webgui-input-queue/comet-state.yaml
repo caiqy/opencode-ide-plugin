@@ -1,0 +1,116 @@
+schema: comet.native.v4
+name: webgui-input-queue
+language: zh-CN
+phase: build
+status: active
+state_version: 3
+brief: brief.md
+shape_confirmation_hash: 318fa0a406c7aab84ec846427ba25b9fe9172b20f598ee39f98b53cb0bf47ad3
+spec_changes:
+  - capability: webgui-input-queue
+    operation: create
+    source: specs/webgui-input-queue/spec.md
+workspace:
+  isolation: current
+  change_branch: ide-plugin
+  target_branch: ide-plugin
+  finish: null
+loop:
+  stage: building
+  goal_cycle: 1
+  iteration: 1
+  attempt: 0
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: submit-builder-candidate
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：空闲时回车直接发送；运行中回车打开“立即补充／排队发送”弹窗；取消保留草稿，确认成功清空并可连续提交；Shift+Enter 换行、IME
+      回车确认和停止按钮保持正确。
+    result: pending
+    reason: null
+  - id: A2
+    source: brief.md
+    text: A2：当前响应与关联工具完成后，边界前已接收的 A、B、C 补充按顺序作为三条 user 消息进入一次后续 LLM 请求，C 最新；边界后到达的 D
+      等待下一次请求；当前响应自然 stop 时仍处理已接收补充。
+    result: pending
+    reason: null
+  - id: A3
+    source: brief.md
+    text: A3：排队消息不进入当前任务的工具后续上下文；当前任务自然结束后只启动最早一条排队消息，其执行完成后再处理下一条；含工具调用的 provider
+      stop 不被误判为任务完成。
+    result: pending
+    reason: null
+  - id: A4
+    source: brief.md
+    text: A4：两种模式共享提交顺序列表，默认展示首条及总数，支持展开收起；补充项仅显示“转排队／删除”，排队项仅显示“转补充／删除”；空列表不占位，已消费项移入正式对话。
+    result: pending
+    reason: null
+  - id: A5
+    source: brief.md
+    text: A5：模式切换保持 ID、内容和提交顺序，成功删除的待发送输入不进入上下文；与消费竞争时服务端只接受一个结果，已消费项不可伪装成修改或删除成功。
+    result: pending
+    reason: null
+  - id: A6
+    source: brief.md
+    text: A6：第一次手动停止即暂停待发送列表，优雅收尾和确认强制终止均不自动消费剩余消息；停止过程中仍可编辑或提交到暂停列表，模式转换不启动
+      AI，保留既有两阶段停止和审批拒绝行为。
+    result: pending
+    reason: null
+  - id: A7
+    source: brief.md
+    text: A7：停止结束后“发送下一条”按展示顺序启动第一条并恢复自动消费，运行中不可重复启动；暂停时手动发送一条新草稿只执行该草稿，不暗中恢复旧列表；空列表不显示恢复操作。
+    result: pending
+    reason: null
+  - id: A8
+    source: brief.md
+    text: A8：终止性执行错误或后端重启后保留未消费输入并暂停，provider
+      可恢复重试期间不提前派发排队项；刷新、切换会话和跨目录会话恢复列表与暂停状态，多窗口修改可同步；历史已写入但请求未开始即停止/崩溃时，正式消息不重复且可由现有重试/继续入口恢复。
+    result: pending
+    reason: null
+  - id: A9
+    source: brief.md
+    text: A9：提交响应丢失后以同一消息 ID 和完整原始快照重试不重复入队或重复进入历史，不同附件、模型、variant 或原始 delivery
+      的冲突重试失败；非法模式、空输入、不存在会话及跨会话操作被拒绝；快照/事件乱序不能复活已删除或已消费项；准入、停止和消费竞争有单一会话裁决顺序。
+    result: pending
+    reason: null
+  - id: A10
+    source: brief.md
+    text: A10：提交时文本、图片、文件引用、Agent、模型、variant 保留；连续补充同批使用最新补充选择驱动下一次 LLM 请求；slash
+      command 保持命令语义，失败保留可恢复提示且不消费后续输入。
+    result: pending
+    reason: null
+  - id: A11
+    source: brief.md
+    text: A11：弹窗支持键盘选择、Escape
+      取消、焦点返回；列表操作有可访问名称、状态反馈，浅色/深色及窄屏不遮挡编辑区或停止操作；请求失败不丢草稿、不误报会话空闲。
+    result: pending
+    reason: null
+  - id: A12
+    source: brief.md
+    text: A12：后端边界与竞争测试、WebGUI 提交与恢复交互测试、受影响包类型检查及必要 SDK 生成完成；独立只读复核和 Comet Verifier
+      分别报告实际结果。
+    result: pending
+    reason: null
+builder_handoff: null
+blockers: []
+verification: null
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pending
+verification_report: null
+archived: false
+created_at: 2026-09-14T15:43:37.263Z
