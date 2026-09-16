@@ -844,7 +844,7 @@ export class WebviewController {
               await simpleBrowserExt.activate()
             }
           } catch (e) {
-            console.warn("Failed to activate simple-browser extension:", e)
+            logger.appendLine(`Failed to activate simple-browser extension: ${e}`)
           }
 
           try {

@@ -510,6 +510,7 @@ suite("WebviewController Test Suite", () => {
   })
 
   test("executeAcpTool openPage validates url parameter and security boundaries", async () => {
+    const executeCommandStub = sinon.stub(vscode.commands, "executeCommand").resolves()
     const { controller, executeAcpTool } = await loadController()
     try {
       assert.ok(executeAcpTool)
@@ -541,6 +542,9 @@ suite("WebviewController Test Suite", () => {
         () => executeAcpTool("integrated_browser", "openPage", { url: "file:///etc/passwd" }),
         /Only http and https protocols are supported/,
       )
+
+      // 断言安全边界：非法 URL 绝不会派发任何 VS Code 命令
+      assert.strictEqual(executeCommandStub.called, false)
     } finally {
       controller.dispose()
     }
