@@ -482,15 +482,16 @@ export class WebviewController {
   }
 
   private async getAcpCapabilities(): Promise<AcpCapabilitiesResult> {
-    // 真实检测当前宿主环境中的内置浏览器命令
+    // 真实检测当前宿主环境中的内置浏览器能力（包括已激活命令与内置 simple-browser 扩展）
     let hasBrowser = false
     try {
       const allCommands = await vscode.commands.getCommands(true)
       hasBrowser =
         allCommands.includes("simpleBrowser.show") ||
-        allCommands.includes("workbench.action.openBrowser")
+        allCommands.includes("workbench.action.openBrowser") ||
+        Boolean(vscode.extensions.getExtension("vscode.simple-browser"))
     } catch {
-      hasBrowser = false
+      hasBrowser = Boolean(vscode.extensions.getExtension("vscode.simple-browser"))
     }
 
     const categories: AcpCategory[] = [
@@ -822,7 +823,15 @@ export class WebviewController {
         case "openPage": {
           const url = parameters.url as string
           if (!url) throw new Error("Missing 'url' parameter")
-          await vscode.commands.executeCommand("simpleBrowser.show", url)
+          const simpleBrowserExt = vscode.extensions.getExtension("vscode.simple-browser")
+          if (simpleBrowserExt && !simpleBrowserExt.isActive) {
+            await Promise.resolve(simpleBrowserExt.activate()).catch(() => {})
+          }
+          try {
+            await vscode.commands.executeCommand("simpleBrowser.show", url)
+          } catch {
+            await vscode.commands.executeCommand("workbench.action.openBrowser", url)
+          }
           return { output: `Opened ${url} in integrated browser` }
         }
         default:
