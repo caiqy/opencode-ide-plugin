@@ -45,6 +45,15 @@ export const ParallelLimit = Schema.Struct({
   }),
 })
 
+export const ConfigACPCategory = Schema.Struct({
+  enabled: Schema.optional(Schema.Boolean).annotate({ description: "Whether this ACP category is enabled" }),
+  tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)).annotate({ description: "Sub-tool enabled states" }),
+})
+
+export const ConfigACP = Schema.Record(Schema.String, ConfigACPCategory).annotate({
+  description: "ACP (Agent Client Protocol) host capabilities configuration",
+})
+
 export const WellKnown = Schema.Struct({
   config: Schema.optional(Schema.Json),
   remote_config: Schema.optional(Schema.Json),
@@ -158,6 +167,7 @@ export const Info = Schema.Struct({
   layout: Schema.optional(ConfigLayoutV1.Layout).annotate({ description: "@deprecated Always uses stretch layout." }),
   permission: Schema.optional(ConfigPermissionV1.Info),
   tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
+  acp: Schema.optional(ConfigACP),
   websearch: Schema.optional(WebSearch),
   attachment: Schema.optional(ConfigAttachmentV1.Info).annotate({
     description: "Attachment processing configuration, including image size limits and resizing behavior",

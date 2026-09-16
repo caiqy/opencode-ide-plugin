@@ -20,7 +20,7 @@ type Pending = {
 }
 
 // Parse URL params once at module load
-const params = new URLSearchParams(window.location.search)
+const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams()
 const bridgeBase = params.get("ideBridge")
 const token = params.get("ideBridgeToken")
 
@@ -42,6 +42,7 @@ class IdeBridge {
     storageSet: 5000,
     selectFiles: 120000,
     readFiles: 60000,
+    getAcpCapabilities: 10000,
   }
   private reconnectScheduled = false
   private connectErrorLogged = false
@@ -341,6 +342,37 @@ class IdeBridge {
       return false
     }
   }
+
+  async getAcpCapabilities(): Promise<IdeAcpCapabilitiesResult | null> {
+    if (!this.isInstalled()) return null
+    try {
+      const res = await this.request<IdeAcpCapabilitiesResult>("getAcpCapabilities")
+      const result = res.result
+      if (!result || !Array.isArray(result.categories)) return null
+      return result
+    } catch (e) {
+      console.warn("[ideBridge] getAcpCapabilities failed:", e)
+      return null
+    }
+  }
+}
+
+export interface IdeAcpTool {
+  id: string
+  name: string
+  description?: string
+}
+
+export interface IdeAcpCategory {
+  id: string
+  name: string
+  description?: string
+  status?: "connected" | "disabled" | "unavailable"
+  tools: IdeAcpTool[]
+}
+
+export interface IdeAcpCapabilitiesResult {
+  categories: IdeAcpCategory[]
 }
 
 export const ideBridge = new IdeBridge()

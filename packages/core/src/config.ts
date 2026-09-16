@@ -104,6 +104,7 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   experimental: ConfigExperimental.Experimental.pipe(Schema.optional),
   providers: Schema.Record(Schema.String, ConfigProvider.Info).pipe(Schema.optional),
+  acp: ConfigV1.ConfigACP.pipe(Schema.optional),
   websearch: ConfigV1.WebSearch.pipe(Schema.optional),
   parallel_limit: ConfigV1.ParallelLimit.pipe(Schema.optional),
   provider_retry: ConfigV1.ProviderRetry.pipe(Schema.optional),

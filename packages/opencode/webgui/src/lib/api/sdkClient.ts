@@ -68,6 +68,7 @@ type ProviderCatalogModelsResult = {
 interface SkillsResponse {
   name: string
   description: string
+  location?: string
   enabled: boolean
 }
 

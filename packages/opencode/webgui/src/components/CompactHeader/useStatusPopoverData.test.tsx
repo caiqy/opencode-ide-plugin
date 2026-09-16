@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   pathGet: vi.fn(),
   appSkills: vi.fn(),
   appSetSkillEnabled: vi.fn(),
+  bridgeGetAcpCapabilities: vi.fn(),
   bridgeInstalled: true,
   bridgeReady: true,
   bridgeCustomApi: true,
@@ -64,6 +65,7 @@ vi.mock("../../lib/ideBridge", () => ({
     get restartMode() {
       return mocks.bridgeRestartMode
     },
+    getAcpCapabilities: (...args: unknown[]) => mocks.bridgeGetAcpCapabilities(...args),
   },
 }))
 
@@ -111,10 +113,13 @@ describe("CompactHeader/useStatusPopoverData", () => {
     mocks.pathGet.mockReset()
     mocks.appSkills.mockReset()
     mocks.appSetSkillEnabled.mockReset()
+    mocks.bridgeGetAcpCapabilities.mockReset()
     mocks.bridgeInstalled = true
     mocks.bridgeReady = true
     mocks.bridgeCustomApi = true
     mocks.bridgeRestartMode = "window"
+
+    mocks.bridgeGetAcpCapabilities.mockResolvedValue({ categories: [] })
 
     mocks.mcpStatus.mockResolvedValue(ok({ alpha: { status: "connected" } }))
     mocks.mcpTools.mockImplementation((options: { path: { name: string } }) =>
@@ -915,5 +920,248 @@ describe("CompactHeader/useStatusPopoverData", () => {
 
     expect(view.result.current.servers.data.project).toBe("p2")
     expect(view.result.current.skills.data.brainstorming?.enabled).toBe(false)
+  })
+
+  it("加载 ACP 宿主能力并根据 opencode.json 配置初始化开关状态", async () => {
+    mocks.bridgeGetAcpCapabilities.mockResolvedValue({
+      categories: [
+        {
+          id: "vscode",
+          name: "VS Code",
+          description: "VS Code 命令与导航",
+          status: "connected",
+          tools: [
+            { id: "exec", name: "执行命令", description: "运行命令" },
+            { id: "nav", name: "代码导航", description: "代码导航" },
+          ],
+        },
+      ],
+    })
+    mocks.configGet.mockResolvedValue(
+      ok({
+        acp: {
+          vscode: {
+            enabled: true,
+            tools: { exec: true, nav: false },
+          },
+        },
+      }),
+    )
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.acp.state).toBe("ready")
+      expect(view.result.current.acp.data.installed).toBe(true)
+      expect(view.result.current.acp.data.categories).toHaveLength(1)
+    })
+
+    const cat = view.result.current.acp.data.categories[0]
+    expect(cat.name).toBe("VS Code")
+    expect(cat.enabled).toBe(true)
+    expect(cat.tools.find((t) => t.id === "exec")?.enabled).toBe(true)
+    expect(cat.tools.find((t) => t.id === "nav")?.enabled).toBe(false)
+  })
+
+  it("ACP 在独立外部浏览器模式下保持 installed: false", async () => {
+    mocks.bridgeInstalled = false
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.acp.state).toBe("ready")
+      expect(view.result.current.acp.data.installed).toBe(false)
+      expect(view.result.current.acp.data.categories).toHaveLength(0)
+    })
+  })
+
+  it("toggleAcpCategory 关闭大类时级联停用子工具并调用 config.update", async () => {
+    mocks.bridgeGetAcpCapabilities.mockResolvedValue({
+      categories: [
+        {
+          id: "vscode",
+          name: "VS Code",
+          status: "connected",
+          tools: [
+            { id: "exec", name: "执行命令" },
+            { id: "nav", name: "代码导航" },
+          ],
+        },
+      ],
+    })
+    mocks.configGet.mockResolvedValue(
+      ok({
+        acp: {
+          vscode: {
+            enabled: true,
+            tools: { exec: true, nav: false },
+          },
+        },
+      }),
+    )
+    mocks.configUpdate.mockResolvedValue(ok({}))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.acp.data.categories).toHaveLength(1)
+    })
+
+    await act(async () => {
+      await view.result.current.toggleAcpCategory("vscode")
+    })
+
+    // 验证大类已禁用，子工具全部为 false
+    const cat = view.result.current.acp.data.categories[0]
+    expect(cat.enabled).toBe(false)
+    expect(cat.tools.every((t) => !t.enabled)).toBe(true)
+
+    expect(mocks.configUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          acp: expect.objectContaining({
+            vscode: expect.objectContaining({
+              enabled: false,
+              tools: expect.objectContaining({ exec: true, nav: false }),
+            }),
+          }),
+        }),
+      }),
+    )
+
+    // 重新开启大类，验证记忆恢复模式（exec: true, nav: false）
+    await act(async () => {
+      await view.result.current.toggleAcpCategory("vscode")
+    })
+
+    const restoredCat = view.result.current.acp.data.categories[0]
+    expect(restoredCat.enabled).toBe(true)
+    expect(restoredCat.tools.find((t) => t.id === "exec")?.enabled).toBe(true)
+    expect(restoredCat.tools.find((t) => t.id === "nav")?.enabled).toBe(false)
+  })
+
+  it("跨会话/重新加载后保留关闭大类的子项偏好并在开启时精准恢复", async () => {
+    mocks.bridgeGetAcpCapabilities.mockResolvedValue({
+      categories: [
+        {
+          id: "vscode",
+          name: "VS Code",
+          status: "connected",
+          tools: [
+            { id: "exec", name: "执行命令" },
+            { id: "nav", name: "代码导航" },
+          ],
+        },
+      ],
+    })
+    // 模拟服务端 opencode.json 中存储的状态：大类为关闭，但保留了此前定制的工具偏好 (exec: true, nav: false)
+    mocks.configGet.mockResolvedValue(
+      ok({
+        acp: {
+          vscode: {
+            enabled: false,
+            tools: { exec: true, nav: false },
+          },
+        },
+      }),
+    )
+    mocks.configUpdate.mockResolvedValue(ok({}))
+
+    // 重新挂载 hook
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.acp.data.categories).toHaveLength(1)
+    })
+
+    // 初始关闭状态下，UI 上子工具由于大类关闭而显示为 false
+    const initialCat = view.result.current.acp.data.categories[0]
+    expect(initialCat.enabled).toBe(false)
+    expect(initialCat.tools.every((t) => !t.enabled)).toBe(true)
+
+    // 用户重新开启大类
+    await act(async () => {
+      await view.result.current.toggleAcpCategory("vscode")
+    })
+
+    // 验证成功从 opencode.json 恢复历史配置 (exec: true, nav: false)
+    const restoredCat = view.result.current.acp.data.categories[0]
+    expect(restoredCat.enabled).toBe(true)
+    expect(restoredCat.tools.find((t) => t.id === "exec")?.enabled).toBe(true)
+    expect(restoredCat.tools.find((t) => t.id === "nav")?.enabled).toBe(false)
+  })
+
+  it("toggleAcpTool 切换子工具状态并持久化", async () => {
+    mocks.bridgeGetAcpCapabilities.mockResolvedValue({
+      categories: [
+        {
+          id: "vscode",
+          name: "VS Code",
+          status: "connected",
+          tools: [
+            { id: "exec", name: "执行命令" },
+            { id: "nav", name: "代码导航" },
+          ],
+        },
+      ],
+    })
+    mocks.configGet.mockResolvedValue(ok({}))
+    mocks.configUpdate.mockResolvedValue(ok({}))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.acp.data.categories).toHaveLength(1)
+    })
+
+    await act(async () => {
+      await view.result.current.toggleAcpTool("vscode", "nav", false)
+    })
+
+    const cat = view.result.current.acp.data.categories[0]
+    expect(cat.tools.find((t) => t.id === "nav")?.enabled).toBe(false)
+
+    expect(mocks.configUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          acp: expect.objectContaining({
+            vscode: expect.objectContaining({
+              enabled: true,
+              tools: expect.objectContaining({ nav: false }),
+            }),
+          }),
+        }),
+      }),
+    )
+  })
+
+  it("toggleAcpCategory 失败时回滚开关状态", async () => {
+    mocks.bridgeGetAcpCapabilities.mockResolvedValue({
+      categories: [
+        {
+          id: "vscode",
+          name: "VS Code",
+          status: "connected",
+          tools: [{ id: "exec", name: "执行命令" }],
+        },
+      ],
+    })
+    mocks.configGet.mockResolvedValue(ok({ acp: { vscode: { enabled: true } } }))
+    mocks.configUpdate.mockResolvedValue(fail("config write failed"))
+
+    const view = hook(true)
+
+    await waitFor(() => {
+      expect(view.result.current.acp.data.categories[0]?.enabled).toBe(true)
+    })
+
+    await act(async () => {
+      await view.result.current.toggleAcpCategory("vscode")
+    })
+
+    // 失败后调用 refreshAcp 回滚回原状态
+    await waitFor(() => {
+      expect(view.result.current.acp.data.categories[0]?.enabled).toBe(true)
+    })
   })
 })

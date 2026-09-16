@@ -1,15 +1,15 @@
-type Tab = "servers" | "mcp" | "lsp" | "plugins" | "skills"
+export type Tab = "servers" | "mcp" | "acp" | "lsp" | "plugins" | "skills"
 
-type State = "ready" | "empty" | "failed" | "stale"
+export type State = "ready" | "empty" | "failed" | "stale"
 
-type Box<T> = {
+export type Box<T> = {
   state: State
   data: T
   error: string | null
   updatedAt: number | null
 }
 
-type ServerData = {
+export type ServerData = {
   connectionState: "connecting" | "connected" | "disconnected" | "error"
   backendUrl: string | null
   project: string | null
@@ -23,17 +23,40 @@ type ServerData = {
   }
 }
 
-type McpData = {
+export type McpData = {
   status: "connected" | "disabled" | "failed" | "needs_auth" | "needs_client_registration"
+  description?: string
   error?: string
   tools?: Array<{
     id: string
     name: string
+    description?: string
     enabled: boolean
   }>
 }
 
-type LspData = {
+export type AcpToolData = {
+  id: string
+  name: string
+  description?: string
+  enabled: boolean
+}
+
+export type AcpCategoryData = {
+  id: string
+  name: string
+  description?: string
+  status: "connected" | "disabled" | "unavailable"
+  enabled: boolean
+  tools: AcpToolData[]
+}
+
+export type AcpData = {
+  installed: boolean
+  categories: AcpCategoryData[]
+}
+
+export type LspData = {
   id: string
   name: string
   root: string
@@ -45,6 +68,7 @@ export const DEFAULT_STATUS_TAB: Tab = "servers"
 export const STATUS_TABS: Array<{ id: Tab; label: string }> = [
   { id: "servers", label: "Server" },
   { id: "mcp", label: "MCP" },
+  { id: "acp", label: "ACP" },
   { id: "lsp", label: "LSP" },
   { id: "plugins", label: "Plugins" },
   { id: "skills", label: "Skills" },
@@ -94,6 +118,7 @@ export function buildMcpView(input: Box<Record<string, McpData>>) {
     refreshLabel: "手动刷新",
     items: Object.entries(input.data).map(([name, item]) => ({
       name,
+      description: item.description,
       status: item.status,
       enabled: item.status === "connected",
       error: item.error,
@@ -111,8 +136,21 @@ export function buildMcpView(input: Box<Record<string, McpData>>) {
   }
 }
 
-type SkillState = {
+export function buildAcpView(input: Box<AcpData>) {
+  return {
+    state: input.state,
+    error: input.error,
+    updatedAt: input.updatedAt,
+    installed: input.data.installed,
+    categories: input.data.categories,
+    fallbackNote: "当前运行在独立浏览器模式，未连接 IDE 宿主，ACP 能力不可用。",
+  }
+}
+
+export type SkillState = {
   enabled: boolean
+  description?: string
+  source?: string
 }
 
 export function buildSkillView(input: Box<Record<string, SkillState>>) {
@@ -121,7 +159,12 @@ export function buildSkillView(input: Box<Record<string, SkillState>>) {
     error: input.error,
     updatedAt: input.updatedAt,
     items: Object.entries(input.data)
-      .map(([name, item]) => ({ name, enabled: item.enabled }))
+      .map(([name, item]) => ({
+        name,
+        enabled: item.enabled,
+        description: item.description,
+        source: item.source,
+      }))
       .sort((a, b) => a.name.localeCompare(b.name)),
   }
 }

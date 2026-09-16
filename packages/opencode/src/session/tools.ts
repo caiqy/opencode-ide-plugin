@@ -13,7 +13,9 @@ import { Truncate } from "@/tool/truncate"
 import { Plugin } from "@/plugin"
 import type { TaskPromptOps } from "@/tool/task"
 import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, asSchema } from "ai"
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
+import { Config } from "@/config/config"
+import { IdeHostBridge } from "@/acp/host-bridge"
 import { MessageV2 } from "./message-v2"
 import { Session } from "./session"
 import { SessionProcessor } from "./processor"
@@ -511,6 +513,94 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         }),
       )
     tools[key] = item
+  }
+
+  // Mount ACP host tools if host bridge is configured and tools are enabled in config
+  const hostBridgeService = (yield* Effect.serviceOption(IdeHostBridge.Service)).pipe(
+    Option.getOrElse(() => IdeHostBridge.defaultService),
+  )
+
+  if (hostBridgeService.isConfigured()) {
+    const configOption = yield* Effect.serviceOption(Config.Service)
+    const cfg = configOption._tag === "Some" ? yield* configOption.value.get() : undefined
+    const acpConfig = (cfg as any)?.acp
+    const capabilities = yield* hostBridgeService.getCapabilities()
+
+    if (capabilities && Array.isArray(capabilities.categories)) {
+      for (const cat of capabilities.categories) {
+        if (cat.status === "unavailable" || cat.status === "disabled") continue
+        const catCfg = acpConfig?.[cat.id]
+        // Strict allowlist: 只有配置中明确 enabled === true 时才注册大类
+        if (catCfg?.enabled !== true) continue
+
+        for (const t of cat.tools || []) {
+          const toolCfg = catCfg?.tools?.[t.id]
+          // Strict allowlist: 只有配置中明确 enabled === true 时才注册子工具
+          if (toolCfg !== true) continue
+
+          const safeCatId = cat.id.replace(/[^a-zA-Z0-9_]/g, "_")
+          const safeToolId = t.id.replace(/[^a-zA-Z0-9_]/g, "_")
+          const toolKey = `acp_${safeCatId}_${safeToolId}`
+          const schemaObj = (t.parametersSchema as any) || { type: "object", properties: {} }
+          const transformed = ProviderTransform.schema(input.model, {
+            ...schemaObj,
+            properties: schemaObj.properties ?? {},
+          })
+
+          tools[toolKey] = tool({
+            description: `[${cat.name}] ${t.name}${t.description ? `: ${t.description}` : ""}`,
+            inputSchema: jsonSchema(transformed),
+            execute(args, opts) {
+              return run.promise(
+                Effect.gen(function* () {
+                  const ctx = context(toRecord(args), opts, toolKey)
+                  yield* ctx.metadata({ metadata: { source: "acp", category: cat.id, toolId: t.id } })
+                  yield* plugin.trigger(
+                    "tool.execute.before",
+                    { tool: toolKey, sessionID: ctx.sessionID, callID: opts.toolCallId },
+                    { args },
+                  )
+                  yield* ctx.ask({ permission: toolKey, metadata: {}, patterns: ["*"], always: ["*"] })
+                  const execResult = yield* hostBridgeService
+                    .executeTool(cat.id, t.id, toRecord(args), opts.abortSignal)
+                    .pipe(
+                      Effect.withSpan("AcpTool.execute", {
+                      attributes: {
+                        "tool.name": toolKey,
+                        "tool.call_id": opts.toolCallId,
+                        "session.id": ctx.sessionID,
+                        "message.id": input.processor.message.id,
+                      },
+                    }),
+                  )
+                  const truncated = yield* truncate.output(execResult.output, {}, input.agent)
+                  const output = {
+                    title: `ACP: ${t.name}`,
+                    metadata: {
+                      source: "acp",
+                      category: cat.id,
+                      toolId: t.id,
+                      truncated: truncated.truncated,
+                      ...(truncated.truncated && { outputPath: truncated.outputPath }),
+                    },
+                    output: truncated.content,
+                  }
+                  yield* plugin.trigger(
+                    "tool.execute.after",
+                    { tool: toolKey, sessionID: ctx.sessionID, callID: opts.toolCallId, args },
+                    output,
+                  )
+                  if (opts.abortSignal?.aborted) {
+                    yield* input.processor.completeToolCall(opts.toolCallId, output)
+                  }
+                  return output
+                }),
+              )
+            },
+          })
+        }
+      }
+    }
   }
 
   return { tools, mcpToolNames }

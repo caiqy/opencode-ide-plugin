@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   DEFAULT_STATUS_TAB,
   STATUS_TABS,
+  buildAcpView,
   buildLspView,
   buildMcpView,
   buildPluginView,
@@ -13,10 +14,18 @@ import {
 describe("CompactHeader/status", () => {
   it("固定 tab 顺序并默认进入 servers", () => {
     expect(DEFAULT_STATUS_TAB).toBe("servers")
-    expect(STATUS_TABS.map((item: { id: string }) => item.id)).toEqual(["servers", "mcp", "lsp", "plugins", "skills"])
+    expect(STATUS_TABS.map((item: { id: string }) => item.id)).toEqual([
+      "servers",
+      "mcp",
+      "acp",
+      "lsp",
+      "plugins",
+      "skills",
+    ])
     expect(STATUS_TABS.map((item: { label: string }) => item.label)).toEqual([
       "Server",
       "MCP",
+      "ACP",
       "LSP",
       "Plugins",
       "Skills",
@@ -141,5 +150,32 @@ describe("CompactHeader/status", () => {
     })
     expect(view.state).toBe("empty")
     expect(view.items).toEqual([])
+  })
+
+  it("buildAcpView 映射 installed、categories 与 fallbackNote", () => {
+    const view = buildAcpView({
+      state: "ready",
+      error: null,
+      updatedAt: 5,
+      data: {
+        installed: true,
+        categories: [
+          {
+            id: "vscode",
+            name: "VS Code",
+            description: "VS Code 命令",
+            status: "connected",
+            enabled: true,
+            tools: [{ id: "cmd", name: "执行命令", description: "运行命令", enabled: true }],
+          },
+        ],
+      },
+    })
+
+    expect(view.state).toBe("ready")
+    expect(view.installed).toBe(true)
+    expect(view.categories).toHaveLength(1)
+    expect(view.categories[0].name).toBe("VS Code")
+    expect(view.fallbackNote).toContain("未连接 IDE 宿主")
   })
 })

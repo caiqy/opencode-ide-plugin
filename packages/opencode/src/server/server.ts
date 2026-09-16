@@ -16,6 +16,7 @@ import { lazy } from "@/util/lazy"
 import { GeneratedImageRoutes } from "./routes/instance/generated-image"
 import { Instance } from "@/project/instance"
 import { serveWebGuiPath } from "../webgui/server/app"
+import { IdeHostBridge } from "@/acp/host-bridge"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -97,6 +98,12 @@ function createCompatibilityApp(corsOptions?: CorsOptions) {
       const url = new URL(request.url)
 
       if (url.pathname === "/app" || url.pathname.startsWith("/app/")) {
+        const bridgeUrl = url.searchParams.get("ideBridge")
+        const bridgeToken = url.searchParams.get("ideBridgeToken")
+        if (bridgeUrl && bridgeToken) {
+          IdeHostBridge.defaultService.register(bridgeUrl, bridgeToken)
+        }
+
         if (url.pathname === "/app/generated-image") {
           const generatedImageRequest = new Request(`http://localhost/generated-image${url.search}`, {
             method: request.method,

@@ -14,6 +14,7 @@ export class Timeout extends Schema.Class<Timeout>("ConfigV2.MCP.Timeout")({
 
 export class Local extends Schema.Class<Local>("ConfigV2.MCP.Local")({
   type: Schema.Literal("local"),
+  description: Schema.String.pipe(Schema.optional),
   command: Schema.String.pipe(Schema.Array),
   cwd: Schema.String.pipe(Schema.optional).annotate({
     description: "Working directory for the MCP server process. Relative paths resolve from the workspace directory.",
@@ -33,6 +34,7 @@ export class OAuth extends Schema.Class<OAuth>("ConfigV2.MCP.OAuth")({
 
 export class Remote extends Schema.Class<Remote>("ConfigV2.MCP.Remote")({
   type: Schema.Literal("remote"),
+  description: Schema.String.pipe(Schema.optional),
   url: Schema.String,
   headers: Schema.Record(Schema.String, Schema.String).pipe(Schema.optional),
   oauth: Schema.Union([OAuth, Schema.Literal(false)]).pipe(Schema.optional),

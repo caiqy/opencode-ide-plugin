@@ -28,6 +28,7 @@ import { MCP } from "@/mcp"
 import { McpAuth } from "@/mcp/auth"
 import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
+import { IdeHostBridge } from "@/acp/host-bridge"
 import { PluginPtyEnvironment } from "@/plugin/pty-environment"
 import { InstanceStore } from "@/project/instance-store"
 import { Project } from "@/project/project"
@@ -237,8 +238,15 @@ const uiRoute = HttpRouter.use((router) =>
     const client = yield* HttpClient.HttpClient
     const flags = yield* RuntimeFlags.Service
     yield* router.add("*", "/*", (request) => {
-      const pathname = new URL(request.url, "http://localhost").pathname
+      const parsedUrl = new URL(request.url, "http://localhost")
+      const pathname = parsedUrl.pathname
       if (pathname === "/app" || pathname.startsWith("/app/")) {
+        const bridgeParam = parsedUrl.searchParams.get("ideBridge")
+        const tokenParam = parsedUrl.searchParams.get("ideBridgeToken")
+        if (bridgeParam && tokenParam) {
+          IdeHostBridge.defaultService.register(bridgeParam, tokenParam)
+        }
+
         const response = serveWebGuiPath(pathname.replace(/^\/app\/?/, ""))
         if (!response) return Effect.succeed(HttpServerResponse.empty({ status: 404 }))
         return Effect.promise(async () =>

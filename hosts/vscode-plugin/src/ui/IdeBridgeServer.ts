@@ -21,6 +21,29 @@ export interface SessionHandlers {
   checkForUpdates?: () => Promise<Record<string, unknown>>
   getUpdateInfo?: () => Promise<Record<string, unknown>>
   installUpdate?: (version: string) => Promise<void>
+  getAcpCapabilities?: () => Promise<AcpCapabilitiesResult>
+  executeAcpTool?: (category: string, toolId: string, parameters: Record<string, unknown>) => Promise<unknown>
+}
+
+export interface AcpTool {
+  id: string
+  name: string
+  description?: string
+  enabled?: boolean
+  parametersSchema?: Record<string, unknown>
+}
+
+export interface AcpCategory {
+  id: string
+  name: string
+  description?: string
+  status?: "connected" | "disabled" | "unavailable"
+  enabled?: boolean
+  tools: AcpTool[]
+}
+
+export interface AcpCapabilitiesResult {
+  categories: AcpCategory[]
 }
 
 export interface SaveImageResult {
@@ -527,6 +550,41 @@ class IdeBridgeServer {
                 timestamp: Date.now(),
               }),
             )
+          }
+          break
+        }
+
+        case "getAcpCapabilities": {
+          if (!session.handlers.getAcpCapabilities) {
+            this.replyError(session, id, "getAcpCapabilities not supported")
+            break
+          }
+          try {
+            const result = await session.handlers.getAcpCapabilities()
+            this.replyOk(session, id, result)
+          } catch (e: any) {
+            this.replyError(session, id, `getAcpCapabilities failed: ${e?.message || e}`)
+          }
+          break
+        }
+
+        case "executeAcpTool": {
+          if (!session.handlers.executeAcpTool) {
+            this.replyError(session, id, "executeAcpTool not supported")
+            break
+          }
+          try {
+            const category = msg.payload?.category as string
+            const toolId = msg.payload?.toolId as string
+            const parameters = (msg.payload?.parameters || {}) as Record<string, unknown>
+            if (!category || !toolId) {
+              this.replyError(session, id, "Missing category or toolId in executeAcpTool payload")
+              break
+            }
+            const result = await session.handlers.executeAcpTool(category, toolId, parameters)
+            this.replyOk(session, id, result)
+          } catch (e: any) {
+            this.replyError(session, id, `executeAcpTool failed: ${e?.message || e}`)
           }
           break
         }

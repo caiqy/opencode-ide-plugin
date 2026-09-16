@@ -49,6 +49,8 @@ class IdeBridgeUpdateTest {
         setNullableIdeBridgeField("saveImageTargetHook", null)
         setNullableIdeBridgeField("chooseFilesHook", null)
         setNullableIdeBridgeField("readUrlBytesHook", null)
+        setNullableIdeBridgeField("getAcpCapabilitiesHook", null)
+        setNullableIdeBridgeField("executeAcpToolHook", null)
         IdeBridge.stop()
     }
 
@@ -948,6 +950,59 @@ class IdeBridgeUpdateTest {
 
             assertEquals(false, reply.get("ok")?.asBoolean)
             assertEquals("Missing paths", reply.get("error")?.asString)
+        }
+    }
+
+    @Test
+    fun `getAcpCapabilities returns default categories and tools`() {
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("getAcpCapabilities", JsonObject())
+
+            assertEquals(true, reply.get("ok")?.asBoolean)
+            val result = reply.getAsJsonObject("result")
+            val categories = result.getAsJsonArray("categories")
+            assertTrue(categories.size() >= 2)
+            val ids = categories.map { it.asJsonObject.get("id").asString }
+            assertTrue(ids.contains("intellij"))
+            assertTrue(ids.contains("tasks_and_problems"))
+        }
+    }
+
+    @Test
+    fun `executeAcpTool routes to hook and returns output`() {
+        setNullableIdeBridgeField("executeAcpToolHook") { _: Project, category: String, toolId: String, params: Map<String, Any?> ->
+            mapOf("output" to "executed $category/$toolId with ${params["actionId"]}")
+        }
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("executeAcpTool", JsonObject().apply {
+                addProperty("category", "intellij")
+                addProperty("toolId", "executeAction")
+                add("parameters", JsonObject().apply {
+                    addProperty("actionId", "ReformatCode")
+                })
+            })
+
+            assertEquals(true, reply.get("ok")?.asBoolean)
+            val result = reply.getAsJsonObject("result")
+            assertEquals("executed intellij/executeAction with ReformatCode", result.get("output")?.asString)
+        }
+    }
+
+    @Test
+    fun `executeAcpTool missing category or toolId returns error`() {
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val reply = events.send("executeAcpTool", JsonObject().apply {
+                addProperty("category", "intellij")
+            })
+
+            assertEquals(false, reply.get("ok")?.asBoolean)
+            assertEquals("Missing category or toolId in executeAcpTool payload", reply.get("error")?.asString)
         }
     }
 }

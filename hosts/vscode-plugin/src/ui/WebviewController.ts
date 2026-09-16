@@ -6,7 +6,15 @@ import { FileMonitor } from "../utils/FileMonitor"
 import { errorHandler } from "../utils/ErrorHandler"
 import { PathInserter } from "../utils/PathInserter"
 import { getUpdateService, logger } from "../globals"
-import type { SaveImageResult, SelectFilesOptions, SelectFilesResult, ReadFilesResult } from "./IdeBridgeServer"
+import type {
+  SaveImageResult,
+  SelectFilesOptions,
+  SelectFilesResult,
+  ReadFilesResult,
+  AcpCapabilitiesResult,
+  AcpCategory,
+  AcpTool,
+} from "./IdeBridgeServer"
 import { bridgeServer } from "./IdeBridgeServer"
 import { showSystemNotification } from "./systemNotification"
 import { automaticUpdateStorageKey } from "../update/UpdateService"
@@ -206,6 +214,8 @@ export class WebviewController {
                 await updateService.installUpdate(version)
               }
             : undefined,
+          getAcpCapabilities: async () => this.getAcpCapabilities(),
+          executeAcpTool: async (category, toolId, parameters) => this.executeAcpTool(category, toolId, parameters),
         },
         {
           restartMode: "window",
@@ -469,6 +479,358 @@ export class WebviewController {
       }),
     )
     return { files }
+  }
+
+  private async getAcpCapabilities(): Promise<AcpCapabilitiesResult> {
+    // 真实检测当前宿主环境中的内置浏览器命令
+    let hasBrowser = false
+    try {
+      const allCommands = await vscode.commands.getCommands(true)
+      hasBrowser =
+        allCommands.includes("simpleBrowser.show") ||
+        allCommands.includes("workbench.action.openBrowser")
+    } catch {
+      hasBrowser = false
+    }
+
+    const categories: AcpCategory[] = [
+      {
+        id: "vscode",
+        name: "VS Code",
+        description: "导航代码、管理扩展和运行内置 VS Code 命令",
+        status: typeof vscode.commands?.executeCommand === "function" ? "connected" : "unavailable",
+        tools: [
+          {
+            id: "executeCommand",
+            name: "运行内置命令",
+            description: "在 VS Code 中执行已注册的编辑器或扩展命令",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                command: { type: "string", description: "VS Code 命令标识符，如 workbench.action.files.save" },
+                args: { type: "array", description: "传递给该命令的可选参数列表", items: {} },
+              },
+              required: ["command"],
+            },
+          },
+          {
+            id: "navigateSymbol",
+            name: "代码导航",
+            description: "跳转工作区符号、查找所有引用与定义",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                query: { type: "string", description: "待检索的代码符号名称或关键字" },
+              },
+              required: ["query"],
+            },
+          },
+          {
+            id: "terminal",
+            name: "终端控制",
+            description: "创建集成终端并运行 Shell 脚本与工具",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                command: { type: "string", description: "在终端中执行的 Shell 命令行内容" },
+                name: { type: "string", description: "可选终端标题" },
+              },
+              required: ["command"],
+            },
+          },
+          {
+            id: "editor",
+            name: "代码编辑与查看",
+            description: "打开指定文件、高亮目标代码块或应用代码变更",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                path: { type: "string", description: "目标文件的绝对路径或工作区相对路径" },
+                line: { type: "integer", description: "可选跳转的目标行号（从 1 开始）" },
+              },
+              required: ["path"],
+            },
+          },
+          {
+            id: "manageExtensions",
+            name: "管理扩展",
+            description: "获取和检索 VS Code 已安装的插件清单",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                includeDisabled: { type: "boolean", description: "是否包含被禁用的插件" },
+              },
+            },
+          },
+        ],
+      },
+      {
+        id: "tasks_and_problems",
+        name: "任务和问题",
+        description: "创建和运行任务，并检查工作区代码问题",
+        status:
+          typeof vscode.tasks?.executeTask === "function" && typeof vscode.languages?.getDiagnostics === "function"
+            ? "connected"
+            : "unavailable",
+        tools: [
+          {
+            id: "getDiagnostics",
+            name: "检查工作区问题",
+            description: "获取当前文件或全局所有语法与类型错误（Problems）",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                path: { type: "string", description: "可选文件路径，用于仅筛选该文件的报错诊断" },
+              },
+            },
+          },
+          {
+            id: "runTask",
+            name: "运行构建/测试任务",
+            description: "执行 tasks.json 中配置的构建、监视与测试任务",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                taskName: { type: "string", description: "要执行的任务确切名称" },
+              },
+              required: ["taskName"],
+            },
+          },
+          {
+            id: "listTasks",
+            name: "列出可用任务",
+            description: "检索当前工作区已配置的所有任务定义",
+            parametersSchema: {
+              type: "object",
+              properties: {},
+            },
+          },
+          {
+            id: "terminateTask",
+            name: "终止运行中任务",
+            description: "停止当前正在执行的长期任务或监视任务",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                taskName: { type: "string", description: "要停止的任务确切名称" },
+              },
+              required: ["taskName"],
+            },
+          },
+        ],
+      },
+      {
+        id: "integrated_browser",
+        name: "集成浏览器",
+        description: hasBrowser
+          ? "在内置浏览器中打开和查看页面"
+          : "内置浏览器命令在当前环境中不可用",
+        status: hasBrowser ? "connected" : "unavailable",
+        tools: [
+          {
+            id: "openPage",
+            name: "在内置浏览器中打开",
+            description: "在 VS Code 内部标签页中加载并显示指定 URL",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                url: { type: "string", description: "要加载展示的目标网址" },
+              },
+              required: ["url"],
+            },
+          },
+        ],
+      },
+    ]
+
+    try {
+      const lmTools = (vscode as any).lm?.tools
+      if (Array.isArray(lmTools) && lmTools.length > 0) {
+        const extTools: AcpTool[] = []
+        for (const t of lmTools) {
+          if (!t || typeof t.name !== "string") continue
+          const name = t.name
+          if (name.startsWith("vscode_") || name.startsWith("copilot_")) continue
+          extTools.push({
+            id: name,
+            name: (t.displayName as string) || name,
+            description: (t.description as string) || (t.modelDescription as string) || "",
+            parametersSchema: (t.parametersSchema as Record<string, unknown>) || { type: "object", properties: {} },
+          })
+        }
+        if (extTools.length > 0) {
+          categories.push({
+            id: "extensions",
+            name: "扩展工具",
+            description: "当前 VS Code 中已安装扩展贡献的语言模型工具",
+            status: "connected",
+            tools: extTools,
+          })
+        }
+      }
+    } catch {
+      // Best effort
+    }
+
+    return { categories }
+  }
+
+  private async executeAcpTool(
+    category: string,
+    toolId: string,
+    parameters: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (category === "extensions") {
+      const lm = (vscode as any).lm
+      if (typeof lm?.invokeTool !== "function") {
+        throw new Error("vscode.lm.invokeTool is not supported in this VS Code version")
+      }
+      const tokenSource = new vscode.CancellationTokenSource()
+      try {
+        const result = await lm.invokeTool(toolId, { input: parameters }, tokenSource.token)
+        const parts: string[] = []
+        if (result && Array.isArray(result.content)) {
+          for (const c of result.content) {
+            if (c && typeof c.value === "string") {
+              parts.push(c.value)
+            } else if (c && typeof c === "string") {
+              parts.push(c)
+            } else if (c) {
+              parts.push(JSON.stringify(c))
+            }
+          }
+        }
+        return { output: parts.join("\n") || "Tool executed successfully" }
+      } finally {
+        tokenSource.dispose()
+      }
+    }
+
+    if (category === "vscode") {
+      switch (toolId) {
+        case "executeCommand": {
+          const command = parameters.command as string
+          if (!command) throw new Error("Missing 'command' parameter")
+          const args = Array.isArray(parameters.args) ? parameters.args : []
+          const result = await vscode.commands.executeCommand(command, ...args)
+          return { output: typeof result === "string" ? result : JSON.stringify(result ?? "Command executed successfully") }
+        }
+        case "editor": {
+          const rawPath = parameters.path as string
+          if (!rawPath) throw new Error("Missing 'path' parameter")
+          const line = typeof parameters.line === "number" ? parameters.line : 1
+          if (this.communicationBridge) {
+            await this.communicationBridge.handleOpenFile(line > 0 ? `${rawPath}:${line}` : rawPath)
+          }
+          return { output: `Opened ${rawPath} at line ${line}` }
+        }
+        case "terminal": {
+          const command = parameters.command as string
+          if (!command) throw new Error("Missing 'command' parameter")
+          const terminalName = (parameters.name as string) || "OpenCode Terminal"
+          let term = vscode.window.terminals.find((t) => t.name === terminalName)
+          if (!term) {
+            term = vscode.window.createTerminal({ name: terminalName })
+          }
+          term.show()
+          term.sendText(command)
+          return { output: `Sent command to terminal "${terminalName}": ${command}` }
+        }
+        case "manageExtensions": {
+          const exts = vscode.extensions.all.map((e) => ({
+            id: e.id,
+            packageJSON: {
+              name: e.packageJSON?.name,
+              version: e.packageJSON?.version,
+              description: e.packageJSON?.description,
+            },
+            isActive: e.isActive,
+          }))
+          return { output: JSON.stringify(exts, null, 2) }
+        }
+        case "navigateSymbol": {
+          const query = parameters.query as string
+          if (!query) throw new Error("Missing 'query' parameter")
+          const symbols = await vscode.commands.executeCommand("vscode.executeWorkspaceSymbolProvider", query)
+          return { output: JSON.stringify(symbols ?? [], null, 2) }
+        }
+        default:
+          throw new Error(`Unsupported tool in vscode category: ${toolId}`)
+      }
+    }
+
+    if (category === "tasks_and_problems") {
+      switch (toolId) {
+        case "getDiagnostics": {
+          const filterPath = parameters.path as string | undefined
+          const allDiagnostics = vscode.languages.getDiagnostics()
+          const results: Array<{ uri: string; diagnostics: unknown[] }> = []
+          for (const [uri, diags] of allDiagnostics) {
+            if (diags.length === 0) continue
+            if (filterPath && !uri.fsPath.includes(filterPath)) continue
+            results.push({
+              uri: uri.fsPath,
+              diagnostics: diags.map((d) => ({
+                message: d.message,
+                severity: d.severity,
+                range: {
+                  start: { line: d.range.start.line, character: d.range.start.character },
+                  end: { line: d.range.end.line, character: d.range.end.character },
+                },
+                source: d.source,
+                code: d.code,
+              })),
+            })
+          }
+          return { output: JSON.stringify(results, null, 2) }
+        }
+        case "listTasks": {
+          const tasks = await vscode.tasks.fetchTasks()
+          return {
+            output: JSON.stringify(
+              tasks.map((t) => ({ name: t.name, source: t.source, group: t.group?.id })),
+              null,
+              2,
+            ),
+          }
+        }
+        case "runTask": {
+          const taskName = parameters.taskName as string
+          if (!taskName) throw new Error("Missing 'taskName' parameter")
+          const tasks = await vscode.tasks.fetchTasks()
+          const task = tasks.find((t) => t.name === taskName)
+          if (!task) throw new Error(`Task not found: ${taskName}`)
+          const execution = await vscode.tasks.executeTask(task)
+          return { output: `Task "${taskName}" started (execution: ${execution ? "active" : "unknown"})` }
+        }
+        case "terminateTask": {
+          const taskName = parameters.taskName as string
+          if (!taskName) throw new Error("Missing 'taskName' parameter")
+          const executions = vscode.tasks.taskExecutions
+          const execution = executions.find((e) => e.task.name === taskName)
+          if (!execution) throw new Error(`Running task not found: ${taskName}`)
+          execution.terminate()
+          return { output: `Terminated task: ${taskName}` }
+        }
+        default:
+          throw new Error(`Unsupported tool in tasks_and_problems category: ${toolId}`)
+      }
+    }
+
+    if (category === "integrated_browser") {
+      switch (toolId) {
+        case "openPage": {
+          const url = parameters.url as string
+          if (!url) throw new Error("Missing 'url' parameter")
+          await vscode.commands.executeCommand("simpleBrowser.show", url)
+          return { output: `Opened ${url} in integrated browser` }
+        }
+        default:
+          throw new Error(`Unsupported tool in integrated_browser category: ${toolId}`)
+      }
+    }
+
+    throw new Error(`Unsupported ACP category: ${category}`)
   }
 
   private readDataUrl(url: string): Uint8Array {

@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { ConnectionState } from "../../lib/api/events"
 import { sdk } from "../../lib/api/sdkClient"
 import { ideBridge } from "../../lib/ideBridge"
+import type { AcpCategoryData, AcpData, AcpToolData } from "./status"
 
 type McpState = {
   status: "connected" | "disabled" | "failed" | "needs_auth" | "needs_client_registration"
+  description?: string
   error?: string
   tools: McpTool[]
 }
@@ -12,6 +14,7 @@ type McpState = {
 type McpTool = {
   id: string
   name: string
+  description?: string
   enabled: boolean
 }
 
@@ -47,11 +50,14 @@ type Box<T> = {
 
 type SkillState = {
   enabled: boolean
+  description?: string
+  source?: string
 }
 
 type Data = {
   servers: Box<ServerData>
   mcp: Box<Record<string, McpState>>
+  acp: Box<AcpData>
   lsp: Box<LspState[]>
   plugins: Box<string[]>
   skills: Box<Record<string, SkillState>>
@@ -93,16 +99,21 @@ function tools(input: unknown) {
     .map((item) => ({
       id: item.id,
       name: item.name,
+      description:
+        typeof (item as { description?: unknown }).description === "string"
+          ? (item as { description: string }).description
+          : undefined,
       enabled: item.enabled,
     }))
 }
 
-function mcp(input: Record<string, { status: McpState["status"]; error?: string }>) {
+function mcp(input: Record<string, { status: McpState["status"]; description?: string; error?: string }>) {
   return Object.fromEntries(
     Object.entries(input).map(([name, item]) => [
       name,
       {
         status: item.status,
+        description: item.description,
         error: item.error,
         tools: [],
       },
@@ -158,6 +169,7 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
   const [data, setData] = useState<Data>({
     servers: box(server(connectionState, null, null, null), "empty", null, null),
     mcp: box({}, "empty", null, null),
+    acp: box({ installed: ideBridge.isInstalled(), categories: [] }, "empty", null, null),
     lsp: box([], "empty", null, null),
     plugins: box([], "empty", null, null),
     skills: box({}, "empty", null, null),
@@ -168,6 +180,13 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
   const slock = useRef<Record<string, boolean>>({})
   const [sbusy, setSBusy] = useState<Record<string, boolean>>({})
   const sseq = useRef(0)
+
+  const acpLock = useRef<Record<string, boolean>>({})
+  const acpToolLock = useRef<Record<string, Record<string, boolean>>>({})
+  const [acpBusy, setAcpBusy] = useState<Record<string, boolean>>({})
+  const [acpToolBusy, setAcpToolBusy] = useState<Record<string, Record<string, boolean>>>({})
+  const acpMemoryRef = useRef<Record<string, Record<string, boolean>>>({})
+  const acpSeq = useRef(0)
 
   const loadMcp = useCallback(async () => {
     try {
@@ -235,7 +254,20 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
       }
       const result: Record<string, SkillState> = {}
       for (const item of skillsRes.data) {
-        result[item.name] = { enabled: item.enabled }
+        const source =
+          (item as any).source ??
+          (item.location
+            ? item.location.startsWith("<built-in>")
+              ? "Built-in"
+              : item.location.includes(".config")
+                ? "Global"
+                : "Project"
+            : undefined)
+        result[item.name] = {
+          enabled: item.enabled,
+          description: item.description,
+          source,
+        }
       }
       return { data: result, error: null }
     } catch (err) {
@@ -272,6 +304,242 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
       if (pull.current === 0) setRefreshing(false)
     }
   }, [loadMcp])
+
+  const loadAcp = useCallback(async (cfgData?: any) => {
+    if (!ideBridge.isInstalled()) {
+      return {
+        data: { installed: false, categories: [] as AcpCategoryData[] },
+        error: null,
+      }
+    }
+
+    try {
+      const capabilities = await ideBridge.getAcpCapabilities()
+      if (!capabilities || !Array.isArray(capabilities.categories)) {
+        return {
+          data: { installed: true, categories: [] as AcpCategoryData[] },
+          error: null,
+        }
+      }
+
+      let configAcp = cfgData !== undefined ? (cfgData as any)?.acp : undefined
+      if (cfgData === undefined) {
+        try {
+          const cfgRes = await sdk.config.get()
+          configAcp = (cfgRes.data as any)?.acp
+        } catch {
+          // ignore
+        }
+      }
+
+      const categories: AcpCategoryData[] = capabilities.categories.map((cat) => {
+        const catCfg = configAcp?.[cat.id]
+        const enabled = catCfg?.enabled !== undefined ? Boolean(catCfg.enabled) : true
+
+        if (!acpMemoryRef.current[cat.id]) {
+          acpMemoryRef.current[cat.id] = {}
+        }
+
+        const tools: AcpToolData[] = (cat.tools || []).map((t) => {
+          const toolCfg = catCfg?.tools?.[t.id]
+          const remembered = acpMemoryRef.current[cat.id]?.[t.id]
+          const defaultEnabled = toolCfg !== undefined ? Boolean(toolCfg) : remembered !== undefined ? remembered : true
+          acpMemoryRef.current[cat.id][t.id] = defaultEnabled
+
+          return {
+            id: t.id,
+            name: t.name,
+            description: t.description,
+            enabled: enabled ? defaultEnabled : false,
+          }
+        })
+
+        return {
+          id: cat.id,
+          name: cat.name,
+          description: cat.description,
+          status: (cat.status as any) || "connected",
+          enabled,
+          tools,
+        }
+      })
+
+      return {
+        data: { installed: true, categories },
+        error: null,
+      }
+    } catch (err) {
+      return {
+        data: null,
+        error: text(err, "Failed to load ACP capabilities"),
+      }
+    }
+  }, [])
+
+  const refreshAcp = useCallback(async () => {
+    const id = ++acpSeq.current
+    try {
+      const res = await loadAcp()
+      setData((prev) => {
+        if (id !== acpSeq.current) return prev
+        if (res.error || !res.data) {
+          const err = text(res.error, "Failed to load ACP capabilities")
+          return { ...prev, acp: failed(prev.acp, { installed: ideBridge.isInstalled(), categories: [] }, err) }
+        }
+        const state = !res.data.installed || res.data.categories.length > 0 ? "ready" : "empty"
+        return { ...prev, acp: box(res.data, state, null, now()) }
+      })
+    } catch (err) {
+      setData((prev) => {
+        if (id !== acpSeq.current) return prev
+        return {
+          ...prev,
+          acp: failed(
+            prev.acp,
+            { installed: ideBridge.isInstalled(), categories: [] },
+            text(err, "Failed to load ACP capabilities"),
+          ),
+        }
+      })
+    }
+  }, [loadAcp])
+
+  const toggleAcpCategory = useCallback(
+    async (catId: string) => {
+      const currentCat = data.acp.data.categories.find((c) => c.id === catId)
+      if (!currentCat || acpLock.current[catId]) return
+
+      const nextEnabled = !currentCat.enabled
+      acpLock.current[catId] = true
+      setAcpBusy((prev) => ({ ...prev, [catId]: true }))
+
+      // Optimistic update
+      setData((prev) => {
+        const nextCategories = prev.acp.data.categories.map((c) => {
+          if (c.id !== catId) return c
+          const tools = c.tools.map((t) => {
+            const remembered = acpMemoryRef.current[catId]?.[t.id] ?? true
+            return {
+              ...t,
+              enabled: nextEnabled ? remembered : false,
+            }
+          })
+          return {
+            ...c,
+            enabled: nextEnabled,
+            tools,
+          }
+        })
+        return {
+          ...prev,
+          acp: box({ ...prev.acp.data, categories: nextCategories }, "ready", null, now()),
+        }
+      })
+
+      try {
+        // Memory restore: preserve the user's granular sub-tool preferences in config.
+        // When disabling the category, the category-level enabled: false disables all sub-tools
+        // for the agent and UI, while the remembered tools map remains persisted in opencode.json
+        // so re-enabling at any time (even after restart/reload) seamlessly restores the exact combination.
+        const rememberedTools = acpMemoryRef.current[catId] || {}
+        const res = await sdk.config.update({
+          body: {
+            acp: {
+              [catId]: {
+                enabled: nextEnabled,
+                tools: rememberedTools,
+              },
+            },
+          } as any,
+        })
+        if (res.error) throw res.error
+      } catch (err) {
+        console.warn("[useStatusPopoverData] Failed to toggle ACP category:", err)
+        await refreshAcp()
+      } finally {
+        delete acpLock.current[catId]
+        setAcpBusy((prev) => {
+          const next = { ...prev }
+          delete next[catId]
+          return next
+        })
+      }
+    },
+    [data.acp.data.categories, refreshAcp],
+  )
+
+  const toggleAcpTool = useCallback(
+    async (catId: string, toolId: string, enabled: boolean) => {
+      if (acpToolLock.current[catId]?.[toolId]) return
+
+      const currentCat = data.acp.data.categories.find((c) => c.id === catId)
+      const isCatEnabled = currentCat ? currentCat.enabled : true
+
+      if (!acpToolLock.current[catId]) acpToolLock.current[catId] = {}
+      acpToolLock.current[catId][toolId] = true
+      setAcpToolBusy((prev) => ({
+        ...prev,
+        [catId]: { ...(prev[catId] ?? {}), [toolId]: true },
+      }))
+
+      if (!acpMemoryRef.current[catId]) acpMemoryRef.current[catId] = {}
+      acpMemoryRef.current[catId][toolId] = enabled
+
+      // Optimistic update
+      setData((prev) => {
+        const nextCategories = prev.acp.data.categories.map((c) => {
+          if (c.id !== catId) return c
+          const tools = c.tools.map((t) =>
+            t.id === toolId ? { ...t, enabled: isCatEnabled ? enabled : false } : t,
+          )
+          return {
+            ...c,
+            enabled: isCatEnabled,
+            tools,
+          }
+        })
+        return {
+          ...prev,
+          acp: box({ ...prev.acp.data, categories: nextCategories }, "ready", null, now()),
+        }
+      })
+
+      try {
+        const res = await sdk.config.update({
+          body: {
+            acp: {
+              [catId]: {
+                enabled: isCatEnabled,
+                tools: {
+                  ...(acpMemoryRef.current[catId] || {}),
+                  [toolId]: enabled,
+                },
+              },
+            },
+          } as any,
+        })
+        if (res.error) throw res.error
+      } catch (err) {
+        console.warn("[useStatusPopoverData] Failed to toggle ACP tool:", err)
+        await refreshAcp()
+      } finally {
+        if (acpToolLock.current[catId]) {
+          delete acpToolLock.current[catId][toolId]
+          if (Object.keys(acpToolLock.current[catId]).length === 0) delete acpToolLock.current[catId]
+        }
+        setAcpToolBusy((prev) => {
+          const next = { ...prev }
+          if (next[catId]) {
+            const catBusy = { ...next[catId] }
+            delete catBusy[toolId]
+            next[catId] = catBusy
+          }
+          return next
+        })
+      }
+    },
+    [refreshAcp],
+  )
 
   const api = sdk.mcp as typeof sdk.mcp & {
     tools: (input: { path: { name: string } }) => Promise<{ data: unknown; error: unknown }>
@@ -414,10 +682,10 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
         return box(next, next.length > 0 ? "ready" : "empty", null, stamp)
       })()
 
-      return { servers, mcp, lsp, plugins: prev.plugins, skills: prev.skills }
+      return { servers, mcp, lsp, plugins: prev.plugins, skills: prev.skills, acp: prev.acp }
     })
 
-    const pluginPromise = sdk.config.get().then(
+    const configPromise = sdk.config.get().then(
       (v) => ({ status: "fulfilled" as const, value: v }),
       (e) => ({ status: "rejected" as const, reason: e }),
     )
@@ -426,25 +694,52 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
       (e) => ({ status: "rejected" as const, reason: e }),
     )
     await Promise.all([
-      pluginPromise.then((pluginRes) => {
+      configPromise.then(async (configRes) => {
+        const configData = configRes.status === "fulfilled" && configRes.value.data ? configRes.value.data : null
+        const acpRes = await loadAcp(configData)
         setData((prev) => {
           if (id !== seq.current) return prev
           const stamp = now()
           const plugins = (() => {
-            if (pluginRes.status === "rejected") {
-              const err = text(pluginRes.reason, "Failed to load plugin config")
+            if (configRes.status === "rejected") {
+              const err = text(configRes.reason, "Failed to load plugin config")
               return failed(prev.plugins, [], err)
             }
-            if (pluginRes.value.error || !pluginRes.value.data) {
-              const err = text(pluginRes.value.error, "Failed to load plugin config")
+            if (configRes.value.error || !configRes.value.data) {
+              const err = text(configRes.value.error, "Failed to load plugin config")
               return failed(prev.plugins, [], err)
             }
-            const next = Array.isArray(pluginRes.value.data.plugin)
-              ? pluginRes.value.data.plugin.filter((item): item is string => typeof item === "string")
+            const next = Array.isArray(configRes.value.data.plugin)
+              ? configRes.value.data.plugin.filter((item): item is string => typeof item === "string")
               : []
             return box(next, next.length > 0 ? "ready" : "empty", null, stamp)
           })()
-          return { ...prev, plugins }
+
+          const acp = (() => {
+            if (acpRes.error || !acpRes.data) {
+              const err = text(acpRes.error, "Failed to load ACP capabilities")
+              return failed(prev.acp, { installed: ideBridge.isInstalled(), categories: [] }, err)
+            }
+            const state = !acpRes.data.installed || acpRes.data.categories.length > 0 ? "ready" : "empty"
+            return box(acpRes.data, state, null, stamp)
+          })()
+
+          const mcpConfig = (configData as any)?.mcp || {}
+          const nextMcpData = Object.fromEntries(
+            Object.entries(prev.mcp.data).map(([name, item]) => [
+              name,
+              {
+                ...item,
+                description: (mcpConfig[name] as any)?.description ?? item.description,
+              },
+            ]),
+          )
+          const mcp = {
+            ...prev.mcp,
+            data: nextMcpData,
+          }
+
+          return { ...prev, plugins, acp, mcp }
         })
       }),
       skillsPromise.then((skillsRes) => {
@@ -464,7 +759,7 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
         })
       }),
     ])
-  }, [loadMcp, loadSkills])
+  }, [loadMcp, loadSkills, loadAcp])
 
   useEffect(() => {
     if (open && !prev.current) void refreshAll()
@@ -530,17 +825,23 @@ export function useStatusPopoverData({ open, connectionState }: Props) {
       },
     },
     mcp: data.mcp,
+    acp: data.acp,
     lsp: data.lsp,
     plugins: data.plugins,
     skills: data.skills,
     refreshAll,
     refreshMcp,
+    refreshAcp,
     toggleMcp,
     toggleTool,
+    toggleAcpCategory,
+    toggleAcpTool,
     toggleSkill,
     mcpBusy: busy,
     mcpToolBusy: tbusy,
     mcpRefreshing: refreshing,
+    acpBusy,
+    acpToolBusy,
     skillBusy: sbusy,
   }
 }

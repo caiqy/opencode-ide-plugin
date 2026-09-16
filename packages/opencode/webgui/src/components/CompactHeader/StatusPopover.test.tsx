@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { ConnectionState } from "../../lib/api/events"
@@ -65,9 +65,30 @@ type View = {
     state: "ready" | "empty" | "failed" | "stale"
     error: string | null
     updatedAt: number | null
-    data: Record<string, { enabled: boolean }>
+    data: Record<string, { enabled: boolean; description?: string; source?: string }>
   }
   skillBusy: Record<string, boolean>
+  acp?: {
+    state: "ready" | "empty" | "failed" | "stale"
+    error: string | null
+    updatedAt: number | null
+    data: {
+      installed: boolean
+      categories: Array<{
+        id: string
+        name: string
+        description?: string
+        status: "connected" | "disabled" | "unavailable"
+        enabled: boolean
+        tools: Array<{ id: string; name: string; description?: string; enabled: boolean }>
+      }>
+    }
+  }
+  refreshAcp?: ReturnType<typeof vi.fn>
+  toggleAcpCategory?: ReturnType<typeof vi.fn>
+  toggleAcpTool?: ReturnType<typeof vi.fn>
+  acpBusy?: Record<string, boolean>
+  acpToolBusy?: Record<string, Record<string, boolean>>
 }
 
 function data(): View {
@@ -100,6 +121,27 @@ function data(): View {
         },
       },
     },
+    acp: {
+      state: "ready",
+      error: null,
+      updatedAt: 1,
+      data: {
+        installed: true,
+        categories: [
+          {
+            id: "vscode",
+            name: "VS Code",
+            description: "导航代码与命令",
+            status: "connected",
+            enabled: true,
+            tools: [
+              { id: "exec", name: "运行命令", description: "运行编辑器命令", enabled: true },
+              { id: "nav", name: "代码导航", description: "跳转定义", enabled: false },
+            ],
+          },
+        ],
+      },
+    },
     lsp: {
       state: "ready",
       error: null,
@@ -116,6 +158,11 @@ function data(): View {
     refreshMcp: vi.fn().mockResolvedValue(undefined),
     toggleMcp: vi.fn().mockResolvedValue(undefined),
     toggleTool: vi.fn().mockResolvedValue(undefined),
+    refreshAcp: vi.fn().mockResolvedValue(undefined),
+    toggleAcpCategory: vi.fn().mockResolvedValue(undefined),
+    toggleAcpTool: vi.fn().mockResolvedValue(undefined),
+    acpBusy: {},
+    acpToolBusy: {},
     mcpBusy: {},
     mcpToolBusy: {},
     mcpRefreshing: false,
@@ -125,8 +172,8 @@ function data(): View {
       error: null,
       updatedAt: 1,
       data: {
-        brainstorming: { enabled: true },
-        debugging: { enabled: false },
+        brainstorming: { enabled: true, description: "头脑风暴构思", source: "Built-in" },
+        debugging: { enabled: false, description: "代码调试排错", source: "Project" },
       },
     },
     skillBusy: {},
@@ -138,15 +185,17 @@ describe("CompactHeader/StatusPopover", () => {
     mocks.useStatusPopoverData.mockReturnValue(data())
   })
 
-  it("渲染四个状态 tab 并默认选中 servers", () => {
+  it("渲染六个状态 tab 并默认选中 servers", () => {
     render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
 
     expect(mocks.useStatusPopoverData).toHaveBeenCalledWith({ open: true, connectionState: "connected" })
+    expect(screen.getByRole("dialog", { name: "状态面板" })).toHaveClass("left-2")
     expect(screen.getByRole("dialog", { name: "状态面板" })).toHaveClass("right-2")
     expect(screen.getByRole("dialog", { name: "状态面板" })).toHaveClass("modern-card")
     expect(screen.getAllByRole("tab").map((item) => item.textContent)).toEqual([
       "Server",
       "MCP",
+      "ACP",
       "LSP",
       "Plugins",
       "Skills",
@@ -165,7 +214,7 @@ describe("CompactHeader/StatusPopover", () => {
     render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
 
     const dlg = screen.getByRole("dialog", { name: "状态面板" })
-    expect(dlg).toHaveClass("max-h-[60vh]")
+    expect(dlg).toHaveClass("max-h-[72vh]")
     const box = screen.getByTestId("status-scroll")
     expect(box).toHaveClass("overflow-y-auto")
   })
@@ -565,5 +614,134 @@ describe("CompactHeader/StatusPopover", () => {
 
     expect(screen.getByText(/数据可能不是最新/)).toBeInTheDocument()
     expect(screen.getByRole("switch", { name: "切换 brainstorming" })).toHaveAttribute("aria-checked", "true")
+  })
+
+  it("ACP tab 渲染大类和子工具列表并响应开关", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    mocks.useStatusPopoverData.mockReturnValue(view)
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "ACP" }))
+
+    expect(screen.getByText("ACP 宿主能力")).toBeInTheDocument()
+    expect(screen.getByText("VS Code")).toBeInTheDocument()
+    expect(screen.getByText("导航代码与命令")).toBeInTheDocument()
+    const acpPanel = screen.getByRole("tabpanel", { name: "ACP" })
+    expect(within(acpPanel).getByText("1/2 启用")).toBeInTheDocument()
+
+    // 点击大类开关
+    const catSwitch = screen.getByRole("switch", { name: "切换 VS Code" })
+    expect(catSwitch).toHaveAttribute("aria-checked", "true")
+    await user.click(catSwitch)
+    expect(view.toggleAcpCategory).toHaveBeenCalledWith("vscode")
+
+    // 展开子工具
+    await user.click(screen.getByRole("button", { name: "展开工具 VS Code" }))
+    expect(screen.getByText("运行命令")).toBeInTheDocument()
+    expect(screen.getByText("运行编辑器命令")).toBeInTheDocument()
+    expect(screen.getByText("代码导航")).toBeInTheDocument()
+
+    // 点击子工具开关
+    const toolSwitch = screen.getByRole("switch", { name: "切换 代码导航" })
+    expect(toolSwitch).toHaveAttribute("aria-checked", "false")
+    await user.click(toolSwitch)
+    expect(view.toggleAcpTool).toHaveBeenCalledWith("vscode", "nav", true)
+  })
+
+  it("ACP 大类关闭时子工具开关呈禁用状态", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.acp!.data.categories[0].enabled = false
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "ACP" }))
+    await user.click(screen.getByRole("button", { name: "展开工具 VS Code" }))
+
+    const toolSwitch = screen.getByRole("switch", { name: "切换 运行命令" })
+    expect(toolSwitch).toBeDisabled()
+  })
+
+  it("ACP tab 在未连接宿主时显示空状态提示", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.acp!.data.installed = false
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "ACP" }))
+
+    expect(screen.getByText("未连接 IDE 宿主")).toBeInTheDocument()
+    expect(screen.getByText(/当前运行在独立浏览器模式/)).toBeInTheDocument()
+    expect(screen.getByPlaceholderText("搜索 ACP 宿主能力或子工具...")).toBeInTheDocument()
+  })
+
+  it("ACP tab 支持搜索过滤并在命中子工具时自动展开", async () => {
+    const user = userEvent.setup()
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "ACP" }))
+
+    const searchInput = screen.getByPlaceholderText("搜索 ACP 宿主能力或子工具...")
+    await user.type(searchInput, "运行编辑器命令")
+
+    // 命中了子工具描述，自动展开
+    expect(screen.getByText("运行命令")).toBeInTheDocument()
+    expect(screen.getByText("运行编辑器命令")).toBeInTheDocument()
+  })
+
+  it("Skills tab 渲染详细描述文本", async () => {
+    const user = userEvent.setup()
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "Skills" }))
+
+    expect(screen.getByText("brainstorming")).toBeInTheDocument()
+    expect(screen.getByText("头脑风暴构思")).toBeInTheDocument()
+    expect(screen.getByText("Built-in")).toBeInTheDocument()
+    expect(screen.getByText("debugging")).toBeInTheDocument()
+    expect(screen.getByText("代码调试排错")).toBeInTheDocument()
+    expect(screen.getByText("Project")).toBeInTheDocument()
+  })
+
+  it("MCP tab 渲染 Server 描述及子工具描述", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.mcp.data.alpha = {
+      ...view.mcp.data.alpha,
+      description: "Alpha MCP 基础服务",
+      tools: [
+        { id: "alpha.read", name: "alpha.read", description: "读取资源内容", enabled: true },
+      ],
+    }
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "MCP" }))
+
+    expect(screen.getByText("Alpha MCP 基础服务")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "展开工具 alpha" }))
+    expect(screen.getByText("读取资源内容")).toBeInTheDocument()
+  })
+
+  it("Skills tab 支持展开完整描述", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.skills.data.brainstorming.description =
+      "这是一个非常长非常长非常长非常长非常长非常长非常长非常长非常长非常长非常长的技能描述文本，用于验证展开与收起交互"
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "Skills" }))
+
+    const toggleBtn = screen.getByRole("button", { name: "展开全部" })
+    expect(toggleBtn).toBeInTheDocument()
+    await user.click(toggleBtn)
+    expect(screen.getByRole("button", { name: "收起" })).toBeInTheDocument()
   })
 })

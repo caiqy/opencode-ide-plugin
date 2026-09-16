@@ -7,6 +7,7 @@ import { killTree } from "./kill"
 import { ErrorCategory, errorHandler, ErrorSeverity } from "../utils/ErrorHandler"
 import { getExtension } from "../utils/extensionIdentity"
 import { logger } from "../globals"
+import { bridgeServer } from "../ui/IdeBridgeServer"
 
 /**
  * Backend process management - mirrors BackendLauncher.kt
@@ -29,6 +30,8 @@ export class BackendLauncher {
   private currentConnection?: Omit<BackendConnection, "process">
   private extensionPath?: string
   private extensionVersion?: string
+  private ideBridgeUrl?: string
+  private ideBridgeToken?: string
 
   constructor(options?: string | BackendLauncherOptions) {
     if (typeof options === "string") {
@@ -41,6 +44,11 @@ export class BackendLauncher {
     this.extensionVersion = version || undefined
   }
 
+  setIdeBridge(url: string, token: string): void {
+    this.ideBridgeUrl = url
+    this.ideBridgeToken = token
+  }
+
   /**
    * Launch the opencode backend process
    * @param workspaceRoot Optional workspace root directory
@@ -50,6 +58,62 @@ export class BackendLauncher {
     // Reuse existing running backend if available
     if (!options?.forceNew && this.currentProcess && this.currentConnection && this.isRunning()) {
       return { ...this.currentConnection, process: this.currentProcess } as BackendConnection
+    }
+
+    try {
+      if (!this.ideBridgeUrl) {
+        bridgeServer.start()
+        const preSession = await bridgeServer.createSession({
+          openFile: async (p) => {
+            await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(p))
+          },
+          openUrl: async (u) => {
+            await vscode.env.openExternal(vscode.Uri.parse(u))
+          },
+          reloadPath: async () => {},
+          clipboardWrite: async (t) => {
+            await vscode.env.clipboard.writeText(t)
+          },
+          getAcpCapabilities: async () => ({
+            categories: [
+              {
+                id: "vscode",
+                name: "VS Code",
+                description: "导航代码、管理扩展和运行内置 VS Code 命令",
+                status: typeof vscode.commands?.executeCommand === "function" ? "connected" : "unavailable",
+                tools: [
+                  {
+                    id: "executeCommand",
+                    name: "运行内置命令",
+                    description: "在 VS Code 中执行已注册的编辑器或扩展命令",
+                    parametersSchema: {
+                      type: "object",
+                      properties: {
+                        command: { type: "string", description: "VS Code 命令标识符，如 workbench.action.files.save" },
+                        args: { type: "array", description: "传递给该命令的可选参数列表", items: {} },
+                      },
+                      required: ["command"],
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+          executeAcpTool: async (category, toolId, parameters) => {
+            if (category === "vscode" && toolId === "executeCommand") {
+              const command = parameters.command as string
+              if (!command) throw new Error("Missing 'command' parameter")
+              const args = Array.isArray(parameters.args) ? parameters.args : []
+              const result = await vscode.commands.executeCommand(command, ...args)
+              return { output: typeof result === "string" ? result : JSON.stringify(result ?? "Command executed successfully") }
+            }
+            throw new Error(`Unsupported tool in pre-session: ${category}/${toolId}`)
+          },
+        })
+        this.setIdeBridge(preSession.baseUrl, preSession.token)
+      }
+    } catch (e) {
+      logger.appendLine(`Bridge session pre-init note: ${e}`)
     }
 
     try {
@@ -306,6 +370,12 @@ export class BackendLauncher {
       env.OPENCODE_UI_VERSION = this.extensionVersion
     } else {
       delete env.OPENCODE_UI_VERSION
+    }
+    if (this.ideBridgeUrl) {
+      env.OPENCODE_IDE_BRIDGE_URL = this.ideBridgeUrl
+    }
+    if (this.ideBridgeToken) {
+      env.OPENCODE_IDE_BRIDGE_TOKEN = this.ideBridgeToken
     }
     return env
   }

@@ -1175,4 +1175,154 @@ suite("IdeBridgeServer readFiles", () => {
       bridgeServer.removeSession(noSupportSession.sessionId)
     }
   })
+
+  suite("IdeBridgeServer getAcpCapabilities", () => {
+    test("routes getAcpCapabilities to the session handler and returns capabilities", async () => {
+      bridgeServer.removeSession(sessionId)
+
+      const expected = {
+        categories: [
+          {
+            id: "vscode",
+            name: "VS Code",
+            status: "connected" as const,
+            tools: [{ id: "exec", name: "执行命令", enabled: true }],
+          },
+        ],
+      }
+
+      const session = await bridgeServer.createSession({
+        openFile: async () => {},
+        openUrl: async () => {},
+        reloadPath: async () => {},
+        clipboardWrite: async () => {},
+        getAcpCapabilities: async () => expected,
+      })
+      baseUrl = session.baseUrl
+      token = session.token
+      sessionId = session.sessionId
+
+      const response = await requestRoundtrip(baseUrl, token, {
+        type: "getAcpCapabilities",
+      })
+
+      assert.strictEqual(response.status, 204)
+      assert.strictEqual(response.reply.ok, true)
+      assert.deepStrictEqual(response.reply.result, expected)
+    })
+
+    test("returns error when getAcpCapabilities is not supported", async () => {
+      bridgeServer.removeSession(sessionId)
+
+      const session = await bridgeServer.createSession({
+        openFile: async () => {},
+        openUrl: async () => {},
+        reloadPath: async () => {},
+        clipboardWrite: async () => {},
+      })
+      baseUrl = session.baseUrl
+      token = session.token
+      sessionId = session.sessionId
+
+      const response = await requestRoundtrip(baseUrl, token, {
+        type: "getAcpCapabilities",
+      })
+
+      assert.strictEqual(response.status, 204)
+      assert.strictEqual(response.reply.ok, false)
+      assert.strictEqual(response.reply.error, "getAcpCapabilities not supported")
+    })
+  })
+
+  suite("IdeBridgeServer executeAcpTool", () => {
+    test("routes executeAcpTool to the session handler and returns result", async () => {
+      bridgeServer.removeSession(sessionId)
+
+      const expected = { output: "hello result" }
+      let capturedCategory = ""
+      let capturedToolId = ""
+      let capturedParams: Record<string, unknown> = {}
+
+      const session = await bridgeServer.createSession({
+        openFile: async () => {},
+        openUrl: async () => {},
+        reloadPath: async () => {},
+        clipboardWrite: async () => {},
+        executeAcpTool: async (cat, tool, params) => {
+          capturedCategory = cat
+          capturedToolId = tool
+          capturedParams = params
+          return expected
+        },
+      })
+      baseUrl = session.baseUrl
+      token = session.token
+      sessionId = session.sessionId
+
+      const response = await requestRoundtrip(baseUrl, token, {
+        type: "executeAcpTool",
+        payload: {
+          category: "vscode",
+          toolId: "executeCommand",
+          parameters: { command: "test.cmd" },
+        },
+      })
+
+      assert.strictEqual(response.status, 204)
+      assert.strictEqual(response.reply.ok, true)
+      assert.deepStrictEqual(response.reply.result, expected)
+      assert.strictEqual(capturedCategory, "vscode")
+      assert.strictEqual(capturedToolId, "executeCommand")
+      assert.deepStrictEqual(capturedParams, { command: "test.cmd" })
+    })
+
+    test("returns error when executeAcpTool is missing category or toolId", async () => {
+      bridgeServer.removeSession(sessionId)
+
+      const session = await bridgeServer.createSession({
+        openFile: async () => {},
+        openUrl: async () => {},
+        reloadPath: async () => {},
+        clipboardWrite: async () => {},
+        executeAcpTool: async () => ({ output: "ok" }),
+      })
+      baseUrl = session.baseUrl
+      token = session.token
+      sessionId = session.sessionId
+
+      const response = await requestRoundtrip(baseUrl, token, {
+        type: "executeAcpTool",
+        payload: {
+          category: "vscode",
+        },
+      })
+
+      assert.strictEqual(response.status, 204)
+      assert.strictEqual(response.reply.ok, false)
+      assert.strictEqual(response.reply.error, "Missing category or toolId in executeAcpTool payload")
+    })
+
+    test("returns error when executeAcpTool is not supported", async () => {
+      bridgeServer.removeSession(sessionId)
+
+      const session = await bridgeServer.createSession({
+        openFile: async () => {},
+        openUrl: async () => {},
+        reloadPath: async () => {},
+        clipboardWrite: async () => {},
+      })
+      baseUrl = session.baseUrl
+      token = session.token
+      sessionId = session.sessionId
+
+      const response = await requestRoundtrip(baseUrl, token, {
+        type: "executeAcpTool",
+        payload: { category: "vscode", toolId: "executeCommand" },
+      })
+
+      assert.strictEqual(response.status, 204)
+      assert.strictEqual(response.reply.ok, false)
+      assert.strictEqual(response.reply.error, "executeAcpTool not supported")
+    })
+  })
 })
