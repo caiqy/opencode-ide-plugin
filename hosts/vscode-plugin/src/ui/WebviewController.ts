@@ -482,16 +482,19 @@ export class WebviewController {
   }
 
   private async getAcpCapabilities(): Promise<AcpCapabilitiesResult> {
-    // 真实检测当前宿主环境中的内置浏览器能力（包括已激活命令与内置 simple-browser 扩展）
+    // 真实检测当前宿主环境中的内置浏览器能力（优先检测 simple-browser 扩展或相关命令）
     let hasBrowser = false
     try {
-      const allCommands = await vscode.commands.getCommands(true)
-      hasBrowser =
-        allCommands.includes("simpleBrowser.show") ||
-        allCommands.includes("workbench.action.openBrowser") ||
-        Boolean(vscode.extensions.getExtension("vscode.simple-browser"))
+      if (vscode.extensions.getExtension("vscode.simple-browser")) {
+        hasBrowser = true
+      } else {
+        const allCommands = await vscode.commands.getCommands(true)
+        hasBrowser =
+          allCommands.includes("simpleBrowser.show") ||
+          allCommands.includes("workbench.action.browser.open")
+      }
     } catch {
-      hasBrowser = Boolean(vscode.extensions.getExtension("vscode.simple-browser"))
+      hasBrowser = false
     }
 
     const categories: AcpCategory[] = [
@@ -821,18 +824,39 @@ export class WebviewController {
     if (category === "integrated_browser") {
       switch (toolId) {
         case "openPage": {
-          const url = parameters.url as string
-          if (!url) throw new Error("Missing 'url' parameter")
-          const simpleBrowserExt = vscode.extensions.getExtension("vscode.simple-browser")
-          if (simpleBrowserExt && !simpleBrowserExt.isActive) {
-            await Promise.resolve(simpleBrowserExt.activate()).catch(() => {})
+          const rawUrl = parameters.url
+          if (typeof rawUrl !== "string" || !rawUrl.trim()) {
+            throw new Error("Missing or invalid 'url' parameter")
           }
+          let parsed: URL
           try {
-            await vscode.commands.executeCommand("simpleBrowser.show", url)
+            parsed = new URL(rawUrl.trim())
           } catch {
-            await vscode.commands.executeCommand("workbench.action.openBrowser", url)
+            throw new Error(`Invalid URL format: ${rawUrl}`)
           }
-          return { output: `Opened ${url} in integrated browser` }
+          if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+            throw new Error(`Only http and https protocols are supported, got: ${parsed.protocol}`)
+          }
+
+          try {
+            const simpleBrowserExt = vscode.extensions.getExtension("vscode.simple-browser")
+            if (simpleBrowserExt && !simpleBrowserExt.isActive) {
+              await simpleBrowserExt.activate()
+            }
+          } catch (e) {
+            console.warn("Failed to activate simple-browser extension:", e)
+          }
+
+          try {
+            await vscode.commands.executeCommand("simpleBrowser.show", parsed.href)
+          } catch (primaryErr) {
+            try {
+              await vscode.commands.executeCommand("workbench.action.browser.open", parsed.href)
+            } catch {
+              throw primaryErr
+            }
+          }
+          return { output: `Opened ${parsed.href} in integrated browser` }
         }
         default:
           throw new Error(`Unsupported tool in integrated_browser category: ${toolId}`)
