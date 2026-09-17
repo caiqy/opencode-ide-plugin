@@ -18,6 +18,8 @@ import type {
 import { bridgeServer } from "./IdeBridgeServer"
 import { showSystemNotification } from "./systemNotification"
 import { automaticUpdateStorageKey } from "../update/UpdateService"
+import { executeDebugTool } from "../debug/DebugTools"
+import { isDebugApiAvailable } from "../debug/DebugTracking"
 
 /**
  * 从语言模型工具的 `fullReferenceName`（形如 `扩展id/工具名` 或 `工具集/工具名`）解析归属分组。
@@ -535,6 +537,8 @@ export class WebviewController {
       hasBrowser = false
     }
 
+    const debugAvailable = isDebugApiAvailable()
+
     const categories: AcpCategory[] = [
       {
         id: "vscode",
@@ -679,6 +683,175 @@ export class WebviewController {
                 url: { type: "string", description: "要加载展示的目标网址" },
               },
               required: ["url"],
+            },
+          },
+        ],
+      },
+      {
+        id: "debug",
+        name: "运行和调试",
+        description: debugAvailable
+          ? "启动调试会话、管理断点并读取运行时状态"
+          : "调试 API 在当前环境中不可用",
+        status: debugAvailable ? "connected" : "unavailable",
+        tools: [
+          {
+            id: "listLaunchConfigs",
+            name: "列出启动配置",
+            description: "读取工作区 .vscode/launch.json 中的静态调试配置列表",
+            parametersSchema: {
+              type: "object",
+              properties: {},
+            },
+          },
+          {
+            id: "startDebugging",
+            name: "启动调试",
+            description: "按名称启动工作区中的调试配置（等价运行和调试面板的运行按钮）",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                name: { type: "string", description: "launch.json 中的配置名称" },
+              },
+              required: ["name"],
+            },
+          },
+          {
+            id: "stopDebugging",
+            name: "停止调试",
+            description: "停止当前活动的调试会话",
+            parametersSchema: {
+              type: "object",
+              properties: {},
+            },
+          },
+          {
+            id: "restartDebugging",
+            name: "重启调试",
+            description: "以当前配置重新启动调试会话",
+            parametersSchema: {
+              type: "object",
+              properties: {},
+            },
+          },
+          {
+            id: "getDebugState",
+            name: "查询调试状态",
+            description: "返回活动调试会话与暂停状态（线程、暂停原因、命中断点）",
+            parametersSchema: {
+              type: "object",
+              properties: {},
+            },
+          },
+          {
+            id: "getCallStack",
+            name: "读取调用堆栈",
+            description: "返回暂停线程的调用堆栈帧（文件、行号与帧 ID）",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                threadId: { type: "integer", description: "可选线程 ID；默认使用最近暂停的线程" },
+              },
+            },
+          },
+          {
+            id: "getVariables",
+            name: "读取变量",
+            description: "读取栈帧作用域或变量引用的值，可通过返回的 variablesReference 继续展开",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                frameId: { type: "integer", description: "栈帧 ID，用于读取该帧的作用域列表" },
+                variablesReference: {
+                  type: "integer",
+                  description: "作用域或变量的引用 ID，用于展开其子变量",
+                },
+              },
+            },
+          },
+          {
+            id: "listBreakpoints",
+            name: "列出断点",
+            description: "返回当前所有断点及其条件与启用状态",
+            parametersSchema: {
+              type: "object",
+              properties: {},
+            },
+          },
+          {
+            id: "addBreakpoints",
+            name: "添加断点",
+            description: "在指定文件行添加源断点，可设置条件、命中次数或日志消息",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                file: { type: "string", description: "目标文件的绝对路径" },
+                line: { type: "integer", description: "目标行号（从 1 开始）" },
+                condition: { type: "string", description: "可选条件表达式，仅在为真时暂停" },
+                hitCondition: { type: "string", description: "可选命中次数条件，如 5" },
+                logMessage: { type: "string", description: "可选日志消息，使用 {} 插值表达式" },
+              },
+              required: ["file", "line"],
+            },
+          },
+          {
+            id: "removeBreakpoints",
+            name: "删除断点",
+            description: "删除指定文件（与行号）匹配的源断点",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                file: { type: "string", description: "目标文件的绝对路径" },
+                line: { type: "integer", description: "可选行号；省略时删除该文件的全部源断点" },
+              },
+              required: ["file"],
+            },
+          },
+          {
+            id: "controlExecution",
+            name: "执行控制",
+            description: "对暂停中的调试会话执行继续、单步或暂停",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                action: {
+                  type: "string",
+                  enum: ["continue", "stepOver", "stepIn", "stepOut", "pause"],
+                  description: "执行控制动作",
+                },
+                threadId: { type: "integer", description: "可选线程 ID；默认使用最近暂停的线程" },
+              },
+              required: ["action"],
+            },
+          },
+          {
+            id: "evaluate",
+            name: "表达式求值",
+            description: "在暂停栈帧上下文中求值表达式（等价监视 / REPL）；会执行代码，请谨慎授权",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                expression: { type: "string", description: "要求值的表达式" },
+                frameId: { type: "integer", description: "可选栈帧 ID，在该帧上下文中求值" },
+                context: { type: "string", description: "可选求值上下文，如 watch、repl、hover" },
+              },
+              required: ["expression"],
+            },
+          },
+          {
+            id: "setExceptionBreakpoints",
+            name: "异常断点",
+            description: "设置调试适配器的异常断点过滤器（如 raised、uncaught）",
+            parametersSchema: {
+              type: "object",
+              properties: {
+                filters: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "异常断点过滤器 ID 列表；空数组表示清除",
+                },
+              },
+              required: ["filters"],
             },
           },
         ],
@@ -902,6 +1075,10 @@ export class WebviewController {
         default:
           throw new Error(`Unsupported tool in integrated_browser category: ${toolId}`)
       }
+    }
+
+    if (category === "debug") {
+      return executeDebugTool(toolId, parameters)
     }
 
     throw new Error(`Unsupported ACP category: ${category}`)
