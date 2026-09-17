@@ -10,6 +10,7 @@ export function InputDeliveryModal(props: {
 }) {
   const headingID = useId()
   const body = useRef<HTMLDivElement>(null)
+  const options = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (props.pending) {
       body.current?.focus()
@@ -31,12 +32,32 @@ export function InputDeliveryModal(props: {
         tabIndex={-1}
         aria-busy={props.pending}
         onKeyDown={(event) => {
-          if (event.key !== "Tab") return
-          const buttons = body.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")
-          if (!buttons?.length) {
-            event.preventDefault()
+          const buttons = Array.from(body.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])
+          if (!buttons.length) {
+            if (event.key === "Tab" || event.key === "Enter") event.preventDefault()
             return
           }
+          if (event.key === "Enter") {
+            event.preventDefault()
+            const active = document.activeElement
+            const target = active instanceof HTMLButtonElement && buttons.includes(active) ? active : buttons[0]
+            target.click()
+            return
+          }
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            const items = Array.from(options.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])
+            if (items.length < 2) return
+            event.preventDefault()
+            const current = items.indexOf(document.activeElement as HTMLButtonElement)
+            if (current === -1) {
+              items[event.key === "ArrowDown" ? 0 : items.length - 1].focus()
+              return
+            }
+            const direction = event.key === "ArrowDown" ? 1 : -1
+            items[(current + direction + items.length) % items.length].focus()
+            return
+          }
+          if (event.key !== "Tab") return
           const first = buttons[0]
           const last = buttons[buttons.length - 1]
           if (event.shiftKey && document.activeElement === first) {
@@ -63,7 +84,7 @@ export function InputDeliveryModal(props: {
         </ModalHeader>
         <ModalBody className="space-y-3 pt-1">
           <p className="text-xs text-gray-500 dark:text-gray-400">AI 正在执行，你希望何时发送这条消息？</p>
-          <div className="grid gap-2.5">
+          <div ref={options} className="grid gap-2.5">
             <button
               type="button"
               disabled={props.pending}
