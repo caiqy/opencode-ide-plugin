@@ -148,6 +148,11 @@ const table = sqliteTable("session", {
 - Test actual implementation, do not duplicate logic into tests
 - Tests cannot run from repo root (guard: `do-not-run-tests-from-root`); run from package dirs like `packages/opencode`.
 
+## End-to-End Testing
+
+- Run E2E testing through the ACP run/debug tools, not ad-hoc shell processes. Use the `.vscode/launch.json` configurations `Backend: source web 4300` and `WebGUI: dev`; both can be started at the same time.
+- Drive the UI with the ACP built-in browser tools at `http://localhost:5173/app`; the Vite dev server discovers a running local backend automatically.
+
 ## Type Checking
 
 - Always run `bun typecheck` from package directories (e.g., `packages/opencode`), never `tsc` directly.
