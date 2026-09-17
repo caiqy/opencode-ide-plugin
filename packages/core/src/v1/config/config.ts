@@ -50,7 +50,12 @@ export const ConfigACPCategory = Schema.Struct({
   tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)).annotate({ description: "Sub-tool enabled states" }),
 })
 
-export const ConfigACP = Schema.Record(Schema.String, ConfigACPCategory).annotate({
+export const ConfigACPPlatform = Schema.Record(Schema.String, ConfigACPCategory)
+
+export const ConfigACP = Schema.Record(
+  Schema.String,
+  Schema.Union([ConfigACPPlatform, ConfigACPCategory]),
+).annotate({
   description: "ACP (Agent Client Protocol) host capabilities configuration",
 })
 

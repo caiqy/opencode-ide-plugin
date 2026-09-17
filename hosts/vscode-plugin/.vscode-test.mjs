@@ -7,19 +7,42 @@ import { defineConfig } from "@vscode/test-cli"
 // throwaway temp folder so test sessions never land in the user's real opencode database.
 const testDataRoot = mkdtempSync(path.join(tmpdir(), "opencode-vscode-test-data-"))
 
-export default defineConfig({
-  files: "out/test/**/*.test.js",
-  version: "1.74.0",
-  workspaceFolder: "./test-fixtures",
-  env: {
-    XDG_DATA_HOME: testDataRoot,
-    XDG_CACHE_HOME: path.join(testDataRoot, "cache"),
-    XDG_CONFIG_HOME: path.join(testDataRoot, "config"),
-    XDG_STATE_HOME: path.join(testDataRoot, "state"),
+const env = {
+  XDG_DATA_HOME: testDataRoot,
+  XDG_CACHE_HOME: path.join(testDataRoot, "cache"),
+  XDG_CONFIG_HOME: path.join(testDataRoot, "config"),
+  XDG_STATE_HOME: path.join(testDataRoot, "state"),
+}
+
+export default defineConfig([
+  {
+    label: "default",
+    files: "out/test/**/*.test.js",
+    version: "1.74.0",
+    workspaceFolder: "./test-fixtures",
+    env,
+    mocha: {
+      ui: "tdd",
+      timeout: 20000,
+    },
+    launchArgs: ["--disable-extensions", "--disable-workspace-trust"],
   },
-  mocha: {
-    ui: "tdd",
-    timeout: 20000,
+  // `vscode.lm.tools` only exists on modern VS Code, so the ACP language model
+  // tool capability mapping is exercised on a recent host instead of 1.74.0.
+  // 1.120.0 exposes the built-in browser tools (with real inputSchema) to the
+  // extension host; newer hosts move them behind the agent host in headless runs.
+  // Group derivation is covered by the toolGroupFromReference unit test.
+  {
+    label: "lm-tools",
+    files: "out/test/test/suite/webviewController.test.js",
+    version: "1.120.0",
+    workspaceFolder: "./test-fixtures",
+    env,
+    mocha: {
+      ui: "tdd",
+      timeout: 20000,
+      grep: "language model tool inputSchema",
+    },
+    launchArgs: ["--disable-extensions", "--disable-workspace-trust"],
   },
-  launchArgs: ["--disable-extensions", "--disable-workspace-trust"],
-})
+])

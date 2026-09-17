@@ -39,6 +39,7 @@ export type AcpToolData = {
   id: string
   name: string
   description?: string
+  group?: string
   enabled: boolean
 }
 

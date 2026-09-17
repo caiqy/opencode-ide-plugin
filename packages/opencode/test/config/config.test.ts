@@ -1322,6 +1322,46 @@ it.instance("updates the loaded project config and reloads it", () =>
   }),
 )
 
+it.instance("A5 sequential Config.use.update keeps platform_vscode and platform_intellij isolated", () =>
+  Effect.gen(function* () {
+    // 1. VS Code 端通过真实的 Config.use.update 写入其平台配置
+    yield* Config.use.update({
+      acp: {
+        platform_vscode: {
+          tasks: { enabled: true, tools: { runTask: true } },
+        },
+      } as any,
+    })
+
+    // 验证第一次写入成功
+    let conf = yield* Config.use.get()
+    expect((conf.acp as any)?.platform_vscode?.tasks?.enabled).toBe(true)
+
+    // 2. IntelliJ 端在稍后通过真实的 Config.use.update 写入其独立的最小平台 patch（完全不携带 VS Code 配置）
+    yield* Config.use.update({
+      acp: {
+        platform_intellij: {
+          tasks: { enabled: false, tools: { runTask: false } },
+        },
+      } as any,
+    })
+
+    // 3. 验证真实磁盘文件与配置服务中，双端配置均独立完整保留且互不覆盖！
+    const test = yield* TestInstance
+    const diskJson: any = yield* FSUtil.use.readJson(path.join(test.directory, "opencode.json"))
+    expect(diskJson?.acp?.platform_vscode?.tasks?.enabled).toBe(true)
+    expect(diskJson?.acp?.platform_vscode?.tasks?.tools?.runTask).toBe(true)
+    expect(diskJson?.acp?.platform_intellij?.tasks?.enabled).toBe(false)
+    expect(diskJson?.acp?.platform_intellij?.tasks?.tools?.runTask).toBe(false)
+
+    const finalConf = yield* Config.use.get()
+    expect((finalConf.acp as any)?.platform_vscode?.tasks?.enabled).toBe(true)
+    expect((finalConf.acp as any)?.platform_vscode?.tasks?.tools?.runTask).toBe(true)
+    expect((finalConf.acp as any)?.platform_intellij?.tasks?.enabled).toBe(false)
+    expect((finalConf.acp as any)?.platform_intellij?.tasks?.tools?.runTask).toBe(false)
+  }),
+)
+
 it.instance("updates project JSONC without materializing resolved values", () =>
   withProcessEnvs(
     { CONFIG_WRITEBACK_USERNAME: "resolved-project-user" },

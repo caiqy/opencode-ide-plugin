@@ -30,6 +30,7 @@ export interface AcpTool {
   name: string
   description?: string
   enabled?: boolean
+  group?: string
   parametersSchema?: Record<string, unknown>
 }
 

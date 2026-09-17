@@ -80,13 +80,15 @@ type View = {
         description?: string
         status: "connected" | "disabled" | "unavailable"
         enabled: boolean
-        tools: Array<{ id: string; name: string; description?: string; enabled: boolean }>
+        tools: Array<{ id: string; name: string; description?: string; group?: string; enabled: boolean }>
       }>
     }
   }
   refreshAcp?: ReturnType<typeof vi.fn>
   toggleAcpCategory?: ReturnType<typeof vi.fn>
   toggleAcpTool?: ReturnType<typeof vi.fn>
+  toggleAllAcpTools?: ReturnType<typeof vi.fn>
+  toggleAllMcpTools?: ReturnType<typeof vi.fn>
   acpBusy?: Record<string, boolean>
   acpToolBusy?: Record<string, Record<string, boolean>>
 }
@@ -161,6 +163,8 @@ function data(): View {
     refreshAcp: vi.fn().mockResolvedValue(undefined),
     toggleAcpCategory: vi.fn().mockResolvedValue(undefined),
     toggleAcpTool: vi.fn().mockResolvedValue(undefined),
+    toggleAllAcpTools: vi.fn().mockResolvedValue(undefined),
+    toggleAllMcpTools: vi.fn().mockResolvedValue(undefined),
     acpBusy: {},
     acpToolBusy: {},
     mcpBusy: {},
@@ -649,7 +653,7 @@ describe("CompactHeader/StatusPopover", () => {
     expect(view.toggleAcpTool).toHaveBeenCalledWith("vscode", "nav", true)
   })
 
-  it("ACP 大类关闭时子工具开关呈禁用状态", async () => {
+  it("ACP 大类关闭时子工具开关允许独立操作且可点击", async () => {
     const user = userEvent.setup()
     const view = data()
     view.acp!.data.categories[0].enabled = false
@@ -661,7 +665,45 @@ describe("CompactHeader/StatusPopover", () => {
     await user.click(screen.getByRole("button", { name: "展开工具 VS Code" }))
 
     const toolSwitch = screen.getByRole("switch", { name: "切换 运行命令" })
-    expect(toolSwitch).toBeDisabled()
+    expect(toolSwitch).not.toBeDisabled()
+    await user.click(toolSwitch)
+    expect(view.toggleAcpTool).toHaveBeenCalled()
+  })
+
+  it("ACP 与 MCP 展开区支持一键全部启用与全部禁用", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    // 测试 ACP 展开区的一键操作
+    await user.click(screen.getByRole("tab", { name: "ACP" }))
+    await user.click(screen.getByRole("button", { name: "展开工具 VS Code" }))
+
+    const acpPanel = screen.getByRole("tabpanel", { name: "ACP" })
+    const enableAllAcp = within(acpPanel).getByRole("button", { name: "全部启用" })
+    const disableAllAcp = within(acpPanel).getByRole("button", { name: "全部禁用" })
+
+    await user.click(enableAllAcp)
+    expect(view.toggleAllAcpTools).toHaveBeenCalledWith("vscode", true)
+
+    await user.click(disableAllAcp)
+    expect(view.toggleAllAcpTools).toHaveBeenCalledWith("vscode", false)
+
+    // 测试 MCP 展开区的一键操作
+    await user.click(screen.getByRole("tab", { name: "MCP" }))
+    await user.click(screen.getByRole("button", { name: "展开工具 alpha" }))
+
+    const mcpPanel = screen.getByRole("tabpanel", { name: "MCP" })
+    const enableAllMcp = within(mcpPanel).getByRole("button", { name: "全部启用" })
+    const disableAllMcp = within(mcpPanel).getByRole("button", { name: "全部禁用" })
+
+    await user.click(enableAllMcp)
+    expect(view.toggleAllMcpTools).toHaveBeenCalledWith("alpha", true)
+
+    await user.click(disableAllMcp)
+    expect(view.toggleAllMcpTools).toHaveBeenCalledWith("alpha", false)
   })
 
   it("ACP tab 在未连接宿主时显示空状态提示", async () => {
@@ -691,6 +733,75 @@ describe("CompactHeader/StatusPopover", () => {
     // 命中了子工具描述，自动展开
     expect(screen.getByText("运行命令")).toBeInTheDocument()
     expect(screen.getByText("运行编辑器命令")).toBeInTheDocument()
+    // 未命中的子工具不再展示
+    expect(screen.queryByText("代码导航")).not.toBeInTheDocument()
+  })
+
+  it("ACP tab 搜索命中大类时保留全部子工具", async () => {
+    const user = userEvent.setup()
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "ACP" }))
+
+    await user.type(screen.getByPlaceholderText("搜索 ACP 宿主能力或子工具..."), "导航代码与命令")
+
+    expect(screen.getByText("运行命令")).toBeInTheDocument()
+    expect(screen.getByText("代码导航")).toBeInTheDocument()
+  })
+
+  it("ACP tab 扩展工具按来源平铺为多个一级大类", async () => {
+    const user = userEvent.setup()
+    const view = data()
+    view.acp!.data.categories = [
+      {
+        id: "extensions::browser",
+        name: "扩展工具 browser",
+        status: "connected",
+        enabled: true,
+        tools: [
+          { id: "open_browser_page", name: "open_browser_page", group: "browser", enabled: true },
+          { id: "read_page", name: "read_page", group: "browser", enabled: true },
+        ],
+      },
+      {
+        id: "extensions::ms-python.python",
+        name: "扩展工具 ms-python.python",
+        status: "connected",
+        enabled: true,
+        tools: [
+          {
+            id: "install_python_packages",
+            name: "install_python_packages",
+            group: "ms-python.python",
+            enabled: false,
+          },
+        ],
+      },
+    ]
+    mocks.useStatusPopoverData.mockReturnValue(view)
+
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "ACP" }))
+
+    expect(screen.getByText("扩展工具 browser")).toBeInTheDocument()
+    expect(screen.getByText("扩展工具 ms-python.python")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "展开工具 扩展工具 browser" }))
+    expect(screen.getByText("open_browser_page")).toBeInTheDocument()
+    expect(screen.queryByText("install_python_packages")).not.toBeInTheDocument()
+  })
+
+  it("MCP tab 搜索只展示命中的子工具", async () => {
+    const user = userEvent.setup()
+    render(<StatusPopover open={true} connectionState="connected" onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole("tab", { name: "MCP" }))
+
+    await user.type(screen.getByPlaceholderText("搜索 MCP 服务或子工具..."), "read")
+
+    expect(screen.getByText("alpha.read")).toBeInTheDocument()
+    expect(screen.queryByText("alpha.write")).not.toBeInTheDocument()
   })
 
   it("Skills tab 渲染详细描述文本", async () => {

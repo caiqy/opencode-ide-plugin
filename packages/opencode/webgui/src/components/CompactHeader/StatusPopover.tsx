@@ -32,6 +32,10 @@ function nextTab(tab: Tab, dir: 1 | -1) {
   return list[(idx + dir + list.length) % list.length] ?? DEFAULT_STATUS_TAB
 }
 
+function matchesSearch(value: string | undefined, query: string) {
+  return Boolean(value && value.toLowerCase().includes(query))
+}
+
 export function StatusPopover({ open, connectionState, onClose, triggerRef }: StatusPopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [tab, setTab] = useState<Tab>(DEFAULT_STATUS_TAB)
@@ -100,24 +104,20 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
   const mcpQuery = (search.mcp || "").trim().toLowerCase()
   const filteredMcpItems = mcp.items.filter((item) => {
     if (!mcpQuery) return true
-    if (item.name.toLowerCase().includes(mcpQuery)) return true
-    if (item.description && item.description.toLowerCase().includes(mcpQuery)) return true
-    return item.tools.some(
-      (t) =>
-        t.name.toLowerCase().includes(mcpQuery) ||
-        (t.description && t.description.toLowerCase().includes(mcpQuery)),
+    return (
+      matchesSearch(item.name, mcpQuery) ||
+      matchesSearch(item.description, mcpQuery) ||
+      item.tools.some((t) => matchesSearch(t.name, mcpQuery) || matchesSearch(t.description, mcpQuery))
     )
   })
 
   const acpQuery = (search.acp || "").trim().toLowerCase()
   const filteredAcpCategories = acp.categories.filter((cat) => {
     if (!acpQuery) return true
-    if (cat.name.toLowerCase().includes(acpQuery)) return true
-    if (cat.description && cat.description.toLowerCase().includes(acpQuery)) return true
-    return cat.tools.some(
-      (t) =>
-        t.name.toLowerCase().includes(acpQuery) ||
-        (t.description && t.description.toLowerCase().includes(acpQuery)),
+    return (
+      matchesSearch(cat.name, acpQuery) ||
+      matchesSearch(cat.description, acpQuery) ||
+      cat.tools.some((t) => matchesSearch(t.name, acpQuery) || matchesSearch(t.description, acpQuery))
     )
   })
 
@@ -218,14 +218,11 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
             ) : null}
 
             {filteredMcpItems.map((item) => {
-              const matchesSubtool =
-                Boolean(mcpQuery) &&
-                item.tools.some(
-                  (t) =>
-                    t.name.toLowerCase().includes(mcpQuery) ||
-                    (t.description && t.description.toLowerCase().includes(mcpQuery)),
-                )
-              const on = matchesSubtool || show[item.name] === true
+              const visibleTools =
+                !mcpQuery || matchesSearch(item.name, mcpQuery) || matchesSearch(item.description, mcpQuery)
+                  ? item.tools
+                  : item.tools.filter((t) => matchesSearch(t.name, mcpQuery) || matchesSearch(t.description, mcpQuery))
+              const on = (Boolean(mcpQuery) && visibleTools.length > 0) || show[item.name] === true
               const activeCount = item.tools.filter((t) => t.enabled).length
               const totalCount = item.tools.length
 
@@ -284,35 +281,62 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
 
                     {on && totalCount > 0 ? (
                       <div className="mt-2.5 space-y-2 border-l-2 border-gray-200 pl-3 pt-1 dark:border-gray-800">
-                        {item.tools.map((tool) => {
-                          const busy = data.mcpToolBusy[item.name]?.[tool.id] === true
+                        {(() => {
+                          const isAuthRestricted =
+                            item.status === "needs_auth" || item.status === "needs_client_registration"
                           return (
-                            <div key={tool.id} className="flex items-start justify-between gap-2">
-                              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300">
-                                  {tool.name}
-                                </span>
-                                {tool.description ? (
-                                  <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                                    {tool.description}
-                                  </p>
-                                ) : null}
+                            <>
+                              <div className="flex items-center justify-end gap-2 pb-0.5 text-[10px]">
+                                <button
+                                  type="button"
+                                  disabled={data.mcpBusy[item.name] === true || isAuthRestricted}
+                                  onClick={() => void data.toggleAllMcpTools?.(item.name, true)}
+                                  className="text-blue-600 hover:underline dark:text-blue-400 disabled:opacity-50"
+                                >
+                                  全部启用
+                                </button>
+                                <span className="text-gray-300 dark:text-gray-700">|</span>
+                                <button
+                                  type="button"
+                                  disabled={data.mcpBusy[item.name] === true || isAuthRestricted}
+                                  onClick={() => void data.toggleAllMcpTools?.(item.name, false)}
+                                  className="text-gray-500 hover:underline dark:text-gray-400 disabled:opacity-50"
+                                >
+                                  全部禁用
+                                </button>
                               </div>
-                            <Switch
-                              label={`切换 ${tool.name}`}
-                              checked={tool.enabled}
-                              disabled={busy}
-                              loading={busy}
-                              onToggle={() => {
-                                void (async () => {
-                                  await data.toggleTool(item.name, tool.id, !tool.enabled)
-                                })()
-                              }}
-                            />
-                          </div>
-                        )
-                      })}
-                    </div>
+                              {visibleTools.map((tool) => {
+                                const busy = data.mcpToolBusy[item.name]?.[tool.id] === true
+                                return (
+                                  <div key={tool.id} className="flex items-start justify-between gap-2">
+                                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                                      <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300">
+                                        {tool.name}
+                                      </span>
+                                      {tool.description ? (
+                                        <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                                          {tool.description}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                    <Switch
+                                      label={`切换 ${tool.name}`}
+                                      checked={tool.enabled}
+                                      disabled={busy || isAuthRestricted}
+                                      loading={busy}
+                                      onToggle={() => {
+                                        void (async () => {
+                                          await data.toggleTool(item.name, tool.id, !tool.enabled)
+                                        })()
+                                      }}
+                                    />
+                                  </div>
+                                )
+                              })}
+                            </>
+                          )
+                        })()}
+                      </div>
                   ) : null}
                 </div>
               )
@@ -361,14 +385,11 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
                 ) : null}
 
                 {filteredAcpCategories.map((cat) => {
-                  const matchesSubtool =
-                    Boolean(acpQuery) &&
-                    cat.tools.some(
-                      (t) =>
-                        t.name.toLowerCase().includes(acpQuery) ||
-                        (t.description && t.description.toLowerCase().includes(acpQuery)),
-                    )
-                  const on = matchesSubtool || show[cat.id] === true
+                  const visibleTools =
+                    !acpQuery || matchesSearch(cat.name, acpQuery) || matchesSearch(cat.description, acpQuery)
+                      ? cat.tools
+                      : cat.tools.filter((t) => matchesSearch(t.name, acpQuery) || matchesSearch(t.description, acpQuery))
+                  const on = (Boolean(acpQuery) && visibleTools.length > 0) || show[cat.id] === true
                   const activeToolsCount = cat.tools.filter((t) => t.enabled).length
                   const totalToolsCount = cat.tools.length
                   const isCatBusy = data.acpBusy?.[cat.id] === true
@@ -425,7 +446,26 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
 
                       {on && totalToolsCount > 0 ? (
                         <div className="mt-2.5 space-y-2 border-l-2 border-gray-200 pl-3 pt-1 dark:border-gray-800">
-                          {cat.tools.map((tool) => {
+                          <div className="flex items-center justify-end gap-2 pb-0.5 text-[10px]">
+                            <button
+                              type="button"
+                              disabled={isCatBusy}
+                              onClick={() => void data.toggleAllAcpTools?.(cat.id, true)}
+                              className="text-blue-600 hover:underline dark:text-blue-400 disabled:opacity-50"
+                            >
+                              全部启用
+                            </button>
+                            <span className="text-gray-300 dark:text-gray-700">|</span>
+                            <button
+                              type="button"
+                              disabled={isCatBusy}
+                              onClick={() => void data.toggleAllAcpTools?.(cat.id, false)}
+                              className="text-gray-500 hover:underline dark:text-gray-400 disabled:opacity-50"
+                            >
+                              全部禁用
+                            </button>
+                          </div>
+                          {visibleTools.map((tool) => {
                             const isToolBusy = data.acpToolBusy?.[cat.id]?.[tool.id] === true
                             return (
                               <div key={tool.id} className="flex items-start justify-between gap-2">
@@ -442,7 +482,7 @@ export function StatusPopover({ open, connectionState, onClose, triggerRef }: St
                                 <Switch
                                   label={`切换 ${tool.name}`}
                                   checked={tool.enabled}
-                                  disabled={!cat.enabled || isToolBusy}
+                                  disabled={isToolBusy}
                                   loading={isToolBusy}
                                   onToggle={() =>
                                     void data.toggleAcpTool?.(cat.id, tool.id, !tool.enabled)

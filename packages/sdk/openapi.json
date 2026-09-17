@@ -22306,6 +22306,9 @@
             "enum": ["local"],
             "description": "Type of MCP server connection"
           },
+          "description": {
+            "type": "string"
+          },
           "command": {
             "type": "array",
             "items": {
@@ -22363,6 +22366,9 @@
             "type": "string",
             "enum": ["remote"],
             "description": "Type of MCP server connection"
+          },
+          "description": {
+            "type": "string"
           },
           "url": {
             "type": "string",
@@ -22827,6 +22833,47 @@
             "additionalProperties": {
               "type": "boolean"
             }
+          },
+          "acp": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "tools": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "tools": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "description": "ACP (Agent Client Protocol) host capabilities configuration"
           },
           "websearch": {
             "type": "object",

@@ -24,6 +24,7 @@ export interface IdeAcpCapabilitiesResult {
 export interface Interface {
   readonly isConfigured: () => boolean
   readonly register: (url: string, token: string) => void
+  readonly reset?: () => void
   readonly getCapabilities: () => Effect.Effect<IdeAcpCapabilitiesResult | null>
   readonly executeTool: (
     category: string,
@@ -79,6 +80,13 @@ class HostBridgeClient {
 
   isConfigured(): boolean {
     return Boolean(this.url && this.token)
+  }
+
+  reset(): void {
+    this.disconnect()
+    this.url = undefined
+    this.token = undefined
+    this.capabilitiesCache = null
   }
 
   register(url: string, token: string): void {
@@ -326,6 +334,7 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/Id
 export const defaultService: Interface = {
   isConfigured: () => clientInstance.isConfigured(),
   register: (url: string, token: string) => clientInstance.register(url, token),
+  reset: () => clientInstance.reset(),
   getCapabilities: () => Effect.promise(() => clientInstance.getCapabilities()),
   executeTool: (category: string, toolId: string, parameters: Record<string, unknown>, abortSignal?: AbortSignal) =>
     Effect.promise(() => clientInstance.executeTool(category, toolId, parameters, abortSignal)),

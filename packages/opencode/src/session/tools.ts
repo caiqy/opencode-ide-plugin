@@ -55,6 +55,53 @@ export function mergeToolMetadataState(
   }
 }
 
+export interface MatchedAcpTool {
+  readonly catId: string
+  readonly toolId: string
+  readonly toolKey: string
+  readonly toolDef: IdeHostBridge.AcpToolDefinition
+  readonly catDef: IdeHostBridge.AcpCategoryDefinition
+}
+
+export function matchAcpTools(
+  capabilities: IdeHostBridge.IdeAcpCapabilitiesResult | null | undefined,
+  acpConfig: any,
+): MatchedAcpTool[] {
+  if (!capabilities || !Array.isArray(capabilities.categories)) return []
+
+  const isIntelliJ = capabilities.categories.some((c) => c.id === "intellij")
+  const platform = isIntelliJ ? "platform_intellij" : "platform_vscode"
+  const platformCfg = acpConfig?.[platform]
+  const result: MatchedAcpTool[] = []
+
+  for (const cat of capabilities.categories) {
+    if (cat.status === "unavailable" || cat.status === "disabled") continue
+    // 优先读取当前平台命名空间下的配置，没有则平滑回退兼容历史扁平配置
+    const catCfg = platformCfg?.[cat.id] ?? acpConfig?.[cat.id]
+    // Strict allowlist: 只有配置中明确 enabled === true 时才注册大类
+    if (catCfg?.enabled !== true) continue
+
+    for (const t of cat.tools || []) {
+      const toolCfg = catCfg?.tools?.[t.id]
+      // Strict allowlist: 只有配置中明确 enabled === true 时才注册子工具
+      if (toolCfg !== true) continue
+
+      const safeCatId = cat.id.replace(/[^a-zA-Z0-9_]/g, "_")
+      const safeToolId = t.id.replace(/[^a-zA-Z0-9_]/g, "_")
+      const toolKey = `acp_${safeCatId}_${safeToolId}`
+      result.push({
+        catId: cat.id,
+        toolId: t.id,
+        toolKey,
+        toolDef: t,
+        catDef: cat,
+      })
+    }
+  }
+
+  return result
+}
+
 export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   agent: Agent.Info
   model: Provider.Model
@@ -527,78 +574,68 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     const capabilities = yield* hostBridgeService.getCapabilities()
 
     if (capabilities && Array.isArray(capabilities.categories)) {
-      for (const cat of capabilities.categories) {
-        if (cat.status === "unavailable" || cat.status === "disabled") continue
-        const catCfg = acpConfig?.[cat.id]
-        // Strict allowlist: 只有配置中明确 enabled === true 时才注册大类
-        if (catCfg?.enabled !== true) continue
+      const matched = matchAcpTools(capabilities, acpConfig)
+      for (const item of matched) {
+        const cat = item.catDef
+        const t = item.toolDef
+        const toolKey = item.toolKey
+        const schemaObj = (t.parametersSchema as any) || { type: "object", properties: {} }
+        const transformed = ProviderTransform.schema(input.model, {
+          ...schemaObj,
+          properties: schemaObj.properties ?? {},
+        })
 
-        for (const t of cat.tools || []) {
-          const toolCfg = catCfg?.tools?.[t.id]
-          // Strict allowlist: 只有配置中明确 enabled === true 时才注册子工具
-          if (toolCfg !== true) continue
-
-          const safeCatId = cat.id.replace(/[^a-zA-Z0-9_]/g, "_")
-          const safeToolId = t.id.replace(/[^a-zA-Z0-9_]/g, "_")
-          const toolKey = `acp_${safeCatId}_${safeToolId}`
-          const schemaObj = (t.parametersSchema as any) || { type: "object", properties: {} }
-          const transformed = ProviderTransform.schema(input.model, {
-            ...schemaObj,
-            properties: schemaObj.properties ?? {},
-          })
-
-          tools[toolKey] = tool({
-            description: `[${cat.name}] ${t.name}${t.description ? `: ${t.description}` : ""}`,
-            inputSchema: jsonSchema(transformed),
-            execute(args, opts) {
-              return run.promise(
-                Effect.gen(function* () {
-                  const ctx = context(toRecord(args), opts, toolKey)
-                  yield* ctx.metadata({ metadata: { source: "acp", category: cat.id, toolId: t.id } })
-                  yield* plugin.trigger(
-                    "tool.execute.before",
-                    { tool: toolKey, sessionID: ctx.sessionID, callID: opts.toolCallId },
-                    { args },
-                  )
-                  yield* ctx.ask({ permission: toolKey, metadata: {}, patterns: ["*"], always: ["*"] })
-                  const execResult = yield* hostBridgeService
-                    .executeTool(cat.id, t.id, toRecord(args), opts.abortSignal)
-                    .pipe(
-                      Effect.withSpan("AcpTool.execute", {
-                      attributes: {
-                        "tool.name": toolKey,
-                        "tool.call_id": opts.toolCallId,
-                        "session.id": ctx.sessionID,
-                        "message.id": input.processor.message.id,
-                      },
-                    }),
-                  )
-                  const truncated = yield* truncate.output(execResult.output, {}, input.agent)
-                  const output = {
-                    title: `ACP: ${t.name}`,
-                    metadata: {
-                      source: "acp",
-                      category: cat.id,
-                      toolId: t.id,
-                      truncated: truncated.truncated,
-                      ...(truncated.truncated && { outputPath: truncated.outputPath }),
+        tools[toolKey] = tool({
+          description: `[${cat.name}] ${t.name}${t.description ? `: ${t.description}` : ""}`,
+          inputSchema: jsonSchema(transformed),
+          execute(args, opts) {
+            return run.promise(
+              Effect.gen(function* () {
+                const ctx = context(toRecord(args), opts, toolKey)
+                yield* ctx.metadata({ metadata: { source: "acp", category: cat.id, toolId: t.id } })
+                yield* plugin.trigger(
+                  "tool.execute.before",
+                  { tool: toolKey, sessionID: ctx.sessionID, callID: opts.toolCallId },
+                  { args },
+                )
+                yield* ctx.ask({ permission: toolKey, metadata: {}, patterns: ["*"], always: ["*"] })
+                const execResult = yield* hostBridgeService
+                  .executeTool(cat.id, t.id, toRecord(args), opts.abortSignal)
+                  .pipe(
+                    Effect.withSpan("AcpTool.execute", {
+                    attributes: {
+                      "tool.name": toolKey,
+                      "tool.call_id": opts.toolCallId,
+                      "session.id": ctx.sessionID,
+                      "message.id": input.processor.message.id,
                     },
-                    output: truncated.content,
-                  }
-                  yield* plugin.trigger(
-                    "tool.execute.after",
-                    { tool: toolKey, sessionID: ctx.sessionID, callID: opts.toolCallId, args },
-                    output,
-                  )
-                  if (opts.abortSignal?.aborted) {
-                    yield* input.processor.completeToolCall(opts.toolCallId, output)
-                  }
-                  return output
-                }),
-              )
-            },
-          })
-        }
+                  }),
+                )
+                const truncated = yield* truncate.output(execResult.output, {}, input.agent)
+                const output = {
+                  title: `ACP: ${t.name}`,
+                  metadata: {
+                    source: "acp",
+                    category: cat.id,
+                    toolId: t.id,
+                    truncated: truncated.truncated,
+                    ...(truncated.truncated && { outputPath: truncated.outputPath }),
+                  },
+                  output: truncated.content,
+                }
+                yield* plugin.trigger(
+                  "tool.execute.after",
+                  { tool: toolKey, sessionID: ctx.sessionID, callID: opts.toolCallId, args },
+                  output,
+                )
+                if (opts.abortSignal?.aborted) {
+                  yield* input.processor.completeToolCall(opts.toolCallId, output)
+                }
+                return output
+              }),
+            )
+          },
+        })
       }
     }
   }

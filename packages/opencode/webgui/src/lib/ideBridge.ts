@@ -361,6 +361,7 @@ export interface IdeAcpTool {
   id: string
   name: string
   description?: string
+  group?: string
 }
 
 export interface IdeAcpCategory {

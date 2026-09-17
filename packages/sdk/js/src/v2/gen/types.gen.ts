@@ -1828,6 +1828,7 @@ export type McpLocalConfig = {
    * Type of MCP server connection
    */
   type: "local"
+  description?: string
   /**
    * Command and arguments to run the MCP server
    */
@@ -1853,6 +1854,7 @@ export type McpRemoteConfig = {
    * Type of MCP server connection
    */
   type: "remote"
+  description?: string
   /**
    * URL of the remote MCP server
    */
@@ -2017,6 +2019,26 @@ export type Config = {
   permission?: PermissionConfig
   tools?: {
     [key: string]: boolean
+  }
+  /**
+   * ACP (Agent Client Protocol) host capabilities configuration
+   */
+  acp?: {
+    [key: string]:
+      | {
+          [key: string]: {
+            enabled?: boolean
+            tools?: {
+              [key: string]: boolean
+            }
+          }
+        }
+      | {
+          enabled?: boolean
+          tools?: {
+            [key: string]: boolean
+          }
+        }
   }
   /**
    * Cross-provider native web search configuration

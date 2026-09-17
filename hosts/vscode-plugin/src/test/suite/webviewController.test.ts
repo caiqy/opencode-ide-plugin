@@ -3,8 +3,8 @@ import * as sinon from "sinon"
 import * as vscode from "vscode"
 import * as globals from "../../globals"
 import { bridgeServer } from "../../ui/IdeBridgeServer"
-import type { SelectFilesOptions, SelectFilesResult, ReadFilesResult } from "../../ui/IdeBridgeServer"
-import { WebviewController } from "../../ui/WebviewController"
+import type { AcpTool, SelectFilesOptions, SelectFilesResult, ReadFilesResult } from "../../ui/IdeBridgeServer"
+import { WebviewController, assignIntegratedBrowserGroups, toolGroupFromReference } from "../../ui/WebviewController"
 import { errorHandler } from "../../utils/ErrorHandler"
 import { FileMonitor } from "../../utils/FileMonitor"
 import { testResponse } from "./fetchResponse"
@@ -504,6 +504,90 @@ suite("WebviewController Test Suite", () => {
       assert.strictEqual(browserCategory.status, "connected")
       assert.strictEqual(browserCategory.tools.length, 1)
       assert.strictEqual(browserCategory.tools[0].id, "openPage")
+    } finally {
+      controller.dispose()
+    }
+  })
+
+  test("toolGroupFromReference 解析工具归属分组", () => {
+    assert.strictEqual(toolGroupFromReference("ms-python.python/install_python_packages"), "ms-python.python")
+    assert.strictEqual(toolGroupFromReference("browser/open_browser_page"), "browser")
+    assert.strictEqual(toolGroupFromReference("renderMermaidDiagram"), undefined)
+    assert.strictEqual(toolGroupFromReference("/leading"), undefined)
+    assert.strictEqual(toolGroupFromReference(undefined), undefined)
+  })
+
+  test("assignIntegratedBrowserGroups 让缺少来源的内置浏览器工具跟随同族分组", () => {
+    const tools: AcpTool[] = [
+      { id: "open_browser_page", name: "open_browser_page", group: "vscodeBrowser" },
+      { id: "read_page", name: "read_page", group: "vscodeBrowser" },
+      { id: "list_browser_pages", name: "list_browser_pages" },
+      { id: "install_python_packages", name: "install_python_packages", group: "ms-python.python" },
+      { id: "skill", name: "skill" },
+    ]
+
+    assignIntegratedBrowserGroups(tools)
+
+    assert.strictEqual(tools.find((t) => t.id === "list_browser_pages")?.group, "vscodeBrowser")
+    assert.strictEqual(tools.find((t) => t.id === "install_python_packages")?.group, "ms-python.python")
+    assert.strictEqual(tools.find((t) => t.id === "skill")?.group, undefined)
+  })
+
+  test("assignIntegratedBrowserGroups 不覆盖已有分组，无同族分组时保持原样", () => {
+    const withGroup: AcpTool[] = [
+      { id: "open_browser_page", name: "open_browser_page", group: "vscodeBrowser" },
+      { id: "list_browser_pages", name: "list_browser_pages", group: "custom-group" },
+    ]
+    assignIntegratedBrowserGroups(withGroup)
+    assert.strictEqual(withGroup.find((t) => t.id === "list_browser_pages")?.group, "custom-group")
+
+    const noSibling: AcpTool[] = [{ id: "list_browser_pages", name: "list_browser_pages" }]
+    assignIntegratedBrowserGroups(noSibling)
+    assert.strictEqual(noSibling[0]?.group, undefined)
+  })
+
+  test("getAcpCapabilities maps language model tool inputSchema into parametersSchema", async function () {
+    const lm = (vscode as any).lm
+    if (!lm || !Array.isArray(lm.tools) || lm.tools.length === 0) {
+      return this.skip()
+    }
+
+    const expected = (lm.tools as vscode.LanguageModelToolInformation[]).filter(
+      (tool) =>
+        tool && typeof tool.name === "string" && !tool.name.startsWith("vscode_") && !tool.name.startsWith("copilot_"),
+    )
+    if (expected.length === 0) {
+      return this.skip()
+    }
+
+    const { controller, getAcpCapabilities } = await loadController()
+    try {
+      assert.ok(getAcpCapabilities)
+      const res = await getAcpCapabilities()
+      const category = res.categories.find((item: any) => item.id === "extensions")
+      assert.ok(category, "extensions category should exist when lm.tools exposes tools")
+      assert.strictEqual(category.tools.length, expected.length)
+
+      for (const tool of expected) {
+        const mapped = category.tools.find((item: any) => item.id === tool.name)
+        assert.ok(mapped, `missing mapped tool ${tool.name}`)
+        assert.deepStrictEqual(
+          mapped.parametersSchema,
+          (tool.inputSchema as Record<string, unknown>) || { type: "object", properties: {} },
+        )
+        assert.strictEqual(mapped.group, toolGroupFromReference((tool as any).fullReferenceName))
+      }
+
+      // 回归保护：宿主暴露带属性的 schema 时，映射后不能退化成空 schema
+      const schemaBearing = expected.filter(
+        (tool) => Object.keys(((tool.inputSchema as any)?.properties as object) ?? {}).length > 0,
+      )
+      if (schemaBearing.length > 0) {
+        const mappedBearing = category.tools.filter(
+          (item: any) => Object.keys(item.parametersSchema?.properties ?? {}).length > 0,
+        )
+        assert.strictEqual(mappedBearing.length, schemaBearing.length)
+      }
     } finally {
       controller.dispose()
     }

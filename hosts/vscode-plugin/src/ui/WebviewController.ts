@@ -20,6 +20,44 @@ import { showSystemNotification } from "./systemNotification"
 import { automaticUpdateStorageKey } from "../update/UpdateService"
 
 /**
+ * 从语言模型工具的 `fullReferenceName`（形如 `扩展id/工具名` 或 `工具集/工具名`）解析归属分组。
+ */
+export function toolGroupFromReference(fullReferenceName: string | undefined): string | undefined {
+  if (!fullReferenceName) return undefined
+  const slash = fullReferenceName.lastIndexOf("/")
+  return slash > 0 ? fullReferenceName.slice(0, slash) : undefined
+}
+
+// VS Code 内置浏览器工具 id；list_browser_pages 未被上游纳入 vscodeBrowser 工具集，
+// 缺少 fullReferenceName 前缀，需要跟随同族工具补齐分组。
+const INTEGRATED_BROWSER_TOOL_IDS = new Set([
+  "open_browser_page",
+  "read_page",
+  "screenshot_page",
+  "navigate_page",
+  "click_element",
+  "drag_element",
+  "hover_element",
+  "type_in_page",
+  "run_playwright_code",
+  "handle_dialog",
+  "list_browser_pages",
+])
+
+/**
+ * 仅在工具自身没有分组时，用同族内置浏览器工具的分组补齐；已有分组和未知工具都不动。
+ */
+export function assignIntegratedBrowserGroups(tools: AcpTool[]): void {
+  const browserGroup = tools.find((tool) => INTEGRATED_BROWSER_TOOL_IDS.has(tool.id) && tool.group)?.group
+  if (!browserGroup) return
+  for (const tool of tools) {
+    if (!tool.group && INTEGRATED_BROWSER_TOOL_IDS.has(tool.id)) {
+      tool.group = browserGroup
+    }
+  }
+}
+
+/**
  * Shared webview controller to manage common UI lifecycle and messaging
  * Used by both WebviewManager (editor tab) and ActivityBarProvider (view tab)
  */
@@ -648,21 +686,24 @@ export class WebviewController {
     ]
 
     try {
-      const lmTools = (vscode as any).lm?.tools
+      const lmTools = (vscode as any).lm?.tools as vscode.LanguageModelToolInformation[] | undefined
       if (Array.isArray(lmTools) && lmTools.length > 0) {
         const extTools: AcpTool[] = []
         for (const t of lmTools) {
           if (!t || typeof t.name !== "string") continue
           const name = t.name
           if (name.startsWith("vscode_") || name.startsWith("copilot_")) continue
+          const fullReference = (t as { fullReferenceName?: string }).fullReferenceName
           extTools.push({
             id: name,
-            name: (t.displayName as string) || name,
-            description: (t.description as string) || (t.modelDescription as string) || "",
-            parametersSchema: (t.parametersSchema as Record<string, unknown>) || { type: "object", properties: {} },
+            name,
+            description: t.description || "",
+            group: toolGroupFromReference(fullReference),
+            parametersSchema: (t.inputSchema as Record<string, unknown>) || { type: "object", properties: {} },
           })
         }
         if (extTools.length > 0) {
+          assignIntegratedBrowserGroups(extTools)
           categories.push({
             id: "extensions",
             name: "扩展工具",
