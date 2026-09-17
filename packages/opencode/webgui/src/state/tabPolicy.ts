@@ -3,7 +3,7 @@ export type TabState = {
   activeTab: string
 }
 
-export const MAX_OPEN_TABS = 6
+export const MAX_OPEN_TABS = 15
 
 function evictOne(openTabs: string[], incomingId: string) {
   const evictIndex = openTabs.findIndex((id) => id !== incomingId)

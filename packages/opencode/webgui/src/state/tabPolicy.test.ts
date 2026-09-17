@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { openWithPolicy } from "./tabPolicy"
+import { MAX_OPEN_TABS, openWithPolicy } from "./tabPolicy"
+
+const ids = (count: number) => Array.from({ length: count }, (_, i) => `s${i + 1}`)
 
 describe("tabPolicy", () => {
   it("open existing activates without reordering", () => {
@@ -18,40 +20,40 @@ describe("tabPolicy", () => {
   it("open new over limit evicts oldest non-active", () => {
     const next = openWithPolicy(
       {
-        openTabs: ["s1", "s2", "s3", "s4", "s5", "s6"],
+        openTabs: ids(MAX_OPEN_TABS),
         activeTab: "s3",
       },
-      "s7",
+      `s${MAX_OPEN_TABS + 1}`,
     )
 
-    expect(next.openTabs).toEqual(["s2", "s3", "s4", "s5", "s6", "s7"])
-    expect(next.activeTab).toBe("s7")
+    expect(next.openTabs).toEqual(ids(MAX_OPEN_TABS + 1).slice(1))
+    expect(next.activeTab).toBe(`s${MAX_OPEN_TABS + 1}`)
   })
 
   it("open new over limit evicts oldest non-active even if it was previously active", () => {
     const next = openWithPolicy(
       {
-        openTabs: ["s1", "s2", "s3", "s4", "s5", "s6"],
+        openTabs: ids(MAX_OPEN_TABS),
         activeTab: "s1",
       },
-      "s7",
+      `s${MAX_OPEN_TABS + 1}`,
     )
 
-    expect(next.openTabs).toEqual(["s2", "s3", "s4", "s5", "s6", "s7"])
-    expect(next.activeTab).toBe("s7")
+    expect(next.openTabs).toEqual(ids(MAX_OPEN_TABS + 1).slice(1))
+    expect(next.activeTab).toBe(`s${MAX_OPEN_TABS + 1}`)
   })
 
-  it("open new from already overflowed state shrinks back to six tabs", () => {
+  it("open new from already overflowed state shrinks back to the cap", () => {
     const next = openWithPolicy(
       {
-        openTabs: ["s1", "s2", "s3", "s4", "s5", "s6", "s7"],
-        activeTab: "s7",
+        openTabs: ids(MAX_OPEN_TABS + 1),
+        activeTab: `s${MAX_OPEN_TABS + 1}`,
       },
-      "s8",
+      `s${MAX_OPEN_TABS + 2}`,
     )
 
-    expect(next.openTabs).toEqual(["s3", "s4", "s5", "s6", "s7", "s8"])
-    expect(next.activeTab).toBe("s8")
+    expect(next.openTabs).toEqual(ids(MAX_OPEN_TABS + 2).slice(2))
+    expect(next.activeTab).toBe(`s${MAX_OPEN_TABS + 2}`)
   })
 
   it("opens prefixed ids as normal tabs", () => {

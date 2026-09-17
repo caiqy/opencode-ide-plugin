@@ -15,7 +15,7 @@
 | 标签淘汰策略           | `packages/opencode/webgui/src/state/tabPolicy.ts`                               |
 | 滚动稳态               | `packages/opencode/webgui/src/components/MessageList/hooks/useMessageScroll.ts` |
 
-> 命名交叉核验（Step 5）：`SessionContext` 暴露 create/switch/fork/revert/retry/delete 等会话生命周期 API（第 96-109 行）；`MessagesContext` 暴露 latest/older/scanOlder 分页 API（第 72-80 行）；`tabPolicy.ts` 第 6 行定义 `MAX_OPEN_TABS = 6`。
+> 命名交叉核验（Step 5）：`SessionContext` 暴露 create/switch/fork/revert/retry/delete 等会话生命周期 API（第 96-109 行）；`MessagesContext` 暴露 latest/older/scanOlder 分页 API（第 72-80 行）；`tabPolicy.ts` 第 6 行定义 `MAX_OPEN_TABS = 15`。
 
 ## 意图
 
@@ -31,7 +31,7 @@
 - `loadOlder` 使用 cursor + `before` 拉更早页，并对同会话并发 older 请求去重；abort 只清 loading，不误标 error（`MessagesContext.tsx` 第 837-935 行）。
 - `scanOlder` 只返回 rows/cursor，不写 visible messages，也不改分页状态，供选择恢复后台扫描使用（`MessagesContext.tsx` 第 938-959 行）。
 - SSE 事件会 upsert message/part、追加 text delta、移除 message/part，并把 `session.error` 合成 `session-error` part（`MessagesContext.tsx` 第 480-608 行）。
-- 多标签只是 UI 工作台状态，关闭 tab 不删除 session；打开已有 tab 只激活，新 tab 超过 6 个时淘汰一个旧 tab（`tabStore.ts` 第 115-147 行；`tabPolicy.ts` 第 6-31 行）。
+- 多标签只是 UI 工作台状态，关闭 tab 不删除 session；打开已有 tab 只激活，新 tab 超过 15 个时淘汰一个旧 tab（`tabStore.ts` 第 115-147 行；`tabPolicy.ts` 第 6-31 行）。
 - tabs 持久化到 repo，并在 reorder 时 500ms debounce，卸载时 flush（`tabStore.ts` 第 14、47-65、91-101 行）。
 - 滚动 hook 用 following/detached/seeking 三态；用户向上滚动、scrollbar、键盘意图会脱离底部自动跟随（`useMessageScroll.ts` 第 59-67、138-147、341-355 行）。
 - tail 区变化在用户仍贴底时 pin bottom；history restore/trim 和 programmatic scroll 有独立 cause，避免历史加载把用户强拉到底部（`useMessageScroll.ts` 第 195-241、257-337 行）。
@@ -39,7 +39,7 @@
 ## 边界与约束
 
 - `SessionContext` 管会话元数据、生命周期、busy/reasoning/diff；`MessagesContext` 管消息内容、分页、permission/question，这是维护边界。
-- `MAX_OPEN_TABS = 6` 是硬策略，不是用户偏好配置。
+- `MAX_OPEN_TABS = 15` 是硬策略，不是用户偏好配置。
 - 消息历史不是一次性全量加载；依赖全历史的逻辑必须使用分页 cursor 或后台 scan，不要假设 visible messages 完整。
 - `scanOlder` 是后台读取工具，不更新 `sessionPageRef`、`messages` 或 UI loading 状态（`MessagesContext.tsx` 第 938-959 行）。
 - 关闭 tab 只改 `tabStore`/`tabsRepo`，真实删除 session 必须走 `deleteSession`（`tabStore.ts` 第 128-159 行；`SessionContext.tsx` 第 926-955 行）。
