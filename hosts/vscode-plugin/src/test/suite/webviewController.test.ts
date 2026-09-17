@@ -5,6 +5,7 @@ import * as globals from "../../globals"
 import { bridgeServer } from "../../ui/IdeBridgeServer"
 import type { AcpTool, SelectFilesOptions, SelectFilesResult, ReadFilesResult } from "../../ui/IdeBridgeServer"
 import { WebviewController, assignIntegratedBrowserGroups, toolGroupFromReference } from "../../ui/WebviewController"
+import { debugStateStore } from "../../debug/DebugTracking"
 import { errorHandler } from "../../utils/ErrorHandler"
 import { FileMonitor } from "../../utils/FileMonitor"
 import { testResponse } from "./fetchResponse"
@@ -649,6 +650,902 @@ suite("WebviewController Test Suite", () => {
       assert.deepStrictEqual(res, {
         output: "Opened https://example.com/test-path?param=1 in integrated browser",
       })
+    } finally {
+      controller.dispose()
+    }
+  })
+
+  test("getAcpCapabilities 上报运行和调试大类与完整工具集", async () => {
+    const { controller, getAcpCapabilities } = await loadController()
+    try {
+      assert.ok(getAcpCapabilities)
+      const res = await getAcpCapabilities()
+      const category = res.categories.find((item: any) => item.id === "debug")
+      assert.ok(category, "debug category should be reported")
+      assert.strictEqual(category.name, "运行和调试")
+      assert.strictEqual(category.status, "connected")
+
+      assert.deepStrictEqual(
+        category.tools.map((tool: any) => tool.id),
+        [
+          "listLaunchConfigs",
+          "startDebugging",
+          "stopDebugging",
+          "restartDebugging",
+          "getDebugState",
+          "getCallStack",
+          "getVariables",
+          "listBreakpoints",
+          "addBreakpoints",
+          "removeBreakpoints",
+          "controlExecution",
+          "evaluate",
+          "setExceptionBreakpoints",
+        ],
+      )
+      for (const tool of category.tools) {
+        assert.ok(tool.parametersSchema, `${tool.id} should expose parametersSchema`)
+        assert.strictEqual(typeof tool.name, "string")
+        assert.ok(tool.name.length > 0)
+      }
+    } finally {
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 调试工具无会话与非法参数时返回明确错误", async () => {
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+
+      const configs = JSON.parse(((await executeAcpTool("debug", "listLaunchConfigs", {})) as { output: string }).output)
+      assert.ok(Array.isArray(configs))
+
+      await assert.rejects(() => executeAcpTool("debug", "startDebugging", {}), /Missing or invalid 'name' parameter/)
+      await assert.rejects(() => executeAcpTool("debug", "stopDebugging", {}), /No active debug session/)
+      await assert.rejects(() => executeAcpTool("debug", "restartDebugging", {}), /No active debug session/)
+      await assert.rejects(() => executeAcpTool("debug", "getCallStack", {}), /No active debug session/)
+      await assert.rejects(() => executeAcpTool("debug", "getVariables", {}), /No active debug session/)
+      await assert.rejects(
+        () => executeAcpTool("debug", "addBreakpoints", { file: "D:/repo/missing.ts" }),
+        /Missing or invalid 'line' parameter/,
+      )
+      await assert.rejects(
+        () => executeAcpTool("debug", "addBreakpoints", { file: "D:/repo/missing.ts", line: 0 }),
+        /'line' must be a 1-based line number/,
+      )
+      await assert.rejects(
+        () => executeAcpTool("debug", "removeBreakpoints", { file: "D:/repo/definitely-missing.ts" }),
+        /No matching breakpoint found/,
+      )
+      await assert.rejects(
+        () => executeAcpTool("debug", "controlExecution", { action: "teleport" }),
+        /Unsupported execution action/,
+      )
+      await assert.rejects(
+        () => executeAcpTool("debug", "evaluate", {}),
+        /Missing or invalid 'expression' parameter/,
+      )
+      await assert.rejects(
+        () => executeAcpTool("debug", "setExceptionBreakpoints", {}),
+        /Missing 'filters' parameter/,
+      )
+      await assert.rejects(() => executeAcpTool("debug", "noSuchTool", {}), /Unsupported tool in debug category/)
+    } finally {
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 断点增删闭环", async () => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+    assert.ok(workspaceFolder)
+    const file = vscode.Uri.joinPath(workspaceFolder.uri, "debug-breakpoint-temp.ts").fsPath
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+      const added = (await executeAcpTool("debug", "addBreakpoints", {
+        file,
+        line: 3,
+        condition: "value > 1",
+      })) as { output: string }
+      assert.strictEqual(added.output, `Breakpoint added at ${file}:3`)
+
+      const listed = JSON.parse(
+        ((await executeAcpTool("debug", "listBreakpoints", {})) as { output: string }).output,
+      ) as Array<{ file?: string; line?: number; condition?: string }>
+      const match = listed.find(
+        (breakpoint) => breakpoint.file?.toLowerCase() === file.toLowerCase() && breakpoint.line === 3,
+      )
+      assert.ok(match, "added breakpoint should be listed")
+      assert.strictEqual(match.condition, "value > 1")
+
+      const removed = (await executeAcpTool("debug", "removeBreakpoints", { file, line: 3 })) as { output: string }
+      assert.strictEqual(removed.output, `Removed 1 breakpoint(s) for ${file}`)
+    } finally {
+      try {
+        await executeAcpTool?.("debug", "removeBreakpoints", { file })
+      } catch {}
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 调试工具通过 DAP 请求读取运行时状态", async () => {
+    const customRequest = sinon.stub().callsFake(async (command: string, args?: any) => {
+      switch (command) {
+        case "threads":
+          return { threads: [{ id: 2, name: "main" }] }
+        case "stackTrace":
+          return {
+            stackFrames: [{ id: 11, name: "main", source: { path: "D:/proj/index.ts" }, line: 5, column: 1 }],
+          }
+        case "scopes":
+          return { scopes: [{ name: "Local", variablesReference: 99, expensive: false }] }
+        case "variables":
+          if (args?.variablesReference === 99) {
+            return {
+              variables: [
+                { name: "obj", value: "Object", type: "object", variablesReference: 100 },
+                { name: "x", value: "42", type: "number", variablesReference: 0 },
+              ],
+            }
+          }
+          return { variables: [{ name: "prop", value: "nested", type: "string", variablesReference: 0 }] }
+        case "evaluate":
+          return { result: "42", type: "number", variablesReference: 0 }
+        default:
+          return {}
+      }
+    })
+    const fakeSession = {
+      id: "debug-session-1",
+      name: "WebGUI: dev",
+      type: "node",
+      configuration: { type: "node", name: "WebGUI: dev", request: "launch" },
+      workspaceFolder: vscode.workspace.workspaceFolders?.[0],
+      customRequest,
+    } as unknown as vscode.DebugSession
+    sinon.stub(vscode.debug, "activeDebugSession").get(() => fakeSession)
+    const stopDebugging = sinon.stub(vscode.debug, "stopDebugging").resolves()
+    const startDebugging = sinon.stub(vscode.debug, "startDebugging").resolves(true)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-1", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-1", {
+        type: "event",
+        event: "stopped",
+        body: { reason: "breakpoint", threadId: 2, hitBreakpointIds: [7] },
+      })
+
+      const state = JSON.parse(((await executeAcpTool("debug", "getDebugState", {})) as { output: string }).output)
+      assert.strictEqual(state.activeSession.name, "WebGUI: dev")
+      assert.deepStrictEqual(state.pausedThreads, [{ threadId: 2, reason: "breakpoint", hitBreakpointIds: [7] }])
+      assert.deepStrictEqual(state.threads, [{ id: 2, name: "main" }])
+      assert.ok(customRequest.calledWith("threads"))
+
+      const frames = JSON.parse(
+        ((await executeAcpTool("debug", "getCallStack", {})) as { output: string }).output,
+      )
+      assert.deepStrictEqual(frames, [{ id: 11, name: "main", source: "D:/proj/index.ts", line: 5, column: 1 }])
+      assert.ok(customRequest.calledWithMatch("stackTrace", { threadId: 2, startFrame: 0, levels: 50 }))
+
+      const scopes = JSON.parse(
+        ((await executeAcpTool("debug", "getVariables", { frameId: 11 })) as { output: string }).output,
+      )
+      assert.deepStrictEqual(scopes, [{ name: "Local", variablesReference: 99, expensive: false }])
+
+      const variables = JSON.parse(
+        ((await executeAcpTool("debug", "getVariables", { variablesReference: 99 })) as { output: string }).output,
+      )
+      assert.deepStrictEqual(variables, {
+        variables: [
+          {
+            name: "obj",
+            value: "Object",
+            type: "object",
+            variablesReference: 100,
+            children: [{ name: "prop", value: "nested", type: "string", variablesReference: 0 }],
+          },
+          { name: "x", value: "42", type: "number", variablesReference: 0 },
+        ],
+        truncated: false,
+      })
+      assert.ok(customRequest.calledWithMatch("variables", { variablesReference: 99, count: 200 }))
+
+      const evaluated = JSON.parse(
+        ((await executeAcpTool("debug", "evaluate", { expression: "x" })) as { output: string }).output,
+      )
+      assert.strictEqual(evaluated.result, "42")
+      assert.ok(customRequest.calledWithMatch("evaluate", { expression: "x", context: "watch" }))
+
+      const continued = (await executeAcpTool("debug", "controlExecution", {
+        action: "continue",
+        threadId: 2,
+      })) as { output: string }
+      assert.ok(customRequest.calledWithMatch("continue", { threadId: 2, singleThread: true }))
+      assert.match(continued.output, /Execution command "continue"/)
+      // 控制请求成功后主动失效暂停缓存（不依赖适配器补发 continued 事件）
+      assert.deepStrictEqual(debugStateStore.pausedThreads("debug-session-1"), [])
+
+      debugStateStore.onDapMessage("debug-session-1", {
+        type: "event",
+        event: "stopped",
+        body: { reason: "step", threadId: 2 },
+      })
+      await executeAcpTool("debug", "controlExecution", { action: "stepOver" })
+      assert.ok(customRequest.calledWithMatch("next", { threadId: 2, singleThread: true }))
+
+      debugStateStore.onDapMessage("debug-session-1", {
+        type: "event",
+        event: "stopped",
+        body: { reason: "step", threadId: 2 },
+      })
+      await executeAcpTool("debug", "controlExecution", { action: "stepIn" })
+      assert.ok(customRequest.calledWithMatch("stepIn", { threadId: 2, singleThread: true }))
+
+      debugStateStore.onDapMessage("debug-session-1", {
+        type: "event",
+        event: "stopped",
+        body: { reason: "step", threadId: 2 },
+      })
+      await executeAcpTool("debug", "controlExecution", { action: "stepOut" })
+      assert.ok(customRequest.calledWithMatch("stepOut", { threadId: 2, singleThread: true }))
+
+      await executeAcpTool("debug", "setExceptionBreakpoints", { filters: ["uncaught"] })
+      assert.ok(customRequest.calledWithMatch("setExceptionBreakpoints", { filters: ["uncaught"] }))
+
+      const stopped = (await executeAcpTool("debug", "stopDebugging", {})) as { output: string }
+      assert.strictEqual(stopped.output, `Stopped debug session "WebGUI: dev"`)
+      assert.ok(stopDebugging.calledOnceWith(fakeSession))
+
+      const restarted = (await executeAcpTool("debug", "restartDebugging", {})) as { output: string }
+      assert.strictEqual(restarted.output, `Debug session "WebGUI: dev" restarted`)
+      assert.ok(startDebugging.calledWithMatch(fakeSession.workspaceFolder ?? sinon.match.any, fakeSession.configuration))
+    } finally {
+      debugStateStore.reset()
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 运行中会话可查询线程并通过 threads 暂停", async () => {
+    const customRequest = sinon.stub().callsFake(async (command: string) => {
+      if (command === "threads") {
+        return {
+          threads: [
+            { id: 7, name: "main" },
+            { id: 8, name: "worker" },
+          ],
+        }
+      }
+      return {}
+    })
+    const fakeSession = {
+      id: "debug-session-2",
+      name: "WebGUI: dev",
+      type: "node",
+      configuration: { type: "node", name: "WebGUI: dev", request: "launch" },
+      workspaceFolder: vscode.workspace.workspaceFolders?.[0],
+      customRequest,
+    } as unknown as vscode.DebugSession
+    sinon.stub(vscode.debug, "activeDebugSession").get(() => fakeSession)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-2", name: "WebGUI: dev", type: "node" })
+
+      const state = JSON.parse(((await executeAcpTool("debug", "getDebugState", {})) as { output: string }).output)
+      assert.deepStrictEqual(state.pausedThreads, [])
+      assert.deepStrictEqual(state.threads, [
+        { id: 7, name: "main" },
+        { id: 8, name: "worker" },
+      ])
+
+      // 运行中的会话：读取类工具必须报告未暂停
+      await assert.rejects(() => executeAcpTool("debug", "getCallStack", {}), /not paused/)
+      await assert.rejects(() => executeAcpTool("debug", "getVariables", { frameId: 1 }), /not paused/)
+      await assert.rejects(() => executeAcpTool("debug", "evaluate", { expression: "x" }), /not paused/)
+      await assert.rejects(() => executeAcpTool("debug", "controlExecution", { action: "continue" }), /not paused/)
+
+      const paused = (await executeAcpTool("debug", "controlExecution", { action: "pause" })) as { output: string }
+      assert.ok(customRequest.calledWithMatch("pause", { threadId: 7 }))
+      assert.match(paused.output, /Execution command "pause"/)
+    } finally {
+      debugStateStore.reset()
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 变量展开遵守截断上限并透传适配器错误", async () => {
+    const bigVariables = Array.from({ length: 260 }, (_, index) => ({
+      name: `v${index}`,
+      value: `${index}`,
+      type: "number",
+      variablesReference: 0,
+    }))
+    const customRequest = sinon.stub().callsFake(async (command: string, args?: any) => {
+      if (command === "variables") {
+        if (args?.variablesReference === 500) {
+          return { variables: bigVariables }
+        }
+        if (args?.variablesReference === 501) {
+          throw new Error("adapter rejected variables")
+        }
+        return { variables: [{ name: "x", value: "1", type: "number", variablesReference: 0 }] }
+      }
+      if (command === "evaluate") {
+        if (args?.expression === "boom") {
+          throw new Error("adapter rejected evaluate")
+        }
+        return { result: "ok", type: "string", variablesReference: 0 }
+      }
+      return {}
+    })
+    const fakeSession = {
+      id: "debug-session-3",
+      name: "WebGUI: dev",
+      type: "node",
+      configuration: { type: "node", name: "WebGUI: dev", request: "launch" },
+      workspaceFolder: vscode.workspace.workspaceFolders?.[0],
+      customRequest,
+    } as unknown as vscode.DebugSession
+    sinon.stub(vscode.debug, "activeDebugSession").get(() => fakeSession)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-3", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-3", {
+        type: "event",
+        event: "stopped",
+        body: { threadId: 1, reason: "step" },
+      })
+
+      const expanded = JSON.parse(
+        ((await executeAcpTool("debug", "getVariables", { variablesReference: 500 })) as { output: string }).output,
+      )
+      assert.strictEqual(expanded.variables.length, 200)
+      assert.strictEqual(expanded.truncated, true)
+
+      await assert.rejects(
+        () => executeAcpTool("debug", "getVariables", { variablesReference: 501 }),
+        /adapter rejected variables/,
+      )
+      await assert.rejects(() => executeAcpTool("debug", "evaluate", { expression: "boom" }), /adapter rejected evaluate/)
+    } finally {
+      debugStateStore.reset()
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 控制请求成功后主动失效暂停缓存", async () => {
+    const customRequest = sinon.stub().callsFake(async (command: string) => {
+      if (command === "threads") {
+        return { threads: [{ id: 3, name: "main" }] }
+      }
+      return {}
+    })
+    const fakeSession = {
+      id: "debug-session-4",
+      name: "WebGUI: dev",
+      type: "node",
+      configuration: { type: "node", name: "WebGUI: dev", request: "launch" },
+      workspaceFolder: vscode.workspace.workspaceFolders?.[0],
+      customRequest,
+    } as unknown as vscode.DebugSession
+    sinon.stub(vscode.debug, "activeDebugSession").get(() => fakeSession)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-4", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-4", {
+        type: "event",
+        event: "stopped",
+        body: { threadId: 3, reason: "breakpoint" },
+      })
+
+      await executeAcpTool("debug", "controlExecution", { action: "continue" })
+      assert.ok(customRequest.calledWithMatch("continue", { threadId: 3, singleThread: true }))
+      assert.deepStrictEqual(debugStateStore.pausedThreads("debug-session-4"), [])
+
+      // 适配器不再补发 continued 事件时，后续读取与控制必须被拒绝
+      await assert.rejects(() => executeAcpTool("debug", "getCallStack", {}), /not paused/)
+      await assert.rejects(() => executeAcpTool("debug", "controlExecution", { action: "stepOver" }), /not paused/)
+      await assert.rejects(() => executeAcpTool("debug", "evaluate", { expression: "x" }), /not paused/)
+    } finally {
+      debugStateStore.reset()
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 变量深度上限与恰好 count 的截断标记", async () => {
+    const chain: Record<number, unknown[]> = {
+      700: [{ name: "l1", value: "1", type: "object", variablesReference: 701 }],
+      701: [{ name: "l2", value: "2", type: "object", variablesReference: 702 }],
+      702: [{ name: "l3", value: "3", type: "object", variablesReference: 703 }],
+      703: [{ name: "l4", value: "4", type: "object", variablesReference: 704 }],
+      704: [{ name: "l5", value: "5", type: "number", variablesReference: 0 }],
+      710: Array.from({ length: 200 }, (_, index) => ({
+        name: `e${index}`,
+        value: `${index}`,
+        type: "number",
+        variablesReference: 0,
+      })),
+    }
+    const customRequest = sinon.stub().callsFake(async (command: string, args?: any) => {
+      if (command === "variables") {
+        return { variables: chain[args?.variablesReference as number] ?? [] }
+      }
+      return {}
+    })
+    const fakeSession = {
+      id: "debug-session-5",
+      name: "WebGUI: dev",
+      type: "node",
+      configuration: { type: "node", name: "WebGUI: dev", request: "launch" },
+      workspaceFolder: vscode.workspace.workspaceFolders?.[0],
+      customRequest,
+    } as unknown as vscode.DebugSession
+    sinon.stub(vscode.debug, "activeDebugSession").get(() => fakeSession)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-5", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-5", {
+        type: "event",
+        event: "stopped",
+        body: { threadId: 1, reason: "breakpoint" },
+      })
+
+      const deep = JSON.parse(
+        ((await executeAcpTool("debug", "getVariables", { variablesReference: 700 })) as { output: string }).output,
+      )
+      assert.strictEqual(deep.truncated, true)
+      assert.strictEqual(deep.variables[0].children[0].children[0].children[0].truncated, true)
+      assert.ok(!customRequest.calledWithMatch("variables", { variablesReference: 704 }))
+
+      const exact = JSON.parse(
+        ((await executeAcpTool("debug", "getVariables", { variablesReference: 710 })) as { output: string }).output,
+      )
+      assert.strictEqual(exact.variables.length, 200)
+      assert.strictEqual(exact.truncated, true)
+    } finally {
+      debugStateStore.reset()
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool allThreadsStopped 线程解析与部分暂停会话的 pause", async () => {
+    const customRequest = sinon.stub().callsFake(async (command: string) => {
+      if (command === "threads") {
+        return {
+          threads: [
+            { id: 7, name: "main" },
+            { id: 8, name: "worker" },
+          ],
+        }
+      }
+      if (command === "stackTrace") {
+        return { stackFrames: [{ id: 21, name: "main", source: { path: "D:/proj/main.ts" }, line: 2, column: 1 }] }
+      }
+      return {}
+    })
+    const fakeSession = {
+      id: "debug-session-6",
+      name: "WebGUI: dev",
+      type: "node",
+      configuration: { type: "node", name: "WebGUI: dev", request: "launch" },
+      workspaceFolder: vscode.workspace.workspaceFolders?.[0],
+      customRequest,
+    } as unknown as vscode.DebugSession
+    sinon.stub(vscode.debug, "activeDebugSession").get(() => fakeSession)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+
+      // allThreadsStopped 且带 threadId：直接使用该线程
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-6", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-6", {
+        type: "event",
+        event: "stopped",
+        body: { threadId: 9, reason: "exception", allThreadsStopped: true },
+      })
+      const withThread = JSON.parse(
+        ((await executeAcpTool("debug", "getCallStack", {})) as { output: string }).output,
+      )
+      assert.deepStrictEqual(withThread, [{ id: 21, name: "main", source: "D:/proj/main.ts", line: 2, column: 1 }])
+      assert.ok(customRequest.calledWithMatch("stackTrace", { threadId: 9 }))
+
+      // allThreadsStopped 且缺少 threadId：回退到 DAP threads 的首个线程，且保留暂停原因元数据
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-6", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-6", {
+        type: "event",
+        event: "stopped",
+        body: { reason: "exception", allThreadsStopped: true },
+      })
+      const globalState = JSON.parse(
+        ((await executeAcpTool("debug", "getDebugState", {})) as { output: string }).output,
+      )
+      assert.deepStrictEqual(globalState.pausedThreads, [])
+      assert.strictEqual(globalState.allThreadsStopped, true)
+      assert.strictEqual(globalState.lastStopped.reason, "exception")
+      await executeAcpTool("debug", "getCallStack", {})
+      assert.ok(customRequest.calledWithMatch("stackTrace", { threadId: 7 }))
+
+      // 部分暂停：仅线程 2 暂停时，可暂停运行中的其它线程；显式指定已暂停线程会被拒绝
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-6", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-6", {
+        type: "event",
+        event: "stopped",
+        body: { threadId: 2, reason: "breakpoint" },
+      })
+      await executeAcpTool("debug", "controlExecution", { action: "pause" })
+      assert.ok(customRequest.calledWithMatch("pause", { threadId: 7 }))
+      await assert.rejects(
+        () => executeAcpTool("debug", "controlExecution", { action: "pause", threadId: 2 }),
+        /already paused/,
+      )
+
+      // 全局暂停（allThreadsStopped，无 threadId）：pause 一律拒绝，任意线程可读
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-6", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-6", {
+        type: "event",
+        event: "stopped",
+        body: { reason: "exception", allThreadsStopped: true },
+      })
+      await assert.rejects(() => executeAcpTool("debug", "controlExecution", { action: "pause" }), /already paused/)
+      await assert.rejects(
+        () => executeAcpTool("debug", "controlExecution", { action: "pause", threadId: 8 }),
+        /already paused/,
+      )
+      await executeAcpTool("debug", "getCallStack", { threadId: 8 })
+      assert.ok(customRequest.calledWithMatch("stackTrace", { threadId: 8 }))
+
+      // 全局暂停下继续执行后，即使没有 continued 事件，读取与控制也必须被拒绝
+      await executeAcpTool("debug", "controlExecution", { action: "continue" })
+      assert.ok(customRequest.calledWithMatch("continue", { threadId: 7, singleThread: true }))
+      assert.strictEqual(debugStateStore.isGloballyPaused("debug-session-6"), false)
+      await assert.rejects(() => executeAcpTool("debug", "getCallStack", {}), /not paused/)
+      await assert.rejects(() => executeAcpTool("debug", "evaluate", { expression: "x" }), /not paused/)
+    } finally {
+      debugStateStore.reset()
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 全局暂停下单线程恢复保留其它线程", async () => {
+    const customRequest = sinon.stub().callsFake(async (command: string) => {
+      if (command === "threads") {
+        return {
+          threads: [
+            { id: 7, name: "main" },
+            { id: 8, name: "worker" },
+            { id: 9, name: "io" },
+          ],
+        }
+      }
+      if (command === "stackTrace") {
+        return {
+          stackFrames: [{ id: 31, name: "worker", source: { path: "D:/proj/worker.ts" }, line: 4, column: 1 }],
+        }
+      }
+      if (command === "continue") {
+        return { allThreadsContinued: false }
+      }
+      return {}
+    })
+    const fakeSession = {
+      id: "debug-session-7",
+      name: "WebGUI: dev",
+      type: "node",
+      configuration: { type: "node", name: "WebGUI: dev", request: "launch" },
+      workspaceFolder: vscode.workspace.workspaceFolders?.[0],
+      customRequest,
+    } as unknown as vscode.DebugSession
+    sinon.stub(vscode.debug, "activeDebugSession").get(() => fakeSession)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-7", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-7", {
+        type: "response",
+        command: "initialize",
+        success: true,
+        body: { supportsSingleThreadExecutionRequests: true },
+      })
+      debugStateStore.onDapMessage("debug-session-7", {
+        type: "event",
+        event: "stopped",
+        body: { reason: "exception", threadId: 9, allThreadsStopped: true },
+      })
+
+      await executeAcpTool("debug", "controlExecution", { action: "continue", threadId: 9 })
+      assert.ok(customRequest.calledWithMatch("continue", { threadId: 9, singleThread: true }))
+      assert.strictEqual(debugStateStore.isGloballyPaused("debug-session-7"), false)
+      assert.deepStrictEqual(
+        debugStateStore.pausedThreads("debug-session-7").map((thread) => thread.threadId),
+        [7, 8],
+      )
+
+      // 其余仍暂停的线程保持可读
+      await executeAcpTool("debug", "getCallStack", { threadId: 8 })
+      assert.ok(customRequest.calledWithMatch("stackTrace", { threadId: 8 }))
+    } finally {
+      debugStateStore.reset()
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 适配器不支持单线程执行时步进清理全部缓存", async () => {
+    const customRequest = sinon.stub().resolves({})
+    const fakeSession = {
+      id: "debug-session-8",
+      name: "WebGUI: dev",
+      type: "node",
+      configuration: { type: "node", name: "WebGUI: dev", request: "launch" },
+      workspaceFolder: vscode.workspace.workspaceFolders?.[0],
+      customRequest,
+    } as unknown as vscode.DebugSession
+    sinon.stub(vscode.debug, "activeDebugSession").get(() => fakeSession)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-8", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-8", {
+        type: "event",
+        event: "stopped",
+        body: { reason: "breakpoint", threadId: 5 },
+      })
+
+      await executeAcpTool("debug", "controlExecution", { action: "stepOver" })
+      assert.ok(customRequest.calledWithMatch("next", { threadId: 5, singleThread: true }))
+      assert.deepStrictEqual(debugStateStore.pausedThreads("debug-session-8"), [])
+      await assert.rejects(() => executeAcpTool("debug", "getCallStack", {}), /not paused/)
+    } finally {
+      debugStateStore.reset()
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 支持单线程执行时步进仅失效目标线程", async () => {
+    const customRequest = sinon.stub().callsFake(async (command: string) => {
+      if (command === "threads") {
+        return {
+          threads: [
+            { id: 7, name: "main" },
+            { id: 8, name: "worker" },
+            { id: 9, name: "io" },
+          ],
+        }
+      }
+      if (command === "stackTrace") {
+        return { stackFrames: [{ id: 41, name: "io", source: { path: "D:/proj/io.ts" }, line: 6, column: 1 }] }
+      }
+      return {}
+    })
+    const fakeSession = {
+      id: "debug-session-9",
+      name: "WebGUI: dev",
+      type: "node",
+      configuration: { type: "node", name: "WebGUI: dev", request: "launch" },
+      workspaceFolder: vscode.workspace.workspaceFolders?.[0],
+      customRequest,
+    } as unknown as vscode.DebugSession
+    sinon.stub(vscode.debug, "activeDebugSession").get(() => fakeSession)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-9", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-9", {
+        type: "response",
+        command: "initialize",
+        success: true,
+        body: { supportsSingleThreadExecutionRequests: true },
+      })
+      debugStateStore.onDapMessage("debug-session-9", {
+        type: "event",
+        event: "stopped",
+        body: { reason: "exception", threadId: 9, allThreadsStopped: true },
+      })
+
+      await executeAcpTool("debug", "controlExecution", { action: "stepOver", threadId: 9 })
+      assert.ok(customRequest.calledWithMatch("next", { threadId: 9, singleThread: true }))
+      assert.strictEqual(debugStateStore.isGloballyPaused("debug-session-9"), false)
+      assert.deepStrictEqual(
+        debugStateStore.pausedThreads("debug-session-9").map((thread) => thread.threadId),
+        [7, 8],
+      )
+      await executeAcpTool("debug", "getCallStack", { threadId: 8 })
+      assert.ok(customRequest.calledWithMatch("stackTrace", { threadId: 8 }))
+    } finally {
+      debugStateStore.reset()
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 控制成功后线程列表查询失败时保守清理且不报错", async () => {
+    const customRequest = sinon.stub().callsFake(async (command: string) => {
+      if (command === "continue") {
+        return { allThreadsContinued: false }
+      }
+      if (command === "threads") {
+        throw new Error("threads unavailable")
+      }
+      return {}
+    })
+    const fakeSession = {
+      id: "debug-session-10",
+      name: "WebGUI: dev",
+      type: "node",
+      configuration: { type: "node", name: "WebGUI: dev", request: "launch" },
+      workspaceFolder: vscode.workspace.workspaceFolders?.[0],
+      customRequest,
+    } as unknown as vscode.DebugSession
+    sinon.stub(vscode.debug, "activeDebugSession").get(() => fakeSession)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-10", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-10", {
+        type: "response",
+        command: "initialize",
+        success: true,
+        body: { supportsSingleThreadExecutionRequests: true },
+      })
+      debugStateStore.onDapMessage("debug-session-10", {
+        type: "event",
+        event: "stopped",
+        body: { reason: "exception", threadId: 9, allThreadsStopped: true },
+      })
+
+      const result = (await executeAcpTool("debug", "controlExecution", {
+        action: "continue",
+        threadId: 9,
+      })) as { output: string }
+      assert.match(result.output, /Execution command "continue"/)
+      assert.strictEqual(debugStateStore.isGloballyPaused("debug-session-10"), false)
+      assert.deepStrictEqual(debugStateStore.pausedThreads("debug-session-10"), [])
+      await assert.rejects(() => executeAcpTool("debug", "getCallStack", {}), /not paused/)
+    } finally {
+      debugStateStore.reset()
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 独立单线程 continued 后其余线程仍可读取", async () => {
+    const customRequest = sinon.stub().callsFake(async (command: string) => {
+      if (command === "threads") {
+        return {
+          threads: [
+            { id: 7, name: "main" },
+            { id: 8, name: "worker" },
+            { id: 9, name: "io" },
+          ],
+        }
+      }
+      if (command === "stackTrace") {
+        return {
+          stackFrames: [{ id: 51, name: "worker", source: { path: "D:/proj/worker.ts" }, line: 8, column: 1 }],
+        }
+      }
+      return {}
+    })
+    const fakeSession = {
+      id: "debug-session-11",
+      name: "WebGUI: dev",
+      type: "node",
+      configuration: { type: "node", name: "WebGUI: dev", request: "launch" },
+      workspaceFolder: vscode.workspace.workspaceFolders?.[0],
+      customRequest,
+    } as unknown as vscode.DebugSession
+    sinon.stub(vscode.debug, "activeDebugSession").get(() => fakeSession)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+
+      debugStateStore.reset()
+      debugStateStore.setActive({ id: "debug-session-11", name: "WebGUI: dev", type: "node" })
+      debugStateStore.onDapMessage("debug-session-11", {
+        type: "response",
+        command: "threads",
+        success: true,
+        body: {
+          threads: [
+            { id: 7, name: "main" },
+            { id: 8, name: "worker" },
+            { id: 9, name: "io" },
+          ],
+        },
+      })
+      debugStateStore.onDapMessage("debug-session-11", {
+        type: "event",
+        event: "stopped",
+        body: { reason: "exception", allThreadsStopped: true },
+      })
+      debugStateStore.onDapMessage("debug-session-11", {
+        type: "event",
+        event: "continued",
+        body: { threadId: 9, allThreadsContinued: false },
+      })
+      assert.deepStrictEqual(
+        debugStateStore.pausedThreads("debug-session-11").map((thread) => thread.threadId),
+        [7, 8],
+      )
+
+      await executeAcpTool("debug", "getCallStack", { threadId: 8 })
+      assert.ok(customRequest.calledWithMatch("stackTrace", { threadId: 8 }))
+    } finally {
+      debugStateStore.reset()
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool 在调试 API 不可用时返回明确错误", async () => {
+    sinon.stub(vscode.debug, "startDebugging").value(undefined)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+      await assert.rejects(
+        () => executeAcpTool("debug", "getDebugState", {}),
+        /vscode.debug API is not available/,
+      )
+    } finally {
+      controller.dispose()
+    }
+  })
+
+  test("executeAcpTool startDebugging 透传配置名并处理启动失败", async () => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
+    assert.ok(workspaceFolder)
+    const startDebugging = sinon.stub(vscode.debug, "startDebugging").resolves(true)
+
+    const { controller, executeAcpTool } = await loadController()
+    try {
+      assert.ok(executeAcpTool)
+      const started = (await executeAcpTool("debug", "startDebugging", { name: "WebGUI: dev" })) as {
+        output: string
+      }
+      assert.deepStrictEqual(startDebugging.firstCall.args, [workspaceFolder, "WebGUI: dev"])
+      assert.strictEqual(started.output, `Debug configuration "WebGUI: dev" started`)
+
+      startDebugging.resolves(false)
+      await assert.rejects(
+        () => executeAcpTool("debug", "startDebugging", { name: "WebGUI: dev" }),
+        /Failed to start debug configuration/,
+      )
     } finally {
       controller.dispose()
     }

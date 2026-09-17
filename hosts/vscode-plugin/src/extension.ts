@@ -10,6 +10,7 @@ import { ReleaseChecker } from "./update/ReleaseChecker"
 import { UpdateInstaller } from "./update/UpdateInstaller"
 import { automaticUpdateStorageKey, UpdateService } from "./update/UpdateService"
 import { parseSystemNotificationUri } from "./ui/systemNotification"
+import { registerDebugTracking } from "./debug/DebugTracking"
 
 function withCacheBuster(url: string, version: string): string {
   if (url.includes("v=")) {
@@ -143,6 +144,9 @@ class OpenCodeExtension {
       },
     })
     this.context?.subscriptions.push(this.uriHandlerRegistration)
+
+    // 观察调试会话与 DAP 事件，为 ACP 调试工具维护暂停状态缓存
+    this.context?.subscriptions.push(registerDebugTracking())
 
     logger.appendLine("Core components initialized")
   }
