@@ -83,7 +83,7 @@ intellijPlatform {
     pluginConfiguration {
         ideaVersion {
             sinceBuild.set("261")
-            untilBuild.set("261.*")
+            untilBuild.set("262.*")
         }
         description = providers.provider {
             val f = file("description.html")
@@ -145,7 +145,7 @@ tasks {
     }
 
     patchPluginXml {
-        untilBuild.set("261.*")
+        untilBuild.set("262.*")
     }
 
     prepareSandbox {

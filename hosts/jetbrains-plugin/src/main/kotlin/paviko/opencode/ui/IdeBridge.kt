@@ -956,7 +956,7 @@ object IdeBridge {
         }
     }
 
-    private fun openFile(project: Project, rawPath: String, startLine: Int, endLine: Int) {
+    internal fun openFile(project: Project, rawPath: String, startLine: Int, endLine: Int) {
         try {
             val lfs = LocalFileSystem.getInstance()
             val vf = lfs.findFileByPath(rawPath) ?: lfs.refreshAndFindFileByPath(rawPath)
@@ -1028,128 +1028,5 @@ object IdeBridge {
                 val value = if (parts.size > 1) URLDecoder.decode(parts[1], "UTF-8") else ""
                 key to value
             }
-    }
-
-    internal fun defaultAcpCapabilities(project: Project): Map<String, Any?> {
-        val categories = listOf(
-            mapOf(
-                "id" to "intellij",
-                "name" to "IntelliJ IDEA",
-                "description" to "运行内置 Action 与代码编辑",
-                "status" to "connected",
-                "tools" to listOf(
-                    mapOf(
-                        "id" to "executeAction",
-                        "name" to "运行内置 Action",
-                        "description" to "在 IntelliJ IDEA 中执行已注册的 Action（如 ReformatCode, SaveAll 等）",
-                        "parametersSchema" to mapOf(
-                            "type" to "object",
-                            "properties" to mapOf(
-                                "actionId" to mapOf("type" to "string", "description" to "Action 标识符，如 ReformatCode, SaveAll, RenameElement")
-                            ),
-                            "required" to listOf("actionId")
-                        )
-                    ),
-                    mapOf(
-                        "id" to "listActions",
-                        "name" to "列出可用 Action",
-                        "description" to "检索或根据前缀过滤 IntelliJ 中可用的 Action 列表",
-                        "parametersSchema" to mapOf(
-                            "type" to "object",
-                            "properties" to mapOf(
-                                "prefix" to mapOf("type" to "string", "description" to "可选的 Action ID 前缀或关键字")
-                            )
-                        )
-                    ),
-                    mapOf(
-                        "id" to "editor",
-                        "name" to "打开与查看文件",
-                        "description" to "在编辑器中打开指定文件并跳转到目标行",
-                        "parametersSchema" to mapOf(
-                            "type" to "object",
-                            "properties" to mapOf(
-                                "path" to mapOf("type" to "string", "description" to "目标文件的相对或绝对路径"),
-                                "line" to mapOf("type" to "integer", "description" to "可选跳转行号（从 1 开始）")
-                            ),
-                            "required" to listOf("path")
-                        )
-                    )
-                )
-            ),
-            mapOf(
-                "id" to "tasks_and_problems",
-                "name" to "任务与运行配置",
-                "description" to "检索工作区运行/调试配置",
-                "status" to "connected",
-                "tools" to listOf(
-                    mapOf(
-                        "id" to "listRunConfigurations",
-                        "name" to "列出运行配置",
-                        "description" to "检索当前工程中已配置的所有 Run/Debug Configuration",
-                        "parametersSchema" to mapOf(
-                            "type" to "object",
-                            "properties" to emptyMap<String, Any>()
-                        )
-                    )
-                )
-            )
-        )
-        return mapOf("categories" to categories)
-    }
-
-    internal fun defaultExecuteAcpTool(
-        project: Project,
-        category: String,
-        toolId: String,
-        parameters: Map<String, Any?>
-    ): Map<String, Any?> {
-        if (category == "intellij") {
-            when (toolId) {
-                "executeAction" -> {
-                    val actionId = parameters["actionId"] as? String
-                    if (actionId.isNullOrBlank()) throw IllegalArgumentException("Missing actionId parameter")
-                    val actionManager = com.intellij.openapi.actionSystem.ActionManager.getInstance()
-                    val action = actionManager.getAction(actionId) ?: throw IllegalArgumentException("Action not found: $actionId")
-                    ApplicationManager.getApplication().invokeLater {
-                        try {
-                            val dataContext = com.intellij.ide.DataManager.getInstance().getDataContext()
-                            val event = com.intellij.openapi.actionSystem.AnActionEvent.createFromAnAction(
-                                action,
-                                null,
-                                com.intellij.openapi.actionSystem.ActionPlaces.UNKNOWN,
-                                dataContext
-                            )
-                            com.intellij.openapi.actionSystem.ex.ActionUtil.performActionDumbAwareWithCallbacks(action, event)
-                        } catch (t: Throwable) {
-                            LOG.warn("Failed to perform action $actionId", t)
-                        }
-                    }
-                    return mapOf("output" to "Action $actionId scheduled on event dispatch thread")
-                }
-                "listActions" -> {
-                    val prefix = (parameters["prefix"] as? String) ?: ""
-                    val actionManager = com.intellij.openapi.actionSystem.ActionManager.getInstance()
-                    val ids = actionManager.getActionIdList(prefix).take(100)
-                    return mapOf("output" to gson.toJson(ids))
-                }
-                "editor" -> {
-                    val path = parameters["path"] as? String ?: throw IllegalArgumentException("Missing path parameter")
-                    val line = (parameters["line"] as? Number)?.toInt() ?: 1
-                    openFile(project, path, if (line > 0) line - 1 else -1, -1)
-                    return mapOf("output" to "Opened $path at line $line")
-                }
-                else -> throw IllegalArgumentException("Unsupported tool in intellij category: $toolId")
-            }
-        } else if (category == "tasks_and_problems") {
-            when (toolId) {
-                "listRunConfigurations" -> {
-                    val runManager = com.intellij.execution.RunManager.getInstance(project)
-                    val names = runManager.allSettings.map { it.name }
-                    return mapOf("output" to gson.toJson(names))
-                }
-                else -> throw IllegalArgumentException("Unsupported tool in tasks_and_problems category: $toolId")
-            }
-        }
-        throw IllegalArgumentException("Unsupported category: $category")
     }
 }

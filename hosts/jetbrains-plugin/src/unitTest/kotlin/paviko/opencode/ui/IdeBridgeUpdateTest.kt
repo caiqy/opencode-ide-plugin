@@ -3,12 +3,36 @@ package paviko.opencode.ui
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import com.intellij.execution.RunManager
+import com.intellij.execution.RunnerAndConfigurationSettings
+import com.intellij.execution.process.ProcessHandler
+import com.intellij.execution.ui.RunContentDescriptor
+import com.intellij.execution.ui.RunContentManager
 import com.intellij.openapi.application.Application
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.SearchableConfigurable
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Key
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.xdebugger.XDebugSession
+import com.intellij.xdebugger.XDebuggerManager
+import com.intellij.xdebugger.XSourcePosition
+import com.intellij.xdebugger.breakpoints.XBreakpoint
+import com.intellij.xdebugger.breakpoints.XBreakpointManager
+import com.intellij.xdebugger.breakpoints.XLineBreakpoint
+import com.intellij.xdebugger.evaluation.XDebuggerEvaluator
+import com.intellij.xdebugger.frame.XCompositeNode
+import com.intellij.xdebugger.frame.XExecutionStack
+import com.intellij.xdebugger.frame.XStackFrame
+import com.intellij.xdebugger.frame.XSuspendContext
+import com.intellij.xdebugger.frame.XValue
+import com.intellij.xdebugger.frame.XValueChildrenList
+import com.intellij.xdebugger.frame.XValueNode
+import org.jetbrains.plugins.terminal.ShellTerminalWidget
+import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -27,6 +51,7 @@ import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.URL
 import java.nio.file.Files
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
@@ -618,6 +643,23 @@ class IdeBridgeUpdateTest {
         }
     }
 
+    private class InMemoryBreakpointIdStore : BreakpointIdStore {
+        private val values = ConcurrentHashMap<XBreakpoint<*>, String>()
+
+        override fun read(breakpoint: XBreakpoint<*>): String? = values[breakpoint]
+
+        override fun write(breakpoint: XBreakpoint<*>, id: String) {
+            values[breakpoint] = id
+        }
+    }
+
+    private fun executeToolPayload(category: String, toolId: String, parameters: JsonObject): JsonObject =
+        JsonObject().apply {
+            addProperty("category", category)
+            addProperty("toolId", toolId)
+            add("parameters", parameters)
+        }
+
     private fun project(): Project {
         val project = Mockito.mock(Project::class.java)
         Mockito.`when`(project.name).thenReturn("update-test-project")
@@ -963,11 +1005,605 @@ class IdeBridgeUpdateTest {
             assertEquals(true, reply.get("ok")?.asBoolean)
             val result = reply.getAsJsonObject("result")
             val categories = result.getAsJsonArray("categories")
-            assertTrue(categories.size() >= 2)
-            val ids = categories.map { it.asJsonObject.get("id").asString }
-            assertTrue(ids.contains("intellij"))
-            assertTrue(ids.contains("tasks_and_problems"))
+            assertTrue(categories.size() >= 4)
+
+            val toolsByCategory = categories.associate { category ->
+                val obj = category.asJsonObject
+                obj.get("id").asString to obj.getAsJsonArray("tools").map { it.asJsonObject.get("id").asString }
+            }
+
+            assertEquals(listOf("executeAction", "listActions", "editor"), toolsByCategory["intellij"])
+            assertEquals(
+                listOf(
+                    "listRunConfigurations",
+                    "getProblems",
+                    "runConfiguration",
+                    "debugConfiguration",
+                    "stopRunConfiguration",
+                ),
+                toolsByCategory["tasks_and_problems"],
+            )
+            assertEquals(listOf("sendToTerminal", "runCommand"), toolsByCategory["terminal"])
+            assertEquals(
+                listOf(
+                    "getDebugState",
+                    "getCallStack",
+                    "getVariables",
+                    "listBreakpoints",
+                    "addLineBreakpoint",
+                    "addExceptionBreakpoint",
+                    "removeBreakpoint",
+                    "controlExecution",
+                    "evaluateExpression",
+                ),
+                toolsByCategory["debug"],
+            )
+            assertEquals(setOf("intellij", "tasks_and_problems", "terminal", "debug"), toolsByCategory.keys)
+
+            categories.forEach { category ->
+                category.asJsonObject.getAsJsonArray("tools").forEach { tool ->
+                    val obj = tool.asJsonObject
+                    assertNotNull(obj.get("name"))
+                    assertNotNull(obj.get("description"))
+                    val schema = obj.getAsJsonObject("parametersSchema")
+                    assertEquals("object", schema.get("type").asString)
+                    val properties = schema.getAsJsonObject("properties")
+                    assertNotNull(properties)
+                    // Tools that declare required parameters must describe them.
+                    if (schema.get("required") != null) assertTrue(properties.size() > 0)
+                }
+            }
         }
+    }
+
+    @Test
+    fun `terminal tools reject missing or blank commands`() {
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val send = events.send("executeAcpTool", executeToolPayload("terminal", "sendToTerminal", JsonObject()))
+            assertEquals(false, send.get("ok")?.asBoolean)
+            assertTrue(send.get("error")?.asString?.contains("command") == true)
+
+            val run = events.send("executeAcpTool", executeToolPayload("terminal", "runCommand", JsonObject()))
+            assertEquals(false, run.get("ok")?.asBoolean)
+            assertTrue(run.get("error")?.asString?.contains("command") == true)
+        }
+    }
+
+    @Test
+    fun `runCommand executes commands and reports exit codes`() {
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val ok = events.send(
+                "executeAcpTool",
+                executeToolPayload("terminal", "runCommand", JsonObject().apply { addProperty("command", "echo opencode") }),
+            )
+            assertEquals(true, ok.get("ok")?.asBoolean)
+            val okOutput = JsonParser.parseString(ok.getAsJsonObject("result").get("output").asString).asJsonObject
+            assertEquals(0, okOutput.get("exitCode").asInt)
+            assertTrue(okOutput.get("stdout").asString.contains("opencode"))
+
+            val failed = events.send(
+                "executeAcpTool",
+                executeToolPayload("terminal", "runCommand", JsonObject().apply { addProperty("command", "exit 3") }),
+            )
+            assertEquals(true, failed.get("ok")?.asBoolean)
+            val failedOutput = JsonParser.parseString(failed.getAsJsonObject("result").get("output").asString).asJsonObject
+            assertEquals(3, failedOutput.get("exitCode").asInt)
+        }
+    }
+
+    @Test
+    fun `run configuration tools require a name`() {
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val run = events.send("executeAcpTool", executeToolPayload("tasks_and_problems", "runConfiguration", JsonObject()))
+            assertEquals(false, run.get("ok")?.asBoolean)
+            assertTrue(run.get("error")?.asString?.contains("name") == true)
+
+            val debug = events.send("executeAcpTool", executeToolPayload("tasks_and_problems", "debugConfiguration", JsonObject()))
+            assertEquals(false, debug.get("ok")?.asBoolean)
+            assertTrue(debug.get("error")?.asString?.contains("name") == true)
+        }
+    }
+
+    @Test
+    fun `run configuration tools report unknown names and missing processes`() {
+        val project = project()
+        val session = IdeBridge.createSession(project = project)
+        val runManager = Mockito.mock(RunManager::class.java)
+        val contentManager = Mockito.mock(RunContentManager::class.java)
+        Mockito.`when`(project.getService(RunManager::class.java)).thenReturn(runManager)
+        Mockito.`when`(project.getService(RunContentManager::class.java)).thenReturn(contentManager)
+        Mockito.`when`(runManager.findConfigurationByName(Mockito.anyString())).thenReturn(null)
+        Mockito.`when`(contentManager.allDescriptors).thenReturn(emptyList())
+
+        sse(session).use { events ->
+            val missing = JsonObject().apply { addProperty("name", "missing") }
+
+            val run = events.send(
+                "executeAcpTool",
+                executeToolPayload("tasks_and_problems", "runConfiguration", missing),
+            )
+            assertEquals(false, run.get("ok")?.asBoolean)
+            assertTrue(run.get("error")?.asString?.contains("not found") == true)
+
+            val debug = events.send(
+                "executeAcpTool",
+                executeToolPayload("tasks_and_problems", "debugConfiguration", missing),
+            )
+            assertEquals(false, debug.get("ok")?.asBoolean)
+            assertTrue(debug.get("error")?.asString?.contains("not found") == true)
+
+            val stop = events.send(
+                "executeAcpTool",
+                executeToolPayload("tasks_and_problems", "stopRunConfiguration", missing),
+            )
+            assertEquals(false, stop.get("ok")?.asBoolean)
+            assertTrue(stop.get("error")?.asString?.contains("No running process") == true)
+        }
+    }
+
+    @Test
+    fun `debug tools reject unsupported actions and missing breakpoint ids`() {
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val action = events.send(
+                "executeAcpTool",
+                executeToolPayload("debug", "controlExecution", JsonObject().apply { addProperty("action", "fly") }),
+            )
+            assertEquals(false, action.get("ok")?.asBoolean)
+            assertTrue(action.get("error")?.asString?.contains("Unsupported action") == true)
+
+            // Underscore spellings are outside the declared enum and must not be accepted.
+            val underscored = events.send(
+                "executeAcpTool",
+                executeToolPayload("debug", "controlExecution", JsonObject().apply { addProperty("action", "step_over") }),
+            )
+            assertEquals(false, underscored.get("ok")?.asBoolean)
+            assertTrue(underscored.get("error")?.asString?.contains("Unsupported action") == true)
+
+            val remove = events.send("executeAcpTool", executeToolPayload("debug", "removeBreakpoint", JsonObject()))
+            assertEquals(false, remove.get("ok")?.asBoolean)
+            assertTrue(remove.get("error")?.asString?.contains("id") == true)
+        }
+    }
+
+    @Test
+    fun `addLineBreakpoint validates hit count before touching the platform`() {
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val invalid = events.send(
+                "executeAcpTool",
+                executeToolPayload(
+                    "debug",
+                    "addLineBreakpoint",
+                    JsonObject().apply {
+                        addProperty("file", "C:/does/not/exist/Foo.java")
+                        addProperty("line", 1)
+                        addProperty("hitCount", 0)
+                    },
+                ),
+            )
+            assertEquals(false, invalid.get("ok")?.asBoolean)
+            assertTrue(invalid.get("error")?.asString?.contains("hitCount") == true)
+        }
+    }
+
+    @Test
+    fun `addExceptionBreakpoint validates its parameters`() {
+        val session = IdeBridge.createSession(project = project())
+
+        sse(session).use { events ->
+            val invalidClass = events.send(
+                "executeAcpTool",
+                executeToolPayload(
+                    "debug",
+                    "addExceptionBreakpoint",
+                    JsonObject().apply { addProperty("exceptionClass", "not a class!") },
+                ),
+            )
+            assertEquals(false, invalidClass.get("ok")?.asBoolean)
+            assertTrue(invalidClass.get("error")?.asString?.contains("exception class") == true)
+
+            val invalidBoolean = events.send(
+                "executeAcpTool",
+                executeToolPayload(
+                    "debug",
+                    "addExceptionBreakpoint",
+                    JsonObject().apply { addProperty("caught", "maybe") },
+                ),
+            )
+            assertEquals(false, invalidBoolean.get("ok")?.asBoolean)
+            assertTrue(invalidBoolean.get("error")?.asString?.contains("caught") == true)
+
+            val noFilter = events.send(
+                "executeAcpTool",
+                executeToolPayload(
+                    "debug",
+                    "addExceptionBreakpoint",
+                    JsonObject().apply {
+                        addProperty("caught", false)
+                        addProperty("uncaught", false)
+                    },
+                ),
+            )
+            assertEquals(false, noFilter.get("ok")?.asBoolean)
+            assertTrue(noFilter.get("error")?.asString?.contains("caught") == true)
+        }
+    }
+
+    @Test
+    fun `sendToTerminal runs commands in a terminal tab`() {
+        val project = project()
+        val session = IdeBridge.createSession(project = project)
+        val manager = Mockito.mock(TerminalToolWindowManager::class.java)
+        val widget = Mockito.mock(ShellTerminalWidget::class.java)
+        Mockito.`when`(project.getService(TerminalToolWindowManager::class.java)).thenReturn(manager)
+        Mockito.`when`(manager.createLocalShellWidget(Mockito.any(), Mockito.any())).thenReturn(widget)
+
+        sse(session).use { events ->
+            val reply = events.send(
+                "executeAcpTool",
+                executeToolPayload(
+                    "terminal",
+                    "sendToTerminal",
+                    JsonObject().apply { addProperty("command", "echo hello") },
+                ),
+            )
+            assertEquals(true, reply.get("ok")?.asBoolean)
+            Mockito.verify(widget).executeCommand("echo hello")
+        }
+    }
+
+    @Test
+    fun `run configuration tools start run and debug configurations`() {
+        val project = project()
+        val session = IdeBridge.createSession(project = project)
+        val runManager = Mockito.mock(RunManager::class.java)
+        val settings = Mockito.mock(RunnerAndConfigurationSettings::class.java)
+        val launched = mutableListOf<Pair<RunnerAndConfigurationSettings, Boolean>>()
+        Mockito.`when`(project.getService(RunManager::class.java)).thenReturn(runManager)
+        Mockito.`when`(runManager.findConfigurationByName("app")).thenReturn(settings)
+
+        val previousLauncher = executeConfigurationAction
+        executeConfigurationAction = { _, configuration, debug -> launched += configuration to debug }
+        try {
+            sse(session).use { events ->
+                val name = JsonObject().apply { addProperty("name", "app") }
+
+                val run = events.send("executeAcpTool", executeToolPayload("tasks_and_problems", "runConfiguration", name))
+                assertEquals(true, run.get("ok")?.asBoolean, run.toString())
+                assertTrue(run.getAsJsonObject("result").get("output").asString.contains("Run"))
+
+                val debug = events.send("executeAcpTool", executeToolPayload("tasks_and_problems", "debugConfiguration", name))
+                assertEquals(true, debug.get("ok")?.asBoolean, debug.toString())
+                assertTrue(debug.getAsJsonObject("result").get("output").asString.contains("Debug"))
+
+                assertEquals(listOf(settings to false, settings to true), launched)
+            }
+        } finally {
+            executeConfigurationAction = previousLauncher
+        }
+    }
+
+    @Test
+    fun `stopRunConfiguration stops the matching process`() {
+        val project = project()
+        val session = IdeBridge.createSession(project = project)
+        val contentManager = Mockito.mock(RunContentManager::class.java)
+        val handler = Mockito.mock(ProcessHandler::class.java)
+        val descriptor = Mockito.mock(RunContentDescriptor::class.java)
+        Mockito.`when`(project.getService(RunContentManager::class.java)).thenReturn(contentManager)
+        Mockito.`when`(contentManager.allDescriptors).thenReturn(listOf(descriptor))
+        Mockito.`when`(descriptor.processHandler).thenReturn(handler)
+        Mockito.`when`(handler.isProcessTerminated).thenReturn(false)
+        Mockito.`when`(descriptor.runConfigurationName).thenReturn("app")
+
+        sse(session).use { events ->
+            val stop = events.send(
+                "executeAcpTool",
+                executeToolPayload(
+                    "tasks_and_problems",
+                    "stopRunConfiguration",
+                    JsonObject().apply { addProperty("name", "app") },
+                ),
+            )
+            assertEquals(true, stop.get("ok")?.asBoolean)
+            assertTrue(stop.getAsJsonObject("result").get("output").asString.contains("app"))
+            Mockito.verify(handler).destroyProcess()
+        }
+    }
+
+    @Test
+    fun `debug tools read state frames variables and evaluate expressions`() {
+        val project = project()
+        val session = IdeBridge.createSession(project = project)
+        val manager = Mockito.mock(XDebuggerManager::class.java)
+        val debugSession = Mockito.mock(XDebugSession::class.java)
+        val context = Mockito.mock(XSuspendContext::class.java)
+        val stack = Mockito.mock(XExecutionStack::class.java)
+        val frame = Mockito.mock(XStackFrame::class.java)
+        val position = Mockito.mock(XSourcePosition::class.java)
+        val file = Mockito.mock(VirtualFile::class.java)
+        val value = Mockito.mock(XValue::class.java)
+        val evaluator = Mockito.mock(XDebuggerEvaluator::class.java)
+
+        Mockito.`when`(project.getService(XDebuggerManager::class.java)).thenReturn(manager)
+        Mockito.`when`(manager.debugSessions).thenReturn(arrayOf(debugSession))
+        Mockito.`when`(manager.currentSession).thenReturn(debugSession)
+        Mockito.`when`(debugSession.sessionName).thenReturn("app")
+        Mockito.`when`(debugSession.isSuspended).thenReturn(true)
+        Mockito.`when`(debugSession.suspendContext).thenReturn(context)
+        Mockito.`when`(context.activeExecutionStack).thenReturn(stack)
+        Mockito.`when`(debugSession.topFramePosition).thenReturn(position)
+        Mockito.`when`(frame.sourcePosition).thenReturn(position)
+        Mockito.`when`(frame.evaluator).thenReturn(evaluator)
+        Mockito.`when`(position.file).thenReturn(file)
+        Mockito.`when`(file.path).thenReturn("/src/Main.java")
+        Mockito.`when`(position.line).thenReturn(41)
+        Mockito.doAnswer { invocation ->
+            invocation.getArgument<XExecutionStack.XStackFrameContainer>(1)
+                .addStackFrames(mutableListOf<XStackFrame>(frame), true)
+            null
+        }.`when`(stack).computeStackFrames(Mockito.anyInt(), Mockito.any())
+        Mockito.doAnswer { invocation ->
+            val children = XValueChildrenList()
+            children.add("answer", value)
+            invocation.getArgument<XCompositeNode>(0).addChildren(children, true)
+            null
+        }.`when`(frame).computeChildren(Mockito.any())
+        Mockito.doAnswer { invocation ->
+            invocation.getArgument<XValueNode>(0).setPresentation(null, "42", "int", false)
+            null
+        }.`when`(value).computePresentation(Mockito.any(), Mockito.any())
+        Mockito.doAnswer { invocation ->
+            invocation.getArgument<XDebuggerEvaluator.XEvaluationCallback>(1).evaluated(value)
+            null
+        }.`when`(evaluator).evaluate(Mockito.anyString(), Mockito.any(), Mockito.any())
+
+        sse(session).use { events ->
+            val state = events.send("executeAcpTool", executeToolPayload("debug", "getDebugState", JsonObject()))
+            assertEquals(true, state.get("ok")?.asBoolean)
+            val sessions = JsonParser.parseString(state.getAsJsonObject("result").get("output").asString)
+                .asJsonObject.getAsJsonArray("sessions")
+            assertEquals(1, sessions.size())
+            assertEquals(true, sessions.get(0).asJsonObject.get("paused").asBoolean)
+
+            val callStack = events.send("executeAcpTool", executeToolPayload("debug", "getCallStack", JsonObject()))
+            assertEquals(true, callStack.get("ok")?.asBoolean, callStack.toString())
+            val frames = JsonParser.parseString(callStack.getAsJsonObject("result").get("output").asString)
+                .asJsonObject.getAsJsonArray("frames")
+            assertEquals(1, frames.size())
+            assertEquals("/src/Main.java", frames.get(0).asJsonObject.get("file").asString)
+            assertEquals(42, frames.get(0).asJsonObject.get("line").asInt)
+
+            val variables = events.send("executeAcpTool", executeToolPayload("debug", "getVariables", JsonObject()))
+            assertEquals(true, variables.get("ok")?.asBoolean)
+            val values = JsonParser.parseString(variables.getAsJsonObject("result").get("output").asString)
+                .asJsonObject.getAsJsonArray("variables")
+            assertEquals(1, values.size())
+            assertEquals("42", values.get(0).asJsonObject.get("value").asString)
+            assertEquals("int", values.get(0).asJsonObject.get("type").asString)
+
+            val evaluation = events.send(
+                "executeAcpTool",
+                executeToolPayload("debug", "evaluateExpression", JsonObject().apply { addProperty("expression", "x + 1") }),
+            )
+            assertEquals(true, evaluation.get("ok")?.asBoolean)
+            val result = JsonParser.parseString(evaluation.getAsJsonObject("result").get("output").asString).asJsonObject
+            assertEquals("42", result.get("result").asString)
+            assertEquals("int", result.get("type").asString)
+
+            val control = events.send(
+                "executeAcpTool",
+                executeToolPayload("debug", "controlExecution", JsonObject().apply { addProperty("action", "resume") }),
+            )
+            assertEquals(true, control.get("ok")?.asBoolean)
+            Mockito.verify(debugSession).resume()
+        }
+    }
+
+    @Test
+    fun `listBreakpoints reports breakpoints from the breakpoint manager`() {
+        val project = project()
+        val session = IdeBridge.createSession(project = project)
+        val manager = Mockito.mock(XDebuggerManager::class.java)
+        val breakpointManager = Mockito.mock(XBreakpointManager::class.java)
+        val breakpoint = Mockito.mock(XLineBreakpoint::class.java)
+        Mockito.`when`(project.getService(XDebuggerManager::class.java)).thenReturn(manager)
+        Mockito.`when`(manager.breakpointManager).thenReturn(breakpointManager)
+        Mockito.`when`(breakpointManager.allBreakpoints).thenReturn(arrayOf(breakpoint))
+        Mockito.`when`(breakpoint.isEnabled).thenReturn(true)
+        Mockito.`when`(breakpoint.fileUrl).thenReturn("file:///src/Main.java")
+        Mockito.`when`(breakpoint.line).thenReturn(41)
+        Mockito.`when`(breakpoint.isLogMessage).thenReturn(false)
+
+        sse(session).use { events ->
+            val reply = events.send("executeAcpTool", executeToolPayload("debug", "listBreakpoints", JsonObject()))
+            assertEquals(true, reply.get("ok")?.asBoolean, reply.toString())
+            val breakpoints = JsonParser.parseString(reply.getAsJsonObject("result").get("output").asString)
+                .asJsonObject.getAsJsonArray("breakpoints")
+            assertEquals(1, breakpoints.size())
+            val entry = breakpoints.get(0).asJsonObject
+            assertEquals(true, entry.get("enabled").asBoolean)
+            assertEquals("file:///src/Main.java", entry.get("file").asString)
+            assertEquals(42, entry.get("line").asInt)
+        }
+    }
+
+    @Test
+    fun `addExceptionBreakpoint creates a java exception breakpoint`() {
+        val project = project()
+        val session = IdeBridge.createSession(project = project)
+        val manager = Mockito.mock(XDebuggerManager::class.java)
+        val breakpointManager = Mockito.mock(XBreakpointManager::class.java)
+        val created = Mockito.mock(XBreakpoint::class.java)
+        Mockito.`when`(project.getService(XDebuggerManager::class.java)).thenReturn(manager)
+        Mockito.`when`(manager.breakpointManager).thenReturn(breakpointManager)
+        Mockito.doReturn(created).`when`(breakpointManager).addBreakpoint(Mockito.any(), Mockito.any())
+
+        sse(session).use { events ->
+            val reply = events.send(
+                "executeAcpTool",
+                executeToolPayload(
+                    "debug",
+                    "addExceptionBreakpoint",
+                    JsonObject().apply {
+                        addProperty("exceptionClass", "java.lang.IllegalStateException")
+                        addProperty("caught", true)
+                        addProperty("uncaught", false)
+                    },
+                ),
+            )
+            assertEquals(true, reply.get("ok")?.asBoolean, reply.toString())
+            val output = reply.getAsJsonObject("result").get("output").asString
+            assertTrue(output.contains("IllegalStateException"))
+            assertTrue(output.contains("true"))
+            Mockito.verify(breakpointManager).addBreakpoint(Mockito.any(), Mockito.any())
+        }
+    }
+
+    @Test
+    fun `removeBreakpoint deletes the breakpoint reported by listBreakpoints`() {
+        val project = project()
+        val session = IdeBridge.createSession(project = project)
+        val manager = Mockito.mock(XDebuggerManager::class.java)
+        val breakpointManager = Mockito.mock(XBreakpointManager::class.java)
+        val breakpoint = Mockito.mock(XLineBreakpoint::class.java)
+        val userData = HashMap<Key<*>, Any?>()
+        Mockito.`when`(project.getService(XDebuggerManager::class.java)).thenReturn(manager)
+        Mockito.`when`(manager.breakpointManager).thenReturn(breakpointManager)
+        Mockito.`when`(breakpointManager.allBreakpoints).thenReturn(arrayOf(breakpoint))
+        Mockito.doAnswer { invocation ->
+            userData[invocation.getArgument<Key<*>>(0)]
+        }.`when`(breakpoint).getUserData(Mockito.any<Key<String>>())
+        Mockito.doAnswer { invocation ->
+            userData[invocation.getArgument<Key<*>>(0)] = invocation.getArgument(1)
+            null
+        }.`when`(breakpoint).putUserData(Mockito.any<Key<String>>(), Mockito.any())
+
+        sse(session).use { events ->
+            val listed = events.send("executeAcpTool", executeToolPayload("debug", "listBreakpoints", JsonObject()))
+            assertEquals(true, listed.get("ok")?.asBoolean, listed.toString())
+            val id = JsonParser.parseString(listed.getAsJsonObject("result").get("output").asString)
+                .asJsonObject.getAsJsonArray("breakpoints").get(0).asJsonObject.get("id").asString
+
+            val removed = events.send(
+                "executeAcpTool",
+                executeToolPayload("debug", "removeBreakpoint", JsonObject().apply { addProperty("id", id) }),
+            )
+            assertEquals(true, removed.get("ok")?.asBoolean, removed.toString())
+            Mockito.verify(breakpointManager).removeBreakpoint(breakpoint)
+        }
+    }
+
+    @Test
+    fun `problem file collection keeps extensionless files and reports skipped directories`() {
+        val root = Mockito.mock(VirtualFile::class.java)
+        val source = Mockito.mock(VirtualFile::class.java)
+        val makefile = Mockito.mock(VirtualFile::class.java)
+        val build = Mockito.mock(VirtualFile::class.java)
+        val hidden = Mockito.mock(VirtualFile::class.java)
+        Mockito.`when`(root.children).thenReturn(arrayOf(source, makefile, build, hidden))
+        Mockito.`when`(source.isDirectory).thenReturn(false)
+        Mockito.`when`(source.path).thenReturn("/project/A.java")
+        Mockito.`when`(makefile.isDirectory).thenReturn(false)
+        Mockito.`when`(makefile.path).thenReturn("/project/Makefile")
+        Mockito.`when`(build.isDirectory).thenReturn(true)
+        Mockito.`when`(build.name).thenReturn("build")
+        Mockito.`when`(build.path).thenReturn("/project/build")
+        Mockito.`when`(hidden.isDirectory).thenReturn(true)
+        Mockito.`when`(hidden.name).thenReturn(".git")
+        Mockito.`when`(hidden.path).thenReturn("/project/.git")
+
+        val collected = mutableListOf<VirtualFile>()
+        val skipped = mutableListOf<String>()
+        val hitLimit = collectFiles(root, collected, skipped)
+
+        assertFalse(hitLimit)
+        assertEquals(listOf("/project/A.java", "/project/Makefile"), collected.map { it.path })
+        assertEquals(listOf("/project/build", "/project/.git"), skipped)
+    }
+
+    @Test
+    fun `getProblems reports partial results when only skipped directories remain`() {
+        val previous = resolveProblemTargetsAction
+        resolveProblemTargetsAction = { _, _ -> ProblemTargets(emptyList(), true, listOf("/project/build")) }
+        try {
+            val session = IdeBridge.createSession(project = project())
+
+            sse(session).use { events ->
+                val reply = events.send(
+                    "executeAcpTool",
+                    executeToolPayload("tasks_and_problems", "getProblems", JsonObject().apply { addProperty("path", "sub") }),
+                )
+                assertEquals(true, reply.get("ok")?.asBoolean, reply.toString())
+                val output = JsonParser.parseString(reply.getAsJsonObject("result").get("output").asString).asJsonObject
+                assertEquals(true, output.get("truncated").asBoolean)
+                assertEquals("/project/build", output.getAsJsonArray("skippedDirectories").get(0).asString)
+            }
+        } finally {
+            resolveProblemTargetsAction = previous
+        }
+    }
+
+    @Test
+    fun `getProblems fails explicitly when no files are found`() {
+        val previous = resolveProblemTargetsAction
+        resolveProblemTargetsAction = { _, _ -> ProblemTargets(emptyList(), false, emptyList()) }
+        try {
+            val session = IdeBridge.createSession(project = project())
+
+            sse(session).use { events ->
+                val withPath = events.send(
+                    "executeAcpTool",
+                    executeToolPayload("tasks_and_problems", "getProblems", JsonObject().apply { addProperty("path", "missing") }),
+                )
+                assertEquals(false, withPath.get("ok")?.asBoolean)
+                assertTrue(withPath.get("error")?.asString?.contains("No files found") == true)
+
+                val withoutPath = events.send(
+                    "executeAcpTool",
+                    executeToolPayload("tasks_and_problems", "getProblems", JsonObject()),
+                )
+                assertEquals(false, withoutPath.get("ok")?.asBoolean)
+                assertTrue(withoutPath.get("error")?.asString?.contains("No active file") == true)
+            }
+        } finally {
+            resolveProblemTargetsAction = previous
+        }
+    }
+
+    @Test
+    fun `truncateOutput keeps short text and marks truncated output`() {
+        assertEquals("hello", truncateOutput("hello", 10))
+
+        val truncated = truncateOutput("a".repeat(20), 5)
+        assertTrue(truncated.startsWith("aaaaa"))
+        assertTrue(truncated.contains("truncated 15 characters"))
+    }
+
+    @Test
+    fun `breakpoint ids stay stable when the breakpoint collection changes`() {
+        val first = Mockito.mock(XBreakpoint::class.java)
+        val second = Mockito.mock(XBreakpoint::class.java)
+        val allocator = BreakpointIdAllocator(InMemoryBreakpointIdStore())
+
+        val firstId = allocator.idOf(first)
+        val secondId = allocator.idOf(second)
+        assertTrue(firstId != secondId)
+        assertEquals(firstId, allocator.idOf(first))
+        assertEquals(secondId, allocator.idOf(second))
+
+        // Removing another breakpoint must not renumber the remaining one.
+        val remaining = listOf(second).map { allocator.idOf(it) }
+        assertEquals(listOf(secondId), remaining)
     }
 
     @Test
