@@ -4,8 +4,10 @@ import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.intellij.execution.ExecutionManager
 import com.intellij.execution.RunManager
 import com.intellij.execution.RunnerAndConfigurationSettings
+import com.intellij.execution.impl.ExecutionManagerImpl
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.ui.RunContentDescriptor
 import com.intellij.execution.ui.RunContentManager
@@ -1293,17 +1295,42 @@ class IdeBridgeUpdateTest {
     }
 
     @Test
-    fun `stopRunConfiguration stops the matching process`() {
+    fun `stopRunConfiguration uses configuration name and stops latest matching instance`() {
         val project = project()
         val session = IdeBridge.createSession(project = project)
         val contentManager = Mockito.mock(RunContentManager::class.java)
-        val handler = Mockito.mock(ProcessHandler::class.java)
-        val descriptor = Mockito.mock(RunContentDescriptor::class.java)
+        val executionManager = Mockito.mock(ExecutionManagerImpl::class.java)
+        val olderHandler = Mockito.mock(ProcessHandler::class.java)
+        val newerHandler = Mockito.mock(ProcessHandler::class.java)
+        val otherHandler = Mockito.mock(ProcessHandler::class.java)
+        val olderDescriptor = Mockito.mock(RunContentDescriptor::class.java)
+        val newerDescriptor = Mockito.mock(RunContentDescriptor::class.java)
+        val otherDescriptor = Mockito.mock(RunContentDescriptor::class.java)
+        val olderSettings = Mockito.mock(RunnerAndConfigurationSettings::class.java)
+        val newerSettings = Mockito.mock(RunnerAndConfigurationSettings::class.java)
+        val otherSettings = Mockito.mock(RunnerAndConfigurationSettings::class.java)
         Mockito.`when`(project.getService(RunContentManager::class.java)).thenReturn(contentManager)
-        Mockito.`when`(contentManager.allDescriptors).thenReturn(listOf(descriptor))
-        Mockito.`when`(descriptor.processHandler).thenReturn(handler)
-        Mockito.`when`(handler.isProcessTerminated).thenReturn(false)
-        Mockito.`when`(descriptor.runConfigurationName).thenReturn("app")
+        Mockito.`when`(project.getService(ExecutionManager::class.java)).thenReturn(executionManager)
+        Mockito.`when`(contentManager.allDescriptors)
+            .thenReturn(listOf(olderDescriptor, newerDescriptor, otherDescriptor))
+        Mockito.`when`(olderDescriptor.processHandler).thenReturn(olderHandler)
+        Mockito.`when`(newerDescriptor.processHandler).thenReturn(newerHandler)
+        Mockito.`when`(otherDescriptor.processHandler).thenReturn(otherHandler)
+        Mockito.`when`(olderHandler.isProcessTerminated).thenReturn(false)
+        Mockito.`when`(newerHandler.isProcessTerminated).thenReturn(false)
+        Mockito.`when`(otherHandler.isProcessTerminated).thenReturn(false)
+        Mockito.`when`(olderDescriptor.executionId).thenReturn(10L)
+        Mockito.`when`(newerDescriptor.executionId).thenReturn(20L)
+        Mockito.`when`(otherDescriptor.executionId).thenReturn(30L)
+        Mockito.`when`(olderDescriptor.displayName).thenReturn("app run 1")
+        Mockito.`when`(newerDescriptor.displayName).thenReturn("app run 2")
+        Mockito.`when`(otherDescriptor.displayName).thenReturn("app")
+        Mockito.`when`(olderSettings.name).thenReturn("app")
+        Mockito.`when`(newerSettings.name).thenReturn("app")
+        Mockito.`when`(otherSettings.name).thenReturn("other")
+        Mockito.`when`(executionManager.getConfigurations(olderDescriptor)).thenReturn(setOf(olderSettings))
+        Mockito.`when`(executionManager.getConfigurations(newerDescriptor)).thenReturn(setOf(newerSettings))
+        Mockito.`when`(executionManager.getConfigurations(otherDescriptor)).thenReturn(setOf(otherSettings))
 
         sse(session).use { events ->
             val stop = events.send(
@@ -1315,8 +1342,34 @@ class IdeBridgeUpdateTest {
                 ),
             )
             assertEquals(true, stop.get("ok")?.asBoolean)
-            assertTrue(stop.getAsJsonObject("result").get("output").asString.contains("app"))
-            Mockito.verify(handler).destroyProcess()
+            val stopped = JsonParser.parseString(stop.getAsJsonObject("result").get("output").asString)
+                .asJsonObject.getAsJsonArray("stopped")
+            assertEquals("app", stopped.single().asString)
+            Mockito.verify(newerHandler).destroyProcess()
+            Mockito.verify(olderHandler, Mockito.never()).destroyProcess()
+            Mockito.verify(otherHandler, Mockito.never()).destroyProcess()
+
+            val missing = events.send(
+                "executeAcpTool",
+                executeToolPayload(
+                    "tasks_and_problems",
+                    "stopRunConfiguration",
+                    JsonObject().apply { addProperty("name", "missing") },
+                ),
+            )
+            assertEquals(false, missing.get("ok")?.asBoolean)
+            Mockito.verify(otherHandler, Mockito.never()).destroyProcess()
+
+            Mockito.`when`(executionManager.getConfigurations(otherDescriptor)).thenReturn(emptySet())
+            val unnamed = events.send(
+                "executeAcpTool",
+                executeToolPayload("tasks_and_problems", "stopRunConfiguration", JsonObject()),
+            )
+            assertEquals(true, unnamed.get("ok")?.asBoolean)
+            val unnamedStopped = JsonParser.parseString(unnamed.getAsJsonObject("result").get("output").asString)
+                .asJsonObject.getAsJsonArray("stopped")
+            assertEquals("app", unnamedStopped.single().asString)
+            Mockito.verify(otherHandler).destroyProcess()
         }
     }
 

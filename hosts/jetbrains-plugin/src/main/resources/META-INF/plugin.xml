@@ -7,7 +7,7 @@
   <depends>com.intellij.modules.platform</depends>
   <depends>org.jetbrains.plugins.terminal</depends>
   <!-- Optional: Java debugger APIs (exception breakpoints, hit counts) are used only when present. -->
-  <depends optional="true">com.intellij.modules.java</depends>
+  <depends optional="true" config-file="opencode-java.xml">com.intellij.modules.java</depends>
 
   <extensions defaultExtensionNs="com.intellij">
     <toolWindow id="OpenCode" factoryClass="paviko.opencode.ui.ChatToolWindowFactory" anchor="right" canCloseContent="true" icon="/icons/opencodeToolWindow.svg"/>

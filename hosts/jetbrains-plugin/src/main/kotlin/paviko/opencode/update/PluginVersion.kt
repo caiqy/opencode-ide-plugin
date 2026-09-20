@@ -1,10 +1,6 @@
 package paviko.opencode.update
 
-import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.openapi.extensions.PluginId
-import paviko.opencode.JETBRAINS_PLUGIN_ID
-
-private val pluginId = PluginId.getId(JETBRAINS_PLUGIN_ID)
+import com.intellij.ide.plugins.cl.PluginAwareClassLoader
 
 fun interface PluginVersionSource {
     fun currentVersion(): String
@@ -14,6 +10,6 @@ internal fun installedPluginVersionSource(): PluginVersionSource = PluginVersion
 
 internal fun readInstalledPluginVersion(): String {
     // The packaged plugin descriptor version is the version JetBrains installs, displays, and updates against.
-    return PluginManagerCore.getPlugin(pluginId)?.version
+    return (PluginVersionSource::class.java.classLoader as? PluginAwareClassLoader)?.pluginDescriptor?.version
         ?: throw IllegalStateException("Installed plugin descriptor not found")
 }

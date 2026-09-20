@@ -1,7 +1,6 @@
 package paviko.opencode.ui
 
 
-import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.ide.plugins.PluginUtil
 import com.intellij.openapi.diagnostic.Logger
 

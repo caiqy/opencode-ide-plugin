@@ -5,6 +5,7 @@ import com.intellij.execution.RunManager
 import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.execution.executors.DefaultDebugExecutor
 import com.intellij.execution.executors.DefaultRunExecutor
+import com.intellij.execution.impl.ExecutionManagerImpl
 import com.intellij.execution.ui.RunContentManager
 import com.intellij.openapi.project.Project
 
@@ -45,7 +46,12 @@ internal fun stopRunConfiguration(project: Project, parameters: Map<String, Any?
     val name = parameters.stringParam("name")?.takeIf { it.isNotBlank() }
     val candidates = onEdt { RunContentManager.getInstance(project).allDescriptors }
         .filter { it.processHandler?.isProcessTerminated == false }
-        .filter { name == null || it.runConfigurationName == name }
+        .mapNotNull { descriptor ->
+            val configuration = ExecutionManagerImpl.getInstance(project).getConfigurations(descriptor)
+                .firstOrNull { name == null || it.name == name }
+            if (name != null && configuration == null) return@mapNotNull null
+            descriptor to (configuration?.name ?: descriptor.displayName ?: "unknown")
+        }
 
     if (candidates.isEmpty()) {
         throw IllegalStateException(
@@ -54,11 +60,10 @@ internal fun stopRunConfiguration(project: Project, parameters: Map<String, Any?
         )
     }
 
-    val target = candidates.maxByOrNull { it.executionId }
+    val target = candidates.maxByOrNull { it.first.executionId }
         ?: throw IllegalStateException("No running process found")
-    onEdt { target.processHandler?.destroyProcess() }
-    val stopped = target.runConfigurationName ?: target.displayName ?: "unknown"
-    return jsonOutput(mapOf("stopped" to listOf(stopped)))
+    onEdt { target.first.processHandler?.destroyProcess() }
+    return jsonOutput(mapOf("stopped" to listOf(target.second)))
 }
 
 private fun findRunConfiguration(project: Project, name: String): RunnerAndConfigurationSettings =
