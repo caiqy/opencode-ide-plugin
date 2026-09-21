@@ -335,30 +335,38 @@ export function ProviderSettingsTab({ formData, setFormData, onReloadConfig }: P
       {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
       <div>
         <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Provider 列表</h3>
-        <table className="mt-2 w-full text-xs">
-          <thead className="text-left text-gray-500 dark:text-gray-400">
-            <tr>
-              <th className="py-2 pr-2">提供商</th>
-              <th className="py-2 pr-2">接口地址</th>
-              <th className="py-2 pr-2">API 密钥</th>
-              <th className="py-2">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="border-t border-gray-100 dark:border-gray-800">
-                <td className="py-2 pr-2 font-medium text-gray-900 dark:text-gray-100">{row.id}</td>
-                <td className="py-2 pr-2 text-gray-600 dark:text-gray-300">{row.baseURL ?? "未配置"}</td>
-                <td className="py-2 pr-2 font-mono text-gray-600 dark:text-gray-300">{row.maskedApiKey}</td>
-                <td className="py-2">
-                  <Button variant="secondary" size="xs" onClick={() => startEdit(row.id)} disabled={isSaving}>
-                    编辑
-                  </Button>
-                </td>
+        <div className="mt-2 overflow-x-auto -mx-1 px-1">
+          <table className="w-full min-w-[420px] text-xs">
+            <thead className="text-left text-gray-500 dark:text-gray-400">
+              <tr>
+                <th className="py-2 pr-2 whitespace-nowrap">提供商</th>
+                <th className="py-2 pr-2 whitespace-nowrap">接口地址</th>
+                <th className="py-2 pr-2 whitespace-nowrap">API 密钥</th>
+                <th className="py-2 pr-1 text-right whitespace-nowrap">操作</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id} className="border-t border-gray-100 dark:border-gray-800">
+                  <td className="py-2 pr-2 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{row.id}</td>
+                  <td className="py-2 pr-2 text-gray-600 dark:text-gray-300 break-all">{row.baseURL ?? "未配置"}</td>
+                  <td className="py-2 pr-2 font-mono text-gray-600 dark:text-gray-300 whitespace-nowrap">{row.maskedApiKey}</td>
+                  <td className="py-2 pr-1 text-right whitespace-nowrap">
+                    <Button
+                      variant="secondary"
+                      size="xs"
+                      onClick={() => startEdit(row.id)}
+                      disabled={isSaving}
+                      className="whitespace-nowrap"
+                    >
+                      编辑
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
       <RestartRequiredModal isOpen={restartOpen} onClose={() => setRestartOpen(false)} />
     </div>

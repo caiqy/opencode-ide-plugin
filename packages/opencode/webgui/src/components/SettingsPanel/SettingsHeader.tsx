@@ -6,7 +6,7 @@ interface SettingsHeaderProps {
 
 export function SettingsHeader({ onClose }: SettingsHeaderProps) {
   return (
-    <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+    <div className="shrink-0 px-3 py-2 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
       <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">设置</h2>
       <IconButton
         onClick={onClose}

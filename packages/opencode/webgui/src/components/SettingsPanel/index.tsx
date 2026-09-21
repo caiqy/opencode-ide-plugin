@@ -161,13 +161,13 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div className="modern-card w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="modern-card w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
           <SettingsHeader onClose={handleClose} />
 
           <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto px-3 py-3">
+          <div className="flex-1 overflow-y-auto px-3 py-3 min-h-0">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="text-gray-500 dark:text-gray-400">正在加载设置…</div>
