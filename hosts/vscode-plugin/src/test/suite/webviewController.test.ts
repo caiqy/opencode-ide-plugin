@@ -495,16 +495,15 @@ suite("WebviewController Test Suite", () => {
     }
   })
 
-  test("getAcpCapabilities reports integrated_browser as connected", async () => {
+  test("getAcpCapabilities 不再上报集成浏览器能力", async () => {
     const { controller, getAcpCapabilities } = await loadController()
     try {
       assert.ok(getAcpCapabilities)
       const res = await getAcpCapabilities()
-      const browserCategory = res.categories.find((c: any) => c.id === "integrated_browser")
-      assert.ok(browserCategory)
-      assert.strictEqual(browserCategory.status, "connected")
-      assert.strictEqual(browserCategory.tools.length, 1)
-      assert.strictEqual(browserCategory.tools[0].id, "openPage")
+      assert.strictEqual(
+        res.categories.find((c: any) => c.id === "integrated_browser"),
+        undefined,
+      )
     } finally {
       controller.dispose()
     }
@@ -594,62 +593,18 @@ suite("WebviewController Test Suite", () => {
     }
   })
 
-  test("executeAcpTool openPage validates url parameter and security boundaries", async () => {
+  test("executeAcpTool 拒绝已移除的集成浏览器类别且不派发命令", async () => {
     const executeCommandStub = sinon.stub(vscode.commands, "executeCommand").resolves()
     const { controller, executeAcpTool } = await loadController()
     try {
       assert.ok(executeAcpTool)
 
-      // 缺少 url
       await assert.rejects(
-        () => executeAcpTool("integrated_browser", "openPage", {}),
-        /Missing or invalid 'url' parameter/,
+        () => executeAcpTool("integrated_browser", "openPage", { url: "https://example.com/test-path?param=1" }),
+        /Unsupported ACP category: integrated_browser/,
       )
 
-      // 空白 url
-      await assert.rejects(
-        () => executeAcpTool("integrated_browser", "openPage", { url: "   " }),
-        /Missing or invalid 'url' parameter/,
-      )
-
-      // 格式非法
-      await assert.rejects(
-        () => executeAcpTool("integrated_browser", "openPage", { url: "not a valid url" }),
-        /Invalid URL format/,
-      )
-
-      // 不支持的危险协议
-      await assert.rejects(
-        () => executeAcpTool("integrated_browser", "openPage", { url: "javascript:alert(1)" }),
-        /Only http and https protocols are supported/,
-      )
-      await assert.rejects(
-        () => executeAcpTool("integrated_browser", "openPage", { url: "file:///etc/passwd" }),
-        /Only http and https protocols are supported/,
-      )
-
-      // 断言安全边界：非法 URL 绝不会派发任何 VS Code 命令
       assert.strictEqual(executeCommandStub.called, false)
-    } finally {
-      controller.dispose()
-    }
-  })
-
-  test("executeAcpTool openPage executes valid url and returns success", async () => {
-    const executeCommandStub = sinon.stub(vscode.commands, "executeCommand").resolves()
-    const { controller, executeAcpTool } = await loadController()
-    try {
-      assert.ok(executeAcpTool)
-      const res = await executeAcpTool("integrated_browser", "openPage", {
-        url: "https://example.com/test-path?param=1",
-      })
-
-      assert.strictEqual(executeCommandStub.calledOnce, true)
-      assert.strictEqual(executeCommandStub.firstCall.args[0], "simpleBrowser.show")
-      assert.strictEqual(executeCommandStub.firstCall.args[1], "https://example.com/test-path?param=1")
-      assert.deepStrictEqual(res, {
-        output: "Opened https://example.com/test-path?param=1 in integrated browser",
-      })
     } finally {
       controller.dispose()
     }
