@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import type { Config } from "@opencode-ai/sdk/client"
 import { sdk } from "../../lib/api/sdkClient"
+import type { ApprovalMode } from "../../state/approval"
 
 const defaultSearchModel = "openai/gpt-5.6-luna"
 
@@ -16,6 +17,8 @@ interface GeneralTabProps {
   pluginAutoUpdate: boolean
   setPluginAutoUpdate: (enabled: boolean) => void
   pluginAutoUpdateAvailable: boolean
+  defaultApprovalMode: ApprovalMode
+  setDefaultApprovalMode: (mode: ApprovalMode) => void
   setStatus: (status: { valid: boolean; draftDirty: boolean }) => void
 }
 
@@ -25,6 +28,8 @@ export function GeneralTab({
   pluginAutoUpdate,
   setPluginAutoUpdate,
   pluginAutoUpdateAvailable,
+  defaultApprovalMode,
+  setDefaultApprovalMode,
   setStatus,
 }: GeneralTabProps) {
   const config = formData as CommonConfig
@@ -113,6 +118,22 @@ export function GeneralTab({
 
   return (
     <div className="divide-y divide-gray-200 dark:divide-gray-800">
+      <Setting
+        title="默认审批模式"
+        description="默认手动审批。保存后仅用于新建会话，已有会话保持原模式；仍可在会话输入框旁单独切换。完全访问会跳过工具审批。"
+      >
+        <select
+          aria-label="默认审批模式"
+          value={defaultApprovalMode}
+          onChange={(event) => setDefaultApprovalMode(event.target.value as ApprovalMode)}
+          className="w-full max-w-sm rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        >
+          <option value="manual">手动审批</option>
+          <option value="automatic">自动审批</option>
+          <option value="full">完全访问</option>
+        </select>
+      </Setting>
+
       <Setting
         title="IDE 插件自动更新"
         description="默认开启。定时检查 IDE 插件的新版本并执行插件安装；关闭后停止自动检查，但仍可手动检查更新。不会读取或修改 OpenCode 后端的 autoupdate 配置。"

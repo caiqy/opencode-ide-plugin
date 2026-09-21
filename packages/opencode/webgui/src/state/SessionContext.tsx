@@ -18,6 +18,7 @@ import { cleanupDeletedSessionDraft } from "./repo/draftRepo"
 import { addRecentModel, loadModelPrefs } from "./repo/modelPrefsRepo"
 import { loadSelection, patchSelection, saveSelection } from "./repo/selectionRepo"
 import { compareSessionList, SESSION_LIST_LIMIT, SESSION_LIST_PAGE_SIZE } from "./sessionPaging"
+import { loadDefaultApprovalMode } from "./approval"
 
 /**
  * Session context state
@@ -843,8 +844,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
     console.log("[SessionContext] Creating new session...", options)
 
     try {
+      const body = {
+        ...options,
+        permission: [
+          { permission: "opencode_approval_mode", pattern: await loadDefaultApprovalMode(), action: "ask" as const },
+        ],
+      }
       const response = await sdk.session.create({
-        body: options,
+        body,
       })
 
       if (response.error) {

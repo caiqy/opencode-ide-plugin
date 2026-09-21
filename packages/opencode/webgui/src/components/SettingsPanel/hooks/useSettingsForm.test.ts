@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
-import { renderHook, waitFor } from "@testing-library/react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 
 vi.mock("../../../lib/api/sdkClient", () => {
   return {
@@ -15,10 +15,12 @@ vi.mock("../../../lib/api/sdkClient", () => {
 
 import { sdk } from "../../../lib/api/sdkClient"
 import { useSettingsForm } from "./useSettingsForm"
+import { saveDefaultApprovalMode } from "../../../state/approval"
 
 describe("useSettingsForm", () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    localStorage.clear()
   })
 
   it("打开设置时加载全局配置", async () => {
@@ -45,5 +47,18 @@ describe("useSettingsForm", () => {
       expect(result.current.formData).toEqual({})
       expect(result.current.originalFormData).toEqual({})
     })
+  })
+
+  it("重新打开设置时加载已保存的默认审批模式并丢弃未保存草稿", async () => {
+    vi.mocked(sdk.global.config.get).mockResolvedValue({ data: {}, error: null })
+    await saveDefaultApprovalMode("automatic")
+    const { result, rerender } = renderHook(({ open }) => useSettingsForm(open), { initialProps: { open: true } })
+    await waitFor(() => expect(result.current.defaultApprovalMode).toBe("automatic"))
+    expect(result.current.originalDefaultApprovalMode).toBe("automatic")
+    act(() => result.current.setDefaultApprovalMode("full"))
+    rerender({ open: false })
+    rerender({ open: true })
+    await waitFor(() => expect(result.current.defaultApprovalMode).toBe("automatic"))
+    expect(result.current.originalDefaultApprovalMode).toBe("automatic")
   })
 })

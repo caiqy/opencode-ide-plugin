@@ -24,6 +24,7 @@ vi.mock("../../lib/api/sdkClient", () => ({
 function renderTab(formData = {}) {
   const setFormData = vi.fn()
   const setStatus = vi.fn()
+  const setDefaultApprovalMode = vi.fn()
   render(
     <GeneralTab
       formData={formData}
@@ -31,18 +32,31 @@ function renderTab(formData = {}) {
       pluginAutoUpdate
       setPluginAutoUpdate={vi.fn()}
       pluginAutoUpdateAvailable
+      defaultApprovalMode="manual"
+      setDefaultApprovalMode={setDefaultApprovalMode}
       setStatus={setStatus}
     />,
   )
-  return { setFormData, setStatus }
+  return { setFormData, setStatus, setDefaultApprovalMode }
 }
 
 describe("GeneralTab", () => {
+  it("切换默认审批模式只修改草稿", async () => {
+    const { setDefaultApprovalMode, setFormData } = renderTab()
+    const user = userEvent.setup()
+    await user.selectOptions(screen.getByRole("combobox", { name: "默认审批模式" }), "automatic")
+    expect(setDefaultApprovalMode).toHaveBeenLastCalledWith("automatic")
+    await user.selectOptions(screen.getByRole("combobox", { name: "默认审批模式" }), "full")
+    expect(setDefaultApprovalMode).toHaveBeenLastCalledWith("full")
+    expect(setFormData).not.toHaveBeenCalled()
+  })
+
   it("只展示常用设置并使用实际默认值", async () => {
     renderTab()
 
     expect(screen.getByRole("checkbox", { name: "IDE 插件自动更新" })).toBeChecked()
     expect(screen.getByRole("checkbox", { name: "文件快照" })).not.toBeChecked()
+    expect(screen.getByRole("combobox", { name: "默认审批模式" })).toHaveValue("manual")
     expect(screen.getByRole("button", { name: "OpenAI 搜索" })).toHaveAttribute("aria-pressed", "true")
     expect(screen.getByRole("combobox", { name: "OpenAI 搜索模型" })).toHaveValue("openai/gpt-5.6-luna")
     expect(screen.getByRole("textbox", { name: "网页搜索并行数" })).toHaveValue("3")

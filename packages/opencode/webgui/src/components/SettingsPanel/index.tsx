@@ -14,6 +14,7 @@ import { SettingsHeader } from "./SettingsHeader"
 import { SettingsFooter } from "./SettingsFooter"
 import { ideBridge } from "../../lib/ideBridge"
 import { automaticUpdateStorageKey } from "./hooks/useSettingsForm"
+import { saveDefaultApprovalMode } from "../../state/approval"
 
 interface SettingsPanelProps {
   isOpen: boolean
@@ -41,11 +42,18 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     originalPluginAutoUpdate,
     setOriginalPluginAutoUpdate,
     pluginAutoUpdateAvailable,
+    defaultApprovalMode,
+    setDefaultApprovalMode,
+    originalDefaultApprovalMode,
+    setOriginalDefaultApprovalMode,
   } = useSettingsForm(isOpen)
 
   const { hasUnsavedChanges, showCloseConfirm, setShowCloseConfirm } = useUnsavedChanges(formData, originalFormData)
   const hasChanges = () =>
-    hasUnsavedChanges() || pluginAutoUpdate !== originalPluginAutoUpdate || generalStatus.draftDirty
+    hasUnsavedChanges() ||
+    pluginAutoUpdate !== originalPluginAutoUpdate ||
+    defaultApprovalMode !== originalDefaultApprovalMode ||
+    generalStatus.draftDirty
 
   // Close handler with unsaved changes check
   const handleClose = () => {
@@ -78,7 +86,16 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [generalStatus, isOpen, isSaving, hasUnsavedChanges, originalPluginAutoUpdate, pluginAutoUpdate])
+  }, [
+    generalStatus,
+    isOpen,
+    isSaving,
+    hasUnsavedChanges,
+    originalPluginAutoUpdate,
+    pluginAutoUpdate,
+    defaultApprovalMode,
+    originalDefaultApprovalMode,
+  ])
 
   const handleSave = async () => {
     if (!generalStatus.valid) return
@@ -119,6 +136,12 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         const saved = await ideBridge.storageSet("global", automaticUpdateStorageKey, String(pluginAutoUpdate))
         if (!saved) throw new Error("保存 IDE 插件自动更新设置失败")
         setOriginalPluginAutoUpdate(pluginAutoUpdate)
+      }
+
+      if (defaultApprovalMode !== originalDefaultApprovalMode) {
+        const saved = await saveDefaultApprovalMode(defaultApprovalMode)
+        if (!saved) throw new Error("保存默认审批模式失败")
+        setOriginalDefaultApprovalMode(defaultApprovalMode)
       }
 
       setSuccessMessage("设置已保存")
@@ -170,6 +193,8 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     pluginAutoUpdate={pluginAutoUpdate}
                     setPluginAutoUpdate={setPluginAutoUpdate}
                     pluginAutoUpdateAvailable={pluginAutoUpdateAvailable}
+                    defaultApprovalMode={defaultApprovalMode}
+                    setDefaultApprovalMode={setDefaultApprovalMode}
                     setStatus={setGeneralStatus}
                   />
                 </div>

@@ -80,9 +80,12 @@ vi.mock("../../state/repo/modelPrefsRepo", () => ({
 }))
 
 import { SettingsPanel } from "./index"
+import { ideBridge } from "../../lib/ideBridge"
+import { loadDefaultApprovalMode } from "../../state/approval"
 
 describe("SettingsPanel", () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     vi.clearAllMocks()
     mocks.globalConfigUpdate.mockResolvedValue({ data: {}, error: null })
     mocks.globalConfigGet.mockResolvedValue({ data: {}, error: null })
@@ -135,6 +138,10 @@ describe("SettingsPanel", () => {
       originalPluginAutoUpdate: true,
       setOriginalPluginAutoUpdate: vi.fn(),
       pluginAutoUpdateAvailable: true,
+      defaultApprovalMode: "manual",
+      setDefaultApprovalMode: vi.fn(),
+      originalDefaultApprovalMode: "manual",
+      setOriginalDefaultApprovalMode: vi.fn(),
     })
 
     mocks.useUnsavedChanges.mockReturnValue({
@@ -147,6 +154,31 @@ describe("SettingsPanel", () => {
   it("加载中时显示中文提示", () => {
     render(<SettingsPanel isOpen={true} onClose={vi.fn()} />)
     expect(screen.getByText("正在加载设置…")).toBeInTheDocument()
+  })
+
+  it.each([true, false])("默认审批模式保存结果为 %s 时正确反馈", async (saved) => {
+    vi.spyOn(ideBridge, "isInstalled").mockReturnValue(true)
+    mocks.ideStorageSet.mockResolvedValue(saved)
+    const setOriginalDefaultApprovalMode = vi.fn()
+    mocks.useSettingsForm.mockReturnValue({
+      ...mocks.useSettingsForm(),
+      isLoading: false,
+      defaultApprovalMode: "full",
+      setOriginalDefaultApprovalMode,
+    })
+    render(<SettingsPanel isOpen onClose={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存更改" })).not.toBeDisabled())
+    await userEvent.setup().click(screen.getByRole("button", { name: "保存更改" }))
+    expect(mocks.ideStorageSet).toHaveBeenCalledWith("global", "commonSettings.defaultApprovalMode", "full")
+    expect(mocks.globalConfigUpdate).not.toHaveBeenCalled()
+    if (saved) {
+      expect(await screen.findByText("设置已保存")).toBeInTheDocument()
+      expect(setOriginalDefaultApprovalMode).toHaveBeenCalledWith("full")
+      return
+    }
+    expect(await screen.findByText("保存默认审批模式失败")).toBeInTheDocument()
+    expect(setOriginalDefaultApprovalMode).not.toHaveBeenCalled()
+    expect(await loadDefaultApprovalMode()).toBe("manual")
   })
 
   it("未保存更改确认弹窗为中文", () => {

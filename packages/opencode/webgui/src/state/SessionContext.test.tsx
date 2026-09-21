@@ -87,6 +87,7 @@ import { resetDraftRepoForTest } from "./repo/draftRepo"
 import { resetScopedStateForTest, scopedStateGetJSON, scopedStateSetJSON } from "./scopedStorage"
 import { SessionProvider, useSession } from "./SessionContext"
 import { SESSION_LIST_LIMIT, SESSION_LIST_PAGE_SIZE } from "./sessionPaging"
+import { saveDefaultApprovalMode } from "./approval"
 
 const selectionKey = "opencode:webgui:workspace:last_selection:v1"
 const draftsKey = "opencode:webgui:workspace:drafts:v1"
@@ -135,6 +136,7 @@ describe("SessionContext migration", () => {
     events.reset()
     resetScopedStateForTest()
     resetDraftRepoForTest()
+    localStorage.removeItem("commonSettings.defaultApprovalMode")
     ;(sdk.session.list as any).mockResolvedValue({ data: [], error: null })
     ;(sdk.session.retry as any).mockResolvedValue({ data: {}, error: null })
     ;(sdk.session.diff as any).mockResolvedValue({ data: [], error: null })
@@ -194,6 +196,30 @@ describe("SessionContext migration", () => {
     })
 
     expect(result.current.currentSession?.id).toBe("source")
+  })
+
+  it.each(["manual", "automatic", "full"] as const)("新建会话继承 %s，已有会话保持不变", async (mode) => {
+    vi.mocked(sdk.session.create).mockResolvedValue({
+      data: session("new", 2),
+      request: new Request("http://localhost/session"),
+      response: new Response(),
+    })
+    const { result } = renderHook(() => useSession(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const existing = session("existing", 1)
+    act(() => result.current.setCurrentSession(existing))
+    await saveDefaultApprovalMode(mode)
+    expect(result.current.currentSession).toBe(existing)
+    await act(async () => {
+      await result.current.createSession({ title: "新会话" })
+    })
+    expect(sdk.session.create).toHaveBeenCalledWith({
+      body: {
+        title: "新会话",
+        permission: [{ permission: "opencode_approval_mode", pattern: mode, action: "ask" }],
+      },
+    })
+    expect(sdk.session.update).not.toHaveBeenCalled()
   })
 
   it("session context initializes model and agent from workspace/global repos", async () => {

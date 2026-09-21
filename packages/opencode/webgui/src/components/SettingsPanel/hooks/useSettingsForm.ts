@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { sdk } from "../../../lib/api/sdkClient"
 import type { Config } from "@opencode-ai/sdk/client"
 import { ideBridge } from "../../../lib/ideBridge"
+import { loadDefaultApprovalMode, type ApprovalMode } from "../../../state/approval"
 
 export const automaticUpdateStorageKey = "commonSettings.autoUpdate"
 
@@ -12,6 +13,8 @@ export function useSettingsForm(isOpen: boolean) {
   const [error, setError] = useState<string | null>(null)
   const [pluginAutoUpdate, setPluginAutoUpdate] = useState(true)
   const [originalPluginAutoUpdate, setOriginalPluginAutoUpdate] = useState(true)
+  const [defaultApprovalMode, setDefaultApprovalMode] = useState<ApprovalMode>("manual")
+  const [originalDefaultApprovalMode, setOriginalDefaultApprovalMode] = useState<ApprovalMode>("manual")
 
   useEffect(() => {
     if (!isOpen) return
@@ -22,9 +25,10 @@ export function useSettingsForm(isOpen: boolean) {
 
       try {
         // Fetch config
-        const [configResponse, stored] = await Promise.all([
+        const [configResponse, stored, approval] = await Promise.all([
           sdk.global.config.get(),
           ideBridge.storageGet("global", [automaticUpdateStorageKey]),
+          loadDefaultApprovalMode(),
         ])
 
         if (configResponse.error) {
@@ -42,6 +46,8 @@ export function useSettingsForm(isOpen: boolean) {
         const autoUpdate = stored?.[automaticUpdateStorageKey] !== "false"
         setPluginAutoUpdate(autoUpdate)
         setOriginalPluginAutoUpdate(autoUpdate)
+        setDefaultApprovalMode(approval)
+        setOriginalDefaultApprovalMode(approval)
       } catch (err) {
         setError(String(err))
       } finally {
@@ -64,5 +70,9 @@ export function useSettingsForm(isOpen: boolean) {
     originalPluginAutoUpdate,
     setOriginalPluginAutoUpdate,
     pluginAutoUpdateAvailable: ideBridge.isInstalled(),
+    defaultApprovalMode,
+    setDefaultApprovalMode,
+    originalDefaultApprovalMode,
+    setOriginalDefaultApprovalMode,
   }
 }
