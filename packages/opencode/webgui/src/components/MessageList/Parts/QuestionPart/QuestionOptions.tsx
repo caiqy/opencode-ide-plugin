@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react"
 import { cn } from "../../../../utils/classNames"
 import { MarkdownRenderer } from "../../../MarkdownRenderer"
 import type { QuestionInfo } from "@opencode-ai/sdk/v2/client"
@@ -10,9 +11,9 @@ interface QuestionOptionsProps {
   onCustomInputChange: (value: string) => void
   isCustomSelected: boolean
   onSelectCustom: () => void
+  onConfirmCustom: () => void
   isEditing: boolean
-  onStartEditing: () => void
-  onFinishEditing: () => void
+  onStopEditing: () => void
 }
 
 export function QuestionOptions({
@@ -23,32 +24,40 @@ export function QuestionOptions({
   onCustomInputChange,
   isCustomSelected,
   onSelectCustom,
+  onConfirmCustom,
   isEditing,
-  onStartEditing,
-  onFinishEditing,
+  onStopEditing,
 }: QuestionOptionsProps) {
   const isMultiple = question.multiple === true
   const allowCustom = question.custom !== false
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // The editor stays open until Enter/Esc or picking another option: losing the
+  // whole webview focus (e.g. an OS clipboard picker) must not drop the draft,
+  // and coming back should put the caret straight back into the textarea.
+  useEffect(() => {
+    if (!isEditing) return
+    const refocus = () => textareaRef.current?.focus()
+    window.addEventListener("focus", refocus)
+    return () => window.removeEventListener("focus", refocus)
+  }, [isEditing])
 
   const handleOptionClick = (label: string) => {
     onToggleOption(label)
   }
 
   const handleCustomClick = () => {
-    if (!isEditing) {
-      onSelectCustom()
-      onStartEditing()
-    }
+    if (!isEditing) onSelectCustom()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      onFinishEditing()
+      onConfirmCustom()
     }
     if (e.key === "Escape") {
       e.preventDefault()
-      onFinishEditing()
+      onStopEditing()
     }
   }
 
@@ -129,34 +138,34 @@ export function QuestionOptions({
                 : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-900",
             )}
           >
-            <button onClick={handleCustomClick} className="w-full text-left">
+            <div onClick={handleCustomClick} className="w-full text-left cursor-pointer">
               <div className="flex items-start gap-2">
                 <span className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 w-4 flex-shrink-0">
                   {question.options.length + 1}.
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    {isMultiple ? (
-                      <span
-                        className={cn(
-                          "w-4 h-4 flex items-center justify-center border rounded text-xs",
-                          isCustomSelected
-                            ? "border-blue-500 bg-blue-500 text-white"
-                            : "border-gray-300 dark:border-gray-600",
-                        )}
-                      >
-                        {isCustomSelected && "✓"}
-                      </span>
-                    ) : (
-                      <span
-                        className={cn(
-                          "w-4 h-4 flex items-center justify-center border rounded-full",
-                          isCustomSelected ? "border-blue-500 bg-blue-500" : "border-gray-300 dark:border-gray-600",
-                        )}
-                      >
-                        {isCustomSelected && <span className="w-2 h-2 bg-white rounded-full" />}
-                      </span>
-                    )}
+                    <button
+                      type="button"
+                      role={isMultiple ? "checkbox" : "radio"}
+                      aria-checked={isCustomSelected}
+                      aria-label="勾选自定义答案"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onConfirmCustom()
+                      }}
+                      className={cn(
+                        "w-4 h-4 flex items-center justify-center border flex-shrink-0",
+                        isMultiple ? "rounded text-xs" : "rounded-full",
+                        isCustomSelected
+                          ? "border-blue-500 bg-blue-500 text-white"
+                          : "border-gray-300 dark:border-gray-600",
+                      )}
+                    >
+                      {isMultiple
+                        ? isCustomSelected && "✓"
+                        : isCustomSelected && <span className="w-2 h-2 bg-white rounded-full" />}
+                    </button>
                     <span
                       className={cn(
                         "text-sm font-medium",
@@ -165,28 +174,28 @@ export function QuestionOptions({
                     >
                       输入自定义答案
                     </span>
-                    {!isMultiple && isCustomSelected && customInput && (
+                    {!isMultiple && isCustomSelected && (
                       <span className="text-green-600 dark:text-green-400 text-xs">✓</span>
                     )}
                   </div>
                 </div>
               </div>
-            </button>
+            </div>
 
             {/* Custom input textarea */}
             {isEditing && (
               <div className="mt-2 ml-6">
                 <textarea
+                  ref={textareaRef}
                   autoFocus
                   value={customInput}
                   onChange={(e) => onCustomInputChange(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  onBlur={onFinishEditing}
                   placeholder="请输入自定义答案…"
                   className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none"
                   rows={2}
                 />
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">按 Enter 确认，按 Esc 取消</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">按 Enter 或勾选选项确认，按 Esc 取消</p>
               </div>
             )}
 

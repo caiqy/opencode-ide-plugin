@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo } from "react"
-import type { QuestionRequest, QuestionAnswer } from "@opencode-ai/sdk/v2/client"
+import { useState, useCallback } from "react"
+import type { QuestionInfo, QuestionRequest, QuestionAnswer } from "@opencode-ai/sdk/v2/client"
 import { QuestionTabs } from "./QuestionTabs"
 import { QuestionOptions } from "./QuestionOptions"
 import { ConfirmTab } from "./ConfirmTab"
@@ -9,6 +9,9 @@ interface QuestionPartProps {
   request: QuestionRequest
 }
 
+const optionLabels = (question: QuestionInfo | undefined) =>
+  new Set((question?.options ?? []).map((option) => option.label))
+
 export function QuestionPart({ request }: QuestionPartProps) {
   const { replyQuestion, rejectQuestion } = useMessages()
   const questions = request.questions
@@ -16,31 +19,22 @@ export function QuestionPart({ request }: QuestionPartProps) {
   const [answers, setAnswers] = useState<QuestionAnswer[]>(() => questions.map(() => []))
   const [customInputs, setCustomInputs] = useState<string[]>(() => questions.map(() => ""))
   const [isLoading, setIsLoading] = useState(false)
-  const [editingCustom, setEditingCustom] = useState(false)
+  const [editingCustom, setEditingCustom] = useState<boolean[]>(() => questions.map(() => false))
 
-  // Single question with single select = auto-submit mode
-  const isSingleQuestionSingleSelect = useMemo(
-    () => questions.length === 1 && questions[0]?.multiple !== true,
-    [questions],
-  )
-
-  // Show confirm tab for multiple questions or multi-select
-  const showConfirmTab = !isSingleQuestionSingleSelect
-
-  // Check if we're on the confirm tab
-  const isConfirmTab = activeTab === questions.length && showConfirmTab
+  // The confirm tab is the last step: nothing is submitted until the user confirms there.
+  const isConfirmTab = activeTab === questions.length
 
   // Current question (if not on confirm tab)
   const currentQuestion = questions[activeTab]
   const currentAnswers = answers[activeTab] ?? []
   const currentCustomInput = customInputs[activeTab] ?? ""
   const isMultiple = currentQuestion?.multiple === true
+  const isEditingCustom = editingCustom[activeTab] ?? false
 
-  // Check if custom input is selected
-  const isCustomSelected = useMemo(() => {
-    if (!currentCustomInput) return false
-    return currentAnswers.includes(currentCustomInput)
-  }, [currentAnswers, currentCustomInput])
+  // A custom answer is committed once it shows up in the answers without being a preset option label.
+  const committedCustom = currentAnswers.find((answer) => !optionLabels(currentQuestion).has(answer))
+  // Opening the input selects the custom option right away, so it stays checked while editing.
+  const isCustomSelected = isEditingCustom || committedCustom !== undefined
 
   // Handle submitting answers
   const handleSubmit = useCallback(async () => {
@@ -66,9 +60,36 @@ export function QuestionPart({ request }: QuestionPartProps) {
     }
   }, [request.id, rejectQuestion])
 
+  const setCustomEditing = useCallback(
+    (value: boolean) => {
+      setEditingCustom((prev) => {
+        if ((prev[activeTab] ?? false) === value) return prev
+        const next = [...prev]
+        next[activeTab] = value
+        return next
+      })
+    },
+    [activeTab],
+  )
+
+  // The draft is the answer while the custom option is selected; empty means unanswered.
+  const writeCustomAnswer = useCallback(
+    (value: string) => {
+      const labels = optionLabels(questions[activeTab])
+      setAnswers((prev) => {
+        const newAnswers = [...prev]
+        const presets = (newAnswers[activeTab] ?? []).filter((answer) => labels.has(answer))
+        newAnswers[activeTab] = !value ? presets : isMultiple ? [...presets, value] : [value]
+        return newAnswers
+      })
+    },
+    [activeTab, questions, isMultiple],
+  )
+
   // Handle option toggle
   const handleToggleOption = useCallback(
     (label: string) => {
+      if (!isMultiple) setCustomEditing(false)
       setAnswers((prev) => {
         const newAnswers = [...prev]
         const currentAnswers = [...(newAnswers[activeTab] ?? [])]
@@ -83,32 +104,17 @@ export function QuestionPart({ request }: QuestionPartProps) {
           }
           newAnswers[activeTab] = currentAnswers
         } else {
-          // Single-select: replace the answer
+          // Single-select: replace the answer, then move to the confirm tab
           newAnswers[activeTab] = [label]
-
-          // If single question single select, auto-submit
-          if (isSingleQuestionSingleSelect) {
-            // Submit immediately
-            setIsLoading(true)
-            replyQuestion(request.id, [[label]])
-              .catch((error: unknown) => {
-                console.error("[QuestionPart] Failed to submit answer:", error)
-              })
-              .finally(() => {
-                setIsLoading(false)
-              })
-          } else {
-            // Move to next tab
-            setTimeout(() => {
-              setActiveTab((prev) => Math.min(prev + 1, questions.length))
-            }, 150)
-          }
+          setTimeout(() => {
+            setActiveTab((prev) => Math.min(prev + 1, questions.length))
+          }, 150)
         }
 
         return newAnswers
       })
     },
-    [activeTab, isMultiple, isSingleQuestionSingleSelect, request.id, questions.length, replyQuestion],
+    [activeTab, isMultiple, questions.length, setCustomEditing],
   )
 
   // Handle custom input change
@@ -119,87 +125,45 @@ export function QuestionPart({ request }: QuestionPartProps) {
         newInputs[activeTab] = value
         return newInputs
       })
+      writeCustomAnswer(value.trim())
     },
-    [activeTab],
+    [activeTab, writeCustomAnswer],
   )
 
-  // Handle selecting custom option
+  // Handle selecting custom option: expanding the input selects it
   const handleSelectCustom = useCallback(() => {
-    // Start editing when custom option is selected
-    setEditingCustom(true)
-  }, [])
+    setCustomEditing(true)
+  }, [setCustomEditing])
 
-  // Handle finishing custom input editing
-  const handleFinishEditing = useCallback(() => {
-    setEditingCustom(false)
+  // Handle stopping custom input editing (Esc) — keeps the answer as it is
+  const handleStopEditing = useCallback(() => {
+    setCustomEditing(false)
+  }, [setCustomEditing])
+
+  // Handle confirming the custom answer (tick or Enter): commit the draft and advance
+  const handleConfirmCustom = useCallback(() => {
     const value = currentCustomInput.trim()
-
     if (!value) {
-      // Clear custom from answers if empty
-      setAnswers((prev) => {
-        const newAnswers = [...prev]
-        const oldCustom = customInputs[activeTab]
-        if (oldCustom) {
-          newAnswers[activeTab] = (newAnswers[activeTab] ?? []).filter((a) => a !== oldCustom)
-        }
-        return newAnswers
-      })
+      // Nothing typed yet — keep the editor open
+      setCustomEditing(true)
       return
     }
 
-    setAnswers((prev) => {
-      const newAnswers = [...prev]
-      const currentAnswers = [...(newAnswers[activeTab] ?? [])]
+    setCustomEditing(false)
+    if (isMultiple && committedCustom === value) {
+      // Multi-select: confirming the same custom answer again unchecks it
+      writeCustomAnswer("")
+      return
+    }
 
-      // Remove old custom value if exists
-      const oldCustom = customInputs[activeTab]
-      if (oldCustom && oldCustom !== value) {
-        const oldIndex = currentAnswers.indexOf(oldCustom)
-        if (oldIndex !== -1) {
-          currentAnswers.splice(oldIndex, 1)
-        }
-      }
-
-      if (isMultiple) {
-        // Multi-select: add custom value if not already there
-        if (!currentAnswers.includes(value)) {
-          currentAnswers.push(value)
-        }
-        newAnswers[activeTab] = currentAnswers
-      } else {
-        // Single-select: replace with custom value
-        newAnswers[activeTab] = [value]
-
-        // If single question single select, auto-submit
-        if (isSingleQuestionSingleSelect) {
-          setIsLoading(true)
-          replyQuestion(request.id, [[value]])
-            .catch((error: unknown) => {
-              console.error("[QuestionPart] Failed to submit custom answer:", error)
-            })
-            .finally(() => {
-              setIsLoading(false)
-            })
-        } else {
-          // Move to next tab
-          setTimeout(() => {
-            setActiveTab((prev) => Math.min(prev + 1, questions.length))
-          }, 150)
-        }
-      }
-
-      return newAnswers
-    })
-  }, [
-    currentCustomInput,
-    activeTab,
-    customInputs,
-    isMultiple,
-    isSingleQuestionSingleSelect,
-    request.id,
-    questions.length,
-    replyQuestion,
-  ])
+    writeCustomAnswer(value)
+    if (!isMultiple) {
+      // Move to the next question (or the confirm tab)
+      setTimeout(() => {
+        setActiveTab((prev) => Math.min(prev + 1, questions.length))
+      }, 150)
+    }
+  }, [currentCustomInput, committedCustom, isMultiple, questions.length, setCustomEditing, writeCustomAnswer])
 
   // Build tabs data
   const tabsData = questions.map((q, index) => ({
@@ -213,7 +177,7 @@ export function QuestionPart({ request }: QuestionPartProps) {
   }
 
   const handleNext = () => {
-    setActiveTab((prev) => Math.min(prev + 1, showConfirmTab ? questions.length : questions.length - 1))
+    setActiveTab((prev) => Math.min(prev + 1, questions.length))
   }
 
   return (
@@ -223,10 +187,8 @@ export function QuestionPart({ request }: QuestionPartProps) {
         <div className="text-xs font-medium text-blue-700 dark:text-blue-300">来自助手的问题</div>
       </div>
 
-      {/* Tabs (only show if multiple questions or multi-select) */}
-      {showConfirmTab && (
-        <QuestionTabs tabs={tabsData} activeTab={activeTab} onTabChange={setActiveTab} showConfirm={showConfirmTab} />
-      )}
+      {/* Tabs + confirm step */}
+      <QuestionTabs tabs={tabsData} activeTab={activeTab} onTabChange={setActiveTab} showConfirm />
 
       {/* Content */}
       {isConfirmTab ? (
@@ -247,61 +209,46 @@ export function QuestionPart({ request }: QuestionPartProps) {
             onCustomInputChange={handleCustomInputChange}
             isCustomSelected={isCustomSelected}
             onSelectCustom={handleSelectCustom}
-            isEditing={editingCustom}
-            onStartEditing={() => setEditingCustom(true)}
-            onFinishEditing={handleFinishEditing}
+            onConfirmCustom={handleConfirmCustom}
+            isEditing={isEditingCustom}
+            onStopEditing={handleStopEditing}
           />
         )
       )}
 
-      {/* Footer with navigation (only for non-single-select mode) */}
-      {!isSingleQuestionSingleSelect && (
-        <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-between">
-          <div className="flex gap-2">
-            {activeTab > 0 && (
-              <button
-                onClick={handlePrevious}
-                className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-              >
-                ← 上一步
-              </button>
-            )}
-            {!isConfirmTab && (
-              <button
-                onClick={handleNext}
-                className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-              >
-                下一步 →
-              </button>
-            )}
-          </div>
-
-          <div className="flex gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <span>{isConfirmTab ? "复核" : `${activeTab + 1}/${questions.length}`}</span>
-            <span>•</span>
+      {/* Footer with navigation */}
+      <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-between">
+        <div className="flex gap-2">
+          {activeTab > 0 && (
             <button
-              onClick={handleDismiss}
-              disabled={isLoading}
-              className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+              onClick={handlePrevious}
+              className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
             >
-              忽略
+              ← 上一步
             </button>
-          </div>
+          )}
+          {!isConfirmTab && (
+            <button
+              onClick={handleNext}
+              className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            >
+              下一步 →
+            </button>
+          )}
         </div>
-      )}
 
-      {/* Simple footer for single-select single-question */}
-      {isSingleQuestionSingleSelect && (
-        <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-end">
+        <div className="flex gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <span>{isConfirmTab ? "复核" : `${activeTab + 1}/${questions.length}`}</span>
+          <span>•</span>
           <button
             onClick={handleDismiss}
             disabled={isLoading}
-            className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
           >
             忽略
           </button>
         </div>
-      )}
+      </div>
     </div>
   )
 }
