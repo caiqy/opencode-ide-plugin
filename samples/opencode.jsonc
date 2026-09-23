@@ -5,7 +5,7 @@
   "websearch": {
     "mode": "alpha-search",
     "models": [
-      "openai/gpt-5.6-luna"
+      "openai/gpt-6-luna"
     ]
   },
   "parallel_limit": {
@@ -17,38 +17,38 @@
   },
   "agent": {
     "title": {
-      "model": "openai/gpt-5.6-luna",
+      "model": "openai/gpt-6-luna",
       "variant": "low",
       "prompt": "根据用户输入生成标题: 使用简体中文,专业术语除外,尽量不超过15个字,不要加引号/冒号/句号,不要解释原因,只输出标题本身"
     },
     "plan": {
-      "model": "openai/gpt-5.6-sol",
+      "model": "openai/gpt-6-sol",
       "variant": "high",
       "prompt": "面向用户的输出使用中文（包括：解释、总结、问题选项说明、TodoWrite 里的 todos.content）。仅专有名词保留原样；"
     },
     "build": {
-      "model": "openai/gpt-5.6-sol",
+      "model": "openai/gpt-6-sol",
       "variant": "high",
       "prompt": "面向用户的输出使用中文（包括：解释、总结、问题选项说明、TodoWrite 里的 todos.content）。仅专有名词保留原样；"
     },
     "general": {
-      "model": "openai/gpt-5.6-luna",
-      "variant": "xhigh"
+      "model": "openai/gpt-6-sol",
+      "variant": "high"
     },
     "explore": {
-      "model": "openai/gpt-5.6-luna",
+      "model": "openai/gpt-6-luna",
       "variant": "high"
     },
     "reviewer": {
-      "model": "openai/gpt-5.6-terra",
+      "model": "openai/gpt-6-sol",
       "variant": "high"
     },
     "compaction": {
-      "model": "openai/gpt-5.6-luna",
+      "model": "openai/gpt-6-luna",
       "variant": "low"
     },
     "approval": {
-      "model": "openai/gpt-5.6-luna",
+      "model": "openai/gpt-6-luna",
       "variant": "low"
     }
   },
@@ -97,12 +97,13 @@
         ]
       },
       "whitelist": [
-        "gpt-6-astra",
         "gpt-5.6-sol",
-        "gpt-5.6-terra",
-        "gpt-5.6-luna",
-        "gpt-5.5",
-        "gpt-image-2"
+        "gpt-image-2",
+        "gpt-image-2.5-flare",
+        "gpt-image-2.5-sunburst",
+        "gpt-6-astra",
+        "gpt-6-luna",
+        "gpt-6-sol"
       ],
       "models": {
         "gpt-image-2": {
@@ -113,41 +114,56 @@
           },
           "options": {
             "imageApi": "openai-compatible",
+            "defaultForImageGeneration": false
+          }
+        },
+        "gpt-image-2.5-flare": {
+          "limit": {
+            "context": 128000,
+            "input": 128000,
+            "output": 64000
+          },
+          "options": {
+            "imageApi": "openai-compatible",
+            "defaultForImageGeneration": false
+          }
+        },
+        "gpt-image-2.5-sunburst": {
+          "limit": {
+            "context": 128000,
+            "input": 128000,
+            "output": 64000
+          },
+          "options": {
+            "imageApi": "openai-compatible",
             "defaultForImageGeneration": true
           }
         },
-        "gpt-5.5": {
+        "gpt-6-astra": {
           "limit": {
-            "context": 272000,
-            "input": 272000,
+            "context": 400000,
+            "input": 400000,
+            "output": 64000
+          }
+        },
+        "gpt-6-sol": {
+          "limit": {
+            "context": 500000,
+            "input": 500000,
             "output": 64000
           }
         },
         "gpt-5.6-sol": {
           "limit": {
-            "context": 400000,
-            "input": 400000,
+            "context": 450000,
+            "input": 450000,
             "output": 64000
           }
         },
-        "gpt-5.6-terra": {
+        "gpt-6-luna": {
           "limit": {
-            "context": 400000,
-            "input": 400000,
-            "output": 64000
-          }
-        },
-        "gpt-5.6-luna": {
-          "limit": {
-            "context": 600000,
-            "input": 600000,
-            "output": 64000
-          }
-        },
-        "gpt-6-astra": {
-          "limit": {
-            "context": 350000,
-            "input": 350000,
+            "context": 800000,
+            "input": 800000,
             "output": 64000
           }
         }
