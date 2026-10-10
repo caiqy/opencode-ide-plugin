@@ -19,6 +19,7 @@
     "prepare": "husky",
     "release-content:sync": "bun script/release-content-sync.ts",
     "release-content:check": "bun script/release-content-sync.ts --check",
+    "release:version": "bun script/release-version.ts",
     "random": "echo 'Random script'",
     "sso": "aws sso login --sso-session=opencode --no-browser",
     "translate:app": "bun run script/translate-app.ts",

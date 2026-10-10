@@ -6,13 +6,15 @@ description: 打包 Windows 平台 VSCode 插件 (.vsix)，自动更新日期版
 
 版本号格式：`YY.M.DDNN` — `YY` 年份后两位，`M` 月份（不补零），`DDNN` = 日期×100 + 两位构建序号（00-99）。跨天后必须切换到新的日期段，并把当天构建序号重置为 `00`。
 
-不要使用 `node -e` one-liner 计算版本号；该形式在当前 PowerShell 工具环境里可能丢失引号，导致 `$version` 为空或沿用旧版本。若版本计算或校验失败，必须停止，不得继续打包。
+版本号只由 `bun run release:version` 计算，不要手写，也不要用 `node -e` one-liner。
 
 ## 第一步：更新并校验版本号
 
 ```powershell
-$ErrorActionPreference = 'Stop'; $files = @('packages/opencode/webgui/package.json', 'hosts/vscode-plugin/package.json'); $now = Get-Date; $yy = $now.Year % 100; $m = $now.Month; $dd = $now.Day; $pkg = Get-Content -Raw -LiteralPath $files[0] | ConvertFrom-Json; $parts = @($pkg.version -split '\.' | ForEach-Object { [int]$_ }); $seq = if ($parts.Length -eq 3 -and $parts[0] -eq $yy -and $parts[1] -eq $m -and [math]::Floor($parts[2] / 100) -eq $dd) { ($parts[2] % 100) + 1 } else { 0 }; $version = "$yy.$m.$($dd * 100 + $seq)"; if ([string]::IsNullOrWhiteSpace($version)) { throw 'Version calculation produced an empty version' }; $versionParts = @($version -split '\.' | ForEach-Object { [int]$_ }); if ($versionParts.Length -ne 3 -or $versionParts[0] -ne $yy -or $versionParts[1] -ne $m -or [math]::Floor($versionParts[2] / 100) -ne $dd) { throw "Calculated version $version does not match today's date segment" }; foreach ($file in $files) { $raw = Get-Content -Raw -LiteralPath $file; $updated = $raw -replace '"version"\s*:\s*"[^"]+"', "`"version`": `"$version`""; if ($updated -eq $raw) { throw "Failed to update version in $file" }; Set-Content -LiteralPath $file -Value $updated -NoNewline }; $versions = $files | ForEach-Object { (Get-Content -Raw -LiteralPath $_ | ConvertFrom-Json).version }; if (($versions | Select-Object -Unique).Count -ne 1 -or $versions[0] -ne $version) { throw "Version mismatch after update: $($versions -join ', ')" }; Write-Host "==> Version: $version"
+bun run release:version --write
 ```
+
+`script/release-version.ts` 按 `YY.M.DDNN` 更新 `packages/opencode/webgui/package.json`、`hosts/vscode-plugin/package.json` 和 `bun.lock`，并校验日期段等于今天（Asia/Shanghai）。校验失败必须停止，不得继续打包。
 
 ## 第二步：构建、打包并校验 VSIX
 

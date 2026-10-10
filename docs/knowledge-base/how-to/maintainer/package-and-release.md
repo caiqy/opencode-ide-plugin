@@ -17,6 +17,7 @@
 4. `DDNN` 是日期乘以 100 加当天序号。
 5. 跨天后日期段必须更新，当天序号从 `00` 重新开始。
 6. 不沿用 `build.gradle.kts` 里可能过期的 fallback 版本。
+7. 版本号只由 `bun run release:version` 计算（`--write` 写入两个 package.json 和 `bun.lock`），不要手写；CI 用同一脚本的 `--verify` 校验 tag。
 
 ## 打包 VSCode Windows VSIX
 

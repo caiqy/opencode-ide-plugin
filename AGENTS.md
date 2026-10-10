@@ -4,6 +4,13 @@
 - The default branch in this repo is `dev`.
 - Local `main` ref may not exist; use `dev` or `origin/dev` for diffs.
 
+## 发版版本号
+
+- 版本规则是 `YY.M.DDNN`：`YY` 年份后两位、`M` 不补零月份、`DDNN` = 日期 × 100 + 当天序号（跨天归零）。
+- 版本号只能由 `bun run release:version` 产出（加 `--write` 写入两个 package.json 和 `bun.lock`）。禁止手写、禁止凭印象编号；`26.10.855` 这种 `DDNN` 不是「日期 × 100 + 序号」的写法是错的。
+- 发布 tag 必须是 `vYY.M.DDNN`。`.github/workflows/release.yml` 的 preflight 会跑 `bun run release:version --verify <version>`，不符合规则的 tag 直接失败，不会发版。
+- 时间基准是 `Asia/Shanghai`；完整发版流程见 `docs/knowledge-base/how-to/maintainer/package-and-release.md`。
+
 ## Development Environment
 
 - Local development tool versions are managed by `vfox`. Check and use vfox-managed versions before assuming or installing Bun, Node.js, Java/JDK, or other tooling.
