@@ -177,6 +177,19 @@
         }
       }
     },
+    "google": {
+      "npm": "@ai-sdk/google",
+      "whitelist": [
+        "gemini-3.7-flash",
+        "gemini-3.8-flash"
+      ],
+      "options": {
+        "apiKey": "",
+        "baseURL": "http://192.168.2.110:8080/v1beta",
+        "chunkTimeout": 60000,
+        "headerTimeout": 60000
+      }
+    },
     "opencode-go": {
       "options": {
         "baseURL": "http://192.168.2.110:8080/v1",
