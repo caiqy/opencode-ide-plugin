@@ -79,11 +79,12 @@
         "setCacheKey": true
       },
       "whitelist": [
-        "claude-sonnet-4-6",
         "claude-opus-4-6",
         "claude-opus-4-7",
         "claude-opus-4-8",
-        "claude-sonnet-5"
+        "claude-sonnet-5",
+        "claude-opus-5-5",
+        "claude-sonnet-5-5"
       ]
     },
     "openai": {
@@ -196,8 +197,7 @@
         "apiKey": ""
       },
       "whitelist": [
-        "deepseek-v4-flash",
-        "deepseek-v4-pro"
+        "deepseek-v4.1-flash"
       ]
     }
   },
